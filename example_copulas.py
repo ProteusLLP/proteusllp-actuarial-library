@@ -55,8 +55,8 @@ total_inflated_losses.show_cdf()
 
 fig = go.Figure(
     go.Scattergl(
-        x=inflated_total_losses_by_lob["Motor"].ranks,
-        y=inflated_total_losses_by_lob["Property"].ranks,
+        x=inflated_total_losses_by_lob["Motor"].ranks.values,
+        y=inflated_total_losses_by_lob["Property"].ranks.values,
         mode="markers",
     ),
     layout=dict(

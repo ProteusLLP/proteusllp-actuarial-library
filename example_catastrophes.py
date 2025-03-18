@@ -6,14 +6,12 @@ import pandas as pd  # noqa
 
 config.n_sims = 100000
 
-yet_df = pd.read_csv("data/master_ylt_full.csv")
+yet_df = pd.read_csv("data/master_ylt.csv")
 master_yet = SimEventId(
     yet_df["SimNo"].values, yet_df["SimEventId"].values, n_sims=config.n_sims
 )
-ylt = SimEventLossTable.from_dataframe(pd.read_csv("data/cat_ylt_full.csv"), master_yet)
-ylt2 = SimEventLossTable.from_dataframe(
-    pd.read_csv("data/cat_ylt2_full.csv"), master_yet
-)
+ylt = SimEventLossTable.from_dataframe(pd.read_csv("data/cat_ylt.csv"), master_yet)
+ylt2 = SimEventLossTable.from_dataframe(pd.read_csv("data/cat_ylt2.csv"), master_yet)
 
 ylts = ProteusVariable("class", values={"Property": ylt, "Reinsurance": ylt2})
 total_ylt = sum(ylts)
