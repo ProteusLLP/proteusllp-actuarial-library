@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python-capital-model"
+version = "0.0.1"
+authors = [
+  { name="James Norman", email="james.norman@proteusllp.com" },
+]
+description = "A non-life insurance capital model in python"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+license = {text = "MIT License"}
+keywords=["actuarial", "insurance","capital"]
+dependencies = [
+  "numpy",
+  "scipy",
+  "plotly",
+]
+
+[project.optional-dependencies]
+gpu = ["cupy-cuda12x"]
+
+[project.urls]
+Homepage = "https://github.com/pythactuary/python-capital-model"
+Issues = "https://github.com/pythactuary/python-capital-model/issues"
