@@ -4,6 +4,7 @@ from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar, ProteusStochasticVariable
 import numpy as np
 import scipy.stats
+import pandas as pd
 import plotly.graph_objects as go
 from typing import Union
 
@@ -253,7 +254,9 @@ class ProteusVariable:
 
     def get_value_at_sim(self, sim_no: int | StochasticScalar):
         _get_value = lambda x: (
-            x.get_value_at_sim(sim_no) if isinstance(x, ProteusVariable) else x[sim_no]
+            x.get_value_at_sim(sim_no)
+            if isinstance(x, ProteusVariable)
+            else x[sim_no] if x.n_sims > 1 else x
         )
         if isinstance(self.values, dict):
             result = ProteusVariable(
@@ -266,6 +269,39 @@ class ProteusVariable:
                 values=[_get_value(v) for v in self.values],
             )
         return result
+
+    @classmethod
+    def from_csv(
+        cls,
+        file_name: str,
+        dim_name: str,
+        values_column: str,
+        simulation_column="Simulation",
+    ) -> ProteusVariable:
+        """Import a ProteusVariable from a CSV file.
+
+        Note that only one dimensional variables are supported.
+        """
+        df = pd.read_csv(file_name)
+        pivoted_df = df.pivot(
+            index=simulation_column, columns=dim_name, values=values_column
+        )
+        count = df[dim_name].value_counts()
+        pivoted_df.sort_index(inplace=True)
+
+        result = cls(
+            dim_name,
+            {
+                str(label): StochasticScalar(pivoted_df[label].values[: count[label]])
+                for label in df[dim_name].unique()
+            },
+        )
+        result.n_sims = max(count)
+
+        return result
+
+    def __repr__(self):
+        return f"ProteusVariable(dim_name={self.dim_name}, values={self.values})"
 
     def correlation_matrix(self, correlation_type="spearman") -> list[list[float]]:
         # validate type

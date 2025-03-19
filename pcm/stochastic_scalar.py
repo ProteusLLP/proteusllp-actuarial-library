@@ -72,7 +72,8 @@ class StochasticScalar(ProteusStochasticVariable):
     def _binary_operation(self, other, operation, is_reversible=True):
         if isinstance(other, StochasticScalar):
             if self.n_sims != other.n_sims:
-                raise ValueError("Number of simulations do not match.")
+                if self.n_sims != 1 and other.n_sims != 1:
+                    raise ValueError("Number of simulations do not match.")
             result = StochasticScalar(operation(self.values, other.values))
             self.coupled_variable_group.merge(other.coupled_variable_group)
             result.coupled_variable_group.merge(self.coupled_variable_group)

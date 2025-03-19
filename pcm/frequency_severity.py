@@ -140,8 +140,11 @@ class FreqSevSims(ProteusStochasticVariable):
     def __getitem__(self, sim_index: int) -> StochasticScalar:
         """Returns the values of the simulation with the given simulation index."""
         # get the positions of the given simulation index
-        ints = np.where(self.sim_index == sim_index)
-        return StochasticScalar(self.values[ints])
+        if isinstance(sim_index, int):
+            ints = np.where(self.sim_index == sim_index)
+            return StochasticScalar(self.values[ints])
+        else:
+            raise NotImplementedError
 
     def _reduce_over_events(self, operation) -> StochasticScalar:
         result = np.zeros(self.n_sims)
