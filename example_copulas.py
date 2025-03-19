@@ -7,7 +7,7 @@ import plotly.graph_objects as go  # noqa
 config.n_sims = 100000
 
 lobs = ["Motor", "Property", "Liability", "Marine", "Aviation"]
-
+# Generate the individual large losses by class
 individual_large_losses_by_lob = ProteusVariable(
     dim_name="class",
     values={
@@ -18,11 +18,11 @@ individual_large_losses_by_lob = ProteusVariable(
         for name in lobs
     },
 )
-
+# Generate the attritional losses by class
 attritional_losses_by_lob = ProteusVariable(
     "class",
     values={
-        lob: distributions.ContinuousDistribution("gamma", [i + 1, 1000000]).generate()
+        lob: distributions.Gamma(alpha=i + 1, theta=1000000).generate()
         for i, lob in enumerate(lobs)
     },
 )
@@ -50,6 +50,8 @@ inflated_total_losses_by_lob = total_losses_by_lob * (1 + stochastic_inflation)
 
 # create the total losses
 total_inflated_losses = inflated_total_losses_by_lob.sum()
+
+print(total_inflated_losses.tvar(99))
 
 total_inflated_losses.show_cdf()
 
