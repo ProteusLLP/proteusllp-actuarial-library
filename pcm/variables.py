@@ -1,8 +1,7 @@
 from __future__ import annotations
 from typing import Union
 from .frequency_severity import FreqSevSims
-from .stochastic_scalar import StochasticScalar
-from .catastrophes import SimEventLossTable
+from .stochastic_scalar import StochasticScalar, ProteusStochasticVariable
 import numpy as np
 import scipy.stats
 import plotly.graph_objects as go
@@ -59,19 +58,11 @@ class ProteusVariable:
                 self.dimensions.extend(value.dimensions)
 
             if self.n_sims is None:
-                if (
-                    isinstance(value, ProteusVariable)
-                    or isinstance(value, StochasticScalar)
-                    or isinstance(value, SimEventLossTable)
-                ):
+                if isinstance(value, ProteusStochasticVariable):
                     self.n_sims = value.n_sims
                 else:
                     self.n_sims = 1
-            elif (
-                isinstance(value, ProteusVariable)
-                or isinstance(value, StochasticScalar)
-                or isinstance(value, SimEventLossTable)
-            ):
+            elif isinstance(value, ProteusStochasticVariable):
                 if value.n_sims != self.n_sims:
                     if self.n_sims == 1:
                         self.n_sims == value.n_sims
@@ -206,9 +197,7 @@ class ProteusVariable:
                 values=[operation(value, other) for i, value in enumerate(self.values)],
             )
 
-    def __add__(
-        self, other: ProteusVariable | StochasticScalar | float | int
-    ) -> ProteusVariable:
+    def __add__(self, other) -> ProteusVariable:
         return self._binary_operation(other, lambda a, b: a + b)
 
     def __radd__(self, other) -> ProteusVariable:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from .config import xp as np
 from numpy.typing import ArrayLike
-from .couplings import ProteusStochasticVariable
+from .couplings import ProteusStochasticVariable, CouplingGroup
 from typing import Union, TypeVar
 import math
 import plotly.graph_objects as go
@@ -15,6 +15,8 @@ NumericOrStochasticScalar = TypeVar(
 
 class StochasticScalar(ProteusStochasticVariable):
     """A class to represent a single scalar variable in a simulation."""
+
+    coupled_variable_group: CouplingGroup
 
     @property
     def ranks(self) -> StochasticScalar:
@@ -42,7 +44,7 @@ class StochasticScalar(ProteusStochasticVariable):
 
     def _reorder_sims(self, new_order) -> None:
         """Reorder the simulations in the variable."""
-        self.values[:] = self.values[new_order]
+        self.values = self.values[new_order]
 
     def __array_ufunc__(
         self, ufunc: np.ufunc, method: str, *inputs, **kwargs
@@ -217,7 +219,7 @@ class StochasticScalar(ProteusStochasticVariable):
         return self.values[rank_positions[math.ceil(p / 100 * self.n_sims) :]].mean()
 
     def __repr__(self):
-        return f"StochasticScalar(values={self.values})\nn_sims={self.n_sims})"
+        return f"StochasticScalar(values={self.values}\nn_sims={self.n_sims})"
 
     # implement the index referencing
     def __getitem__(

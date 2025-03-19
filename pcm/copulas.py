@@ -30,7 +30,9 @@ class Copula(ABC):
             dim_name="dim1",
             values=[
                 StochasticScalar(sample)
-                for sample in self._generate_unnormalised(n_sims=variables[0].n_sims)
+                for sample in self._generate_unnormalised(
+                    n_sims=variables[0].n_sims, rng=config.rng
+                )
             ],
         )
         if len(variables) != len(copula_samples):
@@ -70,13 +72,9 @@ class GaussianCopula(EllipticalCopula):
         """Generate samples from the copula"""
         if n_sims is None:
             n_sims = config.n_sims
-        n_vars = self.correlation_matrix.shape[0]
+
         # Generate samples from a multivariate normal distribution
-        samples = self.chol.dot(
-            rng.multivariate_normal(
-                mean=np.zeros(n_vars), cov=np.eye(n_vars), size=n_sims
-            ).T
-        )
+        samples = self._generate_unnormalised(n_sims, rng)
         uniform_samples = special.ndtr(samples)
         result = ProteusVariable(
             "dim1", [StochasticScalar(sample) for sample in uniform_samples]
@@ -84,6 +82,16 @@ class GaussianCopula(EllipticalCopula):
         for val in result:
             val.coupled_variable_group.merge(result[0].coupled_variable_group)
         return result
+
+    def _generate_unnormalised(
+        self, n_sims: int, rng: np.random.Generator
+    ) -> np.ndarray:
+        n_vars = self.correlation_matrix.shape[0]
+        return self.chol.dot(
+            rng.multivariate_normal(
+                mean=np.zeros(n_vars), cov=np.eye(n_vars), size=n_sims
+            ).T
+        )
 
 
 class StudentsTCopula(EllipticalCopula):
@@ -100,7 +108,17 @@ class StudentsTCopula(EllipticalCopula):
     def generate(self, n_sims=None, rng=config.rng):
         if n_sims is None:
             n_sims = config.n_sims
-        n_vars = len(self.matrix)
+        t_samples = self._generate_unnormalised(n_sims, rng)
+        uniform_samples = distributions.t(self.dof).cdf(t_samples)
+
+        return ProteusVariable(
+            "dim1", [StochasticScalar(sample) for sample in uniform_samples]
+        )
+
+    def _generate_unnormalised(
+        self, n_sims: int, rng: np.random.Generator
+    ) -> np.ndarray:
+        n_vars = self.correlation_matrix.shape[0]
         normal_samples = self.chol.dot(
             rng.multivariate_normal(
                 mean=np.zeros(n_vars), cov=np.eye(n_vars), size=n_sims
@@ -108,11 +126,7 @@ class StudentsTCopula(EllipticalCopula):
         )
         chi_samples = np.sqrt(rng.gamma(self.dof / 2, 2 / self.dof, size=n_sims))
         t_samples = normal_samples / chi_samples[np.newaxis, :]
-        uniform_samples = distributions.t(self.dof).cdf(t_samples)
-
-        return ProteusVariable(
-            "dim1", [StochasticScalar(sample) for sample in uniform_samples]
-        )
+        return t_samples
 
 
 class ArchimedeanCopula(Copula, ABC):

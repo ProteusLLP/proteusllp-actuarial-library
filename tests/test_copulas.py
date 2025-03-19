@@ -1,5 +1,6 @@
 import scipy.stats  # ignore:import-untyped
 from pcm import copulas
+from pcm import distributions
 import pytest
 import numpy as np
 import scipy
@@ -35,15 +36,47 @@ def test_gaussian_copula(correlation):
     copula_margins(samples)
 
 
+@pytest.mark.parametrize("correlation", [-0.999, 0.5, 0, -0.5, 0.25, 0.75, 0.999])
+def test_gaussian_copula_apply(correlation):
+    n_sims = 100000
+    samples = [
+        distributions.Gamma(2, 50).generate(n_sims),
+        distributions.LogNormal(2, 1.5).generate(n_sims),
+    ]
+    copulas.GaussianCopula([[1, correlation], [correlation, 1]]).apply(samples)
+    # test the correlations
+    emp_corr = np.corrcoef((samples[0].ranks.values, samples[1].ranks.values))[0, 1]
+    # convert from rank to linear
+    linear_corr = 2 * np.sin(emp_corr * np.pi / 6)
+    assert np.isclose(linear_corr, correlation, atol=1e-2)
+    k = scipy.stats.kendalltau(samples[0].values, samples[1].values).statistic
+    assert np.isclose(k, 2 / np.pi * np.asin(correlation), atol=1e-2)
+
+
+@pytest.mark.parametrize("dof", [1.5, 5, 9, 100])
 @pytest.mark.parametrize("correlation", [-0.999, 0.5, -0.5, 0, 0.25, 0.75, 0.999])
-def test_studentst_copula(correlation):
-    samples = copulas.StudentsTCopula([[1, correlation], [correlation, 1]], 5).generate(
-        100000
-    )
+def test_studentst_copula(correlation, dof):
+    samples = copulas.StudentsTCopula(
+        [[1, correlation], [correlation, 1]], dof
+    ).generate(100000)
     k = scipy.stats.kendalltau(samples[0].values, samples[1].values).statistic
     assert np.isclose(k, 2 / np.pi * np.asin(correlation), atol=1e-2)
     # test the margins
     copula_margins(samples)
+
+
+@pytest.mark.parametrize("dof", [1.5, 5, 9, 100])
+@pytest.mark.parametrize("correlation", [-0.999, 0.5, 0, -0.5, 0.25, 0.75, 0.999])
+def test_studentst_copula_apply(correlation, dof):
+    n_sims = 100000
+    samples = [
+        distributions.Gamma(2, 50).generate(n_sims),
+        distributions.LogNormal(2, 1.5).generate(n_sims),
+    ]
+    copulas.StudentsTCopula([[1, correlation], [correlation, 1]], dof).apply(samples)
+    # test the correlations
+    k = scipy.stats.kendalltau(samples[0].values, samples[1].values).statistic
+    assert np.isclose(k, 2 / np.pi * np.asin(correlation), atol=1e-2)
 
 
 @pytest.mark.parametrize("alpha", [0.0, 0.5, 1.25, 2.75])
@@ -55,6 +88,18 @@ def test_clayton_copula(alpha):
     copula_margins(samples)
 
 
+@pytest.mark.parametrize("alpha", [0.0, 0.5, 1.25, 2.75])
+def test_clayton_copula_apply(alpha):
+    n_sims = 100000
+    samples = [
+        distributions.Gamma(2, 50).generate(n_sims),
+        distributions.LogNormal(2, 1.5).generate(n_sims),
+    ]
+    copulas.ClaytonCopula(alpha, 2).apply(samples)
+    k = scipy.stats.kendalltau(samples[0].values, samples[1].values).statistic
+    assert np.isclose(k, alpha / (2 + alpha), atol=1e-2)
+
+
 @pytest.mark.parametrize("theta", [1.001, 1.25, 2.2, 5])
 def test_gumbel_copula(theta):
     samples = copulas.GumbelCopula(theta, 2).generate(100000)
@@ -63,6 +108,18 @@ def test_gumbel_copula(theta):
     assert np.isclose(k, 1 - 1 / theta, atol=1e-2)
     # test the margins
     copula_margins(samples)
+
+
+@pytest.mark.parametrize("theta", [1.001, 1.25, 2.2, 5])
+def test_gumbel_copula_apply(theta):
+    n_sims = 100000
+    samples = [
+        distributions.Gamma(2, 50).generate(n_sims),
+        distributions.LogNormal(2, 1.5).generate(n_sims),
+    ]
+    copulas.GumbelCopula(theta, 2).apply(samples)
+    k = scipy.stats.kendalltau(samples[0].values, samples[1].values).statistic
+    assert np.isclose(k, 1 - 1 / theta, atol=1e-2)
 
 
 @pytest.mark.parametrize("theta", [1.001, 1.25, 2.2, 3])
