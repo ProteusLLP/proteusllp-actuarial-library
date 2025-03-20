@@ -49,3 +49,14 @@ class ProteusStochasticVariable(ABC):
         self, other: Union[ProteusStochasticVariable, ArrayLike]
     ) -> ProteusStochasticVariable:
         pass
+
+    def all(self):
+        return self.values.all()
+
+    def any(self):
+        return self.values.any()
+
+    def __bool__(self):
+        raise ValueError(
+            "The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()"
+        )

@@ -5,12 +5,14 @@ import pytest
 import numpy as np
 import scipy
 import scipy.special
+from pcm.variables import ProteusVariable, StochasticScalar
 
 
-def copula_margins(copula_samples):
+def copula_margins(copula_samples: list[StochasticScalar]):
     # check values are between 0 and 1
-    y = [(0 < x < 1).values.all() for x in copula_samples]
-    assert np.array(y).all()
+    y = ProteusVariable("dim1", [(x > 0) & (x < 1) for x in copula_samples])
+
+    assert y.all()
 
     # check the values are uniform by checking the moments
     for u in copula_samples:

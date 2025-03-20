@@ -143,6 +143,11 @@ class ProteusVariable:
         else:
             return ProteusVariable(self.dim_name, [value for value in temp])
 
+    def __bool__(self):
+        raise ValueError(
+            "The truth value of a ProteusVariable is ambiguous. Use a.any() or a.all()"
+        )
+
     def sum(self, dimensions: list[str] = []) -> ProteusVariable | StochasticScalar:
         """Sum the variables across the specified dimensions. Returns a new ProteusVariable with the summed values."""
         if dimensions is None or dimensions == []:
@@ -269,6 +274,15 @@ class ProteusVariable:
                 values=[_get_value(v) for v in self.values],
             )
         return result
+
+    def all(self) -> bool:
+        if isinstance(self.values, dict):
+            return all([value.all() for value in self.values.values()])
+        else:
+            return all([value.all() for value in self.values])
+
+    def __eq__(self, other) -> ProteusVariable:
+        return self._binary_operation(other, lambda a, b: a == b)
 
     @classmethod
     def from_csv(
