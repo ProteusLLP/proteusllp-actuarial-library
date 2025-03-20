@@ -1,14 +1,14 @@
 from pcm import config, distributions
 from pcm.config import xp as np
-from pcm.variables import ProteusVariable, FreqSevSims, StochasticScalar
-import pandas as pd  # noqa
+from pcm.variables import ProteusVariable, FreqSevSims
+import pandas as pd  # type: ignore
 import math
 
 n_sims = 100000
 config.n_sims = n_sims
 lobs = ["Motor", "Property", "Liability", "Marine", "Aviation"]
 # load the cat ylts
-df = pd.read_csv("data/cat_ylt.csv", index_col=0)
+df = pd.read_csv("data/catastrophes/cat_ylt.csv", index_col=0)
 # upsample the cat ylts to the correct number of simulations
 ylt_sims = 10000
 up_sample_factor = math.ceil(n_sims / ylt_sims)
