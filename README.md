@@ -2,6 +2,9 @@
 
 An insurance capital modeling library in python.
 
+**Note**
+This library is still in development!
+
 ## Introduction
 
 The Python Capital Model (PCM) is a simple, fast and lightweight simulation-based capital modeling package, designed for non-life insurance companies. It is originated from the ![rippy](https://github.com/pythactuary/rippy) package for reinsurance modeling.
