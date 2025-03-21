@@ -58,7 +58,10 @@ class FrequencySeverityModel:
         n_events = self.freq_dist.generate(n_sims, rng)
         total_events = n_events.ssum()
         sev = self.sev_dist.generate(int(total_events), rng)
-        return FreqSevSims(_get_sims_of_events(n_events.values), sev.values, n_sims)
+        result = FreqSevSims(_get_sims_of_events(n_events.values), sev.values, n_sims)
+        result.coupled_variable_group.merge(n_events.coupled_variable_group)
+        result.coupled_variable_group.merge(sev.coupled_variable_group)
+        return result
 
 
 class FreqSevSims(ProteusStochasticVariable):
@@ -336,3 +339,19 @@ class FreqSevSims(ProteusStochasticVariable):
     def _is_compatible(self, other: ProteusCompatibleTypes):
         """Check if two FreqSevSims objects are compatible for mathematical operations."""
         return isinstance(other, FreqSevSims) and self.sim_index is other.sim_index
+
+    def upsample(self, n_sims: int) -> "FreqSevSims":
+        """Upsamples the FreqSevSims object to the given number of simulations."""
+        if n_sims == self.n_sims:
+            return self.copy()
+        sim_index = np.repeat(self.sim_index, n_sims // self.n_sims)
+        values = np.repeat(self.values, n_sims // self.n_sims)
+        if n_sims % self.n_sims > 0:
+            sim_index = np.concatenate(
+                (sim_index, self.sim_index[self.sim_index < n_sims % self.n_sims])
+            )
+            values = np.concatenate(
+                (values, self.values[self.sim_index < n_sims % self.n_sims])
+            )
+        sim_index = sim_index + np.arange(len(sim_index)) % n_sims
+        return FreqSevSims(sim_index, values, n_sims)

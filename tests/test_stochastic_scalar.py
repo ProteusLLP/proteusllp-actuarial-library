@@ -35,6 +35,23 @@ def test_add():
     )
 
 
+def test_add_self():
+    """Tests the addition of a stochastic scalar to itself."""
+    x = StochasticScalar([4, 5, 2, 1, 3])
+    z = x + x
+    assert (z.values == [8, 10, 4, 2, 6]).all()
+    assert x.coupled_variable_group == z.coupled_variable_group
+
+
+def test_add_self_inplace():
+    """Tests the inplace addition of two stochastic scalars."""
+    y = StochasticScalar(np.zeros(5))
+    x = StochasticScalar([4, 5, 2, 1, 3])
+    for i in range(10):
+        y += x
+    assert (y.values == [40, 50, 20, 10, 30]).all()
+
+
 def test_add_scalar():
     """Tests the addition of a stochastic scalar and a scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])

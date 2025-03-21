@@ -219,6 +219,12 @@ class StochasticScalar(ProteusStochasticVariable):
             return result
         return self.values[rank_positions[math.ceil(p / 100 * self.n_sims) :]].mean()
 
+    def upsample(self, n_sims: int) -> StochasticScalar:
+        """Increase the number of simulations in the variable."""
+        if n_sims == self.n_sims:
+            return self
+        return StochasticScalar(self.values[np.arange(n_sims) % self.n_sims])
+
     def __repr__(self):
         return f"StochasticScalar(values={self.values}\nn_sims={self.n_sims})"
 

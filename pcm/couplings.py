@@ -55,8 +55,3 @@ class ProteusStochasticVariable(ABC):
 
     def any(self):
         return self.values.any()
-
-    def __bool__(self):
-        raise ValueError(
-            "The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()"
-        )
