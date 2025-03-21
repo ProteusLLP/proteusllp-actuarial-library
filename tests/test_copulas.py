@@ -10,7 +10,7 @@ from pcm.variables import ProteusVariable, StochasticScalar
 
 def copula_margins(copula_samples: list[StochasticScalar]):
     # check values are between 0 and 1
-    y = ProteusVariable("dim1", [(x > 0) & (x < 1) for x in copula_samples])
+    y = ProteusVariable("dim1", [(x >= 0) & (x <= 1) for x in copula_samples])
 
     assert y.all()
 
