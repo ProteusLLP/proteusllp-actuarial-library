@@ -1,6 +1,6 @@
 from pcm import config, XoLTower, distributions
 from pcm.frequency_severity import FrequencySeverityModel
-from pcm.config import xp as np
+import numpy as np
 
 config.n_sims = 100000
 

@@ -1,10 +1,10 @@
 from typing import Union, Callable
-import numpy
+import numpy as np
 from .couplings import ProteusStochasticVariable
 from .stochastic_scalar import (
     StochasticScalar,
 )
-from .config import config, xp as np
+from .config import config
 from . import distributions
 
 ProteusCompatibleTypes = Union["FreqSevSims", StochasticScalar, int, float, np.ndarray]
@@ -205,7 +205,7 @@ class FreqSevSims(ProteusStochasticVariable):
     def __array_ufunc__(
         self, ufunc: np.ufunc, method: str, *inputs, **kwargs
     ) -> "FreqSevSims":
-        inputs = tuple(
+        _inputs = tuple(
             (
                 x.values
                 if isinstance(x, FreqSevSims)
@@ -224,14 +224,14 @@ class FreqSevSims(ProteusStochasticVariable):
         out = kwargs.get("out", ())
         if out:
             kwargs["out"] = tuple(x.values for x in out)
-        result = getattr(ufunc, method)(*inputs, **kwargs)
+        result = getattr(ufunc, method)(*_inputs, **kwargs)
         result = FreqSevSims(self.sim_index, result, self.n_sims)
         result.coupled_variable_group.merge(self.coupled_variable_group)
 
         return result
 
     def __array_function__(self, func: Callable, types, args, kwargs):
-        if func not in (numpy.where, numpy.sum):
+        if func not in (np.where, np.sum):
             raise NotImplementedError
         args = tuple(x.values if isinstance(x, FreqSevSims) else x for x in args)
         result = func(*args, **kwargs)
@@ -240,98 +240,6 @@ class FreqSevSims(ProteusStochasticVariable):
         result = FreqSevSims(self.sim_index, result, self.n_sims)
         result.coupled_variable_group.merge(self.coupled_variable_group)
         return result
-
-    def _binary_operation(self, x, operation) -> "FreqSevSims":
-        if self._is_compatible(x):
-            assert isinstance(x, FreqSevSims)
-            result = FreqSevSims(
-                self.sim_index, operation(self.values, x.values), self.n_sims
-            )
-            result.coupled_variable_group.merge(self.coupled_variable_group)
-            return result
-        elif isinstance(x, int) or isinstance(x, float):
-            result = FreqSevSims(self.sim_index, operation(self.values, x), self.n_sims)
-            result.coupled_variable_group.merge(self.coupled_variable_group)
-            return result
-        elif isinstance(x, StochasticScalar):
-            result = FreqSevSims(
-                self.sim_index,
-                operation(self.values, x.values[self.sim_index]),
-                self.n_sims,
-            )
-            result.coupled_variable_group.merge(self.coupled_variable_group)
-            result.coupled_variable_group.merge(x.coupled_variable_group)
-            return result
-        elif isinstance(x, np.ndarray):
-            return FreqSevSims(
-                self.sim_index, operation(self.values, x[self.sim_index]), self.n_sims
-            )
-        else:
-            raise NotImplementedError(
-                f"Cannot perform operation {operation} on {type(x)} and {type(self)}"
-            )
-
-    def __add__(self, x: ProteusCompatibleTypes) -> "FreqSevSims":
-        return self._binary_operation(x, operation=lambda a, b: a + b)
-
-    def __radd__(self, x: ProteusCompatibleTypes):
-        return self.__add__(x)
-
-    def __sub__(self, x: ProteusCompatibleTypes):
-        return self._binary_operation(x, operation=lambda a, b: a - b)
-
-    def __rsub__(self, x: ProteusCompatibleTypes):
-        return -self.__sub__(x)
-
-    def __neg__(self):
-        result = FreqSevSims(self.sim_index, -self.values, self.n_sims)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
-        return result
-
-    def __mul__(self, other: ProteusCompatibleTypes):
-        return self._binary_operation(other, operation=lambda a, b: a * b)
-
-    def __rmul__(self, other: ProteusCompatibleTypes):
-        return self.__mul__(other)
-
-    def __truediv__(self, other: ProteusCompatibleTypes):
-        return self._binary_operation(other, operation=lambda a, b: a / b)
-
-    def __rtruediv__(self, other: ProteusCompatibleTypes):
-        return self.__mul__(1 / other)
-
-    def __pow__(self, other: ProteusCompatibleTypes) -> "FreqSevSims":
-        return self._binary_operation(other, operation=lambda a, b: a**b)
-
-    def __rpow__(self, other: ProteusCompatibleTypes) -> "FreqSevSims":
-        return self._binary_operation(other, operation=lambda a, b: b**a)
-
-    def __lt__(self, other: ProteusCompatibleTypes):
-        return self._binary_operation(other, operation=lambda a, b: a < b)
-
-    def __le__(self, other: ProteusCompatibleTypes):
-        return self._binary_operation(other, operation=lambda a, b: a <= b)
-
-    def __gt__(self, other: ProteusCompatibleTypes):
-        return self._binary_operation(other, operation=lambda a, b: a > b)
-
-    def __ge__(self, other: ProteusCompatibleTypes):
-        return self._binary_operation(other, operation=lambda a, b: a >= b)
-
-    def __eq__(self, other: ProteusCompatibleTypes):
-        return self._binary_operation(other, operation=lambda a, b: a == b)
-
-    def __and__(self, other: ProteusCompatibleTypes):
-        return self._binary_operation(other, operation=lambda a, b: a & b)
-
-    def __rand__(self, other: ProteusCompatibleTypes):
-        return self.__and__(other)
-
-    def __or__(self, other: ProteusCompatibleTypes):
-        return self._binary_operation(other, operation=lambda a, b: a | b)
-
-    def __ror__(self, other: ProteusCompatibleTypes):
-        return self.__or__(other)
 
     def __repr__(self):
         return "%s(%r)" % (type(self).__name__, self.values)

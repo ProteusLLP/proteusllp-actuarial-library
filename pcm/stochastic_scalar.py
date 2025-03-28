@@ -50,7 +50,7 @@ class StochasticScalar(ProteusStochasticVariable):
         self, ufunc: np.ufunc, method: str, *inputs, **kwargs
     ) -> StochasticScalar:
         """Override the __array_ufunc__ method means that you can apply standard numpy functions"""
-        inputs = tuple(
+        _inputs = tuple(
             (
                 x.values
                 if isinstance(x, StochasticScalar)
@@ -61,123 +61,12 @@ class StochasticScalar(ProteusStochasticVariable):
         out = kwargs.get("out", ())
         if out:
             kwargs["out"] = tuple(x.values for x in out)
-        result = StochasticScalar(getattr(ufunc, method)(*inputs, **kwargs))
+        result = StochasticScalar(getattr(ufunc, method)(*_inputs, **kwargs))
         for input in inputs:
             if isinstance(input, ProteusStochasticVariable):
-                self.coupled_variable_group.merge(input.coupled_variable_group)
-        result.coupled_variable_group = self.coupled_variable_group
-
-        return result
-
-    def _binary_operation(self, other, operation, is_reversible=True):
-        if isinstance(other, StochasticScalar):
-            if self.n_sims != other.n_sims:
-                if self.n_sims != 1 and other.n_sims != 1:
-                    raise ValueError("Number of simulations do not match.")
-            result = StochasticScalar(operation(self.values, other.values))
-            self.coupled_variable_group.merge(other.coupled_variable_group)
-            result.coupled_variable_group.merge(self.coupled_variable_group)
-            return result
-        elif isinstance(other, (int, float)):
-            result = StochasticScalar(operation(self.values, other))
-            result.coupled_variable_group.merge(self.coupled_variable_group)
-            return result
-        elif is_reversible:
-            # try the reverse operation on the other object
-            result = operation(other, self)
-            return result
-        else:
-            raise ValueError(
-                f"Operation not supported on {type(self)} and {type(other)}."
-            )
-
-    def __add__(self, other):
-        return self._binary_operation(other, lambda x, y: x + y)
-
-    def __radd__(self, other):
-        return self.__add__(other)
-
-    def __sub__(self, other):
-        return self._binary_operation(other, lambda x, y: x - y, False)
-
-    def __rsub__(self, other):
-        result = StochasticScalar(other - self.values)
+                input.coupled_variable_group.merge(self.coupled_variable_group)
         result.coupled_variable_group.merge(self.coupled_variable_group)
-        return result
 
-    def __mul__(self, other):
-        return self._binary_operation(other, lambda x, y: x * y)
-
-    def __rmul__(self, other):
-        return self.__mul__(other)
-
-    def __truediv__(self, other):
-        return self._binary_operation(other, lambda x, y: x / y, False)
-
-    def __rtruediv__(self, other):
-        result = StochasticScalar(other / self.values)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
-        return result
-
-    def __pow__(self, other):
-        return self._binary_operation(other, lambda x, y: x**y, False)
-
-    def __rpow__(self, other):
-        result = StochasticScalar(other**self.values)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
-        return result
-
-    def __eq__(self, other):
-        return self._binary_operation(other, lambda x, y: x == y)
-
-    def __ne__(self, other):
-        return self._binary_operation(other, lambda x, y: x != y)
-
-    def __lt__(self, other):
-        return self._binary_operation(other, lambda x, y: x < y, False)
-
-    def __le__(self, other):
-        return self._binary_operation(other, lambda x, y: x <= y, False)
-
-    def __gt__(self, other):
-        return self._binary_operation(other, lambda x, y: x > y, False)
-
-    def __ge__(self, other):
-        return self._binary_operation(other, lambda x, y: x >= y, False)
-
-    def _req__(self, other):
-        return self.__eq__(other)
-
-    def _rne__(self, other):
-        return self.__ne__(other)
-
-    def _rlt__(self, other):
-        return self.__ge__(other)
-
-    def _rle__(self, other):
-        return self.__gt__(other)
-
-    def _rgt__(self, other):
-        return self.__le__(other)
-
-    def _rge__(self, other):
-        return self.__lt__(other)
-
-    def __and__(self, other):
-        return self._binary_operation(other, lambda x, y: x & y)
-
-    def __rand__(self, other):
-        return self.__and__(other)
-
-    def __or__(self, other):
-        return self._binary_operation(other, lambda x, y: x | y)
-
-    def __ror__(self, other):
-        return self.__or__(other)
-
-    def __neg__(self):
-        result = StochasticScalar(-self.values)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
         return result
 
     def ssum(self) -> float:
