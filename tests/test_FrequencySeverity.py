@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from pcm.frequency_severity import FreqSevSims
+from pcm.variables import StochasticScalar
 
 
 def test_aggregate():
@@ -121,3 +122,121 @@ def test_get_sims():
     fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
     selected_values = fs[1]
     assert (selected_values.values == [3, 4, 5]).all()
+
+
+def test_stochastic_scalar():
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
+    values = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
+    fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
+    scalar = StochasticScalar([1, 2, 3])
+    result = fs + scalar
+    assert np.array_equal(result.values, np.array([2, 3, 5, 6, 7, 9, 10, 11, 12]))
+    assert (
+        result.coupled_variable_group
+        == fs.coupled_variable_group
+        == scalar.coupled_variable_group
+    )
+    fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
+    scalar = StochasticScalar([1, 2, 3])
+    result = fs - scalar
+    assert (
+        result.coupled_variable_group
+        == fs.coupled_variable_group
+        == scalar.coupled_variable_group
+    )
+    assert np.array_equal(result.values, np.array([0, 1, 1, 2, 3, 3, 4, 5, 6]))
+    fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
+    scalar = StochasticScalar([1, 2, 3])
+    result = fs * scalar
+    assert (
+        result.coupled_variable_group
+        == fs.coupled_variable_group
+        == scalar.coupled_variable_group
+    )
+    assert np.array_equal(result.values, np.array([1, 2, 6, 8, 10, 18, 21, 24, 27]))
+    fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
+    scalar = StochasticScalar([1, 2, 3])
+    result = fs / scalar
+    assert np.array_equal(
+        result.values, np.array([1, 2, 1.5, 2, 2.5, 2, 2 + 1 / 3, 2 + 2 / 3, 3])
+    )
+    assert (
+        result.coupled_variable_group
+        == fs.coupled_variable_group
+        == scalar.coupled_variable_group
+    )
+    fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
+    scalar = StochasticScalar([1, 2, 3])
+    result = fs**scalar
+    assert np.array_equal(
+        result.values, np.array([1, 2, 9, 16, 25, 216, 343, 512, 729])
+    )
+    assert (
+        result.coupled_variable_group
+        == fs.coupled_variable_group
+        == scalar.coupled_variable_group
+    )
+    fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
+    result = fs + 1
+    assert np.array_equal(result.values, np.array([2, 3, 4, 5, 6, 7, 8, 9, 10]))
+    fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
+    result = fs - 1
+    assert np.array_equal(result.values, np.array([0, 1, 2, 3, 4, 5, 6, 7, 8]))
+
+    # reverse operations
+    fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
+    scalar = StochasticScalar([1, 2, 3])
+    result = scalar + fs
+    assert np.array_equal(result.values, np.array([2, 3, 5, 6, 7, 9, 10, 11, 12]))
+    assert (
+        result.coupled_variable_group
+        == fs.coupled_variable_group
+        == scalar.coupled_variable_group
+    )
+
+    # reverse operations
+    fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
+    scalar = 1
+    result = scalar + fs
+    assert np.array_equal(result.values, np.array([2, 3, 4, 5, 6, 7, 8, 9, 10]))
+    assert result.coupled_variable_group == fs.coupled_variable_group
+
+
+def test_where():
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
+    values = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
+    n_sims = 3
+    fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=n_sims)
+    condition = fs > 5
+    result = np.where(condition, fs, 0)
+    assert np.array_equal(
+        result.values, np.array([0.0, 0.0, 0.0, 0.0, 0.0, 6.0, 7, 8, 9])
+    )
+    assert result.n_sims == fs.n_sims
+    assert (
+        condition.coupled_variable_group
+        == fs.coupled_variable_group
+        == result.coupled_variable_group
+    )
+
+
+def test_minimum():
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
+    values = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
+    n_sims = 3
+    fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=n_sims)
+    result = np.minimum(fs, 5)
+    assert np.array_equal(result.values, np.array([1, 2, 3, 4, 5, 5, 5, 5, 5]))
+    assert result.n_sims == fs.n_sims
+    assert result.coupled_variable_group == fs.coupled_variable_group
+
+
+def test_maximum():
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
+    values = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
+    n_sims = 3
+    fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=n_sims)
+    result = np.maximum(fs, 5)
+    assert np.array_equal(result.values, np.array([5, 5, 5, 5, 5, 6, 7, 8, 9]))
+    assert result.n_sims == fs.n_sims
+    assert result.coupled_variable_group == fs.coupled_variable_group

@@ -150,9 +150,9 @@ class FreqSevSims(ProteusStochasticVariable):
             raise NotImplementedError
 
     def _reduce_over_events(self, operation) -> StochasticScalar:
-        result = np.zeros(self.n_sims)
-        operation(result, self.sim_index, self.values)
-        result = StochasticScalar(result)
+        _result = np.zeros(self.n_sims)
+        operation(_result, self.sim_index, self.values)
+        result = StochasticScalar(_result)
         result.coupled_variable_group.merge(self.coupled_variable_group)
         return result
 
@@ -226,6 +226,9 @@ class FreqSevSims(ProteusStochasticVariable):
             kwargs["out"] = tuple(x.values for x in out)
         result = getattr(ufunc, method)(*_inputs, **kwargs)
         result = FreqSevSims(self.sim_index, result, self.n_sims)
+        for input in inputs:
+            if isinstance(input, ProteusStochasticVariable):
+                input.coupled_variable_group.merge(self.coupled_variable_group)
         result.coupled_variable_group.merge(self.coupled_variable_group)
 
         return result

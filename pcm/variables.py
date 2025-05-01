@@ -1,12 +1,14 @@
 from __future__ import annotations
-from typing import Union
+from typing import Union, overload
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar, ProteusStochasticVariable
 import numpy as np
-import scipy.stats
-import pandas as pd
-import plotly.graph_objects as go
-from typing import Union
+import scipy.stats  # type: ignore
+import pandas as pd  # type: ignore
+import plotly.graph_objects as go  # type: ignore
+import plotly.io as pio  # type: ignore
+
+pio.templates.default = "none"
 
 
 class ProteusVariable:
@@ -143,7 +145,14 @@ class ProteusVariable:
         else:
             return ProteusVariable(self.dim_name, [value for value in temp])
 
-    def sum(self, dimensions: list[str] = []) -> ProteusVariable | StochasticScalar:
+    @overload
+    def sum(self) -> StochasticScalar: ...
+    @overload
+    def sum(self, dimensions: list[str]) -> ProteusVariable: ...
+
+    def sum(
+        self, dimensions: list[str] = []
+    ) -> Union[ProteusVariable, StochasticScalar]:
         """Sum the variables across the specified dimensions. Returns a new ProteusVariable with the summed values."""
         if dimensions is None or dimensions == []:
             result: StochasticScalar = sum(self)
@@ -253,7 +262,7 @@ class ProteusVariable:
                 raise ValueError("Key must be an integer for a list.")
 
     def get_value_at_sim(self, sim_no: int | StochasticScalar):
-        _get_value = lambda x: (
+        _get_value = lambda x: (  # noqa : E731
             x.get_value_at_sim(sim_no)
             if isinstance(x, ProteusVariable)
             else x[sim_no] if x.n_sims > 1 else x
@@ -365,7 +374,7 @@ class ProteusVariable:
                 for j, value2 in enumerate(values):
                     result[i][j] = scipy.stats.kendalltau(value1, value2)
         else:
-            result = list(np.corrcoef(values))
+            result = np.corrcoef(values).tolist()
 
         return result
 

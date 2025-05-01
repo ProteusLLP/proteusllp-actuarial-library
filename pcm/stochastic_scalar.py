@@ -4,7 +4,7 @@ from numpy.typing import ArrayLike
 from .couplings import ProteusStochasticVariable, CouplingGroup
 from typing import Union, TypeVar
 import math
-import plotly.graph_objects as go
+import plotly.graph_objects as go  # type: ignore
 
 Numeric = Union[int, float]
 NumberOrList = TypeVar("NumberOrList", Numeric, list[Numeric])
@@ -31,10 +31,21 @@ class StochasticScalar(ProteusStochasticVariable):
         if isinstance(values, StochasticScalar):
             self.values = values.values
             self.n_sims = values.n_sims
-            self.coupled_variable_group = values.coupled_variable_group
+            self.coupled_variable_group.merge(values.coupled_variable_group)
         else:
-            self.values = np.asarray(values)
-            self.n_sims = len(self.values)
+            if isinstance(values, list):
+                self.values = np.array(values)
+                self.n_sims = len(values)
+            elif isinstance(values, np.ndarray):
+                if values.ndim == 1:
+                    self.values = values
+                    self.n_sims = len(values)
+                else:
+                    raise ValueError("Values must be a 1D array.")
+            else:
+                raise ValueError(
+                    "Values must be a list or numpy array. Found " + str(type(values))
+                )
 
     def __hash__(self):
         return id(self)
@@ -50,6 +61,18 @@ class StochasticScalar(ProteusStochasticVariable):
         self, ufunc: np.ufunc, method: str, *inputs, **kwargs
     ) -> StochasticScalar:
         """Override the __array_ufunc__ method means that you can apply standard numpy functions"""
+        # check if the input types to the function are types of ProteusVariables other than StochasticScalar
+        var_not_stochastic_scalar = [
+            isinstance(x, ProteusStochasticVariable)
+            and not isinstance(x, StochasticScalar)
+            for x in inputs
+        ]
+
+        if any(var_not_stochastic_scalar):
+            # call the __array_ufunc__ method of variable which is not StochasticScalar
+            #
+            var_pos = var_not_stochastic_scalar.index(True)
+            return inputs[var_pos].__array_ufunc__(ufunc, method, *inputs, **kwargs)
         _inputs = tuple(
             (
                 x.values
@@ -121,8 +144,8 @@ class StochasticScalar(ProteusStochasticVariable):
     def __getitem__(
         self, index: NumericOrStochasticScalar
     ) -> NumericOrStochasticScalar:
-        if isinstance(index, int):
-            return self.values[index]
+        if isinstance(index, (int, float)):
+            return self.values[int(index)]
         elif isinstance(index, StochasticScalar):
             result = StochasticScalar(self.values[index.values])
             result.coupled_variable_group.merge(index.coupled_variable_group)

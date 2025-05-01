@@ -1,5 +1,2 @@
-import example
-
-
 def test():
-    pass
+    import example  # noqa: F401
