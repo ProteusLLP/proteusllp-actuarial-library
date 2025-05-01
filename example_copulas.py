@@ -2,7 +2,7 @@ from pcm import config, distributions
 from pcm.frequency_severity import FrequencySeverityModel
 from pcm import copulas
 from pcm.variables import ProteusVariable
-import plotly.graph_objects as go  # noqa
+import plotly.graph_objects as go  # type: ignore
 
 config.n_sims = 100000
 
@@ -27,11 +27,11 @@ attritional_losses_by_lob = ProteusVariable(
     },
 )
 
-losses_with_LAE = individual_large_losses_by_lob * 1.05
+large_losses_with_LAE = individual_large_losses_by_lob * 1.05
 
 # create the aggregate losses by class
 aggregate_large_losses_by_class = ProteusVariable(
-    "class", {name: losses_with_LAE[name].aggregate() for name in lobs}
+    "class", {name: large_losses_with_LAE[name].aggregate() for name in lobs}
 )
 # correlate the attritional and large losses. Use a pairwise copula to do this
 for lob in lobs:
@@ -42,11 +42,20 @@ for lob in lobs:
 total_losses_by_lob = aggregate_large_losses_by_class + attritional_losses_by_lob
 
 # apply a copula to the total losses by lob
-copulas.GumbelCopula(1.5, len(lobs)).apply(total_losses_by_lob)
+correlation_matrix = [
+    [1.0, 0.5, 0.3, 0.2, 0.1],
+    [0.5, 1.0, 0.4, 0.3, 0.2],
+    [0.3, 0.4, 1.0, 0.5, 0.4],
+    [0.2, 0.3, 0.5, 1.0, 0.6],
+    [0.1, 0.2, 0.4, 0.6, 1.0],
+]
+copulas.StudentsTCopula(correlation_matrix, 5, "linear").apply(total_losses_by_lob)
 
 # apply stochastic inflation
 stochastic_inflation = distributions.Normal(0.05, 0.02).generate()
-inflated_total_losses_by_lob = total_losses_by_lob * (1 + stochastic_inflation)
+inflated_total_losses_by_lob: ProteusVariable = total_losses_by_lob * (
+    1 + stochastic_inflation
+)
 
 # create the total losses
 total_inflated_losses = inflated_total_losses_by_lob.sum()
