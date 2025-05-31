@@ -1,5 +1,5 @@
-from pcm import FreqSevSims
-from .config import config, xp as np
+from pal import FreqSevSims
+from .config import xp as np
 
 percentiles = np.array([1, 2, 5, 10, 20, 50, 70, 80, 90, 95, 99, 99.5, 99.8, 99.9])
 

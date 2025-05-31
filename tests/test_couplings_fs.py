@@ -1,7 +1,7 @@
-from pcm.variables import StochasticScalar
-from pcm.copulas import apply_copula, GumbelCopula
-from pcm.frequency_severity import FreqSevSims, FrequencySeverityModel
-from pcm.distributions import GPD, Poisson, Normal
+from pal.variables import StochasticScalar
+from pal.copulas import apply_copula, GumbelCopula
+from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
+from pal.distributions import GPD, Poisson, Normal
 import numpy as np
 import scipy
 

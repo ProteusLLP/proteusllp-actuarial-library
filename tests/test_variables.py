@@ -1,4 +1,4 @@
-from pcm.variables import ProteusVariable as pv, StochasticScalar
+from pal.variables import ProteusVariable as pv, StochasticScalar
 
 
 def test_empty():

@@ -1,5 +1,5 @@
-from pcm import copulas
-from pcm.variables import StochasticScalar
+from pal import copulas
+from pal.variables import StochasticScalar
 import pytest  # noqa
 
 

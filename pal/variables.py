@@ -353,6 +353,34 @@ class ProteusVariable:
 
         return result
 
+    @classmethod
+    def from_dict(cls, data: dict[str, list[float]]) -> ProteusVariable:
+        """Import a ProteusVariable from a dictionary.
+
+        Note that only one dimensional variables are supported.
+        """
+        result = cls(
+            dim_name="Dim1",
+            values={str(label): StochasticScalar(data[label]) for label in data.keys()},
+        )
+        result.n_sims = max([len(v) for v in data.values()])
+
+        return result
+
+    @classmethod
+    def from_series(cls, data: pd.Series) -> ProteusVariable:
+        """Create a ProteusVariable from a pandas Series.
+
+        Note that only one dimensional variables are supported.
+        """
+        result = cls(
+            dim_name=data.index.name,
+            values={label: data[label] for label in data.index},
+        )
+        result.n_sims = 1
+
+        return result
+
     def __repr__(self):
         return f"ProteusVariable(dim_name={self.dim_name}, values={self.values})"
 
@@ -378,9 +406,14 @@ class ProteusVariable:
 
         return result
 
-    def show_histogram(self):
+    def show_histogram(self, title: str | None = None):
+        """Show a histogram of the variable values.
 
-        fig = go.Figure()
+        Args:
+            title (str | None): The title of the histogram. If None, no title is set.
+
+        """
+        fig = go.Figure(layout=go.Layout(title=title))
         labels = (
             self.values.keys()
             if isinstance(self.values, dict)
@@ -390,9 +423,15 @@ class ProteusVariable:
             fig.add_trace(go.Histogram(x=value.values, name=label))
         fig.show()
 
-    def show_cdf(self):
+    def show_cdf(self, title: str | None = None):
+        """Show a plot of the cumulative distribution function (cdf) of the variable values.
 
-        fig = go.Figure()
+        Args:
+            title (str | None): The title of the cdf. If None, no title is set.
+
+        """
+
+        fig = go.Figure(layout=go.Layout(title=title))
         labels = (
             self.values.keys()
             if isinstance(self.values, dict)

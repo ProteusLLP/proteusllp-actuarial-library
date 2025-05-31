@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
-from pcm.frequency_severity import FreqSevSims
-from pcm.variables import StochasticScalar
+from pal.frequency_severity import FreqSevSims
+from pal.variables import StochasticScalar
 
 
 def test_aggregate():

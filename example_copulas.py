@@ -1,7 +1,7 @@
-from pcm import config, distributions
-from pcm.frequency_severity import FrequencySeverityModel
-from pcm import copulas
-from pcm.variables import ProteusVariable
+from pal import config, distributions
+from pal.frequency_severity import FrequencySeverityModel
+from pal import copulas
+from pal.variables import ProteusVariable
 import plotly.graph_objects as go  # type: ignore
 
 config.n_sims = 100000
@@ -50,7 +50,6 @@ correlation_matrix = [
     [0.1, 0.2, 0.4, 0.6, 1.0],
 ]
 copulas.StudentsTCopula(correlation_matrix, 5, "linear").apply(total_losses_by_lob)
-
 # apply stochastic inflation
 stochastic_inflation = distributions.Normal(0.05, 0.02).generate()
 inflated_total_losses_by_lob: ProteusVariable = total_losses_by_lob * (

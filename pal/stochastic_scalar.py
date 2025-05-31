@@ -152,13 +152,27 @@ class StochasticScalar(ProteusStochasticVariable):
             return result
         raise ValueError("Index must be an integer, StochasticScalar or numpy array.")
 
-    def show_histogram(self):
-        fig = go.Figure(go.Histogram(x=self.values))
+    def show_histogram(self, title: str | None = None):
+        """Show a histogram of the variable.
+
+        Args:
+            title (str | None): Title of the histogram plot. Defaults to None.
+
+        """
+        fig = go.Figure(go.Histogram(x=self.values), layout=dict(title=title))
         fig.show()
 
-    def show_cdf(self):
+    def show_cdf(self, title: str | None = None):
+        """Show a plot of the cumulative distribution function (cdf) of the variable.
+
+        Args:
+            title (str | None): Title of the cdf plot. Defaults to None.
+
+        """
+
         fig = go.Figure(
-            go.Scatter(x=np.sort(self.values), y=np.arange(self.n_sims) / self.n_sims)
+            go.Scatter(x=np.sort(self.values), y=np.arange(self.n_sims) / self.n_sims),
+            layout=dict(title=title),
         )
         fig.update_xaxes(dict(title="Value"))
         fig.update_yaxes(dict(title="Cumulative Probability"))

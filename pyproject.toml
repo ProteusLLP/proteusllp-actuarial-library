@@ -3,12 +3,12 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "python-capital-model"
+name = "pal"
 version = "0.0.1"
 authors = [
   { name="James Norman", email="james.norman@proteusllp.com" },
 ]
-description = "A non-life insurance capital model in python"
+description = "A library for building and running stochastic actuarial models in Python."
 readme = "README.md"
 requires-python = ">=3.12"
 classifiers = [

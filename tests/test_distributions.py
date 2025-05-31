@@ -1,5 +1,5 @@
-from pcm import distributions
-from pcm.config import set_random_seed, xp as np
+from pal import distributions
+from pal.config import set_random_seed, xp as np
 import pytest
 import math
 import scipy.special
