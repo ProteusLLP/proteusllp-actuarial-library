@@ -3,12 +3,12 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pal"
+name = "proteus-actuarial-library"
 version = "0.0.1"
 authors = [
   { name="James Norman", email="james.norman@proteusllp.com" },
 ]
-description = "Python Actuarial Layer: A package for building and running stochastic actuarial models in Python."
+description = "Proteus Actuarial Library: A package for building and running stochastic actuarial models in Python."
 readme = "README.md"
 requires-python = ">=3.11"
 classifiers = [

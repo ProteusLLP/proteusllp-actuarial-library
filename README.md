@@ -1,13 +1,13 @@
-# Python Actuarial Layer
+# Proteus Actuarial Library
 
-An insurance capital modeling library in python.
+An actuarial stochastic modeling library in python.
 
 **Note**
 This library is still in development!
 
 ## Introduction
 
-The Python Actuarial Layer (PAL) is a simple, fast and lightweight framework for building simulation-based actuarial and financial models. It is originated from the ![rippy](https://github.com/pythactuary/rippy) package for reinsurance modeling.
+The Proteus Actuarial Library (PAL) is a simple, fast and lightweight framework for building simulation-based actuarial and financial models. It is originated from the ![rippy](https://github.com/pythactuary/rippy) package for reinsurance modeling.
 
 PAL is designed to look after the complicated stuff, such as copulas and simulation re-ordering, providing easy to use objects and clear syntax. 
 
