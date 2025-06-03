@@ -1,5 +1,5 @@
 import numpy as np
-import pytest
+import pytest  # noqa: F401
 from pal.frequency_severity import FreqSevSims
 from pal.variables import StochasticScalar
 

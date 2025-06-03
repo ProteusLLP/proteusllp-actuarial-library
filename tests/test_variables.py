@@ -1,4 +1,6 @@
-from pal.variables import ProteusVariable as pv, StochasticScalar
+import numpy as np
+
+from pal.variables import ProteusVariable as pv, StochasticScalar, FreqSevSims
 
 
 def test_empty():
@@ -94,7 +96,232 @@ def test_sum_dict_stochastic():
     )
 
 
-import numpy as np
+def test_divide():
+    x = pv(
+        dim_name="dim1",
+        values=[StochasticScalar([1, 2, 3]), StochasticScalar([2, 3, 4])],
+    )
+    y = x / 2.0
+    assert (
+        pv(
+            dim_name="dim1",
+            values=[StochasticScalar([0.5, 1, 3 / 2]), StochasticScalar([1, 3 / 2, 2])],
+        )
+        == y
+    ).all()
+
+
+def test_divide_two():
+    x = pv(dim_name="dim1", values=[1, 2, 3])
+    y = x / pv(dim_name="dim1", values=[2, 4, 6])
+    assert y.values == [0.5, 0.5, 0.5]
+
+
+def test_rdivide():
+    x = pv(
+        dim_name="dim1",
+        values=[1, 2, 3],
+    )
+    y = 2 / x
+    assert y.values == [2, 1, 2 / 3]
+
+
+def test_multiply_stochastic():
+    x = pv(
+        dim_name="dim1",
+        values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
+    )
+    y = StochasticScalar([2, 3, 4])
+    z = y * x
+    assert (
+        pv(
+            dim_name="dim1",
+            values={
+                "a": StochasticScalar([2, 6, 12]),
+                "b": StochasticScalar([4, 9, 16]),
+            },
+        )
+        == z
+    ).all()
+
+
+def test_rmultiply_stochastic():
+    x = pv(
+        dim_name="dim1",
+        values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
+    )
+    y = StochasticScalar([2, 3, 4])
+    z = x * y
+    assert (
+        pv(
+            dim_name="dim1",
+            values={
+                "a": StochasticScalar([2, 6, 12]),
+                "b": StochasticScalar([4, 9, 16]),
+            },
+        )
+        == z
+    ).all()
+
+
+def test_subtract():
+    x = pv(
+        dim_name="dim1",
+        values=[StochasticScalar([1, 2, 3]), StochasticScalar([2, 3, 4])],
+    )
+    y = x - 1
+    assert (
+        pv(
+            dim_name="dim1",
+            values=[StochasticScalar([0, 1, 2]), StochasticScalar([1, 2, 3])],
+        )
+        == y
+    ).all()
+
+
+def test_rsubtract():
+    x = pv(
+        dim_name="dim1",
+        values=[StochasticScalar([1, 2, 3]), StochasticScalar([2, 3, 4])],
+    )
+    y = 1 - x
+    assert (
+        pv(
+            dim_name="dim1",
+            values=[StochasticScalar([0, -1, -2]), StochasticScalar([-1, -2, -3])],
+        )
+        == y
+    ).all()
+
+
+def test_subtract_two():
+    x = pv(
+        dim_name="dim1",
+        values=[1, 2, 3],
+    )
+    y = x - pv(dim_name="dim1", values=[2, 4, 6])
+    assert y.values == [-1, -2, -3]
+
+
+def test_sub_stochastic():
+    x = pv(
+        dim_name="dim1",
+        values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
+    )
+    y = StochasticScalar([2, 3, 4])
+    z = y - x
+    assert (
+        pv(
+            dim_name="dim1",
+            values={
+                "a": StochasticScalar([1, 1, 1]),
+                "b": StochasticScalar([0, 0, 0]),
+            },
+        )
+        == z
+    ).all()
+
+
+def test_rsub_stochastic():
+    x = pv(
+        dim_name="dim1",
+        values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
+    )
+    y = StochasticScalar([2, 3, 4])
+    z = x - y
+    assert (
+        pv(
+            dim_name="dim1",
+            values={
+                "a": StochasticScalar([-1, -1, -1]),
+                "b": StochasticScalar([0, 0, 0]),
+            },
+        )
+        == z
+    ).all()
+
+
+def test_sub_stochastic_scalar():
+    x = pv(
+        dim_name="dim1",
+        values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
+    )
+    y = pv(
+        dim_name="dim1",
+        values={"a": 1, "b": 2},
+    )
+    z = x - y
+    assert (
+        pv(
+            dim_name="dim1",
+            values={
+                "a": StochasticScalar([0, 1, 2]),
+                "b": StochasticScalar([0, 1, 2]),
+            },
+        )
+        == z
+    ).all()
+
+
+def test_rsub_stochastic_scalar():
+    x = pv(
+        dim_name="dim1",
+        values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
+    )
+    y = pv(
+        dim_name="dim1",
+        values={"a": 1, "b": 2},
+    )
+    z = y - x
+    assert (
+        pv(
+            dim_name="dim1",
+            values={
+                "a": StochasticScalar([0, -1, -2]),
+                "b": StochasticScalar([0, -1, -2]),
+            },
+        )
+        == z
+    ).all()
+
+
+def test_sub_2():
+    a = StochasticScalar([1, 2, 3])
+    b = FreqSevSims([0, 0, 1, 2], [1, 2, 3, 4], 3)
+    x = a - b
+    assert (x == FreqSevSims([0, 0, 1, 2], [0, -1, -1, -1], 3)).values.all()
+
+
+def test_sub_3():
+    a = StochasticScalar([2, 3, 4])
+    b = FreqSevSims([0, 1, 1, 2], [1, 2, 3, 4], 3)
+    x = a - b
+    assert (x == FreqSevSims([0, 1, 1, 2], [1, 1, 0, 0], 3)).values.all()
+
+
+def test_sub_stochastic_scalar_frequency_severity():
+    x = pv(
+        dim_name="dim1",
+        values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
+    )
+    y = pv(
+        dim_name="dim1",
+        values={
+            "a": FreqSevSims([0, 0, 1, 2], [1, 2, 3, 4], 3),
+            "b": FreqSevSims([0, 1, 1, 2], [1, 2, 3, 4], 3),
+        },
+    )
+    z = x - y
+    assert (
+        pv(
+            dim_name="dim1",
+            values={
+                "a": FreqSevSims([0, 0, 1, 2], [0, -1, -1, -1], 3),
+                "b": FreqSevSims([0, 1, 1, 2], [1, 1, 0, 0], 3),
+            },
+        )
+        == z
+    ).all()
 
 
 def test_corr():

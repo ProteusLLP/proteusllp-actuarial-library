@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "proteus-actuarial-library"
-version = "0.0.3"
+version = "0.0.7"
 authors = [
   { name="James Norman", email="james.norman@proteusllp.com" },
 ]

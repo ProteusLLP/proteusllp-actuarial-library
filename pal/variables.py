@@ -86,13 +86,21 @@ class ProteusVariable:
 
             # Otherwise, at least one of the items is a container.
             # We assume that the container structure is consistent across items.
-            first = items[0]
-            if isinstance(first, ProteusVariable):
+
+            first_container = items[
+                [
+                    i
+                    for i, item in enumerate(items)
+                    if isinstance(item, ProteusVariable)
+                ][0]
+            ]
+
+            if isinstance(first_container, ProteusVariable):
                 # Process dictionary containers.
-                if isinstance(first.values, dict):
+                if isinstance(first_container.values, dict):
                     new_data = {}
                     # Iterate over each key in the container.
-                    for key in first.values:
+                    for key in first_container.values:
                         new_items = []
                         for item in items:
                             if isinstance(item, ProteusVariable):
@@ -100,11 +108,11 @@ class ProteusVariable:
                             else:
                                 new_items.append(item)
                         new_data[key] = recursive_apply(*new_items)
-                    return ProteusVariable(first.dim_name, new_data)
+                    return ProteusVariable(first_container.dim_name, new_data)
                 # Process list containers.
-                elif isinstance(first.values, list):
+                elif isinstance(first_container.values, list):
                     new_list = []
-                    for idx, _ in enumerate(first.values):
+                    for idx, _ in enumerate(first_container.values):
                         new_items = []
                         for item in items:
                             if isinstance(item, ProteusVariable):
@@ -112,14 +120,12 @@ class ProteusVariable:
                             else:
                                 new_items.append(item)
                         new_list.append(recursive_apply(*new_items))
-                    return ProteusVariable(first.dim_name, new_list)
+                    return ProteusVariable(first_container.dim_name, new_list)
                 else:
                     # In case data is neither dict nor list, try applying ufunc directly.
-                    return ufunc(first.values, **kwargs)
+                    return ufunc(first_container.values, **kwargs)
             else:
-                # If the first item is not a container but some other item is,
-                # we assume they can all be processed by ufunc.
-                return ufunc(*items, **kwargs)
+                assert "No ProteusVariable found in inputs, cannot apply ufunc."
 
         return recursive_apply(*inputs)
 
@@ -146,16 +152,16 @@ class ProteusVariable:
             return ProteusVariable(self.dim_name, [value for value in temp])
 
     @overload
-    def sum(self) -> StochasticScalar: ...
+    def sum(self) -> StochasticScalar | FreqSevSims | float | int: ...
     @overload
     def sum(self, dimensions: list[str]) -> ProteusVariable: ...
 
     def sum(
         self, dimensions: list[str] = []
-    ) -> Union[ProteusVariable, StochasticScalar]:
+    ) -> Union[ProteusVariable, ProteusStochasticVariable | float | int]:
         """Sum the variables across the specified dimensions. Returns a new ProteusVariable with the summed values."""
         if dimensions is None or dimensions == []:
-            result: StochasticScalar = sum(self)
+            result = sum(self)
             return result
         if self.dimensions in dimensions:
             result = ProteusVariable(dim_name=self.values[0].dimensions, values=0)
@@ -214,6 +220,7 @@ class ProteusVariable:
         return self.__add__(other)
 
     def __mul__(self, other) -> ProteusVariable:
+
         return self._binary_operation(other, lambda a, b: a * b)
 
     def __rmul__(self, other) -> ProteusVariable:
@@ -224,6 +231,12 @@ class ProteusVariable:
 
     def __rsub__(self, other) -> ProteusVariable:
         return self._binary_operation(other, lambda a, b: b - a)
+
+    def __truediv__(self, other) -> ProteusVariable:
+        return self._binary_operation(other, lambda a, b: a / b)
+
+    def __rtruediv__(self, other) -> ProteusVariable:
+        return self._binary_operation(other, lambda a, b: b / a)
 
     def __ge__(self, other) -> ProteusVariable:
         return self._binary_operation(other, lambda a, b: a >= b)
@@ -291,6 +304,87 @@ class ProteusVariable:
         else:
             return any([value.any() for value in self.values])
 
+    def percentile(self, p: float | list[float]) -> ProteusVariable:
+        """Return the percentile of the variable across the simulation dimension."""
+        if isinstance(self.values, dict):
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values={
+                    key: (
+                        value.percentile(p)
+                        if isinstance(value, ProteusStochasticVariable)
+                        else value
+                    )
+                    for key, value in self.values.items()
+                },
+            )
+        else:
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values=[
+                    (
+                        value.percentile(p)
+                        if isinstance(value, ProteusStochasticVariable)
+                        else value
+                    )
+                    for value in self.values
+                ],
+            )
+
+    def tvar(self, p: float | list[float]) -> ProteusVariable:
+        """Return the tail value at risk (TVAR) of the variable."""
+        if isinstance(self.values, dict):
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values={
+                    key: (
+                        value.tvar(p)
+                        if isinstance(value, ProteusStochasticVariable)
+                        else value
+                    )
+                    for key, value in self.values.items()
+                },
+            )
+        else:
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values=[
+                    (
+                        value.tvar(p)
+                        if isinstance(value, ProteusStochasticVariable)
+                        else value
+                    )
+                    for value in self.values
+                ],
+            )
+
+    def mean(self) -> ProteusVariable:
+        """Return the mean of the variable across the simulation dimension."""
+        if isinstance(self.values, dict):
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values={
+                    key: (
+                        value.mean()
+                        if isinstance(value, ProteusStochasticVariable)
+                        else value
+                    )
+                    for key, value in self.values.items()
+                },
+            )
+        else:
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values=[
+                    (
+                        value.mean()
+                        if isinstance(value, ProteusStochasticVariable)
+                        else value
+                    )
+                    for value in self.values
+                ],
+            )
+
     def upsample(self, n_sims: int) -> ProteusVariable:
         """Upsample the variable to the specified number of simulations"""
         if self.n_sims == n_sims:
@@ -355,7 +449,7 @@ class ProteusVariable:
 
     @classmethod
     def from_dict(cls, data: dict[str, list[float]]) -> ProteusVariable:
-        """Import a ProteusVariable from a dictionary.
+        """Create a ProteusVariable from a dictionary.
 
         Note that only one dimensional variables are supported.
         """

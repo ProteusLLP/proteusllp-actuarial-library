@@ -63,7 +63,8 @@ class StochasticScalar(ProteusStochasticVariable):
         """Override the __array_ufunc__ method means that you can apply standard numpy functions"""
         # check if the input types to the function are types of ProteusVariables other than StochasticScalar
         var_not_stochastic_scalar = [
-            isinstance(x, ProteusStochasticVariable)
+            type(x).__name__ == "ProteusVariable"
+            or isinstance(x, ProteusStochasticVariable)
             and not isinstance(x, StochasticScalar)
             for x in inputs
         ]
