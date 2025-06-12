@@ -1,6 +1,6 @@
 import numpy as np
 
-from pcm.variables import StochasticScalar
+from pal.variables import StochasticScalar
 import pytest  # noqa
 
 

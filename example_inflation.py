@@ -1,5 +1,5 @@
-from pcm import config
-from pcm.variables import ProteusVariable
+from pal import config
+from pal.variables import ProteusVariable
 
 n_sims = 100000
 config.n_sims = n_sims

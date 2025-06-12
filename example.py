@@ -1,6 +1,6 @@
-from pcm import config, XoLTower, distributions
-from pcm.frequency_severity import FrequencySeverityModel
-from pcm.config import xp as np
+from pal import config, XoLTower, distributions
+from pal.frequency_severity import FrequencySeverityModel
+import numpy as np
 
 config.n_sims = 100000
 
@@ -31,4 +31,4 @@ prog_results = prog.apply(gross_losses)
 
 prog.print_summary()
 
-prog_results.recoveries.aggregate().show_cdf()
+prog_results.recoveries.aggregate().show_cdf("Recoveries")

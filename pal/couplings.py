@@ -1,7 +1,6 @@
 from __future__ import annotations
 import numpy as np
-from numpy.typing import ArrayLike
-from typing import Union
+from numpy.lib.mixins import NDArrayOperatorsMixin
 from abc import ABC, abstractmethod
 import weakref
 
@@ -31,7 +30,7 @@ class CouplingGroup:
         return
 
 
-class ProteusStochasticVariable(ABC):
+class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
     """A class to represent a stochastic variable in a simulation."""
 
     values: np.ndarray
@@ -42,12 +41,6 @@ class ProteusStochasticVariable(ABC):
 
     @abstractmethod
     def _reorder_sims(self, new_order: np.ndarray):
-        pass
-
-    @abstractmethod
-    def __add__(
-        self, other: Union[ProteusStochasticVariable, ArrayLike]
-    ) -> ProteusStochasticVariable:
         pass
 
     def all(self):

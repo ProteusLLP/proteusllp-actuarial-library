@@ -1,11 +1,11 @@
 import scipy.stats  # ignore:import-untyped
-from pcm import copulas
-from pcm import distributions
+from pal import copulas
+from pal import distributions
 import pytest
 import numpy as np
 import scipy
 import scipy.special
-from pcm.variables import ProteusVariable, StochasticScalar
+from pal.variables import ProteusVariable, StochasticScalar
 
 
 def copula_margins(copula_samples: list[StochasticScalar]):

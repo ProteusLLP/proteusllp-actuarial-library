@@ -1,4 +1,4 @@
-from pcm import FreqSevSims
+from pal import FreqSevSims
 import numpy as np
 import pytest
 

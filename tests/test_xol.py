@@ -1,4 +1,4 @@
-from pcm import XoL, FreqSevSims
+from pal import XoL, FreqSevSims
 import numpy as np
 
 

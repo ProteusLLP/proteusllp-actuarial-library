@@ -74,23 +74,26 @@ class EllipticalCopula(Copula, ABC):
 
     def __init__(
         self,
-        matrix: npt.NDArray,
+        matrix: npt.NDArray | list[list[float]],
         *args: Any,
         matrix_type: str = "linear",
         **kwargs: Any,
     ) -> None:
+        _matrix = np.asarray(matrix)
+        if _matrix.ndim != 2 or _matrix.shape[0] != _matrix.shape[1]:
+            raise ValueError("Matrix must be square")
         if matrix_type == "linear":
-            self.correlation_matrix = np.asarray(matrix)
+            self.correlation_matrix = _matrix
             # Check that the correlation matrix is positive definite
             try:
                 self.chol = np.linalg.cholesky(self.correlation_matrix)
             except np.linalg.LinAlgError:
                 raise ValueError("Correlation matrix is not positive definite")
         elif matrix_type == "chol":
-            self.chol = matrix
+            self.chol = _matrix
         else:
             raise ValueError("matrix_type must be 'linear' or 'chol'")
-        self.matrix = matrix
+        self.matrix = _matrix
 
 
 class GaussianCopula(EllipticalCopula):
@@ -130,7 +133,10 @@ class StudentsTCopula(EllipticalCopula):
     """A class to represent a Student's T copula."""
 
     def __init__(
-        self, matrix: npt.NDArray, dof: float, matrix_type: str = "linear"
+        self,
+        matrix: npt.NDArray[np.float64] | list[list[float]],
+        dof: float,
+        matrix_type: str = "linear",
     ) -> None:
         super().__init__(matrix, matrix_type=matrix_type)
         if dof <= 0:

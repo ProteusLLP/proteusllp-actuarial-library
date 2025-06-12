@@ -1,6 +1,6 @@
-from pcm import config, distributions
-from pcm.config import xp as np
-from pcm.variables import ProteusVariable, FreqSevSims
+from pal import config, distributions
+from pal.config import xp as np
+from pal.variables import ProteusVariable, FreqSevSims
 import pandas as pd  # type: ignore
 import math
 

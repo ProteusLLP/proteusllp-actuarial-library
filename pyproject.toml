@@ -3,20 +3,20 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "python-capital-model"
-version = "0.0.1"
+name = "proteus-actuarial-library"
+version = "0.0.7"
 authors = [
   { name="James Norman", email="james.norman@proteusllp.com" },
 ]
-description = "A non-life insurance capital model in python"
+description = "Proteus Actuarial Library: A package for building and running stochastic actuarial models in Python."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
 ]
-license = {text = "MIT License"}
+license = {text = "MIT License with Commons Clause"}
 keywords=["actuarial", "insurance","capital"]
 dependencies = [
   "numpy",

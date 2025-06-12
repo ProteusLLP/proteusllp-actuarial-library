@@ -1,12 +1,14 @@
 from __future__ import annotations
-from typing import Union
+from typing import Union, overload
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar, ProteusStochasticVariable
 import numpy as np
-import scipy.stats
-import pandas as pd
-import plotly.graph_objects as go
-from typing import Union
+import scipy.stats  # type: ignore
+import pandas as pd  # type: ignore
+import plotly.graph_objects as go  # type: ignore
+import plotly.io as pio  # type: ignore
+
+pio.templates.default = "none"
 
 
 class ProteusVariable:
@@ -84,13 +86,21 @@ class ProteusVariable:
 
             # Otherwise, at least one of the items is a container.
             # We assume that the container structure is consistent across items.
-            first = items[0]
-            if isinstance(first, ProteusVariable):
+
+            first_container = items[
+                [
+                    i
+                    for i, item in enumerate(items)
+                    if isinstance(item, ProteusVariable)
+                ][0]
+            ]
+
+            if isinstance(first_container, ProteusVariable):
                 # Process dictionary containers.
-                if isinstance(first.values, dict):
+                if isinstance(first_container.values, dict):
                     new_data = {}
                     # Iterate over each key in the container.
-                    for key in first.values:
+                    for key in first_container.values:
                         new_items = []
                         for item in items:
                             if isinstance(item, ProteusVariable):
@@ -98,11 +108,11 @@ class ProteusVariable:
                             else:
                                 new_items.append(item)
                         new_data[key] = recursive_apply(*new_items)
-                    return ProteusVariable(first.dim_name, new_data)
+                    return ProteusVariable(first_container.dim_name, new_data)
                 # Process list containers.
-                elif isinstance(first.values, list):
+                elif isinstance(first_container.values, list):
                     new_list = []
-                    for idx, _ in enumerate(first.values):
+                    for idx, _ in enumerate(first_container.values):
                         new_items = []
                         for item in items:
                             if isinstance(item, ProteusVariable):
@@ -110,14 +120,12 @@ class ProteusVariable:
                             else:
                                 new_items.append(item)
                         new_list.append(recursive_apply(*new_items))
-                    return ProteusVariable(first.dim_name, new_list)
+                    return ProteusVariable(first_container.dim_name, new_list)
                 else:
                     # In case data is neither dict nor list, try applying ufunc directly.
-                    return ufunc(first.values, **kwargs)
+                    return ufunc(first_container.values, **kwargs)
             else:
-                # If the first item is not a container but some other item is,
-                # we assume they can all be processed by ufunc.
-                return ufunc(*items, **kwargs)
+                assert "No ProteusVariable found in inputs, cannot apply ufunc."
 
         return recursive_apply(*inputs)
 
@@ -143,10 +151,17 @@ class ProteusVariable:
         else:
             return ProteusVariable(self.dim_name, [value for value in temp])
 
-    def sum(self, dimensions: list[str] = []) -> ProteusVariable | StochasticScalar:
+    @overload
+    def sum(self) -> StochasticScalar | FreqSevSims | float | int: ...
+    @overload
+    def sum(self, dimensions: list[str]) -> ProteusVariable: ...
+
+    def sum(
+        self, dimensions: list[str] = []
+    ) -> Union[ProteusVariable, ProteusStochasticVariable | float | int]:
         """Sum the variables across the specified dimensions. Returns a new ProteusVariable with the summed values."""
         if dimensions is None or dimensions == []:
-            result: StochasticScalar = sum(self)
+            result = sum(self)
             return result
         if self.dimensions in dimensions:
             result = ProteusVariable(dim_name=self.values[0].dimensions, values=0)
@@ -205,6 +220,7 @@ class ProteusVariable:
         return self.__add__(other)
 
     def __mul__(self, other) -> ProteusVariable:
+
         return self._binary_operation(other, lambda a, b: a * b)
 
     def __rmul__(self, other) -> ProteusVariable:
@@ -215,6 +231,12 @@ class ProteusVariable:
 
     def __rsub__(self, other) -> ProteusVariable:
         return self._binary_operation(other, lambda a, b: b - a)
+
+    def __truediv__(self, other) -> ProteusVariable:
+        return self._binary_operation(other, lambda a, b: a / b)
+
+    def __rtruediv__(self, other) -> ProteusVariable:
+        return self._binary_operation(other, lambda a, b: b / a)
 
     def __ge__(self, other) -> ProteusVariable:
         return self._binary_operation(other, lambda a, b: a >= b)
@@ -253,7 +275,7 @@ class ProteusVariable:
                 raise ValueError("Key must be an integer for a list.")
 
     def get_value_at_sim(self, sim_no: int | StochasticScalar):
-        _get_value = lambda x: (
+        _get_value = lambda x: (  # noqa : E731
             x.get_value_at_sim(sim_no)
             if isinstance(x, ProteusVariable)
             else x[sim_no] if x.n_sims > 1 else x
@@ -281,6 +303,87 @@ class ProteusVariable:
             return any([value.any() for value in self.values.values()])
         else:
             return any([value.any() for value in self.values])
+
+    def percentile(self, p: float | list[float]) -> ProteusVariable:
+        """Return the percentile of the variable across the simulation dimension."""
+        if isinstance(self.values, dict):
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values={
+                    key: (
+                        value.percentile(p)
+                        if isinstance(value, ProteusStochasticVariable)
+                        else value
+                    )
+                    for key, value in self.values.items()
+                },
+            )
+        else:
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values=[
+                    (
+                        value.percentile(p)
+                        if isinstance(value, ProteusStochasticVariable)
+                        else value
+                    )
+                    for value in self.values
+                ],
+            )
+
+    def tvar(self, p: float | list[float]) -> ProteusVariable:
+        """Return the tail value at risk (TVAR) of the variable."""
+        if isinstance(self.values, dict):
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values={
+                    key: (
+                        value.tvar(p)
+                        if isinstance(value, ProteusStochasticVariable)
+                        else value
+                    )
+                    for key, value in self.values.items()
+                },
+            )
+        else:
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values=[
+                    (
+                        value.tvar(p)
+                        if isinstance(value, ProteusStochasticVariable)
+                        else value
+                    )
+                    for value in self.values
+                ],
+            )
+
+    def mean(self) -> ProteusVariable:
+        """Return the mean of the variable across the simulation dimension."""
+        if isinstance(self.values, dict):
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values={
+                    key: (
+                        value.mean()
+                        if isinstance(value, ProteusStochasticVariable)
+                        else value
+                    )
+                    for key, value in self.values.items()
+                },
+            )
+        else:
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values=[
+                    (
+                        value.mean()
+                        if isinstance(value, ProteusStochasticVariable)
+                        else value
+                    )
+                    for value in self.values
+                ],
+            )
 
     def upsample(self, n_sims: int) -> ProteusVariable:
         """Upsample the variable to the specified number of simulations"""
@@ -344,6 +447,34 @@ class ProteusVariable:
 
         return result
 
+    @classmethod
+    def from_dict(cls, data: dict[str, list[float]]) -> ProteusVariable:
+        """Create a ProteusVariable from a dictionary.
+
+        Note that only one dimensional variables are supported.
+        """
+        result = cls(
+            dim_name="Dim1",
+            values={str(label): StochasticScalar(data[label]) for label in data.keys()},
+        )
+        result.n_sims = max([len(v) for v in data.values()])
+
+        return result
+
+    @classmethod
+    def from_series(cls, data: pd.Series) -> ProteusVariable:
+        """Create a ProteusVariable from a pandas Series.
+
+        Note that only one dimensional variables are supported.
+        """
+        result = cls(
+            dim_name=data.index.name,
+            values={label: data[label] for label in data.index},
+        )
+        result.n_sims = 1
+
+        return result
+
     def __repr__(self):
         return f"ProteusVariable(dim_name={self.dim_name}, values={self.values})"
 
@@ -365,13 +496,18 @@ class ProteusVariable:
                 for j, value2 in enumerate(values):
                     result[i][j] = scipy.stats.kendalltau(value1, value2)
         else:
-            result = list(np.corrcoef(values))
+            result = np.corrcoef(values).tolist()
 
         return result
 
-    def show_histogram(self):
+    def show_histogram(self, title: str | None = None):
+        """Show a histogram of the variable values.
 
-        fig = go.Figure()
+        Args:
+            title (str | None): The title of the histogram. If None, no title is set.
+
+        """
+        fig = go.Figure(layout=go.Layout(title=title))
         labels = (
             self.values.keys()
             if isinstance(self.values, dict)
@@ -381,9 +517,15 @@ class ProteusVariable:
             fig.add_trace(go.Histogram(x=value.values, name=label))
         fig.show()
 
-    def show_cdf(self):
+    def show_cdf(self, title: str | None = None):
+        """Show a plot of the cumulative distribution function (cdf) of the variable values.
 
-        fig = go.Figure()
+        Args:
+            title (str | None): The title of the cdf. If None, no title is set.
+
+        """
+
+        fig = go.Figure(layout=go.Layout(title=title))
         labels = (
             self.values.keys()
             if isinstance(self.values, dict)

@@ -1,17 +1,17 @@
-# Python Capital Model
+# Proteus Actuarial Library
 
-An insurance capital modeling library in python.
+An actuarial stochastic modeling library in python.
 
 **Note**
 This library is still in development!
 
 ## Introduction
 
-The Python Capital Model (PCM) is a simple, fast and lightweight simulation-based capital modeling package, designed for non-life insurance companies. It is originated from the ![rippy](https://github.com/pythactuary/rippy) package for reinsurance modeling.
+The Proteus Actuarial Library (PAL) is a simple, fast and lightweight framework for building simulation-based actuarial and financial models. It is originated from the ![rippy](https://github.com/pythactuary/rippy) package for reinsurance modeling.
 
-PCM is designed to look after the complicated stuff, such as copulas and simulation re-ordering, providing easy to use objects and clear syntax. 
+PAL is designed to look after the complicated stuff, such as copulas and simulation re-ordering, providing easy to use objects and clear syntax. 
 
-PCM is based on the scientific python stack of numpy and scipy for fast performance. It can optionally run on a GPU for extremely fast performance. It is designed for interoperability with numpy and ndarrays.
+PAL is based on the scientific python stack of numpy and scipy for fast performance. It can optionally run on a GPU using the cupy package for extremely fast performance. It is designed for interoperability with numpy and ndarrays.
 
 
 ### Creating stochastic variables and variable containers
@@ -40,9 +40,15 @@ Variable containers can be operated on with numpy functions, and can be added, m
 
 ### Copulas and Couplings
 
-PCM variables can
+Statistical dependencies between PAL variables can be modelled using copulas. The idea is that the marginal distributions can be sampled independently, and then re-ordered relative to one another using the relative ordering from a sample from a copula.
 
-The PCM library ensures variables that have been used in formula with other variables (i.e. variables that are *coupled*) are re-ordered consistently. For example
+```python
+svariable1 = distributions.Gamma(alpha=2.5,beta=2).generate()
+svariable2 = distributions.LogNormal(mu=1,sigma=0.5).generate()
+copulas.GumbelCopula(alpha=1.2,n=2).apply([svariable1,svariable2])
+```
+
+The PAL library ensures variables that have been used in formula with other variables (i.e. variables that are *coupled*) are re-ordered consistently. For example
 
 ```python
 svariable1 = distributions.Gamma(alpha=2.5,beta=2).generate()
@@ -69,14 +75,14 @@ The global random seed can also be configured from the ```config``` class
 config.set_random_seed(123456)
 ```
 
-PCM uses the ```default_rng``` class of the ```numpy.random``` module. This can also be configured using the ```config.rng``` property.
+PAL uses the ```default_rng``` class of the ```numpy.random``` module. This can also be configured using the ```config.rng``` property.
 
 ### Using a GPU
 
-GPU support requires a CUDA compatible GPU. Internally PCM uses the cupy library. Install the dependencies by running
+GPU support requires a CUDA compatible GPU. Internally PAL uses the cupy library. Install the dependencies by running
 
 ```
-pip install rippy[gpu]
+pip install pal[gpu]
 ```
 
 To enable GPU mode, set the RIPPY_USE_GPU environment variable to 1.
@@ -87,17 +93,17 @@ on Linux or
 ```
 set RIPPY_USE_GPU=1
 ```
-on Windows. Set it to anythin else to revert to using a CPU
+on Windows. Set it to anything else to revert to using a CPU
 
 
 ## Project Status
 
-PCM is currently a proof of concept. There are a limited number of supported distributions and reinsurance contracts. We are working on:
+PAL is currently a proof of concept. There are a limited number of supported distributions and reinsurance contracts. We are working on:
 
 * Adding more distributions and loss generation types
-* Adding support for Catastrophe loss generation and reinsurance contracts
+* Making it easier to work with multi-dimensional variables
+* Adding support for Catastrophe loss generation
 * Adding support for more reinsurance contract types (Surplus, Stop Loss etc)
-* Grouping reinsurance contracts into programs and structures
 * Stratified sampling and Quasi-Monte Carlo methods
 * Reporting dashboards
 
