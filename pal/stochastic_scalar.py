@@ -132,6 +132,20 @@ class StochasticScalar(ProteusStochasticVariable):
             return result
         return self.values[rank_positions[math.ceil(p / 100 * self.n_sims) :]].mean()
 
+    def weighted_mean(self, weights: StochasticScalar, normalized=True) -> float:
+        """Return the weighted mean of the variable across the simulation dimension.
+
+        Args:
+            weights (StochasticScalar): The weights to apply to the values.
+            normalized (bool): If True, the weights are assumed to be already normalized to sum to 1.
+                If False, the weights will be normalized by dividing by their sum. Defaults to True.
+
+        Returns:
+            float: The weighted mean of the variable.
+
+        """
+        return (self * weights).ssum() / (weights.ssum() if not normalized else 1)
+
     def upsample(self, n_sims: int) -> StochasticScalar:
         """Increase the number of simulations in the variable."""
         if n_sims == self.n_sims:

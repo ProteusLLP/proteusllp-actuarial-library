@@ -365,8 +365,30 @@ class ProteusVariable:
                 dim_name=self.dim_name,
                 values={
                     key: (
-                        value.mean()
-                        if isinstance(value, ProteusStochasticVariable)
+                        value.mean() if isinstance(value, StochasticScalar) else value
+                    )
+                    for key, value in self.values.items()
+                },
+            )
+        else:
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values=[
+                    (value.mean() if isinstance(value, StochasticScalar) else value)
+                    for value in self.values
+                ],
+            )
+
+    def weighted_mean(self, weights: StochasticScalar) -> ProteusVariable:
+        """Return the weighted mean of the variable across the simulation dimension."""
+        weights = weights / weights.ssum()
+        if isinstance(self.values, dict):
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values={
+                    key: (
+                        value.weighted_mean(weights)
+                        if isinstance(value, StochasticScalar)
                         else value
                     )
                     for key, value in self.values.items()
@@ -377,8 +399,8 @@ class ProteusVariable:
                 dim_name=self.dim_name,
                 values=[
                     (
-                        value.mean()
-                        if isinstance(value, ProteusStochasticVariable)
+                        value.weighted_mean(weights)
+                        if isinstance(value, StochasticScalar)
                         else value
                     )
                     for value in self.values

@@ -283,3 +283,20 @@ def test_tvar2():
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = x.tvar([50, 80])
     assert y == [4.5, 5]
+
+
+def test_weighted_mean():
+    """Test the weighted mean of a stochastic scalar."""
+    x = StochasticScalar([4, 5, 2, 1, 3])
+    weights = StochasticScalar([1, 2, 3, 4, 5])
+    y = x.weighted_mean(weights, normalized=False)
+    assert y == (4 * 1 + 5 * 2 + 2 * 3 + 1 * 4 + 3 * 5) / (1 + 2 + 3 + 4 + 5)
+
+
+def test_weighted_mean_2():
+    """Test the weighted mean of a stochastic scalar."""
+    x = StochasticScalar([4, 5, 2, 1, 3])
+    weights = StochasticScalar([1, 2, 3, 4, 5])
+    weights = weights / weights.ssum()  # Normalise the weights
+    y = x.weighted_mean(weights, normalized=True)
+    assert y == (4 * 1 + 5 * 2 + 2 * 3 + 1 * 4 + 3 * 5) / (1 + 2 + 3 + 4 + 5)

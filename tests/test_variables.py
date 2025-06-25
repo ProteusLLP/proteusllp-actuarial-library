@@ -384,3 +384,14 @@ def test_from_csv():
         },
     )
     assert (x == expected).all()
+
+
+def test_weighted_mean():
+    """Test the weighted mean of a variable."""
+    x = pv(
+        dim_name="dim1",
+        values=[StochasticScalar([1, 2, 3, 4]), StochasticScalar([2, 3, 4, 5])],
+    )
+    weights = StochasticScalar([0.1, 0.2, 0.3, 0.4])
+    y = x.weighted_mean(weights)
+    assert (y == pv("dim1", [3, 4])).all()
