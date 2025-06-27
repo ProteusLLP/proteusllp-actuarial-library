@@ -1,6 +1,6 @@
 import os
 
-_use_gpu = os.environ.get("RIPPY_USE_GPU") == "1"
+_use_gpu = os.environ.get("PAL_USE_GPU") == "1"
 
 if _use_gpu:
     import cupy as xp
@@ -14,7 +14,7 @@ else:
 
 class config:
     """
-    Configuration class for Rippy.
+    Configuration class for PAL.
     """
 
     n_sims = 10000
