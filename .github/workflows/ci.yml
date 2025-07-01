@@ -99,8 +99,11 @@ jobs:
         run: docker load < proteus-ci.tar
         
       - name: Build package
+        # Create dist directory and mount it to container to persist build artifacts
+        # Maps host dist/ to container's /app/dist so files survive container exit
         run: |
-          docker run --rm proteus-ci \
+          mkdir -p dist
+          docker run --rm -v "$(pwd)/dist:/app/dist" proteus-ci \
             pdm build
 
       - name: Upload distributions
