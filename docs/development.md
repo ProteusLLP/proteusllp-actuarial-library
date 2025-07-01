@@ -86,6 +86,55 @@ pdm install -G gpu
 pdm show --version  # Shows current computed version
 ```
 
+## Release Process
+
+### Creating GitHub Releases
+
+When creating a GitHub release, follow these steps to avoid common issues. If successful, you should CI should be triggered and a release built and pushed to pypi with the associated tag.
+
+#### Create and Push a Valid Tag
+
+GitHub releases require an existing tag. Create one from the command line:
+
+```bash
+# Create a PEP 440-compliant tag
+git tag v0.0.1a1
+git push origin v0.0.1a1
+```
+
+#### Use PEP 440-Compliant Versions
+
+Use a PEP-440-compliant version format. This project uses PDM for Python package versioning, which follows PEP 440. Use these valid version formats:
+
+- `v0.0.1a1` (alpha)
+- `v0.0.1b1` (beta) 
+- `v0.0.1rc1` (release candidate)
+- `v0.0.1.dev1` (development)
+- `v0.0.1.post1` (post-release)
+
+**Avoid** arbitrary suffixes like `-test` that aren't PEP 440 compliant.
+
+#### Mark Pre-releases Appropriately
+
+For pre-release versions, use GitHub's "Set as pre-release" checkbox instead of adding non-standard suffixes to your tag name.
+
+### Troubleshooting Release Issues
+
+#### "tag name can't be blank, tag name is not well-formed"
+
+This error occurs when:
+- The tag doesn't exist in the repository
+- The tag hasn't been pushed to GitHub
+- The tag name isn't PEP 440 compliant
+
+**Solution**: Create and push a valid tag first, then create the GitHub release.
+
+#### "published releases must have a valid tag"
+
+This indicates the tag exists locally but hasn't been pushed to GitHub.
+
+**Solution**: Push the tag with `git push origin <tag-name>`
+
 ## Running Tests
 
 ### From VS Code Terminal
