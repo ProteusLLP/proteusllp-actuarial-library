@@ -80,10 +80,10 @@ jobs:
             pdm run python -m compileall examples/ -f
             
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v3
+        uses: actions/upload-artifact@v4
         with:
-          file: ./coverage/coverage.xml
-          flags: unittests
+          name: coverage-reports
+          path: coverage/
 
   build:
     runs-on: ubuntu-latest
