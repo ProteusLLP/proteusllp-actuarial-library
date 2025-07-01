@@ -65,8 +65,11 @@ jobs:
         
       - name: Run tests
         run: |
-          docker run --rm proteus-ci \
-            pdm run pytest -v --cov=pal --cov-report=xml
+          # Create coverage directory and mount it to container to persist coverage reports
+          # Maps host coverage/ to container's /app/coverage so reports survive container exit
+          mkdir -p coverage
+          docker run --rm -v "$(pwd)/coverage:/app/coverage" proteus-ci \
+            pdm run pytest -v --cov=pal --cov-report=xml:coverage/coverage.xml
             
       # Validate example scripts can compile without running them
       # This checks syntax and import resolution without starting Flask servers
@@ -79,7 +82,7 @@ jobs:
       - name: Upload coverage reports
         uses: codecov/codecov-action@v3
         with:
-          file: ./coverage.xml
+          file: ./coverage/coverage.xml
           flags: unittests
 
   build:
