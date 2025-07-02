@@ -1,5 +1,6 @@
 [project]
-name = "proteus-actuarial-library"
+# Package name is namespaced with ProteusLLP organization for PyPI publishing
+name = "proteusllp-actuarial-library"
 dynamic = ["version"]
 description = "Proteus Actuarial Library: A package for building and running stochastic actuarial models in Python."
 authors = [
