@@ -63,7 +63,7 @@ PAL is currently a proof of concept. There are a limited number of supported dis
 
 ## Issues
 
-Please log issues in github
+Please log issues on our github [page](https://github.com/ProteusLLP/proteusllp-actuarial-library/issues).
 
 ## Contributing
 
