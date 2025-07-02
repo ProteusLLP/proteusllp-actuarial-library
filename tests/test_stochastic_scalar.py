@@ -1,7 +1,6 @@
 import numpy as np
-
-from pal.variables import StochasticScalar
 import pytest  # noqa
+from pal.variables import StochasticScalar
 
 
 def test_empty():
@@ -47,7 +46,7 @@ def test_add_self_inplace():
     """Tests the inplace addition of two stochastic scalars."""
     y = StochasticScalar(np.zeros(5))
     x = StochasticScalar([4, 5, 2, 1, 3])
-    for i in range(10):
+    for _i in range(10):
         y += x
     assert (y.values == [40, 50, 20, 10, 30]).all()
 

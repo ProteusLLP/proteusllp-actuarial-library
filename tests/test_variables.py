@@ -1,29 +1,28 @@
 import numpy as np
-
-from pal.variables import ProteusVariable as pv, StochasticScalar, FreqSevSims
+from pal.variables import FreqSevSims, ProteusVariable, StochasticScalar
 
 
 def test_empty():
-    x = pv(dim_name="dim1", values=[])
+    x = ProteusVariable(dim_name="dim1", values=[])
     assert x.values == []
 
 
 def test_variable():
-    x = pv(dim_name="dim1", values=[1, 2, 3])
+    x = ProteusVariable(dim_name="dim1", values=[1, 2, 3])
     y = x + 1
     assert y.values == [2, 3, 4]
 
 
 def test_variable2():
     """Test that a variable can be created with a list of StochasticScalars."""
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values=[StochasticScalar([1, 2, 3]), StochasticScalar([2, 3, 4])],
     )
     y = x + 2.2
     assert (
         y
-        == pv(
+        == ProteusVariable(
             dim_name="dim1",
             values=[
                 StochasticScalar([3.2, 4.2, 5.2]),
@@ -34,12 +33,13 @@ def test_variable2():
 
 
 def test_variable3():
-    """Test that a variable can be created with a dictionary, that label matching works, and that the variable can be summed."""
-    x = pv(
+    """Test variable creation with dictionary, label matching, and summing.
+    """
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": 1, "b": 2},
     )
-    y = pv(
+    y = ProteusVariable(
         dim_name="dim1",
         values={"b": 5, "a": 8},
     )
@@ -48,7 +48,7 @@ def test_variable3():
 
 
 def test_dict_variable_dereferencing():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": 1, "b": 2},
     )
@@ -59,7 +59,7 @@ def test_dict_variable_dereferencing():
 
 
 def test_array_variable_dereferencing():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values=[1, 2],
     )
@@ -68,13 +68,13 @@ def test_array_variable_dereferencing():
 
 
 def test_sum():
-    x = pv(dim_name="dim1", values=[1, 2])
+    x = ProteusVariable(dim_name="dim1", values=[1, 2])
     y = sum(x)
     assert y == 3
 
 
 def test_sum_stochastic():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values=[StochasticScalar([1, 2, 3]), StochasticScalar([2, 3, 4])],
     )
@@ -83,7 +83,7 @@ def test_sum_stochastic():
 
 
 def test_sum_dict_stochastic():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
@@ -97,13 +97,13 @@ def test_sum_dict_stochastic():
 
 
 def test_divide():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values=[StochasticScalar([1, 2, 3]), StochasticScalar([2, 3, 4])],
     )
     y = x / 2.0
     assert (
-        pv(
+        ProteusVariable(
             dim_name="dim1",
             values=[StochasticScalar([0.5, 1, 3 / 2]), StochasticScalar([1, 3 / 2, 2])],
         )
@@ -112,13 +112,13 @@ def test_divide():
 
 
 def test_divide_two():
-    x = pv(dim_name="dim1", values=[1, 2, 3])
-    y = x / pv(dim_name="dim1", values=[2, 4, 6])
+    x = ProteusVariable(dim_name="dim1", values=[1, 2, 3])
+    y = x / ProteusVariable(dim_name="dim1", values=[2, 4, 6])
     assert y.values == [0.5, 0.5, 0.5]
 
 
 def test_rdivide():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values=[1, 2, 3],
     )
@@ -127,14 +127,14 @@ def test_rdivide():
 
 
 def test_multiply_stochastic():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     y = StochasticScalar([2, 3, 4])
     z = y * x
     assert (
-        pv(
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([2, 6, 12]),
@@ -146,14 +146,14 @@ def test_multiply_stochastic():
 
 
 def test_rmultiply_stochastic():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     y = StochasticScalar([2, 3, 4])
     z = x * y
     assert (
-        pv(
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([2, 6, 12]),
@@ -165,13 +165,13 @@ def test_rmultiply_stochastic():
 
 
 def test_subtract():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values=[StochasticScalar([1, 2, 3]), StochasticScalar([2, 3, 4])],
     )
     y = x - 1
     assert (
-        pv(
+        ProteusVariable(
             dim_name="dim1",
             values=[StochasticScalar([0, 1, 2]), StochasticScalar([1, 2, 3])],
         )
@@ -180,13 +180,13 @@ def test_subtract():
 
 
 def test_rsubtract():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values=[StochasticScalar([1, 2, 3]), StochasticScalar([2, 3, 4])],
     )
     y = 1 - x
     assert (
-        pv(
+        ProteusVariable(
             dim_name="dim1",
             values=[StochasticScalar([0, -1, -2]), StochasticScalar([-1, -2, -3])],
         )
@@ -195,23 +195,23 @@ def test_rsubtract():
 
 
 def test_subtract_two():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values=[1, 2, 3],
     )
-    y = x - pv(dim_name="dim1", values=[2, 4, 6])
+    y = x - ProteusVariable(dim_name="dim1", values=[2, 4, 6])
     assert y.values == [-1, -2, -3]
 
 
 def test_sub_stochastic():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     y = StochasticScalar([2, 3, 4])
     z = y - x
     assert (
-        pv(
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([1, 1, 1]),
@@ -223,14 +223,14 @@ def test_sub_stochastic():
 
 
 def test_rsub_stochastic():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     y = StochasticScalar([2, 3, 4])
     z = x - y
     assert (
-        pv(
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([-1, -1, -1]),
@@ -242,17 +242,17 @@ def test_rsub_stochastic():
 
 
 def test_sub_stochastic_scalar():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
-    y = pv(
+    y = ProteusVariable(
         dim_name="dim1",
         values={"a": 1, "b": 2},
     )
     z = x - y
     assert (
-        pv(
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([0, 1, 2]),
@@ -264,17 +264,17 @@ def test_sub_stochastic_scalar():
 
 
 def test_rsub_stochastic_scalar():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
-    y = pv(
+    y = ProteusVariable(
         dim_name="dim1",
         values={"a": 1, "b": 2},
     )
     z = y - x
     assert (
-        pv(
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([0, -1, -2]),
@@ -300,11 +300,11 @@ def test_sub_3():
 
 
 def test_sub_stochastic_scalar_frequency_severity():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
-    y = pv(
+    y = ProteusVariable(
         dim_name="dim1",
         values={
             "a": FreqSevSims([0, 0, 1, 2], [1, 2, 3, 4], 3),
@@ -313,7 +313,7 @@ def test_sub_stochastic_scalar_frequency_severity():
     )
     z = x - y
     assert (
-        pv(
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": FreqSevSims([0, 0, 1, 2], [0, -1, -1, -1], 3),
@@ -325,7 +325,7 @@ def test_sub_stochastic_scalar_frequency_severity():
 
 
 def test_corr():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 10, 2]), "b": StochasticScalar([2, 3, 4])},
     )
@@ -334,7 +334,7 @@ def test_corr():
 
 
 def test_get_value_at_sim():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
@@ -343,18 +343,20 @@ def test_get_value_at_sim():
 
 
 def test_get_value_at_sim_stochastic():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     assert (
         x.get_value_at_sim(StochasticScalar([0, 2]))
-        == pv("dim1", {"a": StochasticScalar([1, 3]), "b": StochasticScalar([2, 4])})
+        == ProteusVariable(
+            "dim1", {"a": StochasticScalar([1, 3]), "b": StochasticScalar([2, 4])}
+        )
     ).all()
 
 
 def test_array_ufunc():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values=[StochasticScalar([1, 2, 3])],
     )
@@ -363,19 +365,22 @@ def test_array_ufunc():
 
 
 def test_array_func2():
-    x = pv(
+    x = ProteusVariable(
         dim_name="dim1",
         values=[StochasticScalar([1, 2, 3]), StochasticScalar([1, 2, 3])],
     )
     y = np.cumsum(x)
     assert (
-        y == pv("dim1", [StochasticScalar([1, 2, 3]), StochasticScalar([2, 4, 6])])
+        y
+        == ProteusVariable(
+            "dim1", [StochasticScalar([1, 2, 3]), StochasticScalar([2, 4, 6])]
+        )
     ).all()
 
 
 def test_from_csv():
-    x = pv.from_csv("tests/data/variable.csv", "class", "value")
-    expected = pv(
+    x = ProteusVariable.from_csv("tests/data/variable.csv", "class", "value")
+    expected = ProteusVariable(
         dim_name="class",
         values={
             "Motor": StochasticScalar([0.1, 0.4]),

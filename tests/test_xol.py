@@ -1,8 +1,8 @@
-from pal import XoL, FreqSevSims
 import numpy as np
+from pal import FreqSevSims, XoL
 
 
-def test_XoL_no_agg():
+def test_xol_no_agg():
     layer = XoL(
         "Layer 1",
         limit=500000,
@@ -17,7 +17,7 @@ def test_XoL_no_agg():
     assert result.reinstatement_premium is None
 
 
-def test_XoL_franchise():
+def test_xol_franchise():
     layer = XoL(
         "Layer 1",
         limit=500000,
@@ -33,7 +33,7 @@ def test_XoL_franchise():
     assert result.reinstatement_premium is None
 
 
-def test_XoL_reinstatements():
+def test_xol_reinstatements():
     layer = XoL(
         "Layer 1",
         limit=500000,
@@ -50,7 +50,7 @@ def test_XoL_reinstatements():
     assert result.reinstatement_premium.tolist() == [1000]
 
 
-def test_XoL_multiple_reinstatements():
+def test_xol_multiple_reinstatements():
     layer = XoL(
         "Layer 1",
         limit=500000,
@@ -67,7 +67,7 @@ def test_XoL_multiple_reinstatements():
     assert np.allclose(result.reinstatement_premium.tolist(), [1200])
 
 
-def test_XoL_aggregate_limit():
+def test_xol_aggregate_limit():
     layer = XoL(
         "Layer 1",
         limit=500000,
@@ -90,7 +90,7 @@ def test_XoL_aggregate_limit():
     assert np.allclose(result.reinstatement_premium.tolist(), [1000])
 
 
-def test_XoL_aggregate_deductible():
+def test_xol_aggregate_deductible():
     layer = XoL(
         "Layer 1",
         limit=500000,

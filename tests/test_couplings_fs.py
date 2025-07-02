@@ -1,9 +1,9 @@
-from pal.variables import StochasticScalar
-from pal.copulas import apply_copula, GumbelCopula
-from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
-from pal.distributions import GPD, Poisson, Normal
 import numpy as np
 import scipy
+from pal.copulas import GumbelCopula, apply_copula
+from pal.distributions import GPD, Poisson
+from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
+from pal.variables import StochasticScalar
 
 
 def test_fs_reordering():
@@ -30,7 +30,7 @@ def test_fs_reordering():
 
 
 def test_fs_reordering2():
-    """Tests that other variables attached to the FreqSevSims are correctly reordered."""
+    """Tests that other variables attached to FreqSevSims are correctly reordered."""
     x = FreqSevSims([0, 0, 1, 2, 4], [10, 21, 30, 40, 50], 6)
     y = FreqSevSims([0, 1, 1, 3, 5], [12, 22, 32, 42, 52], 6)
     x1 = x * 2
@@ -64,7 +64,7 @@ def test_fs_reordering2():
 
 
 def test_fs_reordering3():
-    """Tests that other variables attached to the FreqSevSims are correctly reordered."""
+    """Tests that other variables attached to FreqSevSims are correctly reordered."""
     x = FrequencySeverityModel(
         Poisson(mean=2), GPD(shape=0.33, scale=100000, loc=0)
     ).generate()
@@ -79,7 +79,8 @@ def test_fs_reordering3():
     # check the copula has been applied correctly
     calculated_tau = scipy.stats.kendalltau(a.values, b.values).statistic
     assert np.isclose(calculated_tau, 1 - 1 / 1.5, atol=1e-2)
-    # check that when x and y are re_calculated and reaggregated, they give the same result
+    # check that when x and y are re_calculated and reaggregated, they give
+    # the same result
     re_calculated_a = (x * 2).aggregate()
     re_calculated_b = (y * 3).aggregate()
     assert np.allclose(re_calculated_a.values, a.values, atol=1e-10)

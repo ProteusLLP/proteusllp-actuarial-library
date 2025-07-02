@@ -1,6 +1,6 @@
+import pytest  # noqa
 from pal import copulas
 from pal.variables import StochasticScalar
-import pytest  # noqa
 
 
 def test_copula_reordering():

@@ -1,5 +1,3 @@
-from variables import ProteusVariable
-
 cumulative_triangle = [[20, 30, 40], [10, 20], [5]]
 row_sums = [sum(row) for row in cumulative_triangle]
 column_sums = [

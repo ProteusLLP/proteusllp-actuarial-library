@@ -103,8 +103,9 @@ ignore = [
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101"]       # Allow assert in tests
+"tests/*" = ["S101", "D103"] # Allow assert and skip test function docstrings
 "examples/*" = ["D"]       # Skip docstrings in examples
+"pal/__init__.py" = ["F403"] # Allow star imports in package init
 
 [tool.mypy]
 python_version = "3.13"

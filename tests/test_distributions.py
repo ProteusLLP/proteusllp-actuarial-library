@@ -1,12 +1,14 @@
-from pal import distributions
-from pal.config import set_random_seed, xp as np
-import pytest
 import math
+
+import pytest
 import scipy.special
+from pal import distributions
+from pal.config import set_random_seed
+from pal.config import xp as np
 from scipy.special import gamma
 
 
-def test_Poisson():
+def test_poisson():
     set_random_seed(12345678910)
     lamda = 3.5
     dist = distributions.Poisson(lamda)
@@ -22,7 +24,7 @@ def test_Poisson():
     assert np.isclose(sims.std() ** 2, lamda, 1e-2)
 
 
-def test_Poisson_gamma():
+def test_poisson_gamma():
     """Tests the Poisson distribution with a gamma distributed lambda."""
     set_random_seed(12345678910)
     alpha = 0.5
@@ -50,7 +52,7 @@ def test_gamma_exp():
     assert sims.coupled_variable_group == lamda.coupled_variable_group
 
 
-def test_Beta():
+def test_beta():
     set_random_seed(12345678910)
     alpha = 2
     beta = 3
@@ -74,7 +76,7 @@ def test_Beta():
     )
 
 
-def test_GPD():
+def test_gpd():
     set_random_seed(12345678910)
     shape = 0.25
     scale = 100000
@@ -92,7 +94,7 @@ def test_GPD():
     )
 
 
-def test_Burr():
+def test_burr():
     set_random_seed(12345678910)
     power = 2
     shape = 3
@@ -118,7 +120,7 @@ def test_Burr():
     )
 
 
-def test_InverseBurr():
+def test_inverse_burr():
     set_random_seed(12345678910)
     power = 4
     shape = 5
@@ -146,7 +148,7 @@ def test_InverseBurr():
     )
 
 
-def test_Logistic():
+def test_logistic():
     set_random_seed(12345678910)
     mu = 2.5
     sigma = 2
@@ -165,7 +167,7 @@ def test_Logistic():
     assert np.isclose(sims_std, np.pi * sigma / np.sqrt(3), 1e-3)
 
 
-def test_LogLogistic():
+def test_log_logistic():
     set_random_seed(12345678910)
     shape = 4
     scale = 100000
@@ -191,7 +193,7 @@ def test_LogLogistic():
     )
 
 
-def test_ParaLogistic():
+def test_para_logistic():
     set_random_seed(12345678910)
     shape = 2.5
     scale = 100000
@@ -212,7 +214,7 @@ def test_ParaLogistic():
     )
 
 
-def test_InverseParaLogistic():
+def test_inverse_para_logistic():
     set_random_seed(12345678910)
     shape = 5
     scale = 100000
@@ -241,7 +243,7 @@ def test_InverseParaLogistic():
     )
 
 
-def test_Weibull():
+def test_weibull():
     set_random_seed(12345678910)
     shape = 2
     scale = 1000000
@@ -262,7 +264,7 @@ def test_Weibull():
     )
 
 
-def test_InverseWeibull():
+def test_inverse_weibull():
     set_random_seed(12345678910)
     shape = 4
     scale = 1000000
@@ -283,7 +285,7 @@ def test_InverseWeibull():
     )
 
 
-def test_Exponential():
+def test_exponential():
     set_random_seed(12345678910)
     scale = 1000000
     loc = 1000000
@@ -301,7 +303,7 @@ def test_Exponential():
     assert sims.std() == pytest.approx(scale, 1e-3)
 
 
-def test_InverseExponential():
+def test_inverse_exponential():
     set_random_seed(12345678910)
     scale = 1000000
     loc = 1000000
@@ -314,7 +316,7 @@ def test_InverseExponential():
     ) == pytest.approx(np.array([1234560.1, 2345670, 3456780]), 1e-8)
 
 
-def test_Gamma():
+def test_gamma():
     set_random_seed(12345678910)
     scale = 1000000
     shape = 4.5
@@ -335,7 +337,7 @@ def test_Gamma():
     assert np.allclose(sims.std(), scale * np.sqrt(shape), 1e-3)
 
 
-def test_LogNormal():
+def test_log_normal():
     set_random_seed(12345678910)
     mu = 8
     sigma = 1.25
@@ -358,7 +360,7 @@ def test_LogNormal():
     assert np.allclose(sims.std(), sd, 1e-3)
 
 
-def test_InverseGamma():
+def test_inverse_gamma():
     set_random_seed(12345678910)
     scale = 1000000
     shape = 3.5

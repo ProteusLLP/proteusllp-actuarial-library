@@ -1,10 +1,9 @@
-import scipy.stats  # ignore:import-untyped
-from pal import copulas
-from pal import distributions
-import pytest
 import numpy as np
+import pytest
 import scipy
 import scipy.special
+import scipy.stats  # ignore:import-untyped
+from pal import copulas, distributions
 from pal.variables import ProteusVariable, StochasticScalar
 
 
@@ -142,7 +141,7 @@ def test_joe_copula(theta):
 
 
 def debye1(x):
-    """The first Debye function"""
+    """The first Debye function."""
     return (
         np.log(1 - np.exp(-x)) * x
         + scipy.special.zeta(2)

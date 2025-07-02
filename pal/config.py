@@ -12,31 +12,31 @@ else:
     xp.seterr(divide="ignore")
 
 
-class config:
-    """
-    Configuration class for PAL.
-    """
+class Config:
+    """Configuration class for PAL."""
 
     n_sims = 10000
     seed = 123456789
     rng = xp.random.default_rng(seed)
 
 
-def set_default_n_sims(n):
-    """
-    Sets the default number of simulations.
+# Create an instance for backwards compatibility
+config = Config()
+
+
+def set_default_n_sims(n: int) -> None:
+    """Sets the default number of simulations.
 
     Args:
         n (int): The number of simulations.
     """
-    config.n_sims = n
+    Config.n_sims = n
 
 
-def set_random_seed(seed):
-    """
-    Sets the random seed for the simulation.
+def set_random_seed(seed: int) -> None:
+    """Sets the random seed for the simulation.
 
     Args:
         seed (int): The random seed.
     """
-    config.rng.bit_generator.state = type(config.rng.bit_generator)(seed).state
+    Config.rng.bit_generator.state = type(Config.rng.bit_generator)(seed).state

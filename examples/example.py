@@ -1,6 +1,6 @@
-from pal import config, XoLTower, distributions
-from pal.frequency_severity import FrequencySeverityModel
 import numpy as np
+from pal import XoLTower, config, distributions
+from pal.frequency_severity import FrequencySeverityModel
 
 config.n_sims = 100000
 
@@ -13,11 +13,11 @@ policy_limit = 5000000
 losses_post_cap = np.minimum(losses_pre_cap, policy_limit)
 
 # you can apply standard numerical operations to the losses
-losses_with_LAE = losses_post_cap * 1.05
+losses_with_lae = losses_post_cap * 1.05
 stochastic_inflation = distributions.Normal(0.05, 0.02).generate()
 
 # you can multiply frequency severity losses with other standard simulations
-gross_losses = losses_with_LAE * (1 + stochastic_inflation)
+gross_losses = losses_with_lae * (1 + stochastic_inflation)
 
 prog = XoLTower(
     limit=[1000000, 1000000, 1000000, 1000000, 10000000],

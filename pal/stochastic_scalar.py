@@ -1,12 +1,15 @@
 from __future__ import annotations
-from .config import xp as np
-from numpy.typing import ArrayLike
-from .couplings import ProteusStochasticVariable, CouplingGroup
-from typing import Union, TypeVar
-import math
-import plotly.graph_objects as go  # type: ignore
 
-Numeric = Union[int, float]
+import math
+from typing import TypeVar
+
+import plotly.graph_objects as go  # type: ignore
+from numpy.typing import ArrayLike
+
+from .config import xp as np
+from .couplings import CouplingGroup, ProteusStochasticVariable
+
+Numeric = int | float
 NumberOrList = TypeVar("NumberOrList", Numeric, list[Numeric])
 NumericOrStochasticScalar = TypeVar(
     "NumericOrStochasticScalar", Numeric, "StochasticScalar"
@@ -26,6 +29,11 @@ class StochasticScalar(ProteusStochasticVariable):
         return StochasticScalar(result)
 
     def __init__(self, values: ArrayLike):
+        """Initialize a stochastic scalar.
+
+        Args:
+            values: Array-like values for the scalar variable.
+        """
         super().__init__()
         assert hasattr(values, "__getitem__"), "Values must be an array-like object."
         if isinstance(values, StochasticScalar):
@@ -51,6 +59,7 @@ class StochasticScalar(ProteusStochasticVariable):
         return id(self)
 
     def tolist(self):
+        """Convert the values to a Python list."""
         return self.values.tolist()
 
     def _reorder_sims(self, new_order) -> None:
@@ -60,8 +69,10 @@ class StochasticScalar(ProteusStochasticVariable):
     def __array_ufunc__(
         self, ufunc: np.ufunc, method: str, *inputs, **kwargs
     ) -> StochasticScalar:
-        """Override the __array_ufunc__ method means that you can apply standard numpy functions"""
-        # check if the input types to the function are types of ProteusVariables other than StochasticScalar
+        """Override the __array_ufunc__ method to apply standard numpy functions.
+        """
+        # check if the input types to the function are types of ProteusVariables
+        # other than StochasticScalar
         var_not_stochastic_scalar = [
             type(x).__name__ == "ProteusVariable"
             or isinstance(x, ProteusStochasticVariable)
@@ -102,7 +113,8 @@ class StochasticScalar(ProteusStochasticVariable):
         return np.mean(self.values)
 
     def skew(self) -> float:
-        """Return the coefficient of skewness of the variable across the simulation dimension."""
+        """Return the coefficient of skewness of the variable across the simulation dimension.
+        """
         return float(np.mean((self.values - self.mean()) ** 3) / self.std() ** 3)
 
     def kurt(self) -> float:
@@ -110,7 +122,8 @@ class StochasticScalar(ProteusStochasticVariable):
         return float(np.mean((self.values - self.mean()) ** 4) / self.std() ** 4)
 
     def std(self) -> float:
-        """Return the standard deviation of the variable across the simulation dimension."""
+        """Return the standard deviation of the variable across the simulation dimension.
+        """
         return np.std(self.values)
 
     def percentile(self, p: NumberOrList) -> NumberOrList:
@@ -145,7 +158,7 @@ class StochasticScalar(ProteusStochasticVariable):
     def __getitem__(
         self, index: NumericOrStochasticScalar
     ) -> NumericOrStochasticScalar:
-        if isinstance(index, (int, float)):
+        if isinstance(index, int | float):
             return self.values[int(index)]
         elif isinstance(index, StochasticScalar):
             result = StochasticScalar(self.values[index.values])
@@ -160,7 +173,7 @@ class StochasticScalar(ProteusStochasticVariable):
             title (str | None): Title of the histogram plot. Defaults to None.
 
         """
-        fig = go.Figure(go.Histogram(x=self.values), layout=dict(title=title))
+        fig = go.Figure(go.Histogram(x=self.values), layout={"title": title})
         fig.show()
 
     def show_cdf(self, title: str | None = None):
@@ -170,11 +183,10 @@ class StochasticScalar(ProteusStochasticVariable):
             title (str | None): Title of the cdf plot. Defaults to None.
 
         """
-
         fig = go.Figure(
             go.Scatter(x=np.sort(self.values), y=np.arange(self.n_sims) / self.n_sims),
-            layout=dict(title=title),
+            layout={"title": title},
         )
-        fig.update_xaxes(dict(title="Value"))
-        fig.update_yaxes(dict(title="Cumulative Probability"))
+        fig.update_xaxes({"title": "Value"})
+        fig.update_yaxes({"title": "Cumulative Probability"})
         fig.show()
