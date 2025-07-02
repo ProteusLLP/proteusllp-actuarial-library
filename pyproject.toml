@@ -63,8 +63,65 @@ test = [
 dev = [
     "jupyter>=1.0",
     "jupyterlab>=4.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "bandit>=1.7.0",
+    "vulture>=2.11",
 ]
 
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
+
+# Static analysis tool configurations
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+src = ["pal"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "D",   # pydocstyle (docstring linting)
+    "N",   # pep8-naming
+    "S",   # bandit (security)
+]
+ignore = [
+    "D100", # Missing docstring in public module
+    "D104", # Missing docstring in public __init__.py
+    "D203", # 1 blank line required before class docstring (conflicts with D211)
+    "D213", # Multi-line docstring summary should start at the second line (conflicts with D212)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]       # Allow assert in tests
+"examples/*" = ["D"]       # Skip docstrings in examples
+
+[tool.mypy]
+python_version = "3.13"
+packages = ["pal"]
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+
+[tool.bandit]
+exclude_dirs = ["tests", "__pypackages__"]
+skips = ["B101"]  # Skip assert_used test
+
+[tool.vulture]
+paths = ["pal"]
+min_confidence = 80
+exclude = ["__pypackages__/"]
