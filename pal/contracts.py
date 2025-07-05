@@ -1,32 +1,36 @@
-from .config import xp as np
-from .frequency_severity import FreqSevSims
 from dataclasses import dataclass
+
+from ._maths import xp as np
+from .frequency_severity import FreqSevSims
 from .variables import StochasticScalar
 
 
 @dataclass
 class ContractResults:
-    """A class to hold the recoveries and reinstatement premiums resulting from applying a reinsurance contract to a
-    set of claims."""
+    """A class to hold the recoveries and reinstatement premiums.
+
+    This class stores the results of applying a reinsurance contract to a set of
+    claims.
+    """
 
     def __init__(
         self,
         recoveries: FreqSevSims,
         reinstatement_premium: StochasticScalar | None = None,
     ):
-        """
-        Create a new contract results object.
+        """Create a new contract results object.
 
         Args:
             recoveries (FreqSevSims): Object representing the recoveries.
-            reinstatement_premium (np.ndarray | None): Optional Array representing the reinstatement premium.
+            reinstatement_premium (np.ndarray | None): Optional Array representing the
+                reinstatement premium.
         """
         self.recoveries = recoveries
         self.reinstatement_premium = reinstatement_premium
 
 
 class XoL:
-    """Represents an excess of loss reinsurance contract"""
+    """Represents an excess of loss reinsurance contract."""
 
     def __init__(
         self,
@@ -40,20 +44,22 @@ class XoL:
         franchise: float | None = None,
         reverse_franchise: float | None = None,
     ):
-        """
-        Initialize a new XoL layer.
+        """Initialize a new XoL layer.
 
         Args:
             name (str): The name of the XoL layer.
             limit (float): The limit of coverage.
             excess (float): The excess amount.
             premium (float): The premium amount.
-            reinstatement_cost (list[float] | None, optional): The reinstatement cost as a fraction of the base
+            reinstatement_cost (list[float] | None, optional): The reinstatement cost
+                as a fraction of the base
                 premium, by reinstatement. Defaults to None.
             aggregate_limit (float, optional): The aggregate limit. Defaults to None.
-            aggregate_deductible (float, optional): The aggregate deductible. Defaults to None.
+            aggregate_deductible (float, optional): The aggregate deductible.
+                Defaults to None.
             franchise (float, optional): The franchise amount. Defaults to None.
-            reverse_franchise (float, optional): The reverse franchise amount. Defaults to None.
+            reverse_franchise (float, optional): The reverse franchise amount.
+                Defaults to None.
         """
         self.name = name
         self.limit = limit
@@ -78,8 +84,7 @@ class XoL:
         )
 
     def apply(self, claims: FreqSevSims) -> ContractResults:
-        """
-        Apply the XoL contract to a set of claims.
+        """Apply the XoL contract to a set of claims.
 
         Args:
             claims (FreqSevSims): The simulated claims to apply the contract to.
@@ -89,7 +94,8 @@ class XoL:
 
         Calculation of the recoveries from the excess of loss contract:
 
-        Firstly, the effect of any franchise or reverse franchise is calculated on the individual losses.
+        Firstly, the effect of any franchise or reverse franchise is calculated
+        on the individual losses.
 
         losses post franchise = loss if loss >= franchise and loss<= reverse franchise
 
@@ -97,15 +103,26 @@ class XoL:
 
         layer_loss = min(max(losses post franchise - excess, 0), limit)
 
-        Then the aggregate layer losses before aggregate limit and deductible are calculated.
-        The aggregate limit and deductible are then applied to get the aggregate recoveries for the layer:
+        Then the aggregate layer losses before aggregate limit and deductible
+        are calculated.
+        The aggregate limit and deductible are then applied to get the aggregate
+        recoveries for the layer:
 
-        aggregate_recoveries = min(max(aggregate_layer_losses - aggregate_deductible, 0), aggregate_limit)
+        aggregate_recoveries = min(
+            max(aggregate_layer_losses - aggregate_deductible, 0),
+            aggregate_limit
+        )
 
-        The aggregate recoveries are then allocated back to the individual losses in proportion to the individual recoveries before aggregate limit and deductible.
+        The aggregate recoveries are then allocated back to the individual losses
+        in proportion to the individual recoveries before aggregate limit and
+        deductible.
 
-        The reinstatement premium is calculated as the sum of the reinstatement premium cost multiplied by the number of reinstatements used.
-        The number of reinstatements used is calculated as the minimum of the aggregate recoveries divided by the limit and the number of reinstatements available (which is the aggregate limit divided by the occurrence limit, less one).
+        The reinstatement premium is calculated as the sum of the reinstatement
+        premium cost multiplied by the number of reinstatements used.
+        The number of reinstatements used is calculated as the minimum of the
+        aggregate recoveries divided by the limit and the number of
+        reinstatements available (which is the aggregate limit divided by the
+        occurrence limit, less one).
         """
         # apply franchise
         if self.franchise != 0 or self.reverse_franchise != np.inf:
@@ -178,10 +195,13 @@ class XoL:
     def calc_summary(
         self, gross_losses: FreqSevSims, aggregate_recoveries: StochasticScalar
     ):
-        """
-        Calculate a summary of the losses to the layer. The results are stored in the summary attribute of the layer.
+        """Calculate a summary of the losses to the layer.
 
-        The summary includes the mean and standard deviation of the recoveries, the probability of attachment, the probability of vertical exhaustion and the probability of horizontal exhaustion.
+        The results are stored in the summary attribute of the layer.
+
+        The summary includes the mean and standard deviation of the recoveries,
+        the probability of attachment, the probability of vertical exhaustion and
+        the probability of horizontal exhaustion.
 
         Args:
             gross_losses (FreqSevSims): Object representing the gross losses.
@@ -215,7 +235,7 @@ class XoL:
         }
 
     def print_summary(self):
-        """Print a summary of the losses to the layer
+        """Print a summary of the losses to the layer.
 
         >>> layer.print_summary()
         Layer Name : Layer 1
@@ -226,19 +246,23 @@ class XoL:
         Probability of Horizontal Exhaustion:  0.0
 
         """
-
-        print("Layer Name : {}".format(self.name))
+        print(f"Layer Name : {self.name}")
         print("Mean Recoveries: ", self.summary["mean"])
         print("SD Recoveries: ", self.summary["std"])
-        print("Probability of Attachment: ", self.summary["prob_attach"]),
+        (print("Probability of Attachment: ", self.summary["prob_attach"]),)
 
-        print(
-            "Probability of Vertical Exhaustion: ", self.summary["prob_vert_exhaust"]
-        ),
-        print(
-            "Probability of Horizontal Exhaustion: ",
-            self.summary["prob_horizonal_exhaust"],
-        ),
+        (
+            print(
+                "Probability of Vertical Exhaustion: ",
+                self.summary["prob_vert_exhaust"],
+            ),
+        )
+        (
+            print(
+                "Probability of Horizontal Exhaustion: ",
+                self.summary["prob_horizonal_exhaust"],
+            ),
+        )
         print("")
 
 
@@ -257,21 +281,26 @@ class XoLTower:
         franchise: list[float | None] | None = None,
         reverse_franchise: list[float | None] | None = None,
     ):
-        """
-        Create an XoL Tower.
+        """Create an XoL Tower.
 
         Args:
             limit (list[float]): A list of limits for each layer.
             excess (list[float]): A list of excesses for each layer.
             premium (list[float]): The premium for each layer.
-            name (list[str], optional): A list of names for each layer. Defaults to None.
-            reinstatement_cost (list[list[float]] | None, optional): A list of reinstatement costs for each reinstatement for each layer. Defaults to None.
-            aggregate_deductible (list[float], optional): The aggregate deductible. Defaults to None.
-            aggregate_limit (list[float], optional): The aggregate limit. Defaults to None.
-            franchise (list[float], optional): The franchise amount. Defaults to None.
-            reverse_franchise (list[float], optional): The reverse franchise amount. Defaults to None.
+            name (list[str], optional): A list of names for each layer.
+                Defaults to None.
+            reinstatement_cost (list[list[float]] | None, optional): A list of
+                reinstatement costs for each reinstatement for each layer.
+                Defaults to None.
+            aggregate_deductible (list[float], optional): The aggregate
+                deductible. Defaults to None.
+            aggregate_limit (list[float], optional): The aggregate limit.
+                Defaults to None.
+            franchise (list[float], optional): The franchise amount.
+                Defaults to None.
+            reverse_franchise (list[float], optional): The reverse franchise
+                amount. Defaults to None.
         """
-
         self.limit = limit
         self.excess = excess
         self.aggregate_limit = aggregate_limit
@@ -281,7 +310,7 @@ class XoLTower:
         self.n_layers = len(limit)
         self.layers = [
             XoL(
-                "Layer {}".format(i + 1) if name is None else name[i],
+                f"Layer {i + 1}" if name is None else name[i],
                 limit[i],
                 excess[i],
                 premium[i],
@@ -295,8 +324,7 @@ class XoLTower:
         ]
 
     def apply(self, claims: FreqSevSims) -> ContractResults:
-        """
-        Applies the XoL Tower to a set of claims.
+        """Applies the XoL Tower to a set of claims.
 
         Parameters:
             claims (FreqSevSims): The set of claims to apply the XoL Tower to.
@@ -318,6 +346,6 @@ class XoLTower:
         return ContractResults(recoveries, reinstatement_premium)
 
     def print_summary(self):
-        """Print a summary of the program losses"""
+        """Print a summary of the program losses."""
         for layer in self.layers:
             layer.print_summary()

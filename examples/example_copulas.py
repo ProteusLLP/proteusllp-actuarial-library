@@ -1,8 +1,7 @@
-from pal import config, distributions
-from pal.frequency_severity import FrequencySeverityModel
-from pal import copulas
-from pal.variables import ProteusVariable
 import plotly.graph_objects as go  # type: ignore
+from pal import config, copulas, distributions
+from pal.frequency_severity import FrequencySeverityModel
+from pal.variables import ProteusVariable
 
 config.n_sims = 100000
 
@@ -27,11 +26,11 @@ attritional_losses_by_lob = ProteusVariable(
     },
 )
 
-large_losses_with_LAE = individual_large_losses_by_lob * 1.05
+large_losses_with_lae = individual_large_losses_by_lob * 1.05
 
 # create the aggregate losses by class
 aggregate_large_losses_by_class = ProteusVariable(
-    "class", {name: large_losses_with_LAE[name].aggregate() for name in lobs}
+    "class", {name: large_losses_with_lae[name].aggregate() for name in lobs}
 )
 # correlate the attritional and large losses. Use a pairwise copula to do this
 for lob in lobs:
@@ -69,10 +68,10 @@ fig = go.Figure(
         y=inflated_total_losses_by_lob["Property"].ranks.values,
         mode="markers",
     ),
-    layout=dict(
-        xaxis=dict(title="Motor - Rank"),
-        yaxis=dict(title="Property - Rank"),
-        title="Scatter plot of Motor and Property losses",
-    ),
+    layout={
+        "xaxis": {"title": "Motor - Rank"},
+        "yaxis": {"title": "Property - Rank"},
+        "title": "Scatter plot of Motor and Property losses",
+    },
 )
 fig.show()
