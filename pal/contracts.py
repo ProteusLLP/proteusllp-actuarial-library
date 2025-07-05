@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from .config import xp as np
+from ._maths import xp as np
 from .frequency_severity import FreqSevSims
 from .variables import StochasticScalar
 

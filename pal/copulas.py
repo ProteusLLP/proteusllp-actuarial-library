@@ -11,17 +11,14 @@ from typing import Any
 
 # Third-party imports
 import numpy.typing as npt
-import scipy.stats.distributions as distributions  # type: ignore
+import scipy.stats.distributions as distributions
+
+from ._maths import special
+from ._maths import xp as np
 
 # Local imports
-from .config import _use_gpu, config
-from .config import xp as np
+from .config import config
 from .variables import ProteusVariable, StochasticScalar
-
-if _use_gpu:
-    import cupyx.scipy.special as special  # type: ignore
-else:
-    import scipy.special as special  # type: ignore
 
 
 class Copula(ABC):

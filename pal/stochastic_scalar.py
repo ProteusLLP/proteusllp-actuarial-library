@@ -6,7 +6,7 @@ from typing import TypeVar
 import plotly.graph_objects as go  # type: ignore
 from numpy.typing import ArrayLike
 
-from .config import xp as np
+from ._maths import xp as np
 from .couplings import CouplingGroup, ProteusStochasticVariable
 
 Numeric = int | float
@@ -69,8 +69,7 @@ class StochasticScalar(ProteusStochasticVariable):
     def __array_ufunc__(
         self, ufunc: np.ufunc, method: str, *inputs, **kwargs
     ) -> StochasticScalar:
-        """Override the __array_ufunc__ method to apply standard numpy functions.
-        """
+        """Override the __array_ufunc__ method to apply standard numpy functions."""
         # check if the input types to the function are types of ProteusVariables
         # other than StochasticScalar
         var_not_stochastic_scalar = [
@@ -113,8 +112,7 @@ class StochasticScalar(ProteusStochasticVariable):
         return np.mean(self.values)
 
     def skew(self) -> float:
-        """Return the coefficient of skewness of the variable across the simulation dimension.
-        """
+        """Return the coefficient of skewness of the variable across the simulation dimension."""
         return float(np.mean((self.values - self.mean()) ** 3) / self.std() ** 3)
 
     def kurt(self) -> float:
@@ -122,8 +120,7 @@ class StochasticScalar(ProteusStochasticVariable):
         return float(np.mean((self.values - self.mean()) ** 4) / self.std() ** 4)
 
     def std(self) -> float:
-        """Return the standard deviation of the variable across the simulation dimension.
-        """
+        """Return the standard deviation of the variable across the simulation dimension."""
         return np.std(self.values)
 
     def percentile(self, p: NumberOrList) -> NumberOrList:

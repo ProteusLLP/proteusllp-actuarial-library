@@ -9,16 +9,12 @@ generation and GPU support are managed via configuration settings.
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar
 
-# Local imports
-from .config import _use_gpu, config
-from .config import xp as np
-from .stochastic_scalar import StochasticScalar
+from ._maths import special
+from ._maths import xp as np
 
-# Use cupyx if GPU is enabled
-if _use_gpu:
-    import cupyx.scipy.special as special  # type: ignore
-else:
-    import scipy.special as special  # type: ignore
+# Local imports
+from .config import config
+from .stochastic_scalar import StochasticScalar
 
 # Type aliases
 NumberType = float | int
@@ -207,9 +203,7 @@ class HyperGeometric(DiscreteDistributionBase):
 
     def invcdf(self, u: NumberOrStochasticScalar) -> NumberOrStochasticScalar:
         """Compute inverse cumulative distribution function."""
-        raise NotImplementedError(
-            "Inverse CDF for HyperGeometric is not implemented."
-        )
+        raise NotImplementedError("Inverse CDF for HyperGeometric is not implemented.")
 
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
         ngood, nbad, n = self._param_values
@@ -613,11 +607,7 @@ class InverseBurr(DistributionBase):
         power, shape, scale, loc = self._params.values()
         return (
             scale
-            * (
-                np.float_power(
-                    (np.float_power(u, (-1 / shape)) - 1), (-1 / power)
-                )
-            )
+            * (np.float_power((np.float_power(u, (-1 / shape)) - 1), (-1 / power)))
             + loc
         )
 

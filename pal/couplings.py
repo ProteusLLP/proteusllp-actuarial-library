@@ -4,6 +4,7 @@ import weakref
 from abc import ABC, abstractmethod
 
 import numpy as np
+import numpy.typing as npt
 from numpy.lib.mixins import NDArrayOperatorsMixin
 
 
@@ -46,15 +47,15 @@ class CouplingGroup:
 class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
     """A class to represent a stochastic variable in a simulation."""
 
-    values: np.ndarray
-    n_sims: int
+    values: npt.NDArray[np.float64]
+    n_sims: int | None = None
 
     def __init__(self):
         """Initialize stochastic variable with new coupling group."""
         self.coupled_variable_group = CouplingGroup(self)
 
     @abstractmethod
-    def _reorder_sims(self, new_order: np.ndarray):
+    def _reorder_sims(self, new_order: npt.NDArray[np.int64]):
         pass
 
     def all(self):

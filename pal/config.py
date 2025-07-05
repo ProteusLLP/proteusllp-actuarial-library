@@ -1,27 +1,15 @@
+import logging
+import logging.config
 import os
 
-_use_gpu = os.environ.get("PAL_USE_GPU") == "1"
+from .types import Config
 
-if _use_gpu:
-    import cupy as xp
+logging.config.fileConfig(
+    os.path.join(os.path.dirname(__file__), "..", "logging.ini"),
+    disable_existing_loggers=False,
+)
 
-    print("Using GPU")
-else:
-    import numpy as xp
-
-    xp.seterr(divide="ignore")
-
-
-class Config:
-    """Configuration class for PAL."""
-
-    n_sims = 10000
-    seed = 123456789
-    rng = xp.random.default_rng(seed)
-
-
-# Create an instance for backwards compatibility
-config = Config()
+config = Config()  # config is assumed to be a singleton
 
 
 def set_default_n_sims(n: int) -> None:
@@ -30,7 +18,7 @@ def set_default_n_sims(n: int) -> None:
     Args:
         n (int): The number of simulations.
     """
-    Config.n_sims = n
+    config.n_sims = n
 
 
 def set_random_seed(seed: int) -> None:
@@ -39,4 +27,4 @@ def set_random_seed(seed: int) -> None:
     Args:
         seed (int): The random seed.
     """
-    Config.rng.bit_generator.state = type(Config.rng.bit_generator)(seed).state
+    config.rng.bit_generator.state = type(config.rng.bit_generator)(seed).state

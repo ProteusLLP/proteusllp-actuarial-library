@@ -33,8 +33,7 @@ def _get_sims_of_events(n_events_by_sim: np.ndarray):
 
 
 class FrequencySeverityModel:
-    """A class for constructing and simulating from Frequency-Severity, or Compound distributions.
-    """
+    """A class for constructing and simulating from Frequency-Severity, or Compound distributions."""
 
     def __init__(
         self,
@@ -114,7 +113,7 @@ class FreqSevSims(ProteusStochasticVariable):
         self,
         sim_index: np.ndarray | list[int],
         values: np.ndarray | list[int],
-        n_sims: int,
+        n_sims: int | None = None,
     ):
         """Create a new FreqSevSims object out the list of simulation indices.
 
@@ -151,8 +150,7 @@ class FreqSevSims(ProteusStochasticVariable):
         )
 
     def _reorder_sims(self, ordering: np.ndarray) -> None:
-        """Reorder the simulations of the FreqSevSims object according to the given order.
-        """
+        """Reorder the simulations of the FreqSevSims object according to the given order."""
         reverse_ordering = np.empty(len(ordering), dtype=int)
         reverse_ordering[ordering] = np.arange(len(ordering), dtype=int)
         self.sim_index = reverse_ordering[self.sim_index]
@@ -265,8 +263,7 @@ class FreqSevSims(ProteusStochasticVariable):
         return f"{type(self).__name__}({self.values!r})"
 
     def _is_compatible(self, other: ProteusCompatibleTypes):
-        """Check if two FreqSevSims objects are compatible for mathematical operations.
-        """
+        """Check if two FreqSevSims objects are compatible for mathematical operations."""
         return isinstance(other, FreqSevSims) and self.sim_index is other.sim_index
 
     def upsample(self, n_sims: int) -> "FreqSevSims":

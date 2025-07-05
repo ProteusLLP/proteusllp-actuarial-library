@@ -3,8 +3,8 @@ import math
 import pytest
 import scipy.special
 from pal import distributions
+from pal._maths import xp as np
 from pal.config import set_random_seed
-from pal.config import xp as np
 from scipy.special import gamma
 
 
