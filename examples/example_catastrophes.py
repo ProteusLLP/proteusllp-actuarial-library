@@ -2,7 +2,7 @@ import math
 
 import pandas as pd  # type: ignore
 from pal import config, distributions
-from pal.config import xp as np
+from pal._maths import xp as np
 from pal.variables import FreqSevSims, ProteusVariable
 
 n_sims = 100000

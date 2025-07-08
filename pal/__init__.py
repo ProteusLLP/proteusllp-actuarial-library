@@ -19,3 +19,10 @@ from .contracts import *
 from .distributions import *
 from .frequency_severity import *
 from .stats import *
+from .stochastic_scalar import StochasticScalar
+from .variables import ProteusVariable
+
+__all__ = [
+    "ProteusVariable",
+    "StochasticScalar",
+]

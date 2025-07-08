@@ -53,7 +53,10 @@ test:
 
 .PHONY: check-examples
 check-examples:
-	pdm run python -m compileall examples/ -f
+	@for example in $(wildcard examples/*.py); do \
+		echo "Running $$example..."; \
+		PAL_SUPPRESS_PLOTS=true pdm run python $$example || exit 1; \
+	done
 
 # Build targets
 .PHONY: build

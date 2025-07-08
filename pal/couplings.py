@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import typing as t
 import weakref
 from abc import ABC, abstractmethod
 
 import numpy as np
 import numpy.typing as npt
 from numpy.lib.mixins import NDArrayOperatorsMixin
+
+from .types import ProteusLike
 
 
 class CouplingGroup:
@@ -44,7 +47,7 @@ class CouplingGroup:
         return
 
 
-class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
+class ProteusStochasticVariable(ProteusLike, ABC, NDArrayOperatorsMixin):
     """A class to represent a stochastic variable in a simulation."""
 
     values: npt.NDArray[np.float64]
@@ -54,10 +57,6 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
         """Initialize stochastic variable with new coupling group."""
         self.coupled_variable_group = CouplingGroup(self)
 
-    @abstractmethod
-    def _reorder_sims(self, new_order: npt.NDArray[np.int64]):
-        pass
-
     def all(self):
         """Return True if all values are True."""
         return self.values.all()
@@ -65,3 +64,18 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
     def any(self):
         """Return True if any value is True."""
         return self.values.any()
+
+    @abstractmethod
+    def upsample(self, n_sims: int) -> t.Self:
+        """Upsample the variable to match the specified number of simulations.
+
+        Args:
+            n_sims: The number of simulations to upsample to.
+
+        Returns:
+            A new instance of self with the upsampled values.
+        """
+
+    @abstractmethod
+    def _reorder_sims(self, new_order: npt.NDArray[np.int64]):
+        pass

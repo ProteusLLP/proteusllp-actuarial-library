@@ -8,7 +8,7 @@ from pal.config import set_random_seed
 from scipy.special import gamma
 
 
-def test_poisson():
+def test_poisson() -> None:
     set_random_seed(12345678910)
     lamda = 3.5
     dist = distributions.Poisson(lamda)
@@ -24,7 +24,7 @@ def test_poisson():
     assert np.isclose(sims.std() ** 2, lamda, 1e-2)
 
 
-def test_poisson_gamma():
+def test_poisson_gamma() -> None:
     """Tests the Poisson distribution with a gamma distributed lambda."""
     set_random_seed(12345678910)
     alpha = 0.5
@@ -38,7 +38,7 @@ def test_poisson_gamma():
     assert sims.coupled_variable_group == lamda.coupled_variable_group
 
 
-def test_gamma_exp():
+def test_gamma_exp() -> None:
     """Tests the Exponential distribution with a gamma distributed lambda."""
     set_random_seed(12345678910)
     alpha = 1.5
@@ -52,12 +52,12 @@ def test_gamma_exp():
     assert sims.coupled_variable_group == lamda.coupled_variable_group
 
 
-def test_beta():
+def test_beta() -> None:
     set_random_seed(12345678910)
-    alpha = 2
-    beta = 3
-    scale = 10000000
-    loc = 1000000
+    alpha = 2.0
+    beta = 3.0
+    scale = 10000000.0
+    loc = 1000000.0
     dist = distributions.Beta(alpha, beta, scale, loc)
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
@@ -76,7 +76,7 @@ def test_beta():
     )
 
 
-def test_gpd():
+def test_gpd() -> None:
     set_random_seed(12345678910)
     shape = 0.25
     scale = 100000
@@ -94,7 +94,7 @@ def test_gpd():
     )
 
 
-def test_burr():
+def test_burr() -> None:
     set_random_seed(12345678910)
     power = 2
     shape = 3
@@ -120,7 +120,7 @@ def test_burr():
     )
 
 
-def test_inverse_burr():
+def test_inverse_burr() -> None:
     set_random_seed(12345678910)
     power = 4
     shape = 5
@@ -148,7 +148,7 @@ def test_inverse_burr():
     )
 
 
-def test_logistic():
+def test_logistic() -> None:
     set_random_seed(12345678910)
     mu = 2.5
     sigma = 2
@@ -167,7 +167,7 @@ def test_logistic():
     assert np.isclose(sims_std, np.pi * sigma / np.sqrt(3), 1e-3)
 
 
-def test_log_logistic():
+def test_log_logistic() -> None:
     set_random_seed(12345678910)
     shape = 4
     scale = 100000
@@ -193,7 +193,7 @@ def test_log_logistic():
     )
 
 
-def test_para_logistic():
+def test_para_logistic() -> None:
     set_random_seed(12345678910)
     shape = 2.5
     scale = 100000
@@ -214,7 +214,7 @@ def test_para_logistic():
     )
 
 
-def test_inverse_para_logistic():
+def test_inverse_para_logistic() -> None:
     set_random_seed(12345678910)
     shape = 5
     scale = 100000
@@ -243,7 +243,7 @@ def test_inverse_para_logistic():
     )
 
 
-def test_weibull():
+def test_weibull() -> None:
     set_random_seed(12345678910)
     shape = 2
     scale = 1000000
@@ -264,7 +264,7 @@ def test_weibull():
     )
 
 
-def test_inverse_weibull():
+def test_inverse_weibull() -> None:
     set_random_seed(12345678910)
     shape = 4
     scale = 1000000
@@ -285,7 +285,7 @@ def test_inverse_weibull():
     )
 
 
-def test_exponential():
+def test_exponential() -> None:
     set_random_seed(12345678910)
     scale = 1000000
     loc = 1000000
@@ -303,7 +303,7 @@ def test_exponential():
     assert sims.std() == pytest.approx(scale, 1e-3)
 
 
-def test_inverse_exponential():
+def test_inverse_exponential() -> None:
     set_random_seed(12345678910)
     scale = 1000000
     loc = 1000000
@@ -316,7 +316,7 @@ def test_inverse_exponential():
     ) == pytest.approx(np.array([1234560.1, 2345670, 3456780]), 1e-8)
 
 
-def test_gamma():
+def test_gamma() -> None:
     set_random_seed(12345678910)
     scale = 1000000
     shape = 4.5
@@ -337,7 +337,7 @@ def test_gamma():
     assert np.allclose(sims.std(), scale * np.sqrt(shape), 1e-3)
 
 
-def test_log_normal():
+def test_log_normal() -> None:
     set_random_seed(12345678910)
     mu = 8
     sigma = 1.25
@@ -360,7 +360,7 @@ def test_log_normal():
     assert np.allclose(sims.std(), sd, 1e-3)
 
 
-def test_inverse_gamma():
+def test_inverse_gamma() -> None:
     set_random_seed(12345678910)
     scale = 1000000
     shape = 3.5

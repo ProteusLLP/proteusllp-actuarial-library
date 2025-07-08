@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 from typing import TypeVar
 
 import plotly.graph_objects as go  # type: ignore
@@ -8,6 +9,7 @@ from numpy.typing import ArrayLike
 
 from ._maths import xp as np
 from .couplings import CouplingGroup, ProteusStochasticVariable
+from .types import ProteusLike
 
 Numeric = int | float
 NumberOrList = TypeVar("NumberOrList", Numeric, list[Numeric])
@@ -16,17 +18,10 @@ NumericOrStochasticScalar = TypeVar(
 )
 
 
-class StochasticScalar(ProteusStochasticVariable):
+class StochasticScalar(ProteusStochasticVariable, ProteusLike):
     """A class to represent a single scalar variable in a simulation."""
 
     coupled_variable_group: CouplingGroup
-
-    @property
-    def ranks(self) -> StochasticScalar:
-        """Return the ranks of the variable."""
-        result = np.empty(self.n_sims, dtype=int)
-        result[np.argsort(self.values)] = np.arange(self.n_sims)
-        return StochasticScalar(result)
 
     def __init__(self, values: ArrayLike):
         """Initialize a stochastic scalar.
@@ -56,15 +51,11 @@ class StochasticScalar(ProteusStochasticVariable):
                 )
 
     def __hash__(self):
+        # FIXME: this hash function is not robust - defining a hash implies that this
+        # object is immutable, but it is not. The hash implies that two objects of this
+        # class with the same values are equal, but this is not the case if they are
+        # coupled to different variable groups.
         return id(self)
-
-    def tolist(self):
-        """Convert the values to a Python list."""
-        return self.values.tolist()
-
-    def _reorder_sims(self, new_order) -> None:
-        """Reorder the simulations in the variable."""
-        self.values = self.values[new_order]
 
     def __array_ufunc__(
         self, ufunc: np.ufunc, method: str, *inputs, **kwargs
@@ -102,6 +93,17 @@ class StochasticScalar(ProteusStochasticVariable):
         result.coupled_variable_group.merge(self.coupled_variable_group)
 
         return result
+
+    @property
+    def ranks(self) -> StochasticScalar:
+        """Return the ranks of the variable."""
+        result = np.empty(self.n_sims, dtype=int)
+        result[np.argsort(self.values)] = np.arange(self.n_sims)
+        return StochasticScalar(result)
+
+    def tolist(self):
+        """Convert the values to a Python list."""
+        return self.values.tolist()
 
     def ssum(self) -> float:
         """Sum the values of the variable across the simulation dimension."""
@@ -170,6 +172,8 @@ class StochasticScalar(ProteusStochasticVariable):
             title (str | None): Title of the histogram plot. Defaults to None.
 
         """
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
+            return
         fig = go.Figure(go.Histogram(x=self.values), layout={"title": title})
         fig.show()
 
@@ -180,6 +184,8 @@ class StochasticScalar(ProteusStochasticVariable):
             title (str | None): Title of the cdf plot. Defaults to None.
 
         """
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
+            return
         fig = go.Figure(
             go.Scatter(x=np.sort(self.values), y=np.arange(self.n_sims) / self.n_sims),
             layout={"title": title},
@@ -187,3 +193,7 @@ class StochasticScalar(ProteusStochasticVariable):
         fig.update_xaxes({"title": "Value"})
         fig.update_yaxes({"title": "Cumulative Probability"})
         fig.show()
+
+    def _reorder_sims(self, new_order) -> None:
+        """Reorder the simulations in the variable."""
+        self.values = self.values[new_order]

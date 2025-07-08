@@ -29,6 +29,7 @@
         "python.languageServer": "Pylance",
         "python.analysis.typeCheckingMode": "off",
         "mypy-type-checker.enable": true,
+        "mypy-type-checker.cwd": "${workspaceFolder}",
         "mypy-type-checker.args": [
           "--config-file=pyproject.toml"
         ],

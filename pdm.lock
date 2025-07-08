@@ -5,7 +5,7 @@
 groups = ["default", "dev", "gpu", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:120a90df00d595ba4b4aecd56e7c92ee69c9391f7932aebe73a294d075ecf26c"
+content_hash = "sha256:80dae77a2c1865c3fe9dc7209db34f3d4cf2086d2593a8b76377241fbc81de8e"
 
 [[metadata.targets]]
 requires_python = ">=3.13"
@@ -1232,6 +1232,20 @@ files = [
 ]
 
 [[package]]
+name = "optype"
+version = "0.10.0"
+requires_python = ">=3.11"
+summary = "Building blocks for precise & flexible type hints"
+groups = ["default"]
+dependencies = [
+    "typing-extensions>=4.10; python_version < \"3.13\"",
+]
+files = [
+    {file = "optype-0.10.0-py3-none-any.whl", hash = "sha256:7e9ccc329fb65c326c6bd62c30c2ba03b694c28c378a96c2bcdd18a084f2c96b"},
+    {file = "optype-0.10.0.tar.gz", hash = "sha256:2b89a1b8b48f9d6dd8c4dd4f59e22557185c81823c6e2bfc43c4819776d5a7ca"},
+]
+
+[[package]]
 name = "overrides"
 version = "7.7.0"
 requires_python = ">=3.6"
@@ -1817,6 +1831,20 @@ files = [
     {file = "scipy-1.16.0-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:aad603e9339ddb676409b104c48a027e9916ce0d2838830691f39552b38a352e"},
     {file = "scipy-1.16.0-cp313-cp313t-win_amd64.whl", hash = "sha256:f56296fefca67ba605fd74d12f7bd23636267731a72cb3947963e76b8c0a25db"},
     {file = "scipy-1.16.0.tar.gz", hash = "sha256:b5ef54021e832869c8cfb03bc3bf20366cbcd426e02a58e8a58d7584dfbb8f62"},
+]
+
+[[package]]
+name = "scipy-stubs"
+version = "1.16.0.2"
+requires_python = ">=3.11"
+summary = "Type annotations for SciPy"
+groups = ["default"]
+dependencies = [
+    "optype<1,>=0.10.0",
+]
+files = [
+    {file = "scipy_stubs-1.16.0.2-py3-none-any.whl", hash = "sha256:dc364d24a3accd1663e7576480bdb720533f94de8a05590354ff6d4a83d765c7"},
+    {file = "scipy_stubs-1.16.0.2.tar.gz", hash = "sha256:f83aacaf2e899d044de6483e6112bf7a1942d683304077bc9e78cf6f21353acd"},
 ]
 
 [[package]]

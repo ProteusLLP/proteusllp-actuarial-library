@@ -33,8 +33,7 @@ def test_variable2():
 
 
 def test_variable3():
-    """Test variable creation with dictionary, label matching, and summing.
-    """
+    """Test variable creation with dictionary, label matching, and summing."""
     x = ProteusVariable(
         dim_name="dim1",
         values={"a": 1, "b": 2},
@@ -400,14 +399,14 @@ def test_mean_dict_stochastic():
             "Property": StochasticScalar([4.0, 5.0, 6.0]),
         },
     )
-    
+
     result = x.mean()
-    
+
     # Verify the structure
     assert result.dim_name == "class"
     assert isinstance(result.values, dict)
     assert set(result.values.keys()) == {"Motor", "Property"}
-    
+
     # Verify the means
     assert result.values["Motor"] == 2.0  # mean of [1, 2, 3]
     assert result.values["Property"] == 5.0  # mean of [4, 5, 6]
@@ -416,11 +415,11 @@ def test_mean_dict_stochastic():
 def test_mean_dict_freqsev():
     """Test mean method with dict values containing FreqSevSims."""
     from pal.frequency_severity import FreqSevSims
-    
+
     # Create some simple FreqSevSims for testing
     freq_sev_1 = FreqSevSims([0, 1], [10.0, 20.0], 2)
     freq_sev_2 = FreqSevSims([0, 1], [30.0, 40.0], 2)
-    
+
     x = ProteusVariable(
         dim_name="coverage",
         values={
@@ -428,18 +427,18 @@ def test_mean_dict_freqsev():
             "Collision": freq_sev_2,
         },
     )
-    
+
     result = x.mean()
-    
+
     # Verify the structure
     assert result.dim_name == "coverage"
     assert isinstance(result.values, dict)
     assert set(result.values.keys()) == {"CompDamage", "Collision"}
-    
+
     # Verify that FreqSevSims.aggregate().mean() was called
     # The result should be the mean of the aggregated values
     assert result.values["CompDamage"] == 15.0  # mean of [10, 20]
-    assert result.values["Collision"] == 35.0   # mean of [30, 40]
+    assert result.values["Collision"] == 35.0  # mean of [30, 40]
 
 
 def test_mean_dict_scalars():
@@ -452,14 +451,14 @@ def test_mean_dict_scalars():
             "trend": 1.02,
         },
     )
-    
+
     result = x.mean()
-    
+
     # Verify the structure
     assert result.dim_name == "factor"
     assert isinstance(result.values, dict)
     assert set(result.values.keys()) == {"inflation", "discount", "trend"}
-    
+
     # Scalar values should be unchanged
     assert result.values["inflation"] == 1.03
     assert result.values["discount"] == 0.95
@@ -476,40 +475,40 @@ def test_mean_list_stochastic():
             StochasticScalar([10.0, 20.0, 30.0]),  # Same n_sims as others
         ],
     )
-    
+
     result = x.mean()
-    
+
     # Verify the structure
     assert result.dim_name == "line"
     assert isinstance(result.values, list)
     assert len(result.values) == 3
-    
+
     # Verify the means
     assert result.values[0] == 3.0  # mean of [1, 3, 5]
     assert result.values[1] == 4.0  # mean of [2, 4, 6]
-    assert result.values[2] == 20.0 # mean of [10, 20, 30]
+    assert result.values[2] == 20.0  # mean of [10, 20, 30]
 
 
 def test_mean_list_freqsev():
     """Test mean method with list values containing FreqSevSims."""
     from pal.frequency_severity import FreqSevSims
-    
+
     # Create FreqSevSims for testing
     freq_sev_1 = FreqSevSims([0, 1, 2], [100.0, 200.0, 300.0], 3)
     freq_sev_2 = FreqSevSims([0, 1, 2], [50.0, 150.0, 250.0], 3)  # Same n_sims
-    
+
     x = ProteusVariable(
         dim_name="peril",
         values=[freq_sev_1, freq_sev_2],
     )
-    
+
     result = x.mean()
-    
+
     # Verify the structure
     assert result.dim_name == "peril"
     assert isinstance(result.values, list)
     assert len(result.values) == 2
-    
+
     # Verify that FreqSevSims.aggregate().mean() was called
     assert result.values[0] == 200.0  # mean of [100, 200, 300]
     assert result.values[1] == 150.0  # mean of [50, 150, 250]
@@ -521,14 +520,14 @@ def test_mean_list_scalars():
         dim_name="multiplier",
         values=[1.5, 2.0, 0.8, 1.2],
     )
-    
+
     result = x.mean()
-    
+
     # Verify the structure
     assert result.dim_name == "multiplier"
     assert isinstance(result.values, list)
     assert len(result.values) == 4
-    
+
     # Scalar values should be unchanged
     assert result.values[0] == 1.5
     assert result.values[1] == 2.0
@@ -545,14 +544,94 @@ def test_mean_mixed_dict():
             "scalar": 5.0,
         },
     )
-    
+
     result = x.mean()
-    
+
     # Verify the structure
     assert result.dim_name == "mixed"
     assert isinstance(result.values, dict)
     assert set(result.values.keys()) == {"stochastic", "scalar"}
-    
+
     # Verify the values
     assert result.values["stochastic"] == 20.0  # mean of [10, 20, 30]
-    assert result.values["scalar"] == 5.0       # unchanged scalar
+    assert result.values["scalar"] == 5.0  # unchanged scalar
+
+
+def test_mean_nested_proteus_variable() -> None:
+    """Test mean method with nested ProteusVariable objects."""
+    inner_var = ProteusVariable(
+        dim_name="inner",
+        values={"a": StochasticScalar([2.0, 4.0, 6.0]), "b": 10.0},
+    )
+
+    x = ProteusVariable(
+        dim_name="outer",
+        values={
+            "nested": inner_var,
+            "simple": StochasticScalar([1.0, 3.0, 5.0]),
+        },
+    )
+
+    result = x.mean()
+
+    # Verify the structure
+    assert result.dim_name == "outer"
+    assert isinstance(result.values, dict)
+    assert set(result.values.keys()) == {"nested", "simple"}
+
+    # Nested ProteusVariable should be converted to float via mean
+    assert result.values["nested"] == 7.0  # mean of inner_var.mean() = (4.0 + 10.0) / 2
+    assert result.values["simple"] == 3.0  # mean of [1, 3, 5]
+
+
+def test_mean_empty_values():
+    """Test mean method with empty values (edge case)."""
+    x = ProteusVariable(dim_name="empty", values=[])
+
+    result = x.mean()
+
+    # Should return ProteusVariable with empty list
+    assert result.dim_name == "empty"
+    assert result.values == []
+
+
+def test_mean_single_value():
+    """Test mean method with single stochastic value."""
+    x = ProteusVariable(
+        dim_name="single",
+        values={"only": StochasticScalar([5.0])},
+    )
+
+    result = x.mean()
+
+    # Single value mean should be the value itself
+    assert result.dim_name == "single"
+    assert result.values["only"] == 5.0
+
+
+def test_mean_large_dataset():
+    """Test mean method with larger dataset to ensure robustness."""
+    import numpy as np
+
+    # Create larger arrays for testing
+    large_array_1 = np.random.RandomState(42).normal(100, 15, 1000)
+    large_array_2 = np.random.RandomState(123).exponential(50, 1000)
+
+    x = ProteusVariable(
+        dim_name="large",
+        values={
+            "normal": StochasticScalar(large_array_1),
+            "exponential": StochasticScalar(large_array_2),
+        },
+    )
+
+    result = x.mean()
+
+    # Verify the structure
+    assert result.dim_name == "large"
+    assert isinstance(result.values, dict)
+    assert set(result.values.keys()) == {"normal", "exponential"}
+
+    # Verify means are approximately correct (within tolerance due to randomness)
+    assert abs(result.values["normal"] - np.mean(large_array_1)) < 1e-10
+    assert abs(result.values["exponential"] - np.mean(large_array_2)) < 1e-10

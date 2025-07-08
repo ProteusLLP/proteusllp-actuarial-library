@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import os
 import typing as t
-from typing import Protocol
 
 import numpy as np
 import pandas as pd
@@ -12,31 +12,13 @@ import scipy.stats  # type: ignore
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
+from .types import NumericType, ProteusLike
 
 pio.templates.default = "none"
 
-
-class ProteusLike(Protocol):
-    """Protocol for ProteusVariable-like objects that support simulation operations."""
-
-    n_sims: int | None
-
-    def __getitem__(self, key: t.Any) -> t.Any:
-        """Support indexing/key lookup."""
-        ...
-
-    @t.overload
-    def sum(self) -> NumericType: ...
-    @t.overload
-    def sum(self, dimensions: list[str]) -> NumericType: ...
-
-    def sum(self, dimensions: list[str] | None = None) -> NumericType:
-        """Sum the variables across the specified dimensions."""
-        ...
-
-
-# Type alias for numeric types that can be contained in ProteusVariable
-NumericType = ProteusLike | StochasticScalar | FreqSevSims | float | int
+__all__ = [
+    "ProteusVariable",
+]
 
 
 class ProteusVariable(ProteusLike):
@@ -564,7 +546,7 @@ class ProteusVariable(ProteusLike):
     def mean(self) -> ProteusVariable:
         """Return the mean of the variable across the simulation dimension."""
 
-        def _mean_helper(value: NumericType) -> float:
+        def _mean_helper(value: NumericType) -> t.Any:
             """Helper function to compute mean for different value types."""
             if isinstance(value, FreqSevSims):
                 return value.aggregate().mean()
@@ -572,8 +554,16 @@ class ProteusVariable(ProteusLike):
                 return value.mean()
             if isinstance(value, ProteusVariable):
                 # For nested ProteusVariable, recursively compute mean
-                return float(value.mean())  # type: ignore[arg-type]
-            return float(value)  # type: ignore[arg-type]
+                return value.mean()
+            try:
+                # We don't know what the value so just try to just convert to float by
+                # EAFP and ignore the type error.
+                return float(value)  # type: ignore[arg-type]
+            except TypeError as error:
+                raise TypeError(
+                    f"{type(value).__name__} cannot be converted to float. "
+                    "Mean cannot be computed."
+                ) from error
 
         if isinstance(self.values, dict):
             return ProteusVariable(
@@ -615,8 +605,8 @@ class ProteusVariable(ProteusLike):
                 ],
             )
 
-    def __eq__(self, other: object) -> t.Self:  # type: ignore[override]
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a == b))
+    def __eq__(self, other: object) -> bool:
+        return t.cast(bool, self._binary_operation(other, lambda a, b: a == b))
 
     @classmethod
     def from_csv(
@@ -683,24 +673,30 @@ class ProteusVariable(ProteusLike):
         self, correlation_type: str = "spearman"
     ) -> list[list[float]]:
         """Compute correlation matrix between variables."""
-        # validate type
         correlation_type = correlation_type.lower()
-        assert correlation_type in ["linear", "spearman", "kendall"]
-        assert hasattr(self[0], "values")
+        if correlation_type not in ["linear", "spearman", "kendall"]:
+            raise ValueError(
+                f"Unsupported correlation type: {correlation_type}. "
+                "Supported types are 'linear', 'spearman', and 'kendall'."
+            )
+        if not hasattr(self, "values"):
+            raise TypeError(f"{type(self).__name__} does not have 'values' attribute.")
         n = len(self.values)
         result: list[list[float]] = [[0.0] * n] * n
         values = [self[i] for i in range(len(self.values))]
         if correlation_type.lower() in ["spearman", "kendall"]:
             # rank the variables first
             for i, value in enumerate(values):
-                values[i] = scipy.stats.rankdata(value.values)  # type: ignore[union-attr]
+                if not isinstance(value, (ProteusVariable | ProteusStochasticVariable)):
+                    raise TypeError(f"{value} not supported. Spearman and Kendall")
+                values[i] = scipy.stats.rankdata(value.values)
 
         if correlation_type == "kendall":
             for i, value1 in enumerate(values):
                 for j, value2 in enumerate(values):
                     result[i][j] = scipy.stats.kendalltau(value1, value2)
         else:
-            result = np.corrcoef(values).tolist()  # type: ignore[arg-type]
+            result = np.corrcoef(np.array(values)).tolist()
 
         return result
 
@@ -711,6 +707,8 @@ class ProteusVariable(ProteusLike):
             title (str | None): The title of the histogram. If None, no title is set.
 
         """
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
+            return
         fig = go.Figure(layout=go.Layout(title=title))
         labels = (
             self.values.keys()
@@ -725,12 +723,13 @@ class ProteusVariable(ProteusLike):
         fig.show()
 
     def show_cdf(self, title: str | None = None) -> None:
-        """Show a plot of the cumulative distribution function (cdf) of the
-        variable values.
+        """Plot the cumulative distribution function (cdf) of the variable values.
 
         Args:
-            title (str | None): The title of the cdf. If None, no title is set.
+            title: Optional title for the cdf. If None, no title is set.
         """
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
+            return
         fig = go.Figure(layout=go.Layout(title=title))
         labels = (
             self.values.keys()
@@ -741,10 +740,18 @@ class ProteusVariable(ProteusLike):
             self.values.values() if isinstance(self.values, dict) else self.values
         )
         for value, label in zip(values_iter, labels, strict=False):
+            if not isinstance(value, (ProteusVariable | ProteusStochasticVariable)):
+                raise TypeError(
+                    f"{type(value).__name__} does not support CDF plotting. "
+                )
+            if value.n_sims is None or value.n_sims <= 1:
+                raise ValueError(
+                    "CDF can only be plotted for variables with multiple simulations."
+                )
             fig.add_trace(
                 go.Scatter(
-                    x=np.sort(value.values),  # type: ignore[union-attr]
-                    y=np.arange(value.n_sims) / value.n_sims,  # type: ignore[union-attr,operator,arg-type]
+                    x=np.sort(np.array(value.values)),
+                    y=np.arange(value.n_sims) / value.n_sims,
                     name=label,
                 )
             )

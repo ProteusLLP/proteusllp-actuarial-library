@@ -11,14 +11,14 @@ from typing import Any
 
 # Third-party imports
 import numpy.typing as npt
-import scipy.stats.distributions as distributions
+import scipy.stats.distributions as distributions  # type: ignore [import-untyped]
 
+from . import ProteusVariable, StochasticScalar
 from ._maths import special
 from ._maths import xp as np
 
 # Local imports
 from .config import config
-from .variables import ProteusVariable, StochasticScalar
 
 
 class Copula(ABC):
@@ -38,7 +38,7 @@ class Copula(ABC):
 
         The marginal distribution of the samples will not necessarily be uniform.
         """
-        return NotImplemented  # To be implemented by subclasses
+        raise NotImplementedError("Subclasses must implement this method.")
 
     def apply(self, variables: ProteusVariable | list[StochasticScalar]) -> None:
         """Apply the copula to a list of variables.
