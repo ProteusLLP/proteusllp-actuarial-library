@@ -50,20 +50,20 @@ class CouplingGroup:
 class ProteusStochasticVariable(ProteusLike, ABC, NDArrayOperatorsMixin):
     """A class to represent a stochastic variable in a simulation."""
 
-    values: npt.NDArray[np.float64]
     n_sims: int | None = None
+    values: npt.NDArray[np.float64]
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize stochastic variable with new coupling group."""
         self.coupled_variable_group = CouplingGroup(self)
 
-    def all(self):
+    def all(self) -> bool:
         """Return True if all values are True."""
-        return self.values.all()
+        return t.cast(bool, self.values.all())
 
-    def any(self):
+    def any(self) -> bool:
         """Return True if any value is True."""
-        return self.values.any()
+        return t.cast(bool, self.values.any())
 
     @abstractmethod
     def upsample(self, n_sims: int) -> t.Self:

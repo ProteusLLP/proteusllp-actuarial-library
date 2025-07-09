@@ -7,12 +7,12 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go  # type: ignore
 import plotly.io as pio  # type: ignore
-import scipy.stats  # type: ignore
+import scipy.stats
 
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
-from .types import NumericType, ProteusLike
+from .types import Numeric, ProteusLike
 
 pio.templates.default = "none"
 
@@ -38,20 +38,17 @@ class ProteusVariable(ProteusLike):
 
     """
 
-    def __len__(self) -> int:
-        return len(self.values)
-
     def __init__(
         self,
         dim_name: str,
-        values: list[NumericType] | dict[str, NumericType],
+        values: dict[str, t.Self],
     ):
         """Initialize a ProteusVariable.
 
         Args:
             dim_name: Name of the dimension.
-            values: A union of dictionary and list which will contain numeric
-                variables.
+            values: A dictionary which will contain variables that must support
+                arithmetic operations.
         """
         self.dim_name: str = dim_name
         self.values = values
@@ -84,6 +81,9 @@ class ProteusVariable(ProteusLike):
                         self.n_sims = value.n_sims
                     else:
                         raise ValueError("Number of simulations do not match.")
+
+    def __len__(self) -> int:
+        return len(self.values)
 
     def __array_ufunc__(
         self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any
@@ -227,7 +227,7 @@ class ProteusVariable(ProteusLike):
         else:
             return ProteusVariable(self.dim_name, list(temp))
 
-    def sum(self, dimensions: list[str] | None = None) -> NumericType:
+    def sum(self, dimensions: list[str] | None = None) -> Numeric:
         """Sum the variables across the specified dimensions.
 
         Returns a new ProteusVariable with the summed values.
@@ -259,7 +259,7 @@ class ProteusVariable(ProteusLike):
         # else:
         #     return self
 
-    def __iter__(self) -> t.Iterator[NumericType]:
+    def __iter__(self) -> t.Iterator[Numeric]:
         if isinstance(self.values, dict):
             return iter(self.values.values())
         else:
@@ -337,17 +337,12 @@ class ProteusVariable(ProteusLike):
             f"Unsupported type for binary operation: {type(self.values).__name__}"
         )
 
+    # Arithmetic operations
     def __add__(self, other: t.Any) -> t.Self:
         return t.cast(t.Self, self._binary_operation(other, lambda a, b: a + b))
 
     def __radd__(self, other: t.Any) -> t.Self:
         return self.__add__(other)
-
-    def __mul__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a * b))
-
-    def __rmul__(self, other: t.Any) -> t.Self:
-        return self.__mul__(other)
 
     def __sub__(self, other: t.Any) -> t.Self:
         return t.cast(t.Self, self._binary_operation(other, lambda a, b: a - b))
@@ -355,37 +350,61 @@ class ProteusVariable(ProteusLike):
     def __rsub__(self, other: t.Any) -> t.Self:
         return t.cast(t.Self, self._binary_operation(other, lambda a, b: b - a))
 
+    def __mul__(self, other: t.Any) -> t.Self:
+        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a * b))
+
+    def __rmul__(self, other: t.Any) -> t.Self:
+        return self.__mul__(other)
+
     def __truediv__(self, other: t.Any) -> t.Self:
         return t.cast(t.Self, self._binary_operation(other, lambda a, b: a / b))
 
     def __rtruediv__(self, other: t.Any) -> t.Self:
         return t.cast(t.Self, self._binary_operation(other, lambda a, b: b / a))
 
-    def __ge__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a >= b))
+    def __pow__(self, other: t.Any) -> t.Self:
+        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a**b))
 
-    def __le__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a <= b))
+    def __rpow__(self, other: t.Any) -> t.Self:
+        return t.cast(t.Self, self._binary_operation(other, lambda a, b: b**a))
 
-    def __gt__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a > b))
+    def __neg__(self) -> t.Self:
+        """Return the negation of the variable."""
+        return t.cast(t.Self, self._binary_operation(self, lambda a, _: -a))
 
-    def __lt__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a < b))
+    # Comparison operations
+    def __lt__(self, other: t.Any) -> bool:
+        return t.cast(bool, self._binary_operation(other, lambda a, b: a < b))
 
-    def __rge__(self, other: t.Any) -> t.Self:
-        return self.__lt__(other)
-
-    def __rle__(self, other: t.Any) -> t.Self:
-        return self.__gt__(other)
-
-    def __rgt__(self, other: t.Any) -> t.Self:
-        return self.__le__(other)
-
-    def __rlt__(self, other: t.Any) -> t.Self:
+    def __rlt__(self, other: t.Any) -> bool:
         return self.__ge__(other)
 
-    def __getitem__(self, key: str | int) -> NumericType:
+    def __le__(self, other: t.Any) -> bool:
+        return t.cast(bool, self._binary_operation(other, lambda a, b: a <= b))
+
+    def __rle__(self, other: t.Any) -> bool:
+        return self.__gt__(other)
+
+    def __gt__(self, other: t.Any) -> bool:
+        return t.cast(bool, self._binary_operation(other, lambda a, b: a > b))
+
+    def __rgt__(self, other: t.Any) -> bool:
+        return self.__le__(other)
+
+    def __ge__(self, other: t.Any) -> bool:
+        return t.cast(bool, self._binary_operation(other, lambda a, b: a >= b))
+
+    def __rge__(self, other: t.Any) -> bool:
+        return self.__lt__(other)
+
+    # Equality operations
+    def __eq__(self, other: object) -> bool:
+        raise NotImplementedError
+
+    def __ne__(self, other: object) -> bool:
+        raise NotImplementedError
+
+    def __getitem__(self, key: str | int) -> Numeric:
         if isinstance(self.values, dict):
             if isinstance(key, int):
                 return self.values[list(self.values.keys())[key]]
@@ -398,8 +417,8 @@ class ProteusVariable(ProteusLike):
                 raise ValueError("Key must be an integer for a list.")
 
     def _get_value_at_sim_helper(
-        self, x: NumericType, sim_no: int | StochasticScalar
-    ) -> NumericType:
+        self, x: Numeric, sim_no: int | StochasticScalar
+    ) -> Numeric:
         """Helper method to get value at simulation for a single element."""
         if isinstance(x, ProteusVariable):
             return x.get_value_at_sim(sim_no)
@@ -546,7 +565,7 @@ class ProteusVariable(ProteusLike):
     def mean(self) -> ProteusVariable:
         """Return the mean of the variable across the simulation dimension."""
 
-        def _mean_helper(value: NumericType) -> t.Any:
+        def _mean_helper(value: Numeric) -> t.Any:
             """Helper function to compute mean for different value types."""
             if isinstance(value, FreqSevSims):
                 return value.aggregate().mean()
@@ -558,7 +577,7 @@ class ProteusVariable(ProteusLike):
             try:
                 # We don't know what the value so just try to just convert to float by
                 # EAFP and ignore the type error.
-                return float(value)  # type: ignore[arg-type]
+                return float(value)
             except TypeError as error:
                 raise TypeError(
                     f"{type(value).__name__} cannot be converted to float. "
@@ -604,9 +623,6 @@ class ProteusVariable(ProteusLike):
                     for value in self.values
                 ],
             )
-
-    def __eq__(self, other: object) -> bool:
-        return t.cast(bool, self._binary_operation(other, lambda a, b: a == b))
 
     @classmethod
     def from_csv(
@@ -684,19 +700,34 @@ class ProteusVariable(ProteusLike):
         n = len(self.values)
         result: list[list[float]] = [[0.0] * n] * n
         values = [self[i] for i in range(len(self.values))]
+
+        # Extract underlying arrays for correlation calculations
+        numeric_values = []
+        for value in values:
+            if hasattr(value, "values"):
+                numeric_values.append(value.values)
+            else:
+                numeric_values.append(value)
+
         if correlation_type.lower() in ["spearman", "kendall"]:
-            # rank the variables first
-            for i, value in enumerate(values):
+            # Check that all values are supported for ranking
+            for _, value in enumerate(values):
                 if not isinstance(value, (ProteusVariable | ProteusStochasticVariable)):
                     raise TypeError(f"{value} not supported. Spearman and Kendall")
-                values[i] = scipy.stats.rankdata(value.values)
 
-        if correlation_type == "kendall":
-            for i, value1 in enumerate(values):
-                for j, value2 in enumerate(values):
-                    result[i][j] = scipy.stats.kendalltau(value1, value2)
+            # rank the variables first
+            ranked_values = [scipy.stats.rankdata(arr) for arr in numeric_values]
+
+            # FIXME: The logic here is unfinished.
+            raise NotImplementedError
+
+        elif correlation_type == "kendall":
+            for i, value1 in enumerate(numeric_values):
+                for j, value2 in enumerate(numeric_values):
+                    statistic, _ = scipy.stats.kendalltau(value1, value2)
+                    result[i][j] = statistic
         else:
-            result = np.corrcoef(np.array(values)).tolist()
+            raise ValueError(f"Unsupported correlation type: {correlation_type}")
 
         return result
 
@@ -719,7 +750,7 @@ class ProteusVariable(ProteusLike):
             self.values.values() if isinstance(self.values, dict) else self.values
         )
         for value, label in zip(values_iter, labels, strict=False):
-            fig.add_trace(go.Histogram(x=value.values, name=label))  # type: ignore[union-attr]
+            fig.add_trace(go.Histogram(x=value.values, name=label))
         fig.show()
 
     def show_cdf(self, title: str | None = None) -> None:

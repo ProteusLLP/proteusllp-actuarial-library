@@ -1,10 +1,9 @@
 import dataclasses
-import numbers
 import typing as t
 
 from ._maths import xp as np
 
-NumericType = float | np.float64 | int | np.int32
+Numeric = t.Union[float, np.float64, int, np.int32]
 
 
 @dataclasses.dataclass
@@ -20,7 +19,7 @@ class NumericLike(t.Protocol):
     """Protocol for objects that support numeric operations (arithmetic, comparison, equality)."""
 
     # Arithmetic operations
-    def __add__(self, other: t.Self) -> t.Self: ...
+    def __add__(self, other: t.Any) -> t.Self: ...
     def __radd__(self, other: t.Any) -> t.Self: ...
     def __sub__(self, other: t.Any) -> t.Self: ...
     def __rsub__(self, other: t.Any) -> t.Self: ...
@@ -30,7 +29,7 @@ class NumericLike(t.Protocol):
     def __rtruediv__(self, other: t.Any) -> t.Self: ...
     def __pow__(self, other: t.Any) -> t.Self: ...
     def __rpow__(self, other: t.Any) -> t.Self: ...
-    def __neg__(self) -> t.Self: ...
+    def __neg__(self) -> t.Any: ...
 
     # Comparison operations
     def __lt__(self, other: t.Any) -> bool: ...
@@ -43,22 +42,22 @@ class NumericLike(t.Protocol):
     def __ne__(self, other: t.Any) -> bool: ...
 
 
-class ProteusLike(t.Protocol):
+class ProteusLike(NumericLike, t.Protocol):
     """Protocol for ProteusVariable-like objects that support simulation operations."""
 
     n_sims: int | None
-    values: list[numbers.Real] | dict[str, numbers.Real]
+    values: dict[str, t.Self]
 
     def __getitem__(self, key: t.Any) -> t.Any:
         """Support indexing/key lookup."""
         ...
 
     @t.overload
-    def sum(self) -> numbers.Real: ...
+    def sum(self) -> Numeric: ...
     @t.overload
-    def sum(self, dimensions: list[str]) -> numbers.Real: ...
+    def sum(self, dimensions: list[str]) -> Numeric: ...
 
-    def sum(self, dimensions: list[str] | None = None) -> numbers.Real:
+    def sum(self, dimensions: list[str] | None = None) -> Numeric:
         """Sum the variables across the specified dimensions."""
         ...
 
@@ -81,11 +80,11 @@ class ProteusLike(t.Protocol):
 class DistributionLike(t.Protocol):
     """Protocol for distribution-like objects."""
 
-    def cdf(self, x: ScalarType) -> ScalarType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute the cumulative distribution function at x."""
         ...
 
-    def invcdf(self, u: ScalarType) -> ScalarType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute the inverse cumulative distribution function at u."""
         ...
 

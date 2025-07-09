@@ -343,11 +343,14 @@ class LogLogistic(DistributionBase):
     Parameters:
         shape: Shape parameter.
         scale: Scale parameter.
-        loc: Location parameter (default 0).
+        loc: Location parameter (default 0.0).
     """
 
     def __init__(
-        self, shape: NumericLike, scale: NumericLike, loc: NumericLike = 0.0
+        self,
+        shape: NumericLike,
+        scale: NumericLike,
+        loc: NumericLike = 0.0,
     ) -> None:
         """Initialize log-logistic distribution.
 
@@ -448,7 +451,10 @@ class Gamma(DistributionBase):
     """
 
     def __init__(
-        self, alpha: NumericLike, theta: NumericLike, loc: NumericLike = 0
+        self,
+        alpha: NumericLike,
+        theta: NumericLike,
+        loc: NumericLike = 0.0,
     ) -> None:
         """Initialize gamma distribution.
 
@@ -484,7 +490,10 @@ class InverseGamma(DistributionBase):
     """
 
     def __init__(
-        self, alpha: NumericLike, theta: NumericLike, loc: NumericLike = 0
+        self,
+        alpha: NumericLike,
+        theta: NumericLike,
+        loc: NumericLike = 0.0,
     ) -> None:
         """Initialize inverse gamma distribution.
 
@@ -546,7 +555,10 @@ class Paralogistic(DistributionBase):
     """
 
     def __init__(
-        self, shape: NumericLike, scale: NumericLike, loc: NumericLike = 0.0
+        self,
+        shape: NumericLike,
+        scale: NumericLike,
+        loc: NumericLike = 0.0,
     ) -> None:
         """Initialize paralogistic distribution.
 
@@ -615,7 +627,10 @@ class InverseParalogistic(DistributionBase):
     """
 
     def __init__(
-        self, shape: NumericLike, scale: NumericLike, loc: NumericLike = 0.0
+        self,
+        shape: NumericLike,
+        scale: NumericLike,
+        loc: NumericLike = 0.0,
     ) -> None:
         super().__init__(shape=shape, scale=scale, loc=loc)
 

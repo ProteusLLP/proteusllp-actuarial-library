@@ -2,20 +2,17 @@ from __future__ import annotations
 
 import math
 import os
-from typing import TypeVar
+import typing as t
 
+import numpy.typing as npt
 import plotly.graph_objects as go  # type: ignore
-from numpy.typing import ArrayLike
 
 from ._maths import xp as np
 from .couplings import CouplingGroup, ProteusStochasticVariable
-from .types import ProteusLike
+from .types import NumericLike, ProteusLike
 
 Numeric = int | float
-NumberOrList = TypeVar("NumberOrList", Numeric, list[Numeric])
-NumericOrStochasticScalar = TypeVar(
-    "NumericOrStochasticScalar", Numeric, "StochasticScalar"
-)
+NumberOrList = t.TypeVar("NumberOrList", Numeric, list[Numeric])
 
 
 class StochasticScalar(ProteusStochasticVariable, ProteusLike):
@@ -23,11 +20,12 @@ class StochasticScalar(ProteusStochasticVariable, ProteusLike):
 
     coupled_variable_group: CouplingGroup
 
-    def __init__(self, values: ArrayLike):
+    def __init__(self, values: npt.ArrayLike[Numeric]) -> None:
         """Initialize a stochastic scalar.
 
         Args:
-            values: Array-like values for the scalar variable.
+            values: An array of values that describe the distribution for the scalar
+                variable.
         """
         super().__init__()
         assert hasattr(values, "__getitem__"), "Values must be an array-like object."
@@ -101,7 +99,7 @@ class StochasticScalar(ProteusStochasticVariable, ProteusLike):
         result[np.argsort(self.values)] = np.arange(self.n_sims)
         return StochasticScalar(result)
 
-    def tolist(self):
+    def tolist(self) -> list[NumericLike]:
         """Convert the values to a Python list."""
         return self.values.tolist()
 
@@ -109,7 +107,7 @@ class StochasticScalar(ProteusStochasticVariable, ProteusLike):
         """Sum the values of the variable across the simulation dimension."""
         return np.sum(self.values)
 
-    def mean(self) -> float:
+    def mean(self) -> Numeric:
         """Return the mean of the variable across the simulation dimension."""
         return np.mean(self.values)
 
@@ -144,45 +142,41 @@ class StochasticScalar(ProteusStochasticVariable, ProteusLike):
             return result
         return self.values[rank_positions[math.ceil(p / 100 * self.n_sims) :]].mean()
 
-    def upsample(self, n_sims: int) -> StochasticScalar:
+    def upsample(self, n_sims: int) -> t.Self:
         """Increase the number of simulations in the variable."""
         if n_sims == self.n_sims:
             return self
-        return StochasticScalar(self.values[np.arange(n_sims) % self.n_sims])
+        return type(self)(self.values[np.arange(n_sims) % self.n_sims])
 
-    def __repr__(self):
-        return f"StochasticScalar(values={self.values}\nn_sims={self.n_sims})"
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(values={self.values}\nn_sims={self.n_sims})"
 
     # implement the index referencing
-    def __getitem__(
-        self, index: NumericOrStochasticScalar
-    ) -> NumericOrStochasticScalar:
+    def __getitem__(self, index: Numeric) -> NumericLike:
         if isinstance(index, int | float):
             return self.values[int(index)]
-        elif isinstance(index, StochasticScalar):
-            result = StochasticScalar(self.values[index.values])
+        elif isinstance(index, type(self)):
+            result = type(self)(self.values[index.values])
             result.coupled_variable_group.merge(index.coupled_variable_group)
             return result
-        raise ValueError("Index must be an integer, StochasticScalar or numpy array.")
+        raise TypeError("Index must be an integer, StochasticScalar or numpy array.")
 
-    def show_histogram(self, title: str | None = None):
+    def show_histogram(self, title: str | None = None) -> None:
         """Show a histogram of the variable.
 
         Args:
-            title (str | None): Title of the histogram plot. Defaults to None.
-
+            title (optional): Title of the histogram plot. Defaults to None.
         """
         if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
             return
         fig = go.Figure(go.Histogram(x=self.values), layout={"title": title})
         fig.show()
 
-    def show_cdf(self, title: str | None = None):
+    def show_cdf(self, title: str | None = None) -> None:
         """Show a plot of the cumulative distribution function (cdf) of the variable.
 
         Args:
-            title (str | None): Title of the cdf plot. Defaults to None.
-
+            title (optional): Title of the cdf plot. Defaults to None.
         """
         if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
             return
@@ -194,6 +188,6 @@ class StochasticScalar(ProteusStochasticVariable, ProteusLike):
         fig.update_yaxes({"title": "Cumulative Probability"})
         fig.show()
 
-    def _reorder_sims(self, new_order) -> None:
+    def _reorder_sims(self, new_order: npt.NDArray[np.int64]) -> None:
         """Reorder the simulations in the variable."""
         self.values = self.values[new_order]

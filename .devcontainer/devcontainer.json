@@ -28,6 +28,9 @@
         "python.testing.unittestEnabled": false,
         "python.languageServer": "Pylance",
         "python.analysis.typeCheckingMode": "off",
+        "mypy-type-checker.interpreter": [
+          "/workspace/.venv/bin/python"
+        ],
         "mypy-type-checker.enable": true,
         "mypy-type-checker.cwd": "${workspaceFolder}",
         "mypy-type-checker.args": [
