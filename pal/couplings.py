@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import typing as t
 import weakref
-from abc import ABC, abstractmethod
 
 import numpy as np
 import numpy.typing as npt
-from numpy.lib.mixins import NDArrayOperatorsMixin
 
-from .types import ProteusLike
+from .types import ProteusLike, _NumericLikeNDArrayOperatorsMixin
 
 
 class CouplingGroup:
@@ -17,7 +15,7 @@ class CouplingGroup:
     variables: weakref.WeakSet[ProteusStochasticVariable]
 
     @property
-    def id(self):
+    def id(self) -> int:
         """Get the unique identifier for this coupling group."""
         return id(self)
 
@@ -32,7 +30,7 @@ class CouplingGroup:
             [variable]
         )
 
-    def merge(self, other: CouplingGroup):
+    def merge(self, other: CouplingGroup) -> None:
         """Merge another coupling group into this one.
 
         Args:
@@ -47,7 +45,7 @@ class CouplingGroup:
         return
 
 
-class ProteusStochasticVariable(ProteusLike, ABC, NDArrayOperatorsMixin):
+class ProteusStochasticVariable(ProteusLike, _NumericLikeNDArrayOperatorsMixin):
     """A class to represent a stochastic variable in a simulation."""
 
     n_sims: int | None = None
@@ -65,7 +63,6 @@ class ProteusStochasticVariable(ProteusLike, ABC, NDArrayOperatorsMixin):
         """Return True if any value is True."""
         return t.cast(bool, self.values.any())
 
-    @abstractmethod
     def upsample(self, n_sims: int) -> t.Self:
         """Upsample the variable to match the specified number of simulations.
 
@@ -75,7 +72,7 @@ class ProteusStochasticVariable(ProteusLike, ABC, NDArrayOperatorsMixin):
         Returns:
             A new instance of self with the upsampled values.
         """
+        raise NotImplementedError
 
-    @abstractmethod
-    def _reorder_sims(self, new_order: npt.NDArray[np.int64]):
-        pass
+    def _reorder_sims(self, new_order: npt.NDArray[np.int64]) -> None:
+        raise NotImplementedError

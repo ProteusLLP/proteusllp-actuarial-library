@@ -17,7 +17,7 @@ from ._maths import special
 from ._maths import xp as np
 from .config import config
 from .stochastic_scalar import StochasticScalar
-from .types import DistributionLike, NumericLike, NumericType
+from .types import DistributionLike, Numeric, NumericLike
 
 TOLERANCE = 1e-10  # Tolerance for numerical comparisons
 
@@ -30,11 +30,11 @@ class DistributionBase(DistributionLike):
         # Store parameters in a private dictionary.
         self._params: dict[str, NumericLike] = params
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute the cumulative distribution function at x."""
         raise NotImplementedError
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute the inverse cumulative distribution function at u."""
         raise NotImplementedError
 
@@ -68,7 +68,7 @@ class DistributionBase(DistributionLike):
         return StochasticScalar(self.invcdf(rng.uniform(size=n_sims)))
 
     @property
-    def _param_values(self) -> t.Generator[NumericType]:
+    def _param_values(self) -> t.Generator[Numeric]:
         # Yields parameter values; if a parameter is a StochasticScalar, its
         # 'values' are returned.
         for param in self._params.values():
@@ -92,15 +92,15 @@ class Poisson(DiscreteDistributionBase):
         mean: Mean number of events.
     """
 
-    def __init__(self, mean: NumericType) -> None:
+    def __init__(self, mean: Numeric) -> None:
         """Initialize Poisson distribution with mean parameter."""
         super().__init__(mean=mean)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         return special.pdtr(x, self._params["mean"])
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         return special.pdtrik(u, self._params["mean"])
 
@@ -114,8 +114,8 @@ class NegBinomial(DiscreteDistributionBase):
 
     def __init__(
         self,
-        n: NumericType,
-        p: NumericType,
+        n: Numeric,
+        p: Numeric,
     ) -> None:
         """Initialize negative binomial distribution.
 
@@ -125,12 +125,12 @@ class NegBinomial(DiscreteDistributionBase):
         """
         super().__init__(n=n, p=p)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         n, p = self._param_values
         return special.nbdtr(x, n, p)
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         n, p = self._param_values
         return special.nbdtri(u, n, p)
@@ -143,7 +143,7 @@ class NegBinomial(DiscreteDistributionBase):
 class Binomial(DiscreteDistributionBase):
     """Binomial Distribution."""
 
-    def __init__(self, n: NumericType, p: NumericType) -> None:
+    def __init__(self, n: Numeric, p: Numeric) -> None:
         """Initialize binomial distribution.
 
         Args:
@@ -152,12 +152,12 @@ class Binomial(DiscreteDistributionBase):
         """
         super().__init__(n=n, p=p)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         n, p = self._param_values
         return special.bdtr(x, n, p)
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         n, p = self._param_values
         return special.bdtri(u, n, p)
@@ -180,9 +180,9 @@ class HyperGeometric(DiscreteDistributionBase):
 
     def __init__(
         self,
-        ngood: NumericType,
-        nbad: NumericType,
-        population_size: NumericType,
+        ngood: Numeric,
+        nbad: Numeric,
+        population_size: Numeric,
     ) -> None:
         """Initialize hypergeometric distribution.
 
@@ -194,11 +194,11 @@ class HyperGeometric(DiscreteDistributionBase):
         # Note: population_size is stored with key 'n'
         super().__init__(ngood=ngood, nbad=nbad, n=population_size)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         raise NotImplementedError(f"CDF for {type(self).__name__} is not implemented.")
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         raise NotImplementedError(
             f"Inverse CDF for {type(self).__name__} is not implemented."
@@ -235,7 +235,7 @@ class GPD(DistributionBase):
         """
         super().__init__(shape=shape, scale=scale, loc=loc)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         shape, scale, loc = self._params.values()
         if shape <= TOLERANCE:
@@ -244,7 +244,7 @@ class GPD(DistributionBase):
             result = 1 - np.exp(-(x - loc) / scale)
         return result
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         shape, scale, loc = self._params.values()
         return (np.exp(np.log(1 - u) * (-shape)) - 1) * (scale / shape) + loc
@@ -265,10 +265,10 @@ class Burr(DistributionBase):
 
     def __init__(
         self,
-        power: NumericType,
-        shape: NumericType,
-        scale: NumericType,
-        loc: NumericType,
+        power: Numeric,
+        shape: Numeric,
+        scale: Numeric,
+        loc: Numeric,
     ) -> None:
         """Initialize Burr distribution.
 
@@ -280,12 +280,12 @@ class Burr(DistributionBase):
         """
         super().__init__(power=power, shape=shape, scale=scale, loc=loc)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         power, shape, scale, loc = self._params.values()
         return 1 - (1 + ((x - loc) / scale) ** power) ** (-shape)
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         power, shape, scale, loc = self._params.values()
         return scale * (((1 / (1 - u)) ** (1 / shape) - 1) ** (1 / power)) + loc
@@ -321,13 +321,13 @@ class Beta(DistributionBase):
         """
         super().__init__(alpha=alpha, beta=beta, scale=scale, loc=loc)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         alpha, beta, scale, loc = self._params.values()
         result = special.betainc(alpha, beta, (x - loc) / scale)
         return result
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         alpha, beta, scale, loc = self._params.values()
         result = special.betaincinv(alpha, beta, u) * scale + loc
@@ -361,13 +361,13 @@ class LogLogistic(DistributionBase):
         """
         super().__init__(shape=shape, scale=scale, loc=loc)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         shape, scale, loc = self._params.values()
         y = ((x - loc) / scale) ** shape
         result = y / (1 + y)
         return result
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         shape, scale, loc = self._params.values()
         result = scale * ((u / (1 - u)) ** (1 / shape)) + loc
         return result
@@ -385,12 +385,12 @@ class Normal(DistributionBase):
         """
         super().__init__(mu=mu, sigma=sigma)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         mu, sigma = self._param_values
         return special.ndtr((x - mu) / sigma)
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         mu, sigma = self._param_values
         return special.ndtri(u) * sigma + mu
@@ -408,12 +408,12 @@ class Logistic(DistributionBase):
         """
         super().__init__(mu=mu, sigma=sigma)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         mu, sigma = self._param_values
         return 1 / (1 + np.exp(-(x - mu) / sigma))
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         mu, sigma = self._param_values
         return mu + sigma * np.log(u / (1 - u))
@@ -431,13 +431,13 @@ class LogNormal(DistributionBase):
         """
         super().__init__(mu=mu, sigma=sigma)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         mu, sigma = self._param_values
         result = special.ndtr((np.log(x) - mu) / sigma)
         return result
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         mu, sigma = self._param_values
         return np.exp(special.ndtri(u) * sigma + mu)
@@ -465,12 +465,12 @@ class Gamma(DistributionBase):
         """
         super().__init__(alpha=alpha, theta=theta, loc=loc)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         alpha, theta, loc = self._param_values
         return special.gammainc(alpha, (x - loc) / theta)
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         alpha, theta, loc = self._param_values
         result = special.gammaincinv(alpha, u) * theta + loc
@@ -504,12 +504,12 @@ class InverseGamma(DistributionBase):
         """
         super().__init__(alpha=alpha, theta=theta, loc=loc)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         alpha, theta, loc = self._param_values
         return special.gammaincc(alpha, np.divide(theta, (x - loc)))
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         alpha, theta, loc = self._param_values
         return np.divide(theta, special.gammainccinv(alpha, u)) + loc
@@ -531,12 +531,12 @@ class Pareto(DistributionBase):
         """
         super().__init__(shape=shape, scale=scale)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         shape, scale = self._param_values
         return 1 - (x / scale) ** (-shape)
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         shape, scale = self._param_values
         return (1 - u) ** (-1 / shape) * scale
@@ -569,12 +569,12 @@ class Paralogistic(DistributionBase):
         """
         super().__init__(shape=shape, scale=scale, loc=loc)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         shape, scale, loc = self._params.values()
         y = 1 / (1 + ((x - loc) / scale) ** shape)
         return 1 - y**shape
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         shape, scale, loc = self._params.values()
         return loc + scale * (((1 - u) ** (-1 / shape)) - 1) ** (1 / shape)
 
@@ -601,12 +601,12 @@ class InverseBurr(DistributionBase):
     ) -> None:
         super().__init__(power=power, shape=shape, scale=scale, loc=loc)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         power, shape, scale, loc = self._params.values()
         y = ((x - loc) / scale) ** power
         return (y / (1 + y)) ** shape
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         power, shape, scale, loc = self._params.values()
         return (
             scale
@@ -634,7 +634,7 @@ class InverseParalogistic(DistributionBase):
     ) -> None:
         super().__init__(shape=shape, scale=scale, loc=loc)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         # Unpack parameters with explicit type annotations
         params = tuple(self._params.values())
         shape_val = params[0]
@@ -643,7 +643,7 @@ class InverseParalogistic(DistributionBase):
         y = ((x - loc_val) / scale_val) ** shape_val
         return (y / (1 + y)) ** shape_val
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         params = tuple(self._params.values())
         shape_val = params[0]
         scale_val = params[1]
@@ -669,13 +669,13 @@ class Weibull(DistributionBase):
         """
         super().__init__(shape=shape, scale=scale, loc=loc)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         shape, scale, loc = self._params.values()
         y = ((x - loc) / scale) ** shape
         return -np.expm1(-y)
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         shape, scale, loc = self._params.values()
         return loc + scale * (-np.log(1 - u)) ** (1 / shape)
@@ -696,12 +696,12 @@ class InverseWeibull(DistributionBase):
     def __init__(self, shape: float, scale: float, loc: float = 0) -> None:
         super().__init__(shape=shape, scale=scale, loc=loc)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         shape, scale, loc = self._params.values()
         y = np.float_power((x - loc) / scale, -shape)
         return np.exp(-y)
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         shape, scale, loc = self._params.values()
         return loc + scale * (-1 / np.log(u)) ** (1 / shape)
 
@@ -726,12 +726,12 @@ class Exponential(DistributionBase):
         """
         super().__init__(scale=scale, loc=loc)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         scale, loc = self._params.values()
         y = (x - loc) / scale
         return -np.expm1(-y)
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         scale, loc = self._params.values()
         return loc + scale * (-np.log(1 - u))
 
@@ -756,12 +756,12 @@ class Uniform(DistributionBase):
         """
         super().__init__(a=a, b=b)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         """Compute cumulative distribution function."""
         a, b = self._params.values()
         return (x - a) / (b - a)
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         """Compute inverse cumulative distribution function."""
         a, b = self._params.values()
         return a + (b - a) * u
@@ -781,12 +781,12 @@ class InverseExponential(DistributionBase):
     def __init__(self, scale: float, loc: float = 0) -> None:
         super().__init__(scale=scale, loc=loc)
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         scale, loc = self._params.values()
         y = scale * np.float_power((x - loc), -1)
         return np.exp(-y)
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         scale, loc = self._params.values()
         return loc - scale / np.log(u)
 
@@ -831,10 +831,10 @@ class DistributionGeneratorBase:
     def __init__(self, distribution: DistributionBase) -> None:
         self.this_distribution = distribution
 
-    def cdf(self, x: NumericType) -> NumericType:
+    def cdf(self, x: Numeric) -> Numeric:
         return self.this_distribution.cdf(x)
 
-    def invcdf(self, u: NumericType) -> NumericType:
+    def invcdf(self, u: Numeric) -> Numeric:
         return self.this_distribution.invcdf(u)
 
     def generate(
@@ -846,7 +846,7 @@ class DistributionGeneratorBase:
 class DiscreteDistributionGenerator(DistributionGeneratorBase):
     """Discrete distribution generator instantiated by name."""
 
-    def __init__(self, distribution_name: str, parameters: list[NumericType]) -> None:
+    def __init__(self, distribution_name: str, parameters: list[Numeric]) -> None:
         distribution_name = distribution_name.lower()
         if distribution_name not in AVAILABLE_DISCRETE_DISTRIBUTIONS:
             raise ValueError(
@@ -860,7 +860,7 @@ class DiscreteDistributionGenerator(DistributionGeneratorBase):
 class ContinuousDistributionGenerator(DistributionGeneratorBase):
     """Continuous distribution generator instantiated by name."""
 
-    def __init__(self, distribution_name: str, parameters: list[NumericType]) -> None:
+    def __init__(self, distribution_name: str, parameters: list[Numeric]) -> None:
         distribution_name = distribution_name.lower()
         if distribution_name not in AVAILABLE_CONTINUOUS_DISTRIBUTIONS:
             raise ValueError(

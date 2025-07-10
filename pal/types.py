@@ -3,7 +3,20 @@ import typing as t
 
 from ._maths import xp as np
 
-Numeric = t.Union[float, np.float64, int, np.int32]
+# Type annotation to tell mypy that NDArrayOperatorsMixin provides NumericLike interface
+if t.TYPE_CHECKING:
+    from numpy.lib.mixins import NDArrayOperatorsMixin
+
+    class _NumericLikeNDArrayOperatorsMixin(NDArrayOperatorsMixin, NumericLike):
+        """Type stub to tell mypy that NDArrayOperatorsMixin satisfies NumericLike."""
+
+        pass
+else:
+    pass
+
+Numeric = t.Union[float, int, np.floating[t.Any], np.integer[t.Any]]
+
+T_co = t.TypeVar("T_co", covariant=True)
 
 
 @dataclasses.dataclass
@@ -15,6 +28,7 @@ class Config:
     rng: np.random.Generator = np.random.default_rng(seed)
 
 
+@t.runtime_checkable
 class NumericLike(t.Protocol):
     """Protocol for objects that support numeric operations (arithmetic, comparison, equality)."""
 
@@ -42,22 +56,38 @@ class NumericLike(t.Protocol):
     def __ne__(self, other: t.Any) -> bool: ...
 
 
-class ProteusLike(NumericLike, t.Protocol):
+@t.runtime_checkable
+class SequenceLike(t.Protocol[T_co]):
+    """Protocol for sequence-like objects."""
+
+    def __getitem__(self, key: int) -> T_co: ...
+    def __len__(self) -> int: ...
+    def __iter__(self) -> t.Iterator[T_co]: ...
+
+
+@t.runtime_checkable
+class ArrayUfuncCapable(t.Protocol[T_co]):
+    """Protocol for objects that support numpy's __array_ufunc__ interface."""
+
+    def __array_ufunc__(
+        self, ufunc: t.Any, method: str, *inputs: t.Any, **kwargs: t.Any
+    ) -> T_co: ...
+
+
+class ProteusLike(
+    NumericLike, SequenceLike[NumericLike], ArrayUfuncCapable[t.Any], t.Protocol
+):
     """Protocol for ProteusVariable-like objects that support simulation operations."""
 
     n_sims: int | None
-    values: dict[str, t.Self]
-
-    def __getitem__(self, key: t.Any) -> t.Any:
-        """Support indexing/key lookup."""
-        ...
+    values: t.Any
 
     @t.overload
-    def sum(self) -> Numeric: ...
+    def sum(self) -> NumericLike: ...
     @t.overload
-    def sum(self, dimensions: list[str]) -> Numeric: ...
+    def sum(self, dimensions: list[str]) -> NumericLike: ...
 
-    def sum(self, dimensions: list[str] | None = None) -> Numeric:
+    def sum(self, dimensions: list[str] | None = None) -> NumericLike:
         """Sum the variables across the specified dimensions."""
         ...
 
