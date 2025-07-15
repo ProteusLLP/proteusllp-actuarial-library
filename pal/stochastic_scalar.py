@@ -19,7 +19,7 @@ class StochasticScalar(ProteusStochasticVariable):
 
     coupled_variable_group: CouplingGroup
 
-    def __init__(self, values: SequenceLike[float]) -> None:
+    def __init__(self, values: SequenceLike[Numeric]) -> None:
         """Initialize a stochastic scalar.
 
         Args:
@@ -173,11 +173,26 @@ class StochasticScalar(ProteusStochasticVariable):
     def __repr__(self) -> str:
         return f"{type(self).__name__}(values={self.values}\nn_sims={self.n_sims})"
 
-    # implement the index referencing
-    def __getitem__(self, index: Numeric | t.Self) -> Numeric | StochasticScalar:
+    # implement the index referencing with overloads to document different use cases
+    @t.overload
+    def __getitem__(self, index: int) -> NumericLike:
+        """Standard sequence indexing - returns a single numeric value."""
+        ...
+
+    @t.overload
+    def __getitem__(self, index: float) -> NumericLike:
+        """Float indexing (converted to int) - returns a single numeric value."""
+        ...
+
+    @t.overload
+    def __getitem__(self, index: StochasticScalar) -> NumericLike:
+        """Advanced indexing with another StochasticScalar - returns a new StochasticScalar."""
+        ...
+
+    def __getitem__(self, index: int | float | StochasticScalar) -> NumericLike:
         # handle an actual numeric index...
         if isinstance(index, int | float):
-            return t.cast(Numeric, self.values[int(index)])
+            return t.cast(NumericLike, self.values[int(index)])
 
         if isinstance(index, type(self)):
             result = type(self)(self.values[index.values])
@@ -186,7 +201,7 @@ class StochasticScalar(ProteusStochasticVariable):
 
         raise TypeError(
             f"Unexpected type {type(index).__name__}. Index must be an integer, "
-            "StochasticScalar or numpy array."
+            "float, or StochasticScalar."
         )
 
     def __len__(self) -> int:

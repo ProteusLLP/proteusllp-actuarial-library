@@ -1,20 +1,27 @@
 import dataclasses
 import typing as t
 
+import numpy.typing as npt
+from numpy.lib.mixins import NDArrayOperatorsMixin
+
 from ._maths import xp as np
 
 # Type annotation to tell mypy that NDArrayOperatorsMixin provides NumericLike interface
 if t.TYPE_CHECKING:
-    from numpy.lib.mixins import NDArrayOperatorsMixin
 
-    class _NumericLikeNDArrayOperatorsMixin(NDArrayOperatorsMixin, NumericLike):
+    class _NumericLikeNDArrayOperatorsMixin(NDArrayOperatorsMixin, _NumericProtocol):
         """Type stub to tell mypy that NDArrayOperatorsMixin satisfies NumericLike."""
 
         pass
 else:
-    pass
+    _NumericLikeNDArrayOperatorsMixin = NDArrayOperatorsMixin
 
-Numeric = t.Union[float, int, np.floating[t.Any], np.integer[t.Any]]
+Numeric = t.Union[float, int, np.number[t.Any]]
+
+# Type alias for scipy special functions and numpy random generators
+# These functions expect more restrictive types than our general Numeric type.
+# They don't accept complex numbers, _NumericProtocol objects, or general np.number types.
+ScipyNumeric = t.Union[float, int, np.floating, np.integer, np.bool_]
 
 T_co = t.TypeVar("T_co", covariant=True)
 
@@ -29,7 +36,7 @@ class Config:
 
 
 @t.runtime_checkable
-class NumericLike(t.Protocol):
+class _NumericProtocol(t.Protocol):
     """Protocol for objects that support numeric operations (arithmetic, comparison, equality)."""
 
     # Arithmetic operations
@@ -56,9 +63,17 @@ class NumericLike(t.Protocol):
     def __ne__(self, other: t.Any) -> bool: ...
 
 
+# Union type that includes both the basic numeric types and objects implementing the protocol
+NumericLike = t.Union[Numeric, _NumericProtocol]
+
+
 @t.runtime_checkable
 class SequenceLike(t.Protocol[T_co]):
-    """Protocol for sequence-like objects."""
+    """Protocol for sequence-like objects.
+
+    This follows the same interface as collections.abc.Sequence, which requires
+    __getitem__ to accept integer indices for positional access.
+    """
 
     def __getitem__(self, key: int) -> T_co: ...
     def __len__(self) -> int: ...
@@ -66,16 +81,22 @@ class SequenceLike(t.Protocol[T_co]):
 
 
 @t.runtime_checkable
-class ArrayUfuncCapable(t.Protocol[T_co]):
+class ArrayUfuncCapable(t.Protocol):
     """Protocol for objects that support numpy's __array_ufunc__ interface."""
 
     def __array_ufunc__(
-        self, ufunc: t.Any, method: str, *inputs: t.Any, **kwargs: t.Any
-    ) -> T_co: ...
+        self,
+        ufunc: t.Any,
+        method: t.Literal[
+            "__call__", "reduce", "reduceat", "accumulate", "outer", "at"
+        ],
+        *inputs: t.Any,
+        **kwargs: t.Any,
+    ) -> t.Any: ...
 
 
 class ProteusLike(
-    NumericLike, SequenceLike[NumericLike], ArrayUfuncCapable[t.Any], t.Protocol
+    _NumericProtocol, SequenceLike[NumericLike], ArrayUfuncCapable, t.Protocol
 ):
     """Protocol for ProteusVariable-like objects that support simulation operations."""
 
@@ -91,7 +112,7 @@ class ProteusLike(
         """Sum the variables across the specified dimensions."""
         ...
 
-    def mean(self) -> t.Self:
+    def mean(self) -> NumericLike:
         """Return the mean of the variable across the simulation dimension."""
         ...
 
@@ -110,12 +131,24 @@ class ProteusLike(
 class DistributionLike(t.Protocol):
     """Protocol for distribution-like objects."""
 
-    def cdf(self, x: Numeric) -> Numeric:
-        """Compute the cumulative distribution function at x."""
+    @t.overload
+    def cdf(self, x: ScipyNumeric) -> ScipyNumeric:
+        """Compute the cumulative distribution function at a single point."""
         ...
 
-    def invcdf(self, u: Numeric) -> Numeric:
-        """Compute the inverse cumulative distribution function at u."""
+    @t.overload
+    def cdf(self, x: npt.NDArray) -> npt.NDArray:
+        """Compute the cumulative distribution function at multiple points."""
+        ...
+
+    @t.overload
+    def invcdf(self, u: ScipyNumeric) -> ScipyNumeric:
+        """Compute the inverse cumulative distribution function at a single point."""
+        ...
+
+    @t.overload
+    def invcdf(self, u: npt.NDArray) -> npt.NDArray:
+        """Compute the inverse cumulative distribution function at multiple points."""
         ...
 
     def generate(

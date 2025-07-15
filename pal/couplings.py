@@ -49,7 +49,7 @@ class ProteusStochasticVariable(ProteusLike, _NumericLikeNDArrayOperatorsMixin):
     """A class to represent a stochastic variable in a simulation."""
 
     n_sims: int | None = None
-    values: npt.NDArray[np.float64]
+    values: npt.NDArray[np.floating]
 
     def __init__(self) -> None:
         """Initialize stochastic variable with new coupling group."""

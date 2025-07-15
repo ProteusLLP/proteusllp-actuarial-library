@@ -12,7 +12,7 @@ import scipy.stats
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
-from .types import Numeric, NumericLike, ProteusLike
+from .types import NumericLike, ProteusLike, _NumericProtocol
 
 pio.templates.default = "none"
 
@@ -39,14 +39,13 @@ class ProteusVariable(ProteusLike):
     """
 
     dim_name: str
-    # not really sure what this thing should hold?
-    values: dict[str, Numeric | ProteusLike]
+    values: dict[str, NumericLike]
     dimensions: list[str]
 
     def __init__(
         self,
         dim_name: str,
-        values: dict[str, Numeric | ProteusLike],
+        values: dict[str, NumericLike],
     ):
         """Initialize a ProteusVariable.
 
@@ -352,8 +351,10 @@ class ProteusVariable(ProteusLike):
             return self.values[key]
 
     def _get_value_at_sim_helper(
-        self, x: NumericLike, sim_no: int | StochasticScalar
-    ) -> ProteusLike:
+        self,
+        x: NumericLike,
+        sim_no: int | StochasticScalar,
+    ) -> NumericLike:
         """Helper method to get value at simulation for a single element."""
         if isinstance(x, ProteusVariable):
             return x.get_value_at_sim(sim_no)
@@ -373,7 +374,7 @@ class ProteusVariable(ProteusLike):
                 indices = sim_no.values.astype(int)
                 return StochasticScalar(x.values[indices])
 
-        if isinstance(x, NumericLike):
+        if isinstance(x, _NumericProtocol):
             # If x is a scalar, return it directly
             return x
 
@@ -618,7 +619,12 @@ class ProteusVariable(ProteusLike):
             return
         fig = go.Figure(layout=go.Layout(title=title))
         for label, value in self.values.items():
-            fig.add_trace(go.Histogram(x=value.values(), name=label))
+            try:
+                fig.add_trace(go.Histogram(x=value.values(), name=label))  # type: ignore[union-attr]
+            except AttributeError:
+                # not all values are ProteusVariable or StochasticScalar and therefore
+                # do not have a values() method.
+                pass
         fig.show()
 
     def show_cdf(self, title: str | None = None) -> None:
