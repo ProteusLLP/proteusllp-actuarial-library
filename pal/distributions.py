@@ -155,6 +155,7 @@ class Poisson(DiscreteDistributionBase):
     def __init__(self, mean: NumericOrArray) -> None:
         """Initialize Poisson distribution with mean parameter."""
         self._mean = mean
+        super().__init__(mean=mean)
 
     @t.override
     def cdf(self, x: NumericOrArray) -> ReturnType:
