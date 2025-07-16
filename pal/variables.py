@@ -92,7 +92,8 @@ class ProteusVariable(ProteusLike):
                     else:
                         raise ValueError("Number of simulations do not match.")
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Return the number of elements in the variable."""
         return len(self.values)
 
     def __array_ufunc__(
@@ -196,15 +197,37 @@ class ProteusVariable(ProteusLike):
         Returns:
             A new ProteusVariable with the function applied to its values.
         """
-        parsed_args = [
-            (list(arg.values.values()) if isinstance(arg, ProteusVariable) else arg)
-            for arg in args
-        ]
+        parsed_args = []
+        for arg in args:
+            if hasattr(arg, '__iter__') and hasattr(arg, 'values'):
+                # Stack the values as columns for ProteusVariable
+                value_arrays = [item.values if hasattr(item, 'values') else item for item in arg]
+                parsed_args.append(np.column_stack(value_arrays))
+            else:
+                parsed_args.append(arg)
+        
+        # For functions that need axis specification, add axis=1 to kwargs
+        if func.__name__ in ['cumsum', 'cumprod', 'diff'] and 'axis' not in kwargs:
+            kwargs['axis'] = 1
+        
         temp = func(*parsed_args, **kwargs)
-        return ProteusVariable(
-            self.dim_name,
-            {key: temp[i] for i, key in enumerate(self.values.keys())},
-        )
+        
+        # Handle both 1D and 2D results
+        if temp.ndim == 1:
+            # If result is 1D, distribute evenly across keys
+            n_keys = len(self.values.keys())
+            chunk_size = len(temp) // n_keys
+            return ProteusVariable(
+                self.dim_name,
+                {key: StochasticScalar(temp[i*chunk_size:(i+1)*chunk_size]) 
+                 for i, key in enumerate(self.values.keys())},
+            )
+        else:
+            # If result is 2D, use columns
+            return ProteusVariable(
+                self.dim_name,
+                {key: StochasticScalar(temp[:, i]) for i, key in enumerate(self.values.keys())},
+            )
 
     @t.overload
     def sum(self) -> StochasticScalar | FreqSevSims | float | int: ...
@@ -244,6 +267,7 @@ class ProteusVariable(ProteusLike):
         #     return self
 
     def __iter__(self) -> t.Iterator[NumericLike]:
+        """Iterate over the values in the variable."""
         return iter(self.values.values())
 
     def __repr__(self) -> str:

@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import math
-from typing import TypeVar, Union
+import os
+import typing as t
 
 import plotly.graph_objects as go  # type: ignore
 from numpy.typing import ArrayLike
 
 from ._maths import xp as np
 from .couplings import CouplingGroup, ProteusStochasticVariable
+from .types import Numeric, NumericLike, SequenceLike
 
-Numeric = Union[int, float]
-NumberOrList = TypeVar("NumberOrList", Numeric, list[Numeric])
-NumericOrStochasticScalar = TypeVar(
+NumberOrList = t.TypeVar("NumberOrList", Numeric, list[Numeric])
+NumericOrStochasticScalar = t.TypeVar(
     "NumericOrStochasticScalar", Numeric, "StochasticScalar"
 )
 NumberOrList = Numeric | list[Numeric]
@@ -22,6 +23,10 @@ class StochasticScalar(ProteusStochasticVariable):
 
     coupled_variable_group: CouplingGroup
 
+    # ===================
+    # DUNDER METHODS
+    # ===================
+
     def __init__(self, values: ArrayLike):
         """Initialize a stochastic scalar.
 
@@ -30,7 +35,10 @@ class StochasticScalar(ProteusStochasticVariable):
                 variable.
         """
         super().__init__()
-        assert hasattr(values, "__getitem__"), "Values must be an array-like object."
+
+        if not isinstance(values, SequenceLike):
+            raise TypeError(f"Values must be a sequence object. Got {type(values)}")
+
         if isinstance(values, StochasticScalar):
             self.values = values.values
             self.n_sims = values.n_sims
@@ -57,13 +65,30 @@ class StochasticScalar(ProteusStochasticVariable):
         # coupled to different variable groups.
         return id(self)
 
-    def __repr__(self):
-        return f"StochasticScalar(values={self.values}\nn_sims={self.n_sims})"
+    def __repr__(self) -> str:
+        try:
+            return f"{type(self).__name__}(values={self.values}, n_sims={self.n_sims})"
+        except AttributeError:
+            return f"{type(self).__name__}(values=..., n_sims=...)"
 
     def __array_ufunc__(
-        self, ufunc: np.ufunc, method: str, *inputs, **kwargs
-    ) -> StochasticScalar:
-        """Override the __array_ufunc__ method means that you can apply standard numpy functions"""
+        self,
+        ufunc: t.Any,
+        method: str,
+        *inputs: t.Any,
+        **kwargs: t.Any,
+    ) -> t.Any:
+        """Override the __array_ufunc__ method to apply standard numpy functions.
+
+        If there's a mix of different variable types in the inputs, delegate to the
+        more specialized variable type to handle the operation. Otherwise, extract
+        values from StochasticScalar objects and apply the ufunc directly.
+
+        Returns:
+            When delegating to another object's __array_ufunc__, the return type depends
+            on that object's implementation. When handling the operation directly,
+            returns a new StochasticScalar.
+        """
         # check if the input types to the function are types of ProteusVariables other than StochasticScalar
         var_not_stochastic_scalar = [
             type(x).__name__ == "ProteusVariable"
@@ -96,16 +121,32 @@ class StochasticScalar(ProteusStochasticVariable):
 
         return result
 
-    def __getitem__(
-        self, index: NumericOrStochasticScalar
-    ) -> NumericOrStochasticScalar:
-        if isinstance(index, (int, float)):
-            return self.values[int(index)]
-        elif isinstance(index, StochasticScalar):
-            result = StochasticScalar(self.values[index.values])
+    def __getitem__(self, index: int | float | StochasticScalar) -> NumericLike:
+        # handle an actual numeric index...
+        if isinstance(index, int | float):
+            return t.cast(NumericLike, self.values[int(index)])
+
+        if isinstance(index, type(self)):
+            result = type(self)(self.values[index.values])
             result.coupled_variable_group.merge(index.coupled_variable_group)
             return result
-        raise ValueError("Index must be an integer, StochasticScalar or numpy array.")
+
+        raise TypeError(
+            f"Unexpected type {type(index).__name__}. Index must be an integer, "
+            "float, or StochasticScalar."
+        )
+
+    def __len__(self) -> int:
+        """Return the number of simulations."""
+        return len(self.values)
+
+    def __iter__(self) -> t.Iterator[NumericLike]:
+        """Iterate over the values."""
+        return iter(self.values)
+
+    # ===================
+    # PUBLIC PROPERTIES
+    # ===================
 
     @property
     def ranks(self) -> StochasticScalar:
@@ -114,35 +155,43 @@ class StochasticScalar(ProteusStochasticVariable):
         result[np.argsort(self.values)] = np.arange(self.n_sims)
         return StochasticScalar(result)
 
-    def tolist(self):
-        return self.values.tolist()
+    # ===================
+    # PUBLIC METHODS
+    # ===================
 
-    def ssum(self) -> float:
+    def tolist(self) -> list[Numeric]:
+        """Convert the values to a Python list."""
+        return t.cast(list[Numeric], self.values.tolist())
+
+    def ssum(self) -> Numeric:
         """Sum the values of the variable across the simulation dimension."""
         return np.sum(self.values)
 
-    def mean(self) -> float:
+    def mean(self) -> Numeric:
         """Return the mean of the variable across the simulation dimension."""
         return np.mean(self.values)
 
-    def skew(self) -> float:
+    def skew(self) -> Numeric:
         """Return the coefficient of skewness of the variable across the simulation dimension."""
-        return float(np.mean((self.values - self.mean()) ** 3) / self.std() ** 3)
+        return np.mean((self.values - self.mean()) ** 3) / self.std() ** 3
 
-    def kurt(self) -> float:
+    def kurt(self) -> Numeric:
         """Return the kurtosis of the variable across the simulation dimension."""
-        return float(np.mean((self.values - self.mean()) ** 4) / self.std() ** 4)
+        return np.mean((self.values - self.mean()) ** 4) / self.std() ** 4
 
-    def std(self) -> float:
+    def std(self) -> Numeric:
         """Return the standard deviation of the variable across the simulation dimension."""
         return np.std(self.values)
 
-    def percentile(self, p: NumberOrList) -> NumberOrList:
+    def percentile(self, p: Numeric) -> Numeric:
         """Return the percentile of the variable across the simulation dimension."""
         return np.percentile(self.values, p)
 
     def tvar(self, p: NumberOrList) -> NumberOrList:
         """Return the tail value at risk (TVAR) of the variable."""
+        if self.n_sims is None:
+            raise ValueError("Cannot compute TVAR for an uninitialized variable.")
+
         # get the rank of the variable
         rank_positions = np.argsort(self.values)
         if isinstance(p, list):
@@ -154,38 +203,52 @@ class StochasticScalar(ProteusStochasticVariable):
                     ].mean()
                 )
             return result
-        return self.values[rank_positions[math.ceil(p / 100 * self.n_sims) :]].mean()
+        idx = math.ceil(p / 100 * self.n_sims)
+        result = self.values[rank_positions[idx:]].mean()
+        return t.cast(NumberOrList, result)
 
-    def upsample(self, n_sims: int) -> StochasticScalar:
+    def upsample(self, n_sims: int) -> t.Self:
         """Increase the number of simulations in the variable."""
+        if self.n_sims is None:
+            raise ValueError("Cannot upsample an uninitialized variable.")
         if n_sims == self.n_sims:
             return self
-        return StochasticScalar(self.values[np.arange(n_sims) % self.n_sims])
+        return type(self)(self.values[np.arange(n_sims) % self.n_sims])
 
-    def show_histogram(self, title: str | None = None):
+    def show_histogram(self, title: str | None = None) -> None:
         """Show a histogram of the variable.
 
         Args:
-            title (str | None): Title of the histogram plot. Defaults to None.
-
+            title (optional): Title of the histogram plot. Defaults to None.
         """
-        fig = go.Figure(go.Histogram(x=self.values), layout=dict(title=title))
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
+            return
+        fig = go.Figure(go.Histogram(x=self.values), layout={"title": title})
         fig.show()
 
-    def show_cdf(self, title: str | None = None):
+    def show_cdf(self, title: str | None = None) -> None:
         """Show a plot of the cumulative distribution function (cdf) of the variable.
 
         Args:
-            title (str | None): Title of the cdf plot. Defaults to None.
-
+            title (optional): Title of the cdf plot. Defaults to None.
         """
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
+            return
+
+        if self.n_sims is None:
+            raise ValueError("Cannot compute CDF for an uninitialized variable.")
+
         fig = go.Figure(
             go.Scatter(x=np.sort(self.values), y=np.arange(self.n_sims) / self.n_sims),
-            layout=dict(title=title),
+            layout={"title": title},
         )
-        fig.update_xaxes(dict(title="Value"))
-        fig.update_yaxes(dict(title="Cumulative Probability"))
+        fig.update_xaxes({"title": "Value"})
+        fig.update_yaxes({"title": "Cumulative Probability"})
         fig.show()
+
+    # ===================
+    # PRIVATE METHODS
+    # ===================
 
     def _reorder_sims(self, new_order) -> None:
         """Reorder the simulations in the variable."""
