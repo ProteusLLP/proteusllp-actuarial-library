@@ -7,9 +7,11 @@ from pal import copulas, distributions
 from pal.variables import ProteusVariable, StochasticScalar
 
 
-def copula_margins(copula_samples: list[StochasticScalar]):
+def copula_margins(copula_samples: list[StochasticScalar] | ProteusVariable):
     # check values are between 0 and 1
-    y = ProteusVariable("dim1", [(x >= 0) & (x <= 1) for x in copula_samples])
+    if isinstance(copula_samples, ProteusVariable):
+        copula_samples = list(copula_samples)
+    y = ProteusVariable("dim1", {f"margin_{i}": (x >= 0) & (x <= 1) for i, x in enumerate(copula_samples)})
 
     assert y.all()
 

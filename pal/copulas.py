@@ -58,12 +58,12 @@ class Copula(ABC):
         rng_generator = config.rng
         copula_samples_pv = ProteusVariable(
             dim_name="dim1",
-            values=[
-                StochasticScalar(sample)
-                for sample in self._generate_unnormalised(
+            values={
+                f"{type(self).__name__}_{i}": StochasticScalar(sample)
+                for i, sample in enumerate(self._generate_unnormalised(
                     n_sims=variables_list[0].n_sims, rng=rng_generator
-                )
-            ],
+                ))
+            },
         )
         copula_samples_list = [
             val for val in copula_samples_pv if isinstance(val, StochasticScalar)
@@ -142,7 +142,11 @@ class GaussianCopula(EllipticalCopula):
         samples = self._generate_unnormalised(n_sims, rng)
         uniform_samples = special.ndtr(samples)
         result = ProteusVariable(
-            "dim1", [StochasticScalar(sample) for sample in uniform_samples]
+            "dim1",
+            {
+                f"{type(self).__name__}_{i}": StochasticScalar(sample)
+                for i, sample in enumerate(uniform_samples)
+            },
         )
         for val in result:
             if isinstance(val, StochasticScalar):
@@ -191,7 +195,11 @@ class StudentsTCopula(EllipticalCopula):
         t_samples = self._generate_unnormalised(n_sims, rng)
         uniform_samples = distributions.t(self.dof).cdf(t_samples)
         return ProteusVariable(
-            "dim1", [StochasticScalar(sample) for sample in uniform_samples]
+            "dim1",
+            {
+                f"{type(self).__name__}_{i}": StochasticScalar(sample)
+                for i, sample in enumerate(uniform_samples)
+            },
         )
 
     def _generate_unnormalised(
@@ -238,7 +246,11 @@ class ArchimedeanCopula(Copula, ABC):
             rng = config.rng
         copula_samples = self.generator_inv(-self._generate_unnormalised(n_sims, rng))
         result = ProteusVariable(
-            "dim1", [StochasticScalar(sample) for sample in copula_samples]
+            "dim1",
+            {
+                f"{type(self).__name__}_{i}": StochasticScalar(sample)
+                for i, sample in enumerate(copula_samples)
+            },
         )
         for val in result:
             if isinstance(val, StochasticScalar):
@@ -257,18 +269,31 @@ class ArchimedeanCopula(Copula, ABC):
         u = rng.uniform(size=(n_vars, n_sims))
         # Generate samples from the latent distribution
         latent_samples = self.generate_latent_distribution(n_sims, rng)
+
+        # Add shape validation
+        if not (latent_samples.shape == (n_sims,)):
+            raise AssertionError(
+                f"Expected latent_samples shape ({n_sims},), got {latent_samples.shape}"
+            )
+
         # Calculate the copula samples
         return np.log(u) / latent_samples[np.newaxis]
 
 
 class ClaytonCopula(ArchimedeanCopula):
-    """A class to represent a Clayton copula."""
+    """A class to represent a Clayton copula.
+    
+    The Clayton copula is an Archimedean copula with parameter theta >= 0.
+    When theta = 0, the copula reduces to the independence copula.
+    As theta increases, the dependence structure becomes stronger.
+    """
 
     def __init__(self, theta: float, n: int) -> None:
         """Initialize a Clayton copula.
 
         Args:
-            theta: Copula parameter.
+            theta: Copula parameter (must be >= 0). When theta=0, represents 
+                   the independence copula.
             n: Number of variables.
         """
         if theta < 0:
@@ -277,7 +302,15 @@ class ClaytonCopula(ArchimedeanCopula):
         self.n = n
 
     def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
-        """Inverse generator function for Clayton copula."""
+        """Inverse generator function for Clayton copula.
+        
+        Args:
+            t: Input array values.
+            
+        Returns:
+            Array of inverse generator values. When theta=0, returns exp(-t),
+            corresponding to the independence copula.
+        """
         if self.theta == 0:
             return np.exp(-t)
         return (1 + t) ** (-1 / self.theta)
@@ -285,9 +318,17 @@ class ClaytonCopula(ArchimedeanCopula):
     def generate_latent_distribution(
         self, n_sims: int, rng: np.random.Generator
     ) -> npt.NDArray[np.floating]:
-        """Generate samples from the latent distribution."""
+        """Generate samples from the latent distribution.
+        
+        For Clayton copula, when theta=0, the copula reduces to the independence 
+        copula, and the latent distribution returns a constant value of 1.0 for
+        all simulations.
+        
+        Returns:
+            Array of shape (n_sims,) containing latent distribution samples.
+        """
         if self.theta == 0:
-            return np.array([1])
+            return np.ones(n_sims)
         return rng.gamma(1 / self.theta, size=n_sims)
 
 

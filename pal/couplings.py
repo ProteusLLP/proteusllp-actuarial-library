@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import typing as t
 import weakref
+from abc import ABC
 
 import numpy as np
 import numpy.typing as npt
-
-from .types import ProteusLike, _NumericLikeNDArrayOperatorsMixin
+from numpy.lib.mixins import NDArrayOperatorsMixin
 
 
 class CouplingGroup:
@@ -45,7 +45,7 @@ class CouplingGroup:
         return
 
 
-class ProteusStochasticVariable(ProteusLike, _NumericLikeNDArrayOperatorsMixin):
+class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
     """A class to represent a stochastic variable in a simulation."""
 
     n_sims: int | None = None
@@ -59,9 +59,11 @@ class ProteusStochasticVariable(ProteusLike, _NumericLikeNDArrayOperatorsMixin):
         """Return True if all values are True."""
         return t.cast(bool, self.values.all())
 
-    def any(self) -> bool:
-        """Return True if any value is True."""
-        return t.cast(bool, self.values.any())
+    def mean(self) -> float:
+        """Calculate the mean of the variable's values."""
+        if self.n_sims is None:
+            raise ValueError("n_sims must be set before calculating mean.")
+        return np.mean(self.values)
 
     def upsample(self, n_sims: int) -> t.Self:
         """Upsample the variable to match the specified number of simulations.

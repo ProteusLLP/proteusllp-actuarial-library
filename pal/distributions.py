@@ -154,24 +154,26 @@ class Poisson(DiscreteDistributionBase):
 
     def __init__(self, mean: NumericOrArray) -> None:
         """Initialize Poisson distribution with mean parameter."""
-        self._mean = mean
         super().__init__(mean=mean)
 
     @t.override
     def cdf(self, x: NumericOrArray) -> ReturnType:
         """Compute cumulative distribution function."""
         # scipy.special functions support array inputs despite restrictive type stubs
-        return special.pdtr(x, self._mean)
+        (mean,) = self._param_values
+        return special.pdtr(x, mean)
 
     @t.override
     def invcdf(self, u: NumericOrArray) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         # scipy.special functions support array inputs despite restrictive type stubs
-        return special.pdtrik(u, self._mean)
+        (mean,) = self._param_values
+        return special.pdtrik(u, mean)
 
     @t.override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
-        return StochasticScalar(rng.poisson(self._mean, n_sims))
+        (mean,) = self._param_values
+        return StochasticScalar(rng.poisson(mean, n_sims))
 
 
 class NegBinomial(DiscreteDistributionBase):
@@ -189,22 +191,23 @@ class NegBinomial(DiscreteDistributionBase):
             p: Probability of success.
         """
         super().__init__(n=n, p=p)
-        self._n = n
-        self._p = p
 
     @t.override
     def cdf(self, x: NumericOrArray) -> ReturnType:
         """Compute cumulative distribution function."""
-        return special.nbdtr(x, self._n, self._p)  # type: ignore[misc, arg-type]
+        n, p = self._param_values
+        return special.nbdtr(x, n, p)  # type: ignore[misc, arg-type]
 
     @t.override
     def invcdf(self, u: NumericOrArray) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        return special.nbdtri(u, self._n, self._p)  # type: ignore[misc, arg-type]
+        n, p = self._param_values
+        return special.nbdtri(u, n, p)  # type: ignore[misc, arg-type]
 
     @t.override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
-        return StochasticScalar(rng.negative_binomial(self._n, self._p, size=n_sims))
+        n, p = self._param_values
+        return StochasticScalar(rng.negative_binomial(n, p, size=n_sims))
 
 
 class Binomial(DiscreteDistributionBase):
@@ -220,22 +223,23 @@ class Binomial(DiscreteDistributionBase):
             p: Probability of success.
         """
         super().__init__(n=n, p=p)
-        self._n = n
-        self._p = p
 
     @t.override
     def cdf(self, x: NumericOrArray) -> ReturnType:
         """Compute cumulative distribution function."""
-        return special.bdtr(x, self._n, self._p)
+        n, p = self._param_values
+        return special.bdtr(x, n, p)
 
     @t.override
     def invcdf(self, u: NumericOrArray) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        return special.bdtri(u, self._n, self._p)
+        n, p = self._param_values
+        return special.bdtri(u, n, p)
 
     @t.override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
-        return StochasticScalar(rng.binomial(self._n, self._p, n_sims))
+        n, p = self._param_values
+        return StochasticScalar(rng.binomial(n, p, n_sims))
 
 
 class HyperGeometric(DiscreteDistributionBase):
@@ -264,9 +268,6 @@ class HyperGeometric(DiscreteDistributionBase):
         """
         # Note: population_size is stored with key 'n'
         super().__init__(ngood=ngood, nbad=nbad, n=population_size)
-        self._ngood = ngood
-        self._nbad = nbad
-        self._population_size = population_size
 
     @t.override
     def cdf(self, x: NumericOrArray) -> ReturnType:
@@ -282,8 +283,9 @@ class HyperGeometric(DiscreteDistributionBase):
 
     @t.override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+        ngood, nbad, population_size = self._param_values
         return StochasticScalar(
-            rng.hypergeometric(self._ngood, self._nbad, self._population_size, n_sims)
+            rng.hypergeometric(ngood, nbad, population_size, n_sims)
         )
 
 
@@ -317,10 +319,10 @@ class GPD(DistributionBase):
     def cdf(self, x: NumericOrArray) -> ReturnType:
         """Compute cumulative distribution function."""
         shape, scale, loc = self._params.values()
-        if shape <= TOLERANCE:
-            result = 1 - (1 + shape * (x - loc) / scale) ** (-1 / shape)
-        else:
+        if abs(shape) <= TOLERANCE:
             result = 1 - np.exp(-(x - loc) / scale)
+        else:
+            result = 1 - (1 + shape * (x - loc) / scale) ** (-1 / shape)
         return result
 
     @t.override

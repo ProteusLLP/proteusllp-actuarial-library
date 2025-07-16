@@ -9,16 +9,11 @@ import plotly.graph_objects as go  # type: ignore
 import plotly.io as pio  # type: ignore
 import scipy.stats
 
-from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
-from .stochastic_scalar import StochasticScalar
+from .stochastic_scalar import ProteusStochasticVariable, StochasticScalar
 from .types import NumericLike, ProteusLike, _NumericProtocol
 
 pio.templates.default = "none"
-
-__all__ = [
-    "ProteusVariable",
-]
 
 
 class ProteusVariable(ProteusLike):
@@ -29,9 +24,8 @@ class ProteusVariable(ProteusLike):
     for the creation of more complex variables that can be used in
     simulations.
 
-    Each level of a Proteus Variable can be a list or dictionary of scalar
-    variables or other ProteusVariable objects. Each level can have a different
-    number of elements.
+    Each level of a Proteus Variable can be a list or dictionary of scalar variables or
+    other ProteusVariable objects. Each level can have a different number of elements.
     Each level has a name that can be used to access the level in the hierarchy.
 
     Sub elements of a ProteusVariable can be accessed using the [] notation.
@@ -39,28 +33,42 @@ class ProteusVariable(ProteusLike):
     """
 
     dim_name: str
-    values: dict[str, NumericLike]
+    values: t.Mapping[str, NumericLike]
     dimensions: list[str]
 
     def __init__(
         self,
         dim_name: str,
-        values: dict[str, NumericLike],
+        values: t.Mapping[str, NumericLike],
     ):
         """Initialize a ProteusVariable.
 
         Args:
             dim_name: Name of the dimension.
-            values: A dictionary which will contain variables that must support
-                PAL variable operations.
+            values: A mapping (dict-like object) containing variables that must
+                support PAL variable operations. Keys will be sorted alphabetically
+                during initialization to ensure consistent ordering.
+
+        Raises:
+            TypeError: If values is not a mapping type.
         """
         self.dim_name: str = dim_name
+        # TODO: Clarify whether the values dict is intended to be mutable during the
+        # variable's lifetime, or if it should be treated as immutable after
+        # initialization. Consider using a frozen dict if immutability is desired.
         self.values = values
         self.dimensions = [dim_name]
         self._dimension_set = set(self.dimensions)
+        # Ensure that values is a mapping type
+        if not isinstance(values, t.Mapping):
+            raise TypeError(
+                f"Expected a mapping (dict-like) for 'values', got {type(values).__name__}"
+            )
         # check the number of simulations in each variable
         self.n_sims = None
-        for value in self:
+        for value in (
+            self.values.values() if isinstance(self.values, dict) else self.values
+        ):
             if isinstance(value, ProteusVariable):
                 if (
                     self._dimension_set.intersection(value._dimension_set)
@@ -80,11 +88,11 @@ class ProteusVariable(ProteusLike):
             elif isinstance(value, ProteusStochasticVariable):
                 if value.n_sims != self.n_sims:
                     if self.n_sims == 1:
-                        self.n_sims = value.n_sims
+                        self.n_sims == value.n_sims
                     else:
                         raise ValueError("Number of simulations do not match.")
 
-    def __len__(self) -> int:
+    def __len__(self):
         return len(self.values)
 
     def __array_ufunc__(
@@ -198,6 +206,11 @@ class ProteusVariable(ProteusLike):
             {key: temp[i] for i, key in enumerate(self.values.keys())},
         )
 
+    @t.overload
+    def sum(self) -> StochasticScalar | FreqSevSims | float | int: ...
+    @t.overload
+    def sum(self, dimensions: list[str]) -> ProteusVariable: ...
+
     def sum(self, dimensions: list[str] | None = None) -> NumericLike:
         """Sum the variables across the specified dimensions.
 
@@ -233,49 +246,8 @@ class ProteusVariable(ProteusLike):
     def __iter__(self) -> t.Iterator[NumericLike]:
         return iter(self.values.values())
 
-    def _binary_operation(
-        self,
-        other: object,
-        operation: t.Callable[[t.Any, t.Any], t.Any],
-    ) -> t.Any:
-        """Perform a binary operation between this ProteusVariable and another value.
-
-        This method applies a binary operation element-wise between this
-        ProteusVariable and another ProteusVariable or scalar value, preserving the
-        hierarchical structure.
-
-        Args:
-            other: The other operand, which can be another ProteusVariable or a
-                numeric value.
-            operation: A callable that takes two arguments and returns the result
-                of the operation.
-
-        Returns:
-            The result of the binary operation.
-
-        Raises:
-            ValueError: If the other operand is a ProteusVariable with mismatched
-                dimensions.
-        """
-        if isinstance(other, ProteusVariable):
-            # Assumed that the values and dimensions on self and other are homogeneous.
-            if self.dimensions != other.dimensions:
-                raise ValueError("Dimensions of the two variables do not match.")
-
-            # strange syntax here, but this is to ensure that the type of the
-            # returned ProteusVariable is the same as the type of self and therefore
-            # satisfies typechecks.
-            return type(self)(
-                dim_name=self.dim_name,
-                values={
-                    key: operation(value, other.values[key])
-                    for key, value in self.values.items()
-                },
-            )
-
-        raise TypeError(
-            f"Unsupported type for binary operation: {type(self.values).__name__}"
-        )
+    def __repr__(self) -> str:
+        return f"ProteusVariable(dim_name={self.dim_name}, values={self.values})"
 
     # Arithmetic operations
     def __add__(self, other: t.Any) -> t.Self:
@@ -339,49 +311,19 @@ class ProteusVariable(ProteusLike):
 
     # Equality operations
     def __eq__(self, other: object) -> bool:
-        raise NotImplementedError
+        return t.cast(bool, self._binary_operation(other, lambda a, b: a == b))
 
     def __ne__(self, other: object) -> bool:
-        raise NotImplementedError
+        return t.cast(bool, self._binary_operation(other, lambda a, b: a != b))
 
     def __getitem__(self, key: int | str) -> NumericLike:
+        # FIXME: This assumes that the ordering of the values never changes. At the
+        # moment, this is not true. The values are stored in mutable container!
         if isinstance(key, int):
-            return self.values[list(self.values.keys())[key]]
-        else:
+            return list(self.values.values())[key]
+        if isinstance(key, str):
             return self.values[key]
-
-    def _get_value_at_sim_helper(
-        self,
-        x: NumericLike,
-        sim_no: int | StochasticScalar,
-    ) -> NumericLike:
-        """Helper method to get value at simulation for a single element."""
-        if isinstance(x, ProteusVariable):
-            return x.get_value_at_sim(sim_no)
-
-        if isinstance(x, StochasticScalar) or isinstance(x, FreqSevSims):
-            # Handle StochasticScalar and FreqSevSims types
-            if x.n_sims is None:
-                # If n_sims is None, return the value directly
-                return x
-
-            if x.n_sims <= 1:
-                # If n_sims is 1 or None, return the value directly
-                return x
-
-            if isinstance(sim_no, StochasticScalar):
-                # Extract all values and return a new StochasticScalar with those indices
-                indices = sim_no.values.astype(int)
-                return StochasticScalar(x.values[indices])
-
-        if isinstance(x, _NumericProtocol):
-            # If x is a scalar, return it directly
-            return x
-
-        raise TypeError(
-            f"Unsupported type for value at simulation: {type(x).__name__}. "
-            "Expected ProteusVariable, StochasticScalar, FreqSevSims, or Numeric."
-        )
+        raise TypeError(f"Key must be an integer or string, got {type(key).__name__}.")
 
     def get_value_at_sim(self, sim_no: int | StochasticScalar) -> t.Self:
         """Get values at specific simulation number(s)."""
@@ -486,7 +428,7 @@ class ProteusVariable(ProteusLike):
         )
 
     def upsample(self, n_sims: int) -> ProteusVariable:
-        """Upsample the variable to the specified number of simulations."""
+        """Upsample the variable to the specified number of simulations"""
         if self.n_sims == n_sims:
             return self
         return ProteusVariable(
@@ -513,7 +455,7 @@ class ProteusVariable(ProteusLike):
 
         Note that only one dimensional variables are supported.
         """
-        df: pd.DataFrame = pd.read_csv(file_name)
+        df = pd.read_csv(file_name)
         pivoted_df = df.pivot(
             index=simulation_column, columns=dim_name, values=values_column
         )
@@ -552,59 +494,35 @@ class ProteusVariable(ProteusLike):
         Note that only one dimensional variables are supported.
         """
         result = cls(
-            dim_name=str(data.index.name) if data.index.name is not None else "Dim1",
+            dim_name=data.index.name,
             values={label: data[label] for label in data.index},
         )
         result.n_sims = 1
 
         return result
 
-    def __repr__(self) -> str:
-        return f"ProteusVariable(dim_name={self.dim_name}, values={self.values})"
-
     def correlation_matrix(
         self, correlation_type: str = "spearman"
     ) -> list[list[float]]:
         """Compute correlation matrix between variables."""
+        # validate type
         correlation_type = correlation_type.lower()
-        if correlation_type not in ["linear", "spearman", "kendall"]:
-            raise ValueError(
-                f"Unsupported correlation type: {correlation_type}. "
-                "Supported types are 'linear', 'spearman', and 'kendall'."
-            )
-        if not hasattr(self, "values"):
-            raise TypeError(f"{type(self).__name__} does not have 'values' attribute.")
+        assert correlation_type in ["linear", "spearman", "kendall"]
+        assert hasattr(self[0], "values")
         n = len(self.values)
         result: list[list[float]] = [[0.0] * n] * n
         values = [self[i] for i in range(len(self.values))]
-
-        # Extract underlying arrays for correlation calculations
-        numeric_values = []
-        for value in values:
-            if hasattr(value, "values"):
-                numeric_values.append(value.values)
-            else:
-                numeric_values.append(value)
-
         if correlation_type.lower() in ["spearman", "kendall"]:
-            # Check that all values are supported for ranking
-            for _, value in enumerate(values):
-                if not isinstance(value, (ProteusVariable | ProteusStochasticVariable)):
-                    raise TypeError(f"{value} not supported. Spearman and Kendall")
-
             # rank the variables first
-            ranked_values = [scipy.stats.rankdata(arr) for arr in numeric_values]
+            for i, value in enumerate(values):
+                values[i] = scipy.stats.rankdata(value.values)
 
-            # FIXME: The logic here is unfinished.
-            raise NotImplementedError
-
-        elif correlation_type == "kendall":
-            for i, value1 in enumerate(numeric_values):
-                for j, value2 in enumerate(numeric_values):
-                    statistic, _ = scipy.stats.kendalltau(value1, value2)
-                    result[i][j] = t.cast(float, statistic)
+        if correlation_type == "kendall":
+            for i, value1 in enumerate(values):
+                for j, value2 in enumerate(values):
+                    result[i][j] = scipy.stats.kendalltau(value1, value2)
         else:
-            raise ValueError(f"Unsupported correlation type: {correlation_type}")
+            result = np.corrcoef(values).tolist()
 
         return result
 
@@ -655,3 +573,56 @@ class ProteusVariable(ProteusLike):
         fig.update_xaxes(title_text="Value")
         fig.update_yaxes(title_text="Cumulative Probability")
         fig.show()
+
+    def _binary_operation(
+        self,
+        other: object,
+        operation: t.Callable[[t.Any, t.Any], t.Any],
+    ) -> t.Any:
+        if isinstance(other, ProteusVariable):
+            if self.dimensions != other.dimensions:
+                raise ValueError("Dimensions of the two variables do not match.")
+            return ProteusVariable(
+                dim_name=self.dim_name,
+                values={
+                    key: operation(value, other.values[key])
+                    for key, value in self.values.items()
+                },
+            )
+        return ProteusVariable(
+            dim_name=self.dim_name,
+            values={key: operation(value, other) for key, value in self.values.items()},
+        )
+
+    def _get_value_at_sim_helper(
+        self,
+        x: NumericLike,
+        sim_no: int | StochasticScalar,
+    ) -> NumericLike:
+        """Helper method to get value at simulation for a single element."""
+        if isinstance(x, ProteusVariable):
+            return x.get_value_at_sim(sim_no)
+
+        if isinstance(x, StochasticScalar) or isinstance(x, FreqSevSims):
+            # Handle StochasticScalar and FreqSevSims types
+            if x.n_sims is None:
+                # If n_sims is None, return the value directly
+                return x
+
+            if x.n_sims <= 1:
+                # If n_sims is 1 or None, return the value directly
+                return x
+
+            if isinstance(sim_no, StochasticScalar):
+                # Extract all values and return a new StochasticScalar with those indices
+                indices = sim_no.values.astype(int)
+                return StochasticScalar(x.values[indices])
+
+        if isinstance(x, _NumericProtocol):
+            # If x is a scalar, return it directly
+            return x
+
+        raise TypeError(
+            f"Unsupported type for value at simulation: {type(x).__name__}. "
+            "Expected ProteusVariable, StochasticScalar, FreqSevSims, or Numeric."
+        )

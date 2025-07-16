@@ -1,4 +1,5 @@
-import typing as t
+from collections.abc import Callable
+from typing import Union
 
 import numpy as np
 
@@ -9,9 +10,7 @@ from .stochastic_scalar import (
     StochasticScalar,
 )
 
-ProteusCompatibleTypes = t.Union[
-    "FreqSevSims", StochasticScalar, int, float, np.ndarray
-]
+ProteusCompatibleTypes = Union["FreqSevSims", StochasticScalar, int, float, np.ndarray]
 
 
 def _get_sims_of_events(n_events_by_sim: np.ndarray):
@@ -258,7 +257,7 @@ class FreqSevSims(ProteusStochasticVariable):
 
         return result
 
-    def __array_function__(self, func: t.Callable, types, args, kwargs):
+    def __array_function__(self, func: Callable, types, args, kwargs):
         if func not in (np.where, np.sum):
             raise NotImplementedError
         args = tuple(x.values if isinstance(x, FreqSevSims) else x for x in args)
