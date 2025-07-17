@@ -25,11 +25,13 @@ RUN pdm install --no-self
 # Development stage
 FROM deps AS dev
 
-# Install development tools
+# Install development tools and Node.js for pyright
 RUN apt-get update && apt-get install -y \
     git \
     curl \
     sudo \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for development
@@ -39,6 +41,9 @@ RUN useradd -m -s /bin/bash vscode && \
 
 # Install dev dependencies (test + dev groups)
 RUN pdm install -dG test -dG dev --no-self
+
+# Install pyright globally
+RUN npm install -g pyright
 
 # Switch to non-root user
 USER vscode

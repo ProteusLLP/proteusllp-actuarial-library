@@ -7,7 +7,7 @@ help:
 	@echo "  lint           - Run ruff linting"
 	@echo "  format         - Run ruff formatting"
 	@echo "  format-check   - Check ruff formatting without making changes"
-	@echo "  typecheck      - Run mypy type checking"
+	@echo "  typecheck      - Run pyright type checking"
 	@echo "  security       - Run bandit security scanning"
 	@echo "  deadcode       - Run vulture dead code detection"
 	@echo "  static-analysis - Run all static analysis tools"
@@ -31,7 +31,7 @@ format-check:
 
 .PHONY: typecheck
 typecheck:
-	pdm run mypy pal
+	pyright pal
 
 .PHONY: security
 security:

@@ -14,7 +14,7 @@
     "vscode": {
       "extensions": [
         "ms-python.python",
-        "ms-python.mypy-type-checker",
+        "ms-pyright.pyright",
         "charliermarsh.ruff",
         "ms-toolsai.jupyter"
       ],
@@ -28,14 +28,9 @@
         "python.testing.unittestEnabled": false,
         "python.languageServer": "Pylance",
         "python.analysis.typeCheckingMode": "off",
-        "mypy-type-checker.interpreter": [
-          "/workspace/.venv/bin/python"
-        ],
-        "mypy-type-checker.enable": true,
-        "mypy-type-checker.cwd": "${workspaceFolder}",
-        "mypy-type-checker.args": [
-          "--config-file=pyproject.toml"
-        ],
+        "pyright.enable": true,
+        "pyright.disableLanguageServices": false,
+        "pyright.disableOrganizeImports": false,
         "ruff.enable": true,
         "ruff.lint.enable": true,
         "ruff.format.enable": true,

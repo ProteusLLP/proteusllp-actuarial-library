@@ -66,7 +66,6 @@ dev = [
     "jupyter>=1.0",
     "jupyterlab>=4.0",
     "ruff>=0.8.0",
-    "mypy>=1.13.0",
     "bandit>=1.7.0",
     "vulture>=2.11",
 ]
@@ -109,20 +108,10 @@ convention = "google"
 "examples/*" = ["D"]       # Skip docstrings in examples
 "pal/__init__.py" = ["F403"] # Allow star imports in package init
 
-[tool.mypy]
-python_version = "3.13"
-packages = ["pal"]
-strict = true
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
 
 [tool.bandit]
-exclude_dirs = ["tests", "__pypackages__"]
-skips = ["B101"]  # Skip assert_used test
+exclude_dirs = ["tests", "__pypackages__"]  # Tests contain patterns that trigger false positives
+skips = ["B101"]  # Skip assert_used test - asserts are normal in tests
 
 [tool.vulture]
 paths = ["pal"]

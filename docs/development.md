@@ -171,6 +171,34 @@ Tests are organized in the `tests/` directory:
 - Each test function starts with `test_`
 - Use `pytest.ini` for configuration
 
+## Static Analysis and Type Checking
+
+### Type Checking with Pyright
+
+This project uses **Pyright** for static type checking instead of mypy. This decision was made for several reasons:
+
+**Why Pyright over mypy:**
+- **Performance**: Pyright handles large scientific computing dependencies (numpy, scipy, pandas) much faster than mypy
+- **Reliability**: mypy was experiencing crashes and hangs when analyzing scipy-stubs, causing CI failures
+- **Better scientific library support**: Pyright is more robust with complex type hierarchies found in scientific packages
+- **Modern TypeScript engine**: Faster incremental analysis and better error reporting
+
+**Configuration:**
+- Type checking settings are in [`pyrightconfig.json`](../pyrightconfig.json)
+- Strict mode is enabled for the `pal` module
+- VSCode integration via the `ms-pyright.pyright` extension
+
+**Running type checks:**
+```bash
+# Via Makefile
+make typecheck
+
+# Or directly
+pyright pal
+```
+
+**Key insight**: PDM uses `__pypackages__/3.13/lib` instead of traditional virtual environments. When you run `pdm run python`, it automatically adds this path to `sys.path`. Pyright needs `extraPaths` configured to find these packages and their type stubs (numpy, scipy, etc.).
+
 ## Container Architecture
 
 The project uses a multi-stage Dockerfile:
