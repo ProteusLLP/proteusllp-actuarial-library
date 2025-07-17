@@ -8,6 +8,8 @@ import numpy as np
 import numpy.typing as npt
 from numpy.lib.mixins import NDArrayOperatorsMixin
 
+from .types import ScipyNumeric
+
 
 class CouplingGroup:
     """A class to represent a group of variables that are coupled together."""
@@ -59,7 +61,7 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
         """Return True if all values are True."""
         return t.cast(bool, self.values.all())
 
-    def mean(self) -> float:
+    def mean(self) -> ScipyNumeric:
         """Calculate the mean of the variable's values."""
         if self.n_sims is None:
             raise ValueError("n_sims must be set before calculating mean.")
@@ -76,5 +78,5 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
         """
         raise NotImplementedError
 
-    def _reorder_sims(self, new_order: npt.NDArray[np.int64]) -> None:
+    def _reorder_sims(self, new_order: npt.NDArray[np.integer]) -> None:
         raise NotImplementedError

@@ -33,17 +33,12 @@ from ._maths import special
 from ._maths import xp as np
 from .config import config
 from .stochastic_scalar import StochasticScalar
+from .types import ScipyNumeric
 
 TOLERANCE = 1e-10  # Tolerance for numerical comparisons
 
-# Simple, fundamental types that work with both scipy.special and numpy.random
-# TODO: consolidate with type defs in types.py
-NumericType = float | int
-NumericOrArray = NumericType | npt.NDArray[t.Any]
-
-# Return type that matches what scipy.special actually returns
-# This covers scalars, numpy scalars, and numpy arrays
-ReturnType = NumericType | np.floating | np.integer | np.bool_ | npt.NDArray[t.Any]
+NumericOrArray = ScipyNumeric | npt.NDArray[t.Any]
+ReturnType = NumericOrArray
 
 
 class DistributionBase:

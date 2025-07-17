@@ -4,18 +4,17 @@ import math
 import os
 import typing as t
 
+import numpy.typing as npt
 import plotly.graph_objects as go  # type: ignore
-from numpy.typing import ArrayLike
 
 from ._maths import xp as np
 from .couplings import CouplingGroup, ProteusStochasticVariable
-from .types import Numeric, NumericLike, SequenceLike
+from .types import Numeric, NumericLike, ScipyNumeric, SequenceLike
 
-NumberOrList = t.TypeVar("NumberOrList", Numeric, list[Numeric])
+NumberOrList = Numeric | list[Numeric]
 NumericOrStochasticScalar = t.TypeVar(
     "NumericOrStochasticScalar", Numeric, "StochasticScalar"
 )
-NumberOrList = Numeric | list[Numeric]
 
 
 class StochasticScalar(ProteusStochasticVariable):
@@ -27,7 +26,7 @@ class StochasticScalar(ProteusStochasticVariable):
     # DUNDER METHODS
     # ===================
 
-    def __init__(self, values: ArrayLike):
+    def __init__(self, values: npt.ArrayLike):
         """Initialize a stochastic scalar.
 
         Args:
@@ -151,6 +150,8 @@ class StochasticScalar(ProteusStochasticVariable):
     @property
     def ranks(self) -> StochasticScalar:
         """Return the ranks of the variable."""
+        if self.n_sims is None:
+            raise ValueError("Cannot compute ranks for an uninitialized variable.")
         result = np.empty(self.n_sims, dtype=int)
         result[np.argsort(self.values)] = np.arange(self.n_sims)
         return StochasticScalar(result)
@@ -163,29 +164,29 @@ class StochasticScalar(ProteusStochasticVariable):
         """Convert the values to a Python list."""
         return t.cast(list[Numeric], self.values.tolist())
 
-    def ssum(self) -> Numeric:
+    def ssum(self) -> ScipyNumeric:
         """Sum the values of the variable across the simulation dimension."""
-        return np.sum(self.values)
+        return t.cast(ScipyNumeric, np.sum(self.values))
 
-    def mean(self) -> Numeric:
+    def mean(self) -> ScipyNumeric:
         """Return the mean of the variable across the simulation dimension."""
-        return np.mean(self.values)
+        return t.cast(ScipyNumeric, np.mean(self.values))
 
-    def skew(self) -> Numeric:
+    def skew(self) -> ScipyNumeric:
         """Return the coefficient of skewness of the variable across the simulation dimension."""
-        return np.mean((self.values - self.mean()) ** 3) / self.std() ** 3
+        return t.cast(ScipyNumeric, np.mean((self.values - self.mean()) ** 3) / self.std() ** 3)
 
-    def kurt(self) -> Numeric:
+    def kurt(self) -> ScipyNumeric:
         """Return the kurtosis of the variable across the simulation dimension."""
-        return np.mean((self.values - self.mean()) ** 4) / self.std() ** 4
+        return t.cast(ScipyNumeric, np.mean((self.values - self.mean()) ** 4) / self.std() ** 4)
 
-    def std(self) -> Numeric:
+    def std(self) -> ScipyNumeric:
         """Return the standard deviation of the variable across the simulation dimension."""
-        return np.std(self.values)
+        return t.cast(ScipyNumeric, np.std(self.values))
 
-    def percentile(self, p: Numeric) -> Numeric:
+    def percentile(self, p: ScipyNumeric) -> ScipyNumeric:
         """Return the percentile of the variable across the simulation dimension."""
-        return np.percentile(self.values, p)
+        return t.cast(ScipyNumeric, np.percentile(self.values, p))
 
     def tvar(self, p: NumberOrList) -> NumberOrList:
         """Return the tail value at risk (TVAR) of the variable."""
@@ -250,6 +251,6 @@ class StochasticScalar(ProteusStochasticVariable):
     # PRIVATE METHODS
     # ===================
 
-    def _reorder_sims(self, new_order) -> None:
+    def _reorder_sims(self, new_order: npt.NDArray[np.integer]) -> None:
         """Reorder the simulations in the variable."""
         self.values = self.values[new_order]

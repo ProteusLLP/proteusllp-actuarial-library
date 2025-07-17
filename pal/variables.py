@@ -1,19 +1,28 @@
+# standard library imports
 from __future__ import annotations
 
 import os
 import typing as t
 
+# third-party imports
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import plotly.graph_objects as go  # type: ignore
 import plotly.io as pio  # type: ignore
 import scipy.stats
 
+# local imports
+from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
-from .stochastic_scalar import ProteusStochasticVariable, StochasticScalar
+from .stochastic_scalar import StochasticScalar
 from .types import NumericLike, ProteusLike, _NumericProtocol
 
 pio.templates.default = "none"
+
+__all__ = [
+    "ProteusVariable",
+]
 
 
 class ProteusVariable(ProteusLike):
@@ -199,19 +208,21 @@ class ProteusVariable(ProteusLike):
         """
         parsed_args = []
         for arg in args:
-            if hasattr(arg, '__iter__') and hasattr(arg, 'values'):
+            if hasattr(arg, "__iter__") and hasattr(arg, "values"):
                 # Stack the values as columns for ProteusVariable
-                value_arrays = [item.values if hasattr(item, 'values') else item for item in arg]
+                value_arrays = [
+                    item.values if hasattr(item, "values") else item for item in arg
+                ]
                 parsed_args.append(np.column_stack(value_arrays))
             else:
                 parsed_args.append(arg)
-        
+
         # For functions that need axis specification, add axis=1 to kwargs
-        if func.__name__ in ['cumsum', 'cumprod', 'diff'] and 'axis' not in kwargs:
-            kwargs['axis'] = 1
-        
+        if func.__name__ in ["cumsum", "cumprod", "diff"] and "axis" not in kwargs:
+            kwargs["axis"] = 1
+
         temp = func(*parsed_args, **kwargs)
-        
+
         # Handle both 1D and 2D results
         if temp.ndim == 1:
             # If result is 1D, distribute evenly across keys
@@ -219,14 +230,19 @@ class ProteusVariable(ProteusLike):
             chunk_size = len(temp) // n_keys
             return ProteusVariable(
                 self.dim_name,
-                {key: StochasticScalar(temp[i*chunk_size:(i+1)*chunk_size]) 
-                 for i, key in enumerate(self.values.keys())},
+                {
+                    key: StochasticScalar(temp[i * chunk_size : (i + 1) * chunk_size])
+                    for i, key in enumerate(self.values.keys())
+                },
             )
         else:
             # If result is 2D, use columns
             return ProteusVariable(
                 self.dim_name,
-                {key: StochasticScalar(temp[:, i]) for i, key in enumerate(self.values.keys())},
+                {
+                    key: StochasticScalar(temp[:, i])
+                    for i, key in enumerate(self.values.keys())
+                },
             )
 
     @t.overload
@@ -518,7 +534,7 @@ class ProteusVariable(ProteusLike):
         Note that only one dimensional variables are supported.
         """
         result = cls(
-            dim_name=data.index.name,
+            dim_name=str(data.index.name),
             values={label: data[label] for label in data.index},
         )
         result.n_sims = 1
@@ -535,16 +551,20 @@ class ProteusVariable(ProteusLike):
         assert hasattr(self[0], "values")
         n = len(self.values)
         result: list[list[float]] = [[0.0] * n] * n
-        values = [self[i] for i in range(len(self.values))]
+        values: list[npt.NDArray[t.Any]] = [
+            t.cast(npt.NDArray[t.Any], self[i]) for i in range(len(self.values))
+        ]
         if correlation_type.lower() in ["spearman", "kendall"]:
             # rank the variables first
             for i, value in enumerate(values):
-                values[i] = scipy.stats.rankdata(value.values)
+                values[i] = scipy.stats.rankdata(value)
 
         if correlation_type == "kendall":
             for i, value1 in enumerate(values):
                 for j, value2 in enumerate(values):
-                    result[i][j] = scipy.stats.kendalltau(value1, value2)
+                    result[i][j] = float(
+                        scipy.stats.kendalltau(value1, value2).statistic
+                    )
         else:
             result = np.corrcoef(values).tolist()
 
