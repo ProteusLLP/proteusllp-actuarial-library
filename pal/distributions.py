@@ -117,7 +117,7 @@ class DistributionBase:
         # so invcdf also returns an array (SequenceLike) due to overload typing
         uniform_samples = rng.uniform(size=n_sims)
         result = self.invcdf(uniform_samples)
-        return StochasticScalar(t.cast(npt.NDArray[t.Any], result))
+        return StochasticScalar(result)
 
     @property
     def _param_values(
@@ -168,7 +168,9 @@ class Poisson(DiscreteDistributionBase):
     @t.override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
         (mean,) = self._param_values
-        return StochasticScalar(rng.poisson(mean, n_sims))
+        return StochasticScalar(
+            rng.poisson(t.cast(float | npt.NDArray[np.floating], mean), n_sims)
+        )
 
 
 class NegBinomial(DiscreteDistributionBase):
@@ -202,7 +204,13 @@ class NegBinomial(DiscreteDistributionBase):
     @t.override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
         n, p = self._param_values
-        return StochasticScalar(rng.negative_binomial(n, p, size=n_sims))
+        return StochasticScalar(
+            rng.negative_binomial(
+                t.cast(int | npt.NDArray[np.integer], n),
+                t.cast(float | npt.NDArray[np.floating], p),
+                size=n_sims,
+            )
+        )
 
 
 class Binomial(DiscreteDistributionBase):
@@ -234,7 +242,13 @@ class Binomial(DiscreteDistributionBase):
     @t.override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
         n, p = self._param_values
-        return StochasticScalar(rng.binomial(n, p, n_sims))
+        return StochasticScalar(
+            rng.binomial(
+                t.cast(int | npt.NDArray[np.integer], n),
+                t.cast(float | npt.NDArray[np.floating], p),
+                n_sims,
+            )
+        )
 
 
 class HyperGeometric(DiscreteDistributionBase):
@@ -280,7 +294,12 @@ class HyperGeometric(DiscreteDistributionBase):
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
         ngood, nbad, population_size = self._param_values
         return StochasticScalar(
-            rng.hypergeometric(ngood, nbad, population_size, n_sims)
+            rng.hypergeometric(
+                t.cast(int, ngood),
+                t.cast(int, nbad),
+                t.cast(int, population_size),
+                n_sims,
+            )
         )
 
 
@@ -404,15 +423,13 @@ class Beta(DistributionBase):
     def cdf(self, x: NumericOrArray) -> ReturnType:
         """Compute cumulative distribution function."""
         alpha, beta, scale, loc = self._params.values()
-        result = special.betainc(alpha, beta, (x - loc) / scale)  # type: ignore[misc, arg-type]
-        return result
+        return special.betainc(alpha, beta, (x - loc) / scale)  # type: ignore[return-type]
 
     @t.override
     def invcdf(self, u: NumericOrArray) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         alpha, beta, scale, loc = self._params.values()
-        result = special.betaincinv(alpha, beta, u) * scale + loc  # type: ignore[misc, arg-type]
-        return result
+        return special.betaincinv(alpha, beta, u) * scale + loc  # type: ignore[return-type]
 
 
 class LogLogistic(DistributionBase):
@@ -471,8 +488,9 @@ class Normal(DistributionBase):
     @t.override
     def cdf(self, x: NumericOrArray) -> ReturnType:
         """Compute cumulative distribution function."""
-        mu, sigma = self._param_values
-        return special.ndtr((x - mu) / sigma)
+        mu, sigma = self._params.values()
+        arg = (x - mu) / sigma
+        return special.ndtr(t.cast(npt.NDArray[np.floating] | float, arg))
 
     @t.override
     def invcdf(self, u: NumericOrArray) -> ReturnType:
@@ -558,7 +576,10 @@ class Gamma(DistributionBase):
     def cdf(self, x: NumericOrArray) -> ReturnType:
         """Compute cumulative distribution function."""
         alpha, theta, loc = self._param_values
-        return special.gammainc(alpha, (x - loc) / theta)
+        return special.gammainc(
+            t.cast(npt.NDArray[np.floating] | float, alpha),
+            t.cast(npt.NDArray[np.floating] | float, (x - loc) / theta),
+        )  # type: ignore[return-type]
 
     @t.override
     def invcdf(self, u: NumericOrArray) -> ReturnType:
@@ -570,7 +591,14 @@ class Gamma(DistributionBase):
     @t.override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
         alpha, theta, loc = self._param_values
-        result = StochasticScalar(rng.gamma(alpha, theta, size=n_sims) + loc)
+        result = StochasticScalar(
+            rng.gamma(
+                t.cast(float | npt.NDArray[np.floating], alpha),
+                t.cast(float | npt.NDArray[np.floating], theta),
+                size=n_sims,
+            )
+            + t.cast(float | npt.NDArray[np.floating], loc)
+        )
         return result
 
 

@@ -16,7 +16,7 @@ import scipy.stats
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
-from .types import NumericLike, ProteusLike, _NumericProtocol
+from .types import NumericLike, NumericProtocol, ProteusLike
 
 pio.templates.default = "none"
 
@@ -69,7 +69,7 @@ class ProteusVariable(ProteusLike):
         self.dimensions = [dim_name]
         self._dimension_set = set(self.dimensions)
         # Ensure that values is a mapping type
-        if not isinstance(values, t.Mapping):
+        if not isinstance(values, t.Mapping):  # type: ignore[redundant-expr]
             raise TypeError(
                 f"Expected a mapping (dict-like) for 'values', got {type(values).__name__}"
             )
@@ -97,7 +97,7 @@ class ProteusVariable(ProteusLike):
             elif isinstance(value, ProteusStochasticVariable):
                 if value.n_sims != self.n_sims:
                     if self.n_sims == 1:
-                        self.n_sims == value.n_sims
+                        self.n_sims = value.n_sims
                     else:
                         raise ValueError("Number of simulations do not match.")
 
@@ -206,7 +206,7 @@ class ProteusVariable(ProteusLike):
         Returns:
             A new ProteusVariable with the function applied to its values.
         """
-        parsed_args = []
+        parsed_args: list[t.Any] = []
         for arg in args:
             if hasattr(arg, "__iter__") and hasattr(arg, "values"):
                 # Stack the values as columns for ProteusVariable
@@ -361,12 +361,16 @@ class ProteusVariable(ProteusLike):
         # moment, this is not true. The values are stored in mutable container!
         if isinstance(key, int):
             return list(self.values.values())[key]
-        if isinstance(key, str):
+        if isinstance(key, str):  # type: ignore[redundant-expr]
             return self.values[key]
         raise TypeError(f"Key must be an integer or string, got {type(key).__name__}.")
 
-    def get_value_at_sim(self, sim_no: int | StochasticScalar) -> t.Self:
-        """Get values at specific simulation number(s)."""
+    def get_value_at_sim(self, sim_no: int | list[int]) -> ProteusVariable:
+        """Get values at specific simulation number(s).
+
+        Could either take a single int or an iterable of ints to return a new variable
+        with the values at those simulation numbers.
+        """
         # FIXME: this makes a bit of a mess of the interface. Would make sense to just
         # make use of the __getitem__ method instead. Since ProteusVariable is
         # SequenceLike, it should support indexing with integers and strings.
@@ -641,7 +645,7 @@ class ProteusVariable(ProteusLike):
     def _get_value_at_sim_helper(
         self,
         x: NumericLike,
-        sim_no: int | StochasticScalar,
+        sim_no: int | list[int],
     ) -> NumericLike:
         """Helper method to get value at simulation for a single element."""
         if isinstance(x, ProteusVariable):
@@ -662,7 +666,7 @@ class ProteusVariable(ProteusLike):
                 indices = sim_no.values.astype(int)
                 return StochasticScalar(x.values[indices])
 
-        if isinstance(x, _NumericProtocol):
+        if isinstance(x, NumericProtocol):
             # If x is a scalar, return it directly
             return x
 

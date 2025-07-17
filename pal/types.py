@@ -6,22 +6,21 @@ from numpy.lib.mixins import NDArrayOperatorsMixin
 
 from ._maths import xp as np
 
-# Type annotation to tell mypy that NDArrayOperatorsMixin provides NumericLike interface
-if t.TYPE_CHECKING:
-
-    class _NumericLikeNDArrayOperatorsMixin(NDArrayOperatorsMixin, _NumericProtocol):
-        """Type stub to tell mypy that NDArrayOperatorsMixin satisfies NumericLike."""
-
-        pass
-else:
-    _NumericLikeNDArrayOperatorsMixin = NDArrayOperatorsMixin
+__all___ = [
+    "Config",
+    "DistributionLike",
+    "Numeric",
+    "NumericLike",
+    "NumericLikeNDArrayOperatorsMixin",
+    "ScipyNumeric",
+]
 
 Numeric = t.Union[float, int, np.number[t.Any]]
 
 # Type alias for scipy special functions and numpy random generators
 # These functions expect more restrictive types than our general Numeric type.
 # They don't accept complex numbers, _NumericProtocol objects, or general np.number types.
-ScipyNumeric = t.Union[float, int, np.floating, np.integer, np.bool_]
+ScipyNumeric = t.Union[float, int, np.floating, np.integer]
 
 T_co = t.TypeVar("T_co", covariant=True)
 
@@ -36,7 +35,7 @@ class Config:
 
 
 @t.runtime_checkable
-class _NumericProtocol(t.Protocol):
+class NumericProtocol(t.Protocol):
     """Protocol for objects that support numeric operations (arithmetic, comparison, equality)."""
 
     # Arithmetic operations
@@ -64,7 +63,7 @@ class _NumericProtocol(t.Protocol):
 
 
 # Union type that includes both the basic numeric types and objects implementing the protocol
-NumericLike = t.Union[Numeric, _NumericProtocol]
+NumericLike = t.Union[Numeric, NumericProtocol]
 
 
 @t.runtime_checkable
@@ -96,7 +95,7 @@ class ArrayUfuncCapable(t.Protocol):
 
 
 class ProteusLike(
-    _NumericProtocol, SequenceLike[NumericLike], ArrayUfuncCapable, t.Protocol
+    NumericProtocol, SequenceLike[NumericLike], ArrayUfuncCapable, t.Protocol
 ):
     """Protocol for ProteusVariable-like objects that support simulation operations."""
 
@@ -137,7 +136,7 @@ class DistributionLike(t.Protocol):
         ...
 
     @t.overload
-    def cdf(self, x: npt.NDArray) -> npt.NDArray:
+    def cdf(self, x: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Compute the cumulative distribution function at multiple points."""
         ...
 
@@ -147,7 +146,7 @@ class DistributionLike(t.Protocol):
         ...
 
     @t.overload
-    def invcdf(self, u: npt.NDArray) -> npt.NDArray:
+    def invcdf(self, u: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Compute the inverse cumulative distribution function at multiple points."""
         ...
 
@@ -164,3 +163,14 @@ class DistributionLike(t.Protocol):
             Generated samples.
         """
         ...
+
+
+# Type annotation to tell mypy that NDArrayOperatorsMixin provides NumericLike interface
+if t.TYPE_CHECKING:
+
+    class NumericLikeNDArrayOperatorsMixin(NDArrayOperatorsMixin, NumericProtocol):
+        """Type stub to tell mypy that NDArrayOperatorsMixin satisfies NumericLike."""
+
+        pass
+else:
+    NumericLikeNDArrayOperatorsMixin = NDArrayOperatorsMixin

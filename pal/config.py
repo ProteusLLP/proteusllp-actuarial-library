@@ -2,7 +2,7 @@ import logging
 import logging.config
 import os
 
-from .types import Config
+from pal.types import Config
 
 logging.config.fileConfig(
     os.path.join(os.path.dirname(__file__), "..", "logging.ini"),
