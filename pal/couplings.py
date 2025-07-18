@@ -78,5 +78,5 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
         """
         raise NotImplementedError
 
-    def _reorder_sims(self, new_order: npt.NDArray[np.integer]) -> None:
+    def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
         raise NotImplementedError

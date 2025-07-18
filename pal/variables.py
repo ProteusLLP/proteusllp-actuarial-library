@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import typing as t
+from numbers import Number
 
 # third-party imports
 import numpy as np
@@ -16,7 +17,7 @@ import scipy.stats
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
-from .types import NumericLike, NumericProtocol, ProteusLike
+from .types import NumericLike, ProteusLike
 
 pio.templates.default = "none"
 
@@ -365,11 +366,15 @@ class ProteusVariable(ProteusLike):
             return self.values[key]
         raise TypeError(f"Key must be an integer or string, got {type(key).__name__}.")
 
-    def get_value_at_sim(self, sim_no: int | list[int]) -> ProteusVariable:
+    def get_value_at_sim(self, sim_no: NumericLike | list[int]) -> ProteusVariable:
         """Get values at specific simulation number(s).
 
-        Could either take a single int or an iterable of ints to return a new variable
-        with the values at those simulation numbers.
+        Args:
+            sim_no: Simulation index(es) to extract. Can be a single numeric value,
+                    a list of integers, or a NumericLike object such as StochasticScalar.
+
+        Returns:
+            A new ProteusVariable with values at the specified simulation indices.
         """
         # FIXME: this makes a bit of a mess of the interface. Would make sense to just
         # make use of the __getitem__ method instead. Since ProteusVariable is
@@ -499,18 +504,21 @@ class ProteusVariable(ProteusLike):
 
         Note that only one dimensional variables are supported.
         """
-        df = pd.read_csv(file_name)
+        # Type ignore: pandas-stubs has complex overloads causing Pyright to report
+        # the function signature as "partially unknown" despite correct usage
+        df: pd.DataFrame = pd.read_csv(file_name)  # type: ignore[misc]
         pivoted_df = df.pivot(
             index=simulation_column, columns=dim_name, values=values_column
         )
         count = df[dim_name].value_counts()
-        pivoted_df.sort_index(inplace=True)
+        # Type ignore: pandas-stubs overloads cause "partially unknown" warnings
+        pivoted_df.sort_index(inplace=True)  # type: ignore[misc]
 
         result = cls(
             dim_name,
             {
-                str(label): StochasticScalar(pivoted_df[label].values[: count[label]])
-                for label in df[dim_name].unique()
+                str(label): StochasticScalar(pivoted_df[label].values[: count[label]])  # type: ignore[misc]
+                for label in df[dim_name].unique()  # type: ignore[misc]
             },
         )
         result.n_sims = max(count)
@@ -539,7 +547,9 @@ class ProteusVariable(ProteusLike):
         """
         result = cls(
             dim_name=str(data.index.name),
-            values={label: data[label] for label in data.index},
+            values={
+                str(label): t.cast(NumericLike, data[label]) for label in data.index
+            },
         )
         result.n_sims = 1
 
@@ -586,12 +596,14 @@ class ProteusVariable(ProteusLike):
         fig = go.Figure(layout=go.Layout(title=title))
         for label, value in self.values.items():
             try:
-                fig.add_trace(go.Histogram(x=value.values(), name=label))  # type: ignore[union-attr]
+                # Type ignore: plotly-stubs has incomplete type information
+                fig.add_trace(go.Histogram(x=value.values(), name=label))  # type: ignore[union-attr,misc]
             except AttributeError:
                 # not all values are ProteusVariable or StochasticScalar and therefore
                 # do not have a values() method.
                 pass
-        fig.show()
+        # Type ignore: plotly-stubs has incomplete type information
+        fig.show()  # type: ignore[misc]
 
     def show_cdf(self, title: str | None = None) -> None:
         """Plot the cumulative distribution function (cdf) of the variable values.
@@ -611,16 +623,20 @@ class ProteusVariable(ProteusLike):
                 raise ValueError(
                     "CDF can only be plotted for variables with multiple simulations."
                 )
-            fig.add_trace(
+            # Type ignore: plotly-stubs has incomplete type information
+            fig.add_trace(  # type: ignore[misc]
                 go.Scatter(
                     x=np.sort(np.array(value.values)),
                     y=np.arange(value.n_sims) / value.n_sims,
                     name=label,
                 )
             )
-        fig.update_xaxes(title_text="Value")
-        fig.update_yaxes(title_text="Cumulative Probability")
-        fig.show()
+        # Type ignore: plotly-stubs has incomplete type information
+        fig.update_xaxes(title_text="Value")  # type: ignore[misc]
+        # Type ignore: plotly-stubs has incomplete type information
+        fig.update_yaxes(title_text="Cumulative Probability")  # type: ignore[misc]
+        # Type ignore: plotly-stubs has incomplete type information
+        fig.show()  # type: ignore[misc]
 
     def _binary_operation(
         self,
@@ -645,7 +661,7 @@ class ProteusVariable(ProteusLike):
     def _get_value_at_sim_helper(
         self,
         x: NumericLike,
-        sim_no: int | list[int],
+        sim_no: NumericLike | list[int],
     ) -> NumericLike:
         """Helper method to get value at simulation for a single element."""
         if isinstance(x, ProteusVariable):
@@ -666,11 +682,21 @@ class ProteusVariable(ProteusLike):
                 indices = sim_no.values.astype(int)
                 return StochasticScalar(x.values[indices])
 
-        if isinstance(x, NumericProtocol):
-            # If x is a scalar, return it directly
+            # Handle the main case: extract value at specific simulation index
+            if isinstance(sim_no, int):
+                return x.values[sim_no]
+
+            if isinstance(sim_no, list):
+                return StochasticScalar(x.values[sim_no])
+
+            return x
+
+        if isinstance(x, Number):
+            # If x is a numeric type, return it directly
             return x
 
         raise TypeError(
-            f"Unsupported type for value at simulation: {type(x).__name__}. "
-            "Expected ProteusVariable, StochasticScalar, FreqSevSims, or Numeric."
+            f"Unsupported type for value at simulation: {type(x).__name__}.\n"
+            f"Value: {x}\n"
+            f"Expected one of: ProteusVariable, StochasticScalar, FreqSevSims, or Number."
         )

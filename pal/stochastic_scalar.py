@@ -9,7 +9,7 @@ import plotly.graph_objects as go  # type: ignore
 
 from ._maths import xp as np
 from .couplings import CouplingGroup, ProteusStochasticVariable
-from .types import Numeric, NumericLike, ScipyNumeric, SequenceLike
+from .types import Numeric, NumericLike, ScipyNumeric
 
 NumberOrList = Numeric | list[Numeric]
 NumericOrStochasticScalar = t.TypeVar(
@@ -35,27 +35,30 @@ class StochasticScalar(ProteusStochasticVariable):
         """
         super().__init__()
 
-        if not isinstance(values, SequenceLike):
-            raise TypeError(f"Values must be a sequence object. Got {type(values)}")
-
         if isinstance(values, StochasticScalar):
             self.values = values.values
             self.n_sims = values.n_sims
             self.coupled_variable_group.merge(values.coupled_variable_group)
-        else:
-            if isinstance(values, list):
-                self.values = np.array(values)
-                self.n_sims = len(values)
-            elif isinstance(values, np.ndarray):
-                if values.ndim == 1:
-                    self.values = values
-                    self.n_sims = len(values)
-                else:
-                    raise ValueError("Values must be a 1D array.")
-            else:
-                raise ValueError(
-                    "Values must be a list or numpy array. Found " + str(type(values))
-                )
+            return
+
+        if isinstance(values, list):
+            # Type ignore: Generic list type inference limitation
+            self.values = np.array(values)  # type: ignore[misc]
+            self.n_sims = len(values)  # type: ignore[misc]
+            return
+
+        if isinstance(values, np.ndarray):
+            if values.ndim == 1:
+                self.values = values
+                # Type ignore: Generic array type inference limitation
+                self.n_sims = len(values)  # type: ignore[misc]
+                return
+            raise ValueError("Values must be a 1D array.")
+
+        # Type ignore: Generic ArrayLike type inference limitation
+        raise TypeError(
+            "Type of values must be a sequence or array. Found " + type(values).__name__
+        )  # type: ignore[misc]
 
     def __hash__(self) -> int:
         # FIXME: this hash function is not robust - defining a hash implies that this
@@ -126,7 +129,9 @@ class StochasticScalar(ProteusStochasticVariable):
             return t.cast(NumericLike, self.values[int(index)])
 
         if isinstance(index, type(self)):
-            result = type(self)(self.values[index.values])
+            # Convert floating point indices to integers for array indexing
+            indices = index.values.astype(int)
+            result = type(self)(self.values[indices])
             result.coupled_variable_group.merge(index.coupled_variable_group)
             return result
 
@@ -174,11 +179,15 @@ class StochasticScalar(ProteusStochasticVariable):
 
     def skew(self) -> ScipyNumeric:
         """Return the coefficient of skewness of the variable across the simulation dimension."""
-        return t.cast(ScipyNumeric, np.mean((self.values - self.mean()) ** 3) / self.std() ** 3)
+        return t.cast(
+            ScipyNumeric, np.mean((self.values - self.mean()) ** 3) / self.std() ** 3
+        )
 
     def kurt(self) -> ScipyNumeric:
         """Return the kurtosis of the variable across the simulation dimension."""
-        return t.cast(ScipyNumeric, np.mean((self.values - self.mean()) ** 4) / self.std() ** 4)
+        return t.cast(
+            ScipyNumeric, np.mean((self.values - self.mean()) ** 4) / self.std() ** 4
+        )
 
     def std(self) -> ScipyNumeric:
         """Return the standard deviation of the variable across the simulation dimension."""
@@ -196,14 +205,15 @@ class StochasticScalar(ProteusStochasticVariable):
         # get the rank of the variable
         rank_positions = np.argsort(self.values)
         if isinstance(p, list):
-            result = []
+            # Type ignore: Generic list type inference limitation
+            result = []  # type: ignore[misc]
             for perc in p:
-                result.append(
+                result.append(  # type: ignore[misc]
                     self.values[
                         rank_positions[math.ceil(perc / 100 * self.n_sims) :]
                     ].mean()
                 )
-            return result
+            return result  # type: ignore[misc]
         idx = math.ceil(p / 100 * self.n_sims)
         result = self.values[rank_positions[idx:]].mean()
         return t.cast(NumberOrList, result)
@@ -225,7 +235,8 @@ class StochasticScalar(ProteusStochasticVariable):
         if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
             return
         fig = go.Figure(go.Histogram(x=self.values), layout={"title": title})
-        fig.show()
+        # Type ignore: plotly-stubs has incomplete type information
+        fig.show()  # type: ignore[misc]
 
     def show_cdf(self, title: str | None = None) -> None:
         """Show a plot of the cumulative distribution function (cdf) of the variable.
@@ -243,14 +254,15 @@ class StochasticScalar(ProteusStochasticVariable):
             go.Scatter(x=np.sort(self.values), y=np.arange(self.n_sims) / self.n_sims),
             layout={"title": title},
         )
-        fig.update_xaxes({"title": "Value"})
-        fig.update_yaxes({"title": "Cumulative Probability"})
-        fig.show()
+        # Type ignore: plotly-stubs has incomplete type information
+        fig.update_xaxes({"title": "Value"})  # type: ignore[misc]
+        fig.update_yaxes({"title": "Cumulative Probability"})  # type: ignore[misc]
+        fig.show()  # type: ignore[misc]
 
     # ===================
     # PRIVATE METHODS
     # ===================
 
-    def _reorder_sims(self, new_order: npt.NDArray[np.integer]) -> None:
+    def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
         """Reorder the simulations in the variable."""
         self.values = self.values[new_order]

@@ -34,6 +34,7 @@ class Config:
     rng: np.random.Generator = np.random.default_rng(seed)
 
 
+# maybe don't need this could use numbers.Number instead?
 @t.runtime_checkable
 class NumericProtocol(t.Protocol):
     """Protocol for objects that support numeric operations (arithmetic, comparison, equality)."""
