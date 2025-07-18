@@ -173,9 +173,9 @@ Tests are organized in the `tests/` directory:
 
 ## Static Analysis and Type Checking
 
-### Type Checking with Pyright
+### Type Checking with Pyright/Pylance
 
-This project uses **Pyright** for static type checking instead of mypy. This decision was made for several reasons:
+This project uses **Pyright** for static type checking instead of mypy. In VS Code, this is accessed through **Pylance**, which uses Pyright as its underlying type checker.
 
 **Why Pyright over mypy:**
 - **Performance**: Pyright handles large scientific computing dependencies (numpy, scipy, pandas) much faster than mypy
@@ -185,8 +185,9 @@ This project uses **Pyright** for static type checking instead of mypy. This dec
 
 **Configuration:**
 - Type checking settings are in [`pyrightconfig.json`](../pyrightconfig.json)
-- Strict mode is enabled for the `pal` module
-- VSCode integration via the `ms-pyright.pyright` extension
+- VS Code uses Pylance (which includes Pyright) via the `ms-python.vscode-pylance` extension
+- **Important**: Pylance automatically uses `pyrightconfig.json` for configuration - no additional VS Code settings needed
+- Both VS Code and CLI use the same Pyright engine and configuration file, ensuring consistent results
 
 **Running type checks:**
 ```bash

@@ -14,7 +14,7 @@
     "vscode": {
       "extensions": [
         "ms-python.python",
-        "ms-pyright.pyright",
+        "ms-python.vscode-pylance",
         "charliermarsh.ruff",
         "ms-toolsai.jupyter"
       ],
@@ -27,10 +27,7 @@
         "python.testing.pytestEnabled": true,
         "python.testing.unittestEnabled": false,
         "python.languageServer": "Pylance",
-        "python.analysis.typeCheckingMode": "off",
-        "pyright.enable": true,
-        "pyright.disableLanguageServices": false,
-        "pyright.disableOrganizeImports": false,
+        // Pylance will automatically use pyrightconfig.json for type checking settings
         "ruff.enable": true,
         "ruff.lint.enable": true,
         "ruff.format.enable": true,
