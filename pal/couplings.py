@@ -78,5 +78,20 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
         """
         raise NotImplementedError
 
+    def __array__(self) -> npt.NDArray[np.floating]:
+        """Return the underlying numpy array for compatibility with numpy functions."""
+        return self.values
+
+    def astype(self, dtype: np.dtype[t.Any] | type[t.Any]) -> npt.NDArray[t.Any]:
+        """Convert the underlying values to a specified dtype.
+        
+        Args:
+            dtype: The data type to convert to.
+            
+        Returns:
+            A new numpy array with the specified dtype.
+        """
+        return self.values.astype(dtype)
+
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
         raise NotImplementedError

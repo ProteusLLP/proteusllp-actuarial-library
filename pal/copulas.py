@@ -6,8 +6,8 @@ copulas.
 """
 
 # Standard library imports
+import typing as t
 from abc import ABC, abstractmethod
-from typing import Any
 
 # Third-party imports
 import numpy.typing as npt
@@ -56,13 +56,18 @@ class Copula(ABC):
 
         # Generate the copula samples
         rng_generator = config.rng
+        # Check that n_sims is available
+        n_sims = variables_list[0].n_sims
+        if n_sims is None:
+            raise ValueError("Cannot apply copula: n_sims is not set on variables")
+
         copula_samples_pv = ProteusVariable(
             dim_name="dim1",
             values={
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)
-                for i, sample in enumerate(self._generate_unnormalised(
-                    n_sims=variables_list[0].n_sims, rng=rng_generator
-                ))
+                for i, sample in enumerate(
+                    self._generate_unnormalised(n_sims=n_sims, rng=rng_generator)
+                )
             },
         )
         copula_samples_list = [
@@ -84,9 +89,9 @@ class EllipticalCopula(Copula, ABC):
     def __init__(
         self,
         matrix: npt.NDArray[np.floating] | list[list[float]],
-        *args: Any,
+        *args: t.Any,
         matrix_type: str = "linear",
-        **kwargs: Any,
+        **kwargs: t.Any,
     ) -> None:
         """Initialize an elliptical copula.
 
@@ -149,8 +154,11 @@ class GaussianCopula(EllipticalCopula):
             },
         )
         for val in result:
-            if isinstance(val, StochasticScalar):
-                val.coupled_variable_group.merge(result[0].coupled_variable_group)
+            # we know that all values are stochastic scalar from the dict comp above.
+            first_scalar = t.cast(StochasticScalar, result[0])
+            t.cast(StochasticScalar, val).coupled_variable_group.merge(
+                first_scalar.coupled_variable_group
+            )
         return result
 
     def _generate_unnormalised(
@@ -253,8 +261,11 @@ class ArchimedeanCopula(Copula, ABC):
             },
         )
         for val in result:
-            if isinstance(val, StochasticScalar):
-                val.coupled_variable_group.merge(result[0].coupled_variable_group)
+            # we know that all values are stochastic scalar from the dict comp above.
+            first_scalar = t.cast(StochasticScalar, result[0])
+            t.cast(StochasticScalar, val).coupled_variable_group.merge(
+                first_scalar.coupled_variable_group
+            )
         return result
 
     def _generate_unnormalised(
@@ -282,7 +293,7 @@ class ArchimedeanCopula(Copula, ABC):
 
 class ClaytonCopula(ArchimedeanCopula):
     """A class to represent a Clayton copula.
-    
+
     The Clayton copula is an Archimedean copula with parameter theta >= 0.
     When theta = 0, the copula reduces to the independence copula.
     As theta increases, the dependence structure becomes stronger.
@@ -292,7 +303,7 @@ class ClaytonCopula(ArchimedeanCopula):
         """Initialize a Clayton copula.
 
         Args:
-            theta: Copula parameter (must be >= 0). When theta=0, represents 
+            theta: Copula parameter (must be >= 0). When theta=0, represents
                    the independence copula.
             n: Number of variables.
         """
@@ -303,10 +314,10 @@ class ClaytonCopula(ArchimedeanCopula):
 
     def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Inverse generator function for Clayton copula.
-        
+
         Args:
             t: Input array values.
-            
+
         Returns:
             Array of inverse generator values. When theta=0, returns exp(-t),
             corresponding to the independence copula.
@@ -319,11 +330,11 @@ class ClaytonCopula(ArchimedeanCopula):
         self, n_sims: int, rng: np.random.Generator
     ) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution.
-        
-        For Clayton copula, when theta=0, the copula reduces to the independence 
+
+        For Clayton copula, when theta=0, the copula reduces to the independence
         copula, and the latent distribution returns a constant value of 1.0 for
         all simulations.
-        
+
         Returns:
             Array of shape (n_sims,) containing latent distribution samples.
         """
@@ -513,7 +524,11 @@ def apply_copula(
             continue
         re_ordering = variable_sort_indices[i, copula_ranks[i]]
         for var2 in var.coupled_variable_group.variables:
-            var2._reorder_sims(re_ordering)
+            # FIXME: _reorder_sims is a protected method but we need to access it here
+            # for copula reordering functionality. Consider making this method public
+            # or providing a public interface for reordering simulations across
+            # coupled variable groups.
+            var2._reorder_sims(re_ordering)  # type: ignore[misc]
 
     # Merge coupling groups
     for var in variables:

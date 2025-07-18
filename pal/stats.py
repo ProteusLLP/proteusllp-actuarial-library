@@ -1,11 +1,12 @@
-from pal import FreqSevSims
+import numpy.typing as npt
 
 from ._maths import xp as np
+from .frequency_severity import FreqSevSims
 
 percentiles = np.array([1, 2, 5, 10, 20, 50, 70, 80, 90, 95, 99, 99.5, 99.8, 99.9])
 
 
-def loss_summary(losses: FreqSevSims):
+def loss_summary(losses: FreqSevSims) -> dict[str, npt.NDArray[np.floating]]:
     """Generate summary statistics for frequency-severity losses.
 
     Args:

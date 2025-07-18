@@ -129,11 +129,8 @@ class XoL:
             is_in_window = (claims >= self.franchise) & (
                 claims < self.reverse_franchise
             )
-            claims = np.where(
-                is_in_window,
-                claims,
-                0,
-            )
+            # FreqSevSims supports np.where through __array_function__
+            claims = np.where(is_in_window, claims, 0)  # type: ignore[assignment]
 
         individual_recoveries_pre_aggregate: FreqSevSims = np.minimum(
             np.maximum(claims - self.excess, 0), self.limit
@@ -141,12 +138,8 @@ class XoL:
         if self.aggregate_limit == np.inf and self.aggregate_deductible == 0:
             self.calc_summary(claims, individual_recoveries_pre_aggregate.aggregate())
             return ContractResults(individual_recoveries_pre_aggregate)
-        aggregate_limit = (
-            self.aggregate_limit if self.aggregate_limit is not None else np.inf
-        )
-        aggregate_deductible = (
-            self.aggregate_deductible if self.aggregate_deductible is not None else 0
-        )
+        aggregate_limit = self.aggregate_limit
+        aggregate_deductible = self.aggregate_deductible
         aggregate_recoveries_pre_agg = individual_recoveries_pre_aggregate.aggregate()
 
         aggregate_recoveries = np.minimum(
@@ -223,14 +216,18 @@ class XoL:
         h_count = (aggregate_recoveries >= self.aggregate_limit).ssum()
 
         self.summary = {
-            "mean": mean,
-            "std": sd,
-            "prob_attach": count / aggregate_recoveries.n_sims,
-            "prob_vert_exhaust": v_count / len(gross_losses.values),
+            "mean": float(mean),
+            "std": float(sd),
+            "prob_attach": (
+                float(count) / aggregate_recoveries.n_sims
+                if aggregate_recoveries.n_sims
+                else float('nan')
+            ),
+            "prob_vert_exhaust": float(v_count) / len(gross_losses.values),
             "prob_horizonal_exhaust": (
-                h_count / aggregate_recoveries.n_sims
-                if self.aggregate_limit is not None
-                else 0
+                float(h_count) / (aggregate_recoveries.n_sims or 1)
+                if self.aggregate_limit != np.inf
+                else 0.0
             ),
         }
 
@@ -249,19 +246,14 @@ class XoL:
         print(f"Layer Name : {self.name}")
         print("Mean Recoveries: ", self.summary["mean"])
         print("SD Recoveries: ", self.summary["std"])
-        (print("Probability of Attachment: ", self.summary["prob_attach"]),)
-
-        (
-            print(
-                "Probability of Vertical Exhaustion: ",
-                self.summary["prob_vert_exhaust"],
-            ),
+        print("Probability of Attachment: ", self.summary["prob_attach"])
+        print(
+            "Probability of Vertical Exhaustion: ",
+            self.summary["prob_vert_exhaust"],
         )
-        (
-            print(
-                "Probability of Horizontal Exhaustion: ",
-                self.summary["prob_horizonal_exhaust"],
-            ),
+        print(
+            "Probability of Horizontal Exhaustion: ",
+            self.summary["prob_horizonal_exhaust"],
         )
         print("")
 
@@ -333,7 +325,9 @@ class XoLTower:
             ContractResults: The results of applying the XoL Tower to the claims.
         """
         recoveries = claims.copy() * 0
-        reinstatement_premium = StochasticScalar(np.zeros(claims.n_sims))
+        reinstatement_premium = StochasticScalar(
+            np.zeros(claims.n_sims) if claims.n_sims is not None else np.zeros(1)
+        )
         for layer in self.layers:
             layer_results = layer.apply(claims)
             recoveries += layer_results.recoveries
