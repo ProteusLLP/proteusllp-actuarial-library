@@ -1,3 +1,8 @@
+"""Tests for frequency-severity coupling with copulas.
+
+Integration tests combining frequency-severity modeling with copula-based
+dependency structures for complex actuarial risk modeling scenarios.
+"""
 import numpy as np
 import scipy
 from pal.copulas import GumbelCopula, apply_copula

@@ -1,3 +1,9 @@
+"""Reinsurance contract modeling for excess of loss and tower structures.
+
+Provides classes for modeling XoL (excess of loss) reinsurance contracts
+including individual layers and complete towers with aggregate limits,
+reinstatement premiums, franchise deductibles, and complex layering.
+"""
 from dataclasses import dataclass
 
 from ._maths import xp as np

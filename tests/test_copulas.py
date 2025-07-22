@@ -1,3 +1,8 @@
+"""Tests for copula functionality and margin validation.
+
+Tests covering copula sampling, margin validation, and integration
+with ProteusVariable for dependency modeling in actuarial applications.
+"""
 import numpy as np
 import pytest
 import scipy
@@ -11,7 +16,10 @@ def copula_margins(copula_samples: list[StochasticScalar] | ProteusVariable):
     # check values are between 0 and 1
     if isinstance(copula_samples, ProteusVariable):
         copula_samples = list(copula_samples)
-    y = ProteusVariable("dim1", {f"margin_{i}": (x >= 0) & (x <= 1) for i, x in enumerate(copula_samples)})
+    y = ProteusVariable(
+        "dim1",
+        {f"margin_{i}": (x >= 0) & (x <= 1) for i, x in enumerate(copula_samples)},
+    )
 
     assert y.all()
 

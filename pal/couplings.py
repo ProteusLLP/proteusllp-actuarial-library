@@ -1,3 +1,10 @@
+"""Stochastic variable coupling and dependency management.
+
+Provides coupling mechanisms for stochastic variables, allowing them to maintain
+dependency relationships during reordering and copula applications. Key classes
+include CouplingGroup for managing variable groups and ProteusStochasticVariable
+as the base class for all stochastic types.
+"""
 from __future__ import annotations
 
 import typing as t
@@ -84,10 +91,10 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
 
     def astype(self, dtype: np.dtype[t.Any] | type[t.Any]) -> npt.NDArray[t.Any]:
         """Convert the underlying values to a specified dtype.
-        
+
         Args:
             dtype: The data type to convert to.
-            
+
         Returns:
             A new numpy array with the specified dtype.
         """

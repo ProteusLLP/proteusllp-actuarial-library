@@ -1,3 +1,8 @@
+"""Configuration utilities for the PAL library.
+
+Provides configuration management for random seeding, simulation parameters,
+logging configuration, and global library settings.
+"""
 import logging
 import logging.config
 import os

@@ -1,3 +1,27 @@
+"""Frequency-severity modeling for actuarial applications.
+
+This module provides classes and functions for modeling compound distributions
+commonly used in insurance and actuarial science, where claims are modeled as
+the sum of a random number (frequency) of random amounts (severity).
+
+Key components:
+- FrequencySeverityModel: Main class for compound distribution modeling
+- FreqSevSims: Container for frequency-severity simulation results
+- Utility functions for simulation index management
+
+The frequency-severity approach is fundamental in actuarial modeling for:
+- Aggregate claims modeling
+- Risk assessment and capital modeling
+- Insurance pricing and reserving
+
+Example:
+    >>> from pal.distributions import Poisson, LogNormal
+    >>> freq_dist = Poisson(5.0)  # Expected 5 claims
+    >>> sev_dist = LogNormal(mean=10000, sigma=0.5)  # Claim amounts
+    >>> model = FrequencySeverityModel(freq_dist, sev_dist)
+    >>> simulations = model.simulate(n_sims=10000)
+"""
+
 import typing as t
 from collections.abc import Callable
 
@@ -22,33 +46,36 @@ ProteusCompatibleTypes = t.Union[
 ReductionOperation = t.Callable[
     [
         npt.NDArray[np.floating],  # result: array to store reduced values
-        npt.NDArray[np.integer],   # indices: simulation indices for each event
+        npt.NDArray[np.integer],  # indices: simulation indices for each event
         npt.NDArray[np.floating],  # values: event values to reduce
-    ], 
-    None
+    ],
+    None,
 ]
 
 # Function signature for transforming arrays element-wise
 ArrayTransform = t.Callable[
     [npt.NDArray[np.floating]],  # input_array: array to transform
-    npt.NDArray[np.floating]     # return: transformed array
+    npt.NDArray[np.floating],  # return: transformed array
 ]
 
 
 def _get_sims_of_events(
     n_events_by_sim: npt.NDArray[np.integer],
 ) -> npt.NDArray[np.integer]:
-    """Given the number of events in each simulation, returns the simulation index for each event.
+    """Get the simulation index for each event.
+
+    Given the number of events in each simulation, returns the simulation
+    index for each event.
 
     >>> n_events_by_sim = np.array([1, 0, 3])
     >>> _get_sims_of_events(n_events_by_sim)
     array([0, 2, 2, 2])
 
-    Parameters:
-    - n_events_by_sim (np.ndarray): Array of the number of events in each simulation.
+    Args:
+        n_events_by_sim (np.ndarray): Array of the number of events in each simulation.
 
     Returns:
-    - np.ndarray: Array of simulation indices for each event.
+        np.ndarray: Array of simulation indices for each event.
     """
     cumulative_n_events = n_events_by_sim.cumsum()
     total_events = cumulative_n_events[-1]
@@ -57,7 +84,7 @@ def _get_sims_of_events(
 
 
 class FrequencySeverityModel:
-    """A class for constructing and simulating from Frequency-Severity, or Compound distributions."""
+    """Constructs and simulates from Frequency-Severity, or Compound distributions."""
 
     def __init__(
         self,
@@ -164,7 +191,11 @@ class FreqSevSims(ProteusStochasticVariable):
         self.values = np.asarray(values)
         self.n_sims = n_sims
 
-        assert len(self.sim_index) == len(self.values)
+        if len(self.sim_index) != len(self.values):
+            raise ValueError(
+                f"Length mismatch: sim_index has {len(self.sim_index)} elements "
+                f"but values has {len(self.values)} elements"
+            )
 
     def __hash__(self):
         return id(self)
@@ -178,7 +209,13 @@ class FreqSevSims(ProteusStochasticVariable):
         )
 
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
-        """Reorder the simulations of the FreqSevSims object according to the given order."""
+        """Reorder simulations according to the given order.
+
+        This method updates the simulation indices to match the new order.
+
+        Args:
+            new_order: A sequence of integers representing the new order of simulations.
+        """
         reverse_ordering = np.empty(len(new_order), dtype=int)
         reverse_ordering[new_order] = np.arange(len(new_order), dtype=int)
         self.sim_index = reverse_ordering[self.sim_index]
@@ -274,10 +311,11 @@ class FreqSevSims(ProteusStochasticVariable):
 
     def _extract_array_for_ufunc(self, x: t.Any) -> npt.NDArray[np.floating]:
         """Extract array values from various input types for ufunc operations.
-        
+
         Args:
-            x: Input value that could be FreqSevSims, StochasticScalar, ndarray, or scalar
-            
+            x: Input value that could be FreqSevSims, StochasticScalar, ndarray,
+               or scalar
+
         Returns:
             Array values aligned with simulation indices
         """
@@ -308,36 +346,38 @@ class FreqSevSims(ProteusStochasticVariable):
 
         return result
 
-    def __array_function__(self, func: Callable[..., t.Any], types: t.Any, args: t.Any, kwargs: t.Any) -> t.Union[np.number[t.Any], "FreqSevSims"]:
+    def __array_function__(
+        self, func: Callable[..., t.Any], types: t.Any, args: t.Any, kwargs: t.Any
+    ) -> t.Union[np.number[t.Any], "FreqSevSims"]:
         """Handle numpy array functions for FreqSevSims objects.
-        
+
         Args:
             func: The numpy function being called
             types: Types involved in the operation
             args: Arguments passed to the function
             kwargs: Keyword arguments passed to the function
-            
+
         Returns:
             Either a scalar result or new FreqSevSims object
-            
+
         Raises:
             NotImplementedError: If the function is not supported
         """
         if func not in (np.where, np.sum):
             raise NotImplementedError(f"Function {func.__name__} not supported")
-        
+
         # Extract values from FreqSevSims objects, leave others as-is
         processed_args = tuple(
             x.values if isinstance(x, FreqSevSims) else x for x in args
         )
-        
+
         result = func(*processed_args, **kwargs)
-        
+
         # If result is a scalar, return it directly
         # Type ignore: Pyright can't infer the exact numpy scalar type
         if isinstance(result, np.number):
             return result  # type: ignore[misc]
-            
+
         # Otherwise create a new FreqSevSims object with the result
         new_freq_sev = FreqSevSims(self.sim_index, result, self.n_sims)
         new_freq_sev.coupled_variable_group.merge(self.coupled_variable_group)
@@ -346,19 +386,26 @@ class FreqSevSims(ProteusStochasticVariable):
     def __repr__(self):
         return f"{type(self).__name__}({self.values!r})"
 
-    def _is_compatible(self, other: ProteusCompatibleTypes):
-        """Check if two FreqSevSims objects are compatible for mathematical operations."""
+    def _is_compatible(self, other: ProteusCompatibleTypes) -> bool:
+        """Check if two FreqSevSims objects are compatible for mathematical operations.
+
+        Args:
+            other: Another FreqSevSims object or compatible type
+
+        Returns:
+            True if compatible, False otherwise
+        """
         return isinstance(other, FreqSevSims) and self.sim_index is other.sim_index
 
     def upsample(self, n_sims: int) -> "FreqSevSims":
         """Upsamples the FreqSevSims object to the given number of simulations.
-        
+
         Args:
             n_sims: Target number of simulations
-            
+
         Returns:
             New FreqSevSims object with upsampled data
-            
+
         Raises:
             ValueError: If self.n_sims is None
         """

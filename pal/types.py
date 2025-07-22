@@ -1,3 +1,8 @@
+"""Type definitions and protocols for the PAL library.
+
+Defines common type aliases, protocols, and configuration classes used
+throughout the library for type safety and consistency.
+"""
 import dataclasses
 import typing as t
 
@@ -15,12 +20,13 @@ __all___ = [
     "ScipyNumeric",
 ]
 
-Numeric = t.Union[float, int, np.number[t.Any]]
+Numeric = float | int | np.number[t.Any]
 
 # Type alias for scipy special functions and numpy random generators
 # These functions expect more restrictive types than our general Numeric type.
-# They don't accept complex numbers, _NumericProtocol objects, or general np.number types.
-ScipyNumeric = t.Union[float, int, np.floating, np.integer]
+# They don't accept complex numbers, _NumericProtocol objects, or general
+# np.number types.
+ScipyNumeric = float | int | np.floating | np.integer
 
 T_co = t.TypeVar("T_co", covariant=True)
 
@@ -37,7 +43,10 @@ class Config:
 # maybe don't need this could use numbers.Number instead?
 @t.runtime_checkable
 class NumericProtocol(t.Protocol):
-    """Protocol for objects that support numeric operations (arithmetic, comparison, equality)."""
+    """Protocol for objects that support numeric operations.
+
+    Defines arithmetic, comparison, and equality operations.
+    """
 
     # Arithmetic operations
     def __add__(self, other: t.Any) -> t.Self: ...
@@ -63,8 +72,9 @@ class NumericProtocol(t.Protocol):
     def __ne__(self, other: t.Any) -> bool: ...
 
 
-# Union type that includes both the basic numeric types and objects implementing the protocol
-NumericLike = t.Union[Numeric, NumericProtocol]
+# Union type that includes both the basic numeric types and objects implementing
+# the protocol
+NumericLike = Numeric | NumericProtocol
 
 
 @t.runtime_checkable
@@ -132,24 +142,16 @@ class DistributionLike(t.Protocol):
     """Protocol for distribution-like objects."""
 
     @t.overload
-    def cdf(self, x: ScipyNumeric) -> ScipyNumeric:
-        """Compute the cumulative distribution function at a single point."""
-        ...
+    def cdf(self, x: ScipyNumeric) -> ScipyNumeric: ...
 
     @t.overload
-    def cdf(self, x: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
-        """Compute the cumulative distribution function at multiple points."""
-        ...
+    def cdf(self, x: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]: ...
 
     @t.overload
-    def invcdf(self, u: ScipyNumeric) -> ScipyNumeric:
-        """Compute the inverse cumulative distribution function at a single point."""
-        ...
+    def invcdf(self, u: ScipyNumeric) -> ScipyNumeric: ...
 
     @t.overload
-    def invcdf(self, u: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
-        """Compute the inverse cumulative distribution function at multiple points."""
-        ...
+    def invcdf(self, u: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]: ...
 
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None

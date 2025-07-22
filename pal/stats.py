@@ -1,3 +1,8 @@
+"""Statistical utilities for actuarial loss analysis.
+
+Provides functions for generating loss summaries, percentile calculations,
+and statistical analysis of frequency-severity simulation results.
+"""
 import numpy.typing as npt
 
 from ._maths import xp as np

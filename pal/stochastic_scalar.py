@@ -1,3 +1,9 @@
+"""Stochastic scalar variables for Monte Carlo simulation.
+
+Provides the StochasticScalar class for representing and manipulating
+scalar-valued stochastic variables in actuarial and risk modeling applications.
+Supports arithmetic operations, statistical functions, and numpy integration.
+"""
 from __future__ import annotations
 
 import math
@@ -91,7 +97,8 @@ class StochasticScalar(ProteusStochasticVariable):
             on that object's implementation. When handling the operation directly,
             returns a new StochasticScalar.
         """
-        # check if the input types to the function are types of ProteusVariables other than StochasticScalar
+        # check if the input types to the function are types of ProteusVariables
+        # other than StochasticScalar
         var_not_stochastic_scalar = [
             type(x).__name__ == "ProteusVariable"
             or isinstance(x, ProteusStochasticVariable)
@@ -178,7 +185,7 @@ class StochasticScalar(ProteusStochasticVariable):
         return t.cast(ScipyNumeric, np.mean(self.values))
 
     def skew(self) -> ScipyNumeric:
-        """Return the coefficient of skewness of the variable across the simulation dimension."""
+        """Return the coefficient of skewness across the simulation dimension."""
         return t.cast(
             ScipyNumeric, np.mean((self.values - self.mean()) ** 3) / self.std() ** 3
         )
@@ -190,7 +197,7 @@ class StochasticScalar(ProteusStochasticVariable):
         )
 
     def std(self) -> ScipyNumeric:
-        """Return the standard deviation of the variable across the simulation dimension."""
+        """Return the standard deviation across the simulation dimension."""
         return t.cast(ScipyNumeric, np.std(self.values))
 
     def percentile(self, p: ScipyNumeric) -> ScipyNumeric:

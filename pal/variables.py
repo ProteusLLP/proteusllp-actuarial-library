@@ -1,3 +1,43 @@
+"""Multi-dimensional stochastic variables for actuarial modeling.
+
+This module provides the ProteusVariable class, which represents multi-dimensional
+stochastic variables commonly used in actuarial and risk modeling. A ProteusVariable
+can contain different types of stochastic objects across multiple dimensions,
+enabling complex risk factor modeling.
+
+Key features:
+- Multi-dimensional stochastic variables with named dimensions
+- Support for various stochastic types (StochasticScalar, FreqSevSims, etc.)
+- Mathematical operations across dimensions and simulations
+- Correlation analysis and upsampling capabilities
+- Export functionality for analysis and reporting
+
+The ProteusVariable is designed for actuarial applications such as:
+- Multi-factor risk modeling (e.g., frequency, severity, inflation)
+- Portfolio-level aggregation across risk dimensions
+- Scenario analysis with correlated risk factors
+- Capital modeling with interdependent variables
+
+Example:
+    >>> from pal.stochastic_scalar import StochasticScalar
+    >>> from pal.frequency_severity import FreqSevSims
+    >>>
+    >>> # Create a multi-dimensional risk variable
+    >>> risk_var = ProteusVariable(
+    ...     dim_name="insurance_risk",
+    ...     values={
+    ...         "frequency": StochasticScalar([10, 12, 8, 15]),
+    ...         "severity": StochasticScalar([5000, 6000, 4500, 7000]),
+    ...         "expense_ratio": StochasticScalar([0.3, 0.32, 0.28, 0.35])
+    ...     }
+    ... )
+    >>> total_cost = (
+    ...     risk_var["frequency"]
+    ...     * risk_var["severity"]
+    ...     * (1 + risk_var["expense_ratio"])
+    ... )
+"""
+
 # standard library imports
 from __future__ import annotations
 
@@ -72,7 +112,8 @@ class ProteusVariable(ProteusLike):
         # Ensure that values is a mapping type
         if not isinstance(values, t.Mapping):  # type: ignore[redundant-expr]
             raise TypeError(
-                f"Expected a mapping (dict-like) for 'values', got {type(values).__name__}"
+                f"Expected a mapping (dict-like) for 'values', got "
+                f"{type(values).__name__}"
             )
         # check the number of simulations in each variable
         self.n_sims = None
@@ -371,7 +412,8 @@ class ProteusVariable(ProteusLike):
 
         Args:
             sim_no: Simulation index(es) to extract. Can be a single numeric value,
-                    a list of integers, or a NumericLike object such as StochasticScalar.
+                    a list of integers, or a NumericLike object such as
+                    StochasticScalar.
 
         Returns:
             A new ProteusVariable with values at the specified simulation indices.
@@ -463,7 +505,7 @@ class ProteusVariable(ProteusLike):
             if isinstance(value, ProteusVariable):
                 # For nested ProteusVariable, recursively compute mean
                 return value.mean()
-            if isinstance(value, (int, float, np.number)):
+            if isinstance(value, int | float | np.number):
                 # If the value is a scalar, return it directly
                 return float(value)
             raise TypeError(
@@ -477,7 +519,7 @@ class ProteusVariable(ProteusLike):
         )
 
     def upsample(self, n_sims: int) -> ProteusVariable:
-        """Upsample the variable to the specified number of simulations"""
+        """Upsample the variable to the specified number of simulations."""
         if self.n_sims == n_sims:
             return self
         return ProteusVariable(
@@ -561,8 +603,16 @@ class ProteusVariable(ProteusLike):
         """Compute correlation matrix between variables."""
         # validate type
         correlation_type = correlation_type.lower()
-        assert correlation_type in ["linear", "spearman", "kendall"]
-        assert hasattr(self[0], "values")
+        if correlation_type not in ["linear", "spearman", "kendall"]:
+            raise ValueError(
+                f"Invalid correlation_type: '{correlation_type}'. "
+                f"Must be one of: 'linear', 'spearman', 'kendall'"
+            )
+        if not hasattr(self[0], "values"):
+            raise TypeError(
+                f"First element must have 'values' attribute, "
+                f"got {type(self[0]).__name__}"
+            )
         n = len(self.values)
         result: list[list[float]] = [[0.0] * n] * n
         values: list[npt.NDArray[t.Any]] = [
@@ -678,7 +728,8 @@ class ProteusVariable(ProteusLike):
                 return x
 
             if isinstance(sim_no, StochasticScalar):
-                # Extract all values and return a new StochasticScalar with those indices
+                # Extract all values and return a new StochasticScalar with those
+                # indices
                 indices = sim_no.values.astype(int)
                 return StochasticScalar(x.values[indices])
 
@@ -698,5 +749,6 @@ class ProteusVariable(ProteusLike):
         raise TypeError(
             f"Unsupported type for value at simulation: {type(x).__name__}.\n"
             f"Value: {x}\n"
-            f"Expected one of: ProteusVariable, StochasticScalar, FreqSevSims, or Number."
+            f"Expected one of: ProteusVariable, StochasticScalar, FreqSevSims, or "
+            f"Number."
         )

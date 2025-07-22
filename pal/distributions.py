@@ -9,8 +9,9 @@ be created and passed to another distribution as a parameter.
 
 Note on Type Signatures:
 The cdf and invcdf methods use NumericOrArray type signatures to provide
-maximum flexibility for both scalar and array inputs. This is necessary because scipy.special
-functions support array inputs despite having restrictive type stubs that only show scalar
+maximum flexibility for both scalar and array inputs. This is necessary because
+scipy.special functions support array inputs despite having restrictive type stubs that
+only show scalar
 types. By using this union type, we can leverage scipy's vectorized operations while
 maintaining type safety. For more details on scipy.special array support, see:
 https://docs.scipy.org/doc/scipy-1.16.0/reference/generated/scipy.special.pdtr.html
@@ -25,7 +26,6 @@ import typing as t
 from abc import ABC
 
 # Third-party imports
-import numpy as np
 import numpy.typing as npt
 
 # Local imports
@@ -56,7 +56,8 @@ class DistributionBase:
             x: Single value or sequence of values to evaluate.
 
         Returns:
-            CDF value(s) - same type as input (Numeric -> Numeric, Sequence -> Sequence).
+            CDF value(s) - same type as input (Numeric -> Numeric,
+            Sequence -> Sequence).
         """
         raise NotImplementedError
 
@@ -67,7 +68,8 @@ class DistributionBase:
             u: Single probability or sequence of probabilities to evaluate.
 
         Returns:
-            Quantile value(s) - same type as input (Numeric -> Numeric, Sequence -> Sequence).
+            Quantile value(s) - same type as input (Numeric -> Numeric,
+            Sequence -> Sequence).
         """
         raise NotImplementedError
 
@@ -725,6 +727,14 @@ class InverseBurr(DistributionBase):
         scale: NumericOrArray,
         loc: NumericOrArray,
     ) -> None:
+        """Initialize inverse Burr distribution.
+
+        Args:
+            power: Power parameter.
+            shape: Shape parameter.
+            scale: Scale parameter.
+            loc: Location parameter.
+        """
         super().__init__(power=power, shape=shape, scale=scale, loc=loc)
         self._power = power
         self._shape = shape
@@ -769,6 +779,13 @@ class InverseParalogistic(DistributionBase):
         scale: NumericOrArray,
         loc: NumericOrArray = 0.0,
     ) -> None:
+        """Initialize inverse paralogistic distribution.
+
+        Args:
+            shape: Shape parameter.
+            scale: Scale parameter.
+            loc: Location parameter.
+        """
         super().__init__(shape=shape, scale=scale, loc=loc)
 
     @t.override
@@ -835,6 +852,13 @@ class InverseWeibull(DistributionBase):
     """
 
     def __init__(self, shape: float, scale: float, loc: float = 0) -> None:
+        """Initialize inverse Weibull distribution.
+
+        Args:
+            shape: Shape parameter.
+            scale: Scale parameter.
+            loc: Location parameter.
+        """
         super().__init__(shape=shape, scale=scale, loc=loc)
         self._shape = shape
         self._scale = scale
@@ -927,6 +951,12 @@ class InverseExponential(DistributionBase):
     """
 
     def __init__(self, scale: float, loc: float = 0) -> None:
+        """Initialize inverse exponential distribution.
+
+        Args:
+            scale: Scale parameter.
+            loc: Location parameter.
+        """
         super().__init__(scale=scale, loc=loc)
 
     @t.override
@@ -979,17 +1009,25 @@ class DistributionGeneratorBase:
     """
 
     def __init__(self, distribution: DistributionBase) -> None:
+        """Initialize distribution generator with a distribution instance.
+
+        Args:
+            distribution: The distribution to wrap.
+        """
         self.this_distribution = distribution
 
     def cdf(self, x: NumericOrArray) -> ReturnType:
+        """Delegate to wrapped distribution."""
         return self.this_distribution.cdf(x)
 
     def invcdf(self, u: NumericOrArray) -> ReturnType:
+        """Delegate to wrapped distribution."""
         return self.this_distribution.invcdf(u)
 
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator = config.rng
     ) -> StochasticScalar:
+        """Delegate to wrapped distribution."""
         return self.this_distribution.generate(n_sims, rng)
 
 
@@ -999,6 +1037,12 @@ class DiscreteDistributionGenerator(DistributionGeneratorBase):
     def __init__(
         self, distribution_name: str, parameters: list[NumericOrArray]
     ) -> None:
+        """Initialize discrete distribution by name.
+
+        Args:
+            distribution_name: Name of the discrete distribution.
+            parameters: Distribution parameters.
+        """
         distribution_name = distribution_name.lower()
         if distribution_name not in AVAILABLE_DISCRETE_DISTRIBUTIONS:
             raise ValueError(
@@ -1015,6 +1059,12 @@ class ContinuousDistributionGenerator(DistributionGeneratorBase):
     def __init__(
         self, distribution_name: str, parameters: list[NumericOrArray]
     ) -> None:
+        """Initialize continuous distribution by name.
+
+        Args:
+            distribution_name: Name of the continuous distribution.
+            parameters: Distribution parameters.
+        """
         distribution_name = distribution_name.lower()
         if distribution_name not in AVAILABLE_CONTINUOUS_DISTRIBUTIONS:
             raise ValueError(

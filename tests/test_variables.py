@@ -1,3 +1,9 @@
+"""Tests for ProteusVariable multi-dimensional stochastic modeling.
+
+Comprehensive tests for ProteusVariable functionality including arithmetic
+operations, aggregation, upsampling, correlation analysis, and integration
+with various stochastic variable types.
+"""
 import numpy as np
 import pytest
 from pal.variables import FreqSevSims, ProteusVariable, StochasticScalar
@@ -563,7 +569,7 @@ def test_upsample_same_n_sims():
         dim_name="test",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([4, 5, 6])},
     )
-    
+
     # Should return the same object when n_sims matches
     result = x.upsample(3)
     assert result is x  # Should be the same object, not a copy
@@ -578,14 +584,14 @@ def test_upsample_dict_stochastic_scalar():
             "b": StochasticScalar([3, 4]),
         },
     )
-    
+
     result = x.upsample(4)
-    
+
     # Verify structure
     assert result.dim_name == "test"
     assert isinstance(result.values, dict)
     assert set(result.values.keys()) == {"a", "b"}
-    
+
     # Verify upsampled values (should cycle through original values)
     assert (result.values["a"] == StochasticScalar([1, 2, 1, 2])).all()
     assert (result.values["b"] == StochasticScalar([3, 4, 3, 4])).all()
@@ -600,14 +606,14 @@ def test_upsample_dict_scalar_values():
             "b": 20.5,
         },
     )
-    
+
     result = x.upsample(5)
-    
+
     # Verify structure
     assert result.dim_name == "test"
     assert isinstance(result.values, dict)
     assert set(result.values.keys()) == {"a", "b"}
-    
+
     # Scalar values should remain unchanged
     assert result.values["a"] == 10
     assert result.values["b"] == 20.5
@@ -622,14 +628,14 @@ def test_upsample_dict_mixed_types():
             "scalar": 42,
         },
     )
-    
+
     result = x.upsample(6)
-    
+
     # Verify structure
     assert result.dim_name == "test"
     assert isinstance(result.values, dict)
     assert set(result.values.keys()) == {"stochastic", "scalar"}
-    
+
     # Verify upsampled stochastic value
     assert (result.values["stochastic"] == StochasticScalar([1, 2, 3, 1, 2, 3])).all()
     # Scalar value should remain unchanged
@@ -639,7 +645,7 @@ def test_upsample_dict_mixed_types():
 def test_upsample_dict_freqsev():
     """Test upsample method with dict values containing FreqSevSims."""
     from pal.frequency_severity import FreqSevSims
-    
+
     freq_sev = FreqSevSims([0, 1], [10.0, 20.0], 2)
     x = ProteusVariable(
         dim_name="test",
@@ -648,18 +654,18 @@ def test_upsample_dict_freqsev():
             "scalar": 5.0,
         },
     )
-    
+
     result = x.upsample(4)
-    
+
     # Verify structure
     assert result.dim_name == "test"
     assert isinstance(result.values, dict)
     assert set(result.values.keys()) == {"coverage", "scalar"}
-    
+
     # FreqSevSims should be upsampled
     assert isinstance(result.values["coverage"], FreqSevSims)
     assert result.values["coverage"].n_sims == 4
-    
+
     # Scalar value should remain unchanged
     assert result.values["scalar"] == 5.0
 
@@ -667,9 +673,9 @@ def test_upsample_dict_freqsev():
 def test_upsample_empty_dict():
     """Test upsample method with empty dict values."""
     x = ProteusVariable(dim_name="test", values={})
-    
+
     result = x.upsample(10)
-    
+
     # Should return a ProteusVariable with empty dict
     assert result.dim_name == "test"
     assert result.values == {}
@@ -681,14 +687,14 @@ def test_upsample_single_value():
         dim_name="test",
         values={"single": StochasticScalar([5.0])},
     )
-    
+
     result = x.upsample(3)
-    
+
     # Verify structure
     assert result.dim_name == "test"
     assert isinstance(result.values, dict)
     assert set(result.values.keys()) == {"single"}
-    
+
     # Single value should be repeated
     assert (result.values["single"] == StochasticScalar([5.0, 5.0, 5.0])).all()
 
@@ -699,12 +705,12 @@ def test_upsample_n_sims_property():
         dim_name="test",
         values={"a": StochasticScalar([1, 2, 3])},
     )
-    
+
     # Original n_sims should be 3
     assert x.n_sims == 3
-    
+
     result = x.upsample(6)
-    
+
     # Result n_sims should be 6
     assert result.n_sims == 6
 
@@ -715,9 +721,9 @@ def test_upsample_preserve_dim_name():
         dim_name="custom_dimension",
         values={"a": StochasticScalar([1, 2])},
     )
-    
+
     result = x.upsample(4)
-    
+
     assert result.dim_name == "custom_dimension"
 
 
@@ -727,9 +733,9 @@ def test_upsample_large_multiplier():
         dim_name="test",
         values={"a": StochasticScalar([1, 2])},
     )
-    
+
     result = x.upsample(100)
-    
+
     # Should cycle through original values 50 times
     expected_values = [1, 2] * 50
     assert (result.values["a"] == StochasticScalar(expected_values)).all()

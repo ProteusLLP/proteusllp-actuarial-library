@@ -1,3 +1,8 @@
+"""Basic FreqSevSims functionality tests.
+
+Simple integration tests demonstrating FreqSevSims usage with numpy operations
+and conditional operations.
+"""
 import numpy as np
 from pal import FreqSevSims
 
