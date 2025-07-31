@@ -11,6 +11,9 @@
     // Mount SSH keys from host for git authentication
     "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
   ],
+  "containerEnv": {
+    "PAL_SUPPRESS_PLOTS": "true"
+  },
   "customizations": {
     "vscode": {
       "extensions": [

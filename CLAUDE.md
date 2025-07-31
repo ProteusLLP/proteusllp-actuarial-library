@@ -25,6 +25,21 @@ docker exec pal-devcontainer make test
 docker exec pal-devcontainer make typecheck
 ```
 
+### Python Execution
+
+**IMPORTANT**: This project uses PDM for dependency management. Always use `pdm run` to execute Python commands to ensure you're using the correct virtual environment:
+
+```bash
+# Run Python scripts (CORRECT)
+docker exec pal-devcontainer pdm run python script.py
+
+# Run examples (CORRECT) 
+docker exec pal-devcontainer pdm run python examples/example_catastrophes.py
+
+# Wrong - uses system Python (INCORRECT)
+docker exec pal-devcontainer python script.py
+```
+
 ### Finding Your Container
 ```bash
 # List running containers 

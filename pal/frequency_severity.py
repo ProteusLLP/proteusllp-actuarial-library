@@ -266,30 +266,50 @@ class FreqSevSims(ProteusStochasticVariable):
     def aggregate(self) -> StochasticScalar:
         """Calculates the aggregate loss for each simulation.
 
-        >>> sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
-        >>> values = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
-        >>> n_sims = 3
-        >>> fs = FreqSevSims(sim_index, values, n_sims)
-        >>> fs.aggregate()
-        array([ 3., 12., 30.])
+        Sums all individual event losses within each simulation to get the total
+        loss per simulation. This converts event-level FreqSevSims data to 
+        simulation-level StochasticScalar data suitable for statistical analysis.
+
+        Example:
+            >>> sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
+            >>> values = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
+            >>> n_sims = 3
+            >>> fs = FreqSevSims(sim_index, values, n_sims)
+            >>> aggregate_losses: StochasticScalar = fs.aggregate()
+            >>> aggregate_losses
+            StochasticScalar([3., 12., 30.])
+            >>> # Now you can apply statistical methods
+            >>> aggregate_losses.mean()
+            15.0
 
         Returns:
-            numpy.ndarray: An array containing the aggregate loss for each simulation.
+            StochasticScalar: Array containing the aggregate loss for each simulation.
+                Use this for statistical analysis (mean, std, percentiles, etc.).
         """
         return self._reduce_over_events(np.add.at)
 
     def occurrence(self) -> StochasticScalar:
         """Calculates the maximum occurrence loss for each simulation.
 
-        >>> sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
-        >>> values = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
-        >>> n_sims = 3
-        >>> fs = FreqSevSims(sim_index, values, n_sims)
-        >>> fs.occurrence()
-        array([2., 5., 9.])
+        Finds the largest individual event loss within each simulation. This 
+        converts event-level FreqSevSims data to simulation-level StochasticScalar 
+        data suitable for statistical analysis.
+
+        Example:
+            >>> sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
+            >>> values = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
+            >>> n_sims = 3
+            >>> fs = FreqSevSims(sim_index, values, n_sims)
+            >>> max_losses: StochasticScalar = fs.occurrence()
+            >>> max_losses
+            StochasticScalar([2., 5., 9.])
+            >>> # Now you can apply statistical methods
+            >>> max_losses.mean()
+            5.33
 
         Returns:
-            numpy.ndarray: An array containing the aggregate loss for each simulation.
+            StochasticScalar: Array containing the maximum occurrence loss for each 
+                simulation. Use this for statistical analysis (mean, std, percentiles, etc.).
         """
         return self._reduce_over_events(np.maximum.at)
 

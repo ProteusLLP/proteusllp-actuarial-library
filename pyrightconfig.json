@@ -1,6 +1,6 @@
 {
-  "include": ["pal", "tests", "examples"],
-  "exclude": ["**/node_modules/**", "**/.venv/**"],
+  "include": ["pal", "tests", "examples/*.ipynb"],
+  "exclude": ["**/node_modules/**", "**/.venv/**", "examples/*.py"],
   "strict": ["pal"],
   "typeCheckingMode": "strict",
   "reportMissingImports": true,

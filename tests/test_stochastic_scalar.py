@@ -5,6 +5,7 @@ stochastic indexing, and integration with numpy operations.
 """
 import numpy as np
 import pytest  # noqa
+from pal.types import NumericProtocol
 from pal.variables import StochasticScalar
 
 
@@ -287,3 +288,49 @@ def test_tvar2():
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = x.tvar([50, 80])
     assert y == [4.5, 5]
+
+
+def test_min():
+    """Test the min() method of a stochastic scalar."""
+    x = StochasticScalar([4, 5, 2, 1, 3])
+    y = x.min()
+    assert y == 1
+    assert isinstance(y, NumericProtocol)  # Should return scalar
+
+
+def test_max():
+    """Test the max() method of a stochastic scalar."""
+    x = StochasticScalar([4, 5, 2, 1, 3])
+    y = x.max()
+    assert y == 5
+    assert isinstance(y, NumericProtocol)  # Should return scalar
+
+
+def test_min_empty():
+    """Test the min() method on an empty stochastic scalar."""
+    x = StochasticScalar([])
+    with pytest.raises(ValueError, match="zero-size array"):
+        x.min()
+
+
+def test_max_empty():
+    """Test the max() method on an empty stochastic scalar."""
+    x = StochasticScalar([])
+    with pytest.raises(ValueError, match="zero-size array"):
+        x.max()
+
+
+def test_min_single_value():
+    """Test the min() method on a single-value stochastic scalar."""
+    x = StochasticScalar([42])
+    y = x.min()
+    assert y == 42
+    assert isinstance(y, NumericProtocol)
+
+
+def test_max_single_value():
+    """Test the max() method on a single-value stochastic scalar."""
+    x = StochasticScalar([42])
+    y = x.max()
+    assert y == 42
+    assert isinstance(y, NumericProtocol)

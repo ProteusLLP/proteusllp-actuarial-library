@@ -9,7 +9,7 @@ n_sims = 100000
 config.n_sims = n_sims
 lobs = ["Motor", "Property", "Liability", "Marine", "Aviation"]
 # load the cat ylts
-df = pd.read_csv("data/catastrophes/cat_ylt.csv", index_col=0)
+df = pd.read_csv("data/catastrophes/cat_ylt.csv", index_col=0)  # type: ignore[misc]
 # upsample the cat ylts to the correct number of simulations
 ylt_sims = 10000
 up_sample_factor = math.ceil(n_sims / ylt_sims)

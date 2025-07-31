@@ -200,6 +200,36 @@ pyright pal
 
 **Key insight**: PDM uses `__pypackages__/3.13/lib` instead of traditional virtual environments. When you run `pdm run python`, it automatically adds this path to `sys.path`. Pyright needs `extraPaths` configured to find these packages and their type stubs (numpy, scipy, etc.).
 
+## Development Commands (Makefile)
+
+**Important**: All Makefile commands must be run from inside the devcontainer. The Makefile assumes access to the PDM-managed Python environment and dependencies.
+
+### Quick Reference
+
+```bash
+# Inside the devcontainer terminal:
+make help          # Show all available commands
+make lint          # Run ruff linting
+make format        # Run ruff formatting  
+make typecheck     # Run pyright type checking
+make test          # Run pytest with coverage
+make build         # Build the package
+```
+
+### From Outside the Container
+
+If you need to run commands from outside the devcontainer, use the Docker exec approach documented in [CLAUDE.md](../CLAUDE.md):
+
+```bash
+# Example: Run linting from host machine
+docker exec pal-devcontainer make lint
+
+# Example: Run tests from host machine  
+docker exec pal-devcontainer make test
+```
+
+**Recommendation**: Use the devcontainer's integrated terminal in VS Code for the best development experience.
+
 ## Container Architecture
 
 The project uses a multi-stage Dockerfile:

@@ -122,13 +122,29 @@ class StochasticScalar(ProteusStochasticVariable):
         out = kwargs.get("out", ())
         if out:
             kwargs["out"] = tuple(x.values for x in out)
-        result = StochasticScalar(getattr(ufunc, method)(*_inputs, **kwargs))
-        for input in inputs:
-            if isinstance(input, ProteusStochasticVariable):
-                input.coupled_variable_group.merge(self.coupled_variable_group)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
-
-        return result
+        
+        # Handle reduction operations - return scalars directly
+        if method == "reduce":
+            result = getattr(ufunc, method)(*_inputs, **kwargs)
+            
+            # Check if result should be wrapped (keepdims=True or axis specified)
+            keepdims = kwargs.get("keepdims", False)
+            axis = kwargs.get("axis", None)
+            
+            if keepdims or (axis is not None and hasattr(result, "shape") and result.shape):
+                return self._wrap_result_with_coupling(result, inputs)
+            
+            # Standard reduction returns scalar directly
+            return result
+        
+        # Handle reduceat/accumulate operations - return wrapped arrays
+        if method in ("reduceat", "accumulate"):
+            result = getattr(ufunc, method)(*_inputs, **kwargs)
+            return self._wrap_result_with_coupling(result, inputs)
+        
+        # Handle regular element-wise operations
+        result = getattr(ufunc, method)(*_inputs, **kwargs)
+        return self._wrap_result_with_coupling(result, inputs)
 
     def __getitem__(self, index: int | float | StochasticScalar) -> NumericLike:
         # handle an actual numeric index...
@@ -176,54 +192,7 @@ class StochasticScalar(ProteusStochasticVariable):
         """Convert the values to a Python list."""
         return t.cast(list[Numeric], self.values.tolist())
 
-    def ssum(self) -> ScipyNumeric:
-        """Sum the values of the variable across the simulation dimension."""
-        return t.cast(ScipyNumeric, np.sum(self.values))
 
-    def mean(self) -> ScipyNumeric:
-        """Return the mean of the variable across the simulation dimension."""
-        return t.cast(ScipyNumeric, np.mean(self.values))
-
-    def skew(self) -> ScipyNumeric:
-        """Return the coefficient of skewness across the simulation dimension."""
-        return t.cast(
-            ScipyNumeric, np.mean((self.values - self.mean()) ** 3) / self.std() ** 3
-        )
-
-    def kurt(self) -> ScipyNumeric:
-        """Return the kurtosis of the variable across the simulation dimension."""
-        return t.cast(
-            ScipyNumeric, np.mean((self.values - self.mean()) ** 4) / self.std() ** 4
-        )
-
-    def std(self) -> ScipyNumeric:
-        """Return the standard deviation across the simulation dimension."""
-        return t.cast(ScipyNumeric, np.std(self.values))
-
-    def percentile(self, p: ScipyNumeric) -> ScipyNumeric:
-        """Return the percentile of the variable across the simulation dimension."""
-        return t.cast(ScipyNumeric, np.percentile(self.values, p))
-
-    def tvar(self, p: NumberOrList) -> NumberOrList:
-        """Return the tail value at risk (TVAR) of the variable."""
-        if self.n_sims is None:
-            raise ValueError("Cannot compute TVAR for an uninitialized variable.")
-
-        # get the rank of the variable
-        rank_positions = np.argsort(self.values)
-        if isinstance(p, list):
-            # Type ignore: Generic list type inference limitation
-            result = []  # type: ignore[misc]
-            for perc in p:
-                result.append(  # type: ignore[misc]
-                    self.values[
-                        rank_positions[math.ceil(perc / 100 * self.n_sims) :]
-                    ].mean()
-                )
-            return result  # type: ignore[misc]
-        idx = math.ceil(p / 100 * self.n_sims)
-        result = self.values[rank_positions[idx:]].mean()
-        return t.cast(NumberOrList, result)
 
     def upsample(self, n_sims: int) -> t.Self:
         """Increase the number of simulations in the variable."""
@@ -273,3 +242,22 @@ class StochasticScalar(ProteusStochasticVariable):
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
         """Reorder the simulations in the variable."""
         self.values = self.values[new_order]
+
+    def _wrap_result_with_coupling(
+        self, result_array: t.Any, inputs: tuple[t.Any, ...]
+    ) -> "StochasticScalar":
+        """Wrap result in StochasticScalar and merge coupling groups.
+        
+        Args:
+            result_array: The numpy array result to wrap.
+            inputs: The input arguments from __array_ufunc__.
+            
+        Returns:
+            A new StochasticScalar with proper coupling group merging.
+        """
+        wrapped_result = StochasticScalar(result_array)
+        for input in inputs:
+            if isinstance(input, ProteusStochasticVariable):
+                input.coupled_variable_group.merge(self.coupled_variable_group)
+        wrapped_result.coupled_variable_group.merge(self.coupled_variable_group)
+        return wrapped_result

@@ -95,7 +95,11 @@ config.set_random_seed(123456)
 
 PAL uses the `default_rng` class from `numpy.random`, which can also be configured via `config.rng`.
 
-### GPU Acceleration
+### Environment Variables
+
+PAL supports several environment variables for configuration:
+
+#### GPU Acceleration
 
 For CUDA-compatible GPUs, install GPU dependencies:
 
@@ -103,10 +107,10 @@ For CUDA-compatible GPUs, install GPU dependencies:
 pdm install -G gpu
 ```
 
-Enable GPU mode by setting the environment variable:
+Enable GPU mode:
 
 ```bash
-# Linux
+# Linux/macOS
 export PAL_USE_GPU=1
 
 # Windows  
@@ -115,9 +119,66 @@ set PAL_USE_GPU=1
 
 Set to any other value to revert to CPU mode.
 
+#### Plotting Control
+
+When running in headless/CLI environments (without display), suppress plot output:
+
+```bash
+# Linux/macOS
+export PAL_SUPPRESS_PLOTS=true
+
+# Windows
+set PAL_SUPPRESS_PLOTS=true
+```
+
+This prevents `show_cdf()` and other plotting methods from attempting to display plots in browsers or GUI windows.
+
+## Interactive Examples (Jupyter Notebooks)
+
+PAL includes interactive Jupyter notebooks that demonstrate key features with live plots and step-by-step explanations.
+
+### Using Notebooks in VS Code
+
+All development work is done inside the devcontainer. VS Code provides native Jupyter support through the `ms-toolsai.jupyter` extension (pre-configured).
+
+#### Step-by-Step Instructions
+
+1. **Open the project in VS Code** with the Dev Containers extension installed
+2. **Reopen in Container** when prompted, or use Command Palette (Ctrl+Shift+P): "Dev Containers: Reopen in Container"
+3. **Wait for container setup** - first time takes a few minutes to build and install dependencies
+4. **Open a notebook** from the VS Code Explorer: `examples/example_catastrophes.ipynb`
+5. **Select Kernel** when prompted:
+   - Click "Select Kernel" in the top-right of the notebook
+   - Choose "Python Environments"
+   - Select the PDM environment (should show `/workspace/.venv/bin/python`)
+6. **Run cells** using:
+   - **Ctrl+Enter** - Run current cell
+   - **Shift+Enter** - Run current cell and move to next
+   - **▶ Play button** in each cell
+   - **Run All** button in the toolbar
+
+#### Troubleshooting
+
+- **"Kernel not found"**: Ensure you've selected the correct Python interpreter (`/workspace/.venv/bin/python`)
+- **Import errors**: Make sure the container finished building and installed all dependencies
+- **Plots not showing**: They should display inline automatically - no additional setup needed
+
+### Available Notebooks
+
+- **`example_catastrophes.ipynb`** - Catastrophe modeling with reinsurance recoveries
+- More notebooks coming soon...
+
+### Features
+
+- **Native VS Code integration** - No separate Jupyter server needed
+- **Live plots** displayed inline within VS Code
+- **Interactive debugging** - Full VS Code debugging support in notebooks
+- **Integrated development** - IntelliSense, linting, and formatting work seamlessly
+- **GitHub rendering** - notebooks display with plots when viewed on GitHub
+
 ## Advanced Examples
 
-For more complex examples including reinsurance modeling and catastrophe simulations, see the [examples directory](../examples/) in this repository.
+For additional Python scripts, see the [examples directory](../examples/) in this repository.
 
 ## See Also
 

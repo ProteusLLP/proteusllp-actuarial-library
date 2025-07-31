@@ -13,6 +13,7 @@ help:
 	@echo "  static-analysis - Run all static analysis tools"
 	@echo "  test           - Run pytest with coverage"
 	@echo "  check-examples - Check that examples compile"
+	@echo "  check-notebooks - Execute all notebooks to verify they work"
 	@echo "  build          - Build the package"
 	@echo "  clean          - Clean build artifacts"
 
@@ -31,7 +32,7 @@ format-check:
 
 .PHONY: typecheck
 typecheck:
-	pyright pal
+	pyright
 
 .PHONY: security
 security:
@@ -57,6 +58,18 @@ check-examples:
 		echo "Running $$example..."; \
 		PAL_SUPPRESS_PLOTS=true pdm run python $$example || exit 1; \
 	done
+
+.PHONY: check-notebooks
+check-notebooks:
+	@echo "Executing notebooks to verify they work..."
+	@for notebook in $(wildcard examples/*.ipynb); do \
+		echo "Executing $$notebook..."; \
+		PAL_SUPPRESS_PLOTS=true pdm run jupyter nbconvert --to notebook --execute \
+			--ExecutePreprocessor.timeout=300 \
+			--output-dir=/tmp \
+			"$$notebook" || exit 1; \
+	done
+	@echo "All notebooks executed successfully"
 
 # Build targets
 .PHONY: build

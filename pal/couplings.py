@@ -5,6 +5,7 @@ dependency relationships during reordering and copula applications. Key classes
 include CouplingGroup for managing variable groups and ProteusStochasticVariable
 as the base class for all stochastic types.
 """
+
 from __future__ import annotations
 
 import typing as t
@@ -64,15 +65,13 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
         """Initialize stochastic variable with new coupling group."""
         self.coupled_variable_group = CouplingGroup(self)
 
+    def __array__(self) -> npt.NDArray[np.floating]:
+        """Return the underlying numpy array for compatibility with numpy functions."""
+        return self.values
+
     def all(self) -> bool:
         """Return True if all values are True."""
         return t.cast(bool, self.values.all())
-
-    def mean(self) -> ScipyNumeric:
-        """Calculate the mean of the variable's values."""
-        if self.n_sims is None:
-            raise ValueError("n_sims must be set before calculating mean.")
-        return np.mean(self.values)
 
     def upsample(self, n_sims: int) -> t.Self:
         """Upsample the variable to match the specified number of simulations.
@@ -85,10 +84,6 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
         """
         raise NotImplementedError
 
-    def __array__(self) -> npt.NDArray[np.floating]:
-        """Return the underlying numpy array for compatibility with numpy functions."""
-        return self.values
-
     def astype(self, dtype: np.dtype[t.Any] | type[t.Any]) -> npt.NDArray[t.Any]:
         """Convert the underlying values to a specified dtype.
 
@@ -100,5 +95,6 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
         """
         return self.values.astype(dtype)
 
+    # Private methods for internal use
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
         raise NotImplementedError
