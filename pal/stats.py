@@ -62,7 +62,9 @@ def tvar(values: npt.ArrayLike, p: NumberOrList) -> NumberOrList:
 
     idx = math.ceil(p / 100 * n_sims)
     if idx >= n_sims:
-        raise ValueError(f"Percentile {p}% requires more data points than available ({n_sims})")
+        raise ValueError(
+            f"Percentile {p}% requires more data points than available ({n_sims})"
+        )
     result = values_array[rank_positions[idx:]].mean()
     return t.cast(NumberOrList, result)
 

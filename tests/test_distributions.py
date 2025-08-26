@@ -3,6 +3,7 @@
 Comprehensive tests for actuarial distributions including parametric tests,
 CDF/inverse CDF validation, and simulation accuracy checks.
 """
+
 import math
 
 import pytest

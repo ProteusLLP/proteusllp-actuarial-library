@@ -3,6 +3,7 @@
 Tests covering copula-based coupling mechanisms and simulation reordering
 for dependency modeling between stochastic variables.
 """
+
 import pytest  # noqa
 from pal import copulas
 from pal.variables import StochasticScalar

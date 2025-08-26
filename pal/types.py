@@ -3,6 +3,7 @@
 Defines common type aliases, protocols, and configuration classes used
 throughout the library for type safety and consistency.
 """
+
 import dataclasses
 import typing as t
 

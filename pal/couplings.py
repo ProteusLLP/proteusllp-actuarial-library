@@ -16,8 +16,6 @@ import numpy as np
 import numpy.typing as npt
 from numpy.lib.mixins import NDArrayOperatorsMixin
 
-from .types import ScipyNumeric
-
 
 class CouplingGroup:
     """A class to represent a group of variables that are coupled together."""

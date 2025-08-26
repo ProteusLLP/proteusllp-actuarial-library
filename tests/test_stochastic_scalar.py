@@ -3,6 +3,7 @@
 Comprehensive tests covering arithmetic operations, statistics computation,
 stochastic indexing, and integration with numpy operations.
 """
+
 import numpy as np
 import pytest  # noqa
 from pal.types import NumericProtocol

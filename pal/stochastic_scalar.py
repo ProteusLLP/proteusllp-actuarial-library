@@ -4,6 +4,7 @@ Provides the StochasticScalar class for representing and manipulating
 scalar-valued stochastic variables in actuarial and risk modeling applications.
 Supports arithmetic operations, statistical functions, and numpy integration.
 """
+
 from __future__ import annotations
 
 import math
@@ -122,26 +123,28 @@ class StochasticScalar(ProteusStochasticVariable):
         out = kwargs.get("out", ())
         if out:
             kwargs["out"] = tuple(x.values for x in out)
-        
+
         # Handle reduction operations - return scalars directly
         if method == "reduce":
             result = getattr(ufunc, method)(*_inputs, **kwargs)
-            
+
             # Check if result should be wrapped (keepdims=True or axis specified)
             keepdims = kwargs.get("keepdims", False)
             axis = kwargs.get("axis", None)
-            
-            if keepdims or (axis is not None and hasattr(result, "shape") and result.shape):
+
+            if keepdims or (
+                axis is not None and hasattr(result, "shape") and result.shape
+            ):
                 return self._wrap_result_with_coupling(result, inputs)
-            
+
             # Standard reduction returns scalar directly
             return result
-        
+
         # Handle reduceat/accumulate operations - return wrapped arrays
         if method in ("reduceat", "accumulate"):
             result = getattr(ufunc, method)(*_inputs, **kwargs)
             return self._wrap_result_with_coupling(result, inputs)
-        
+
         # Handle regular element-wise operations
         result = getattr(ufunc, method)(*_inputs, **kwargs)
         return self._wrap_result_with_coupling(result, inputs)
@@ -191,8 +194,6 @@ class StochasticScalar(ProteusStochasticVariable):
     def tolist(self) -> list[Numeric]:
         """Convert the values to a Python list."""
         return t.cast(list[Numeric], self.values.tolist())
-
-
 
     def upsample(self, n_sims: int) -> t.Self:
         """Increase the number of simulations in the variable."""
@@ -247,11 +248,11 @@ class StochasticScalar(ProteusStochasticVariable):
         self, result_array: t.Any, inputs: tuple[t.Any, ...]
     ) -> "StochasticScalar":
         """Wrap result in StochasticScalar and merge coupling groups.
-        
+
         Args:
             result_array: The numpy array result to wrap.
             inputs: The input arguments from __array_ufunc__.
-            
+
         Returns:
             A new StochasticScalar with proper coupling group merging.
         """

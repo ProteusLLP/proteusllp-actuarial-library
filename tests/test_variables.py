@@ -4,6 +4,7 @@ Comprehensive tests for ProteusVariable functionality including arithmetic
 operations, aggregation, upsampling, correlation analysis, and integration
 with various stochastic variable types.
 """
+
 import numpy as np
 import pytest
 from pal.variables import FreqSevSims, ProteusVariable, StochasticScalar

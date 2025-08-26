@@ -3,6 +3,7 @@
 Comprehensive tests for FreqSevSims class covering aggregation operations,
 arithmetic operations, and integration with other stochastic types.
 """
+
 import numpy as np
 import pytest  # noqa: F401
 from pal.frequency_severity import FreqSevSims

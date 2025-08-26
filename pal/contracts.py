@@ -4,6 +4,7 @@ Provides classes for modeling XoL (excess of loss) reinsurance contracts
 including individual layers and complete towers with aggregate limits,
 reinstatement premiums, franchise deductibles, and complex layering.
 """
+
 from dataclasses import dataclass
 
 from ._maths import xp as np
@@ -227,7 +228,7 @@ class XoL:
             "prob_attach": (
                 float(count) / aggregate_recoveries.n_sims
                 if aggregate_recoveries.n_sims
-                else float('nan')
+                else float("nan")
             ),
             "prob_vert_exhaust": float(v_count) / len(gross_losses.values),
             "prob_horizonal_exhaust": (

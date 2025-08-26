@@ -267,7 +267,7 @@ class FreqSevSims(ProteusStochasticVariable):
         """Calculates the aggregate loss for each simulation.
 
         Sums all individual event losses within each simulation to get the total
-        loss per simulation. This converts event-level FreqSevSims data to 
+        loss per simulation. This converts event-level FreqSevSims data to
         simulation-level StochasticScalar data suitable for statistical analysis.
 
         Example:
@@ -291,8 +291,8 @@ class FreqSevSims(ProteusStochasticVariable):
     def occurrence(self) -> StochasticScalar:
         """Calculates the maximum occurrence loss for each simulation.
 
-        Finds the largest individual event loss within each simulation. This 
-        converts event-level FreqSevSims data to simulation-level StochasticScalar 
+        Finds the largest individual event loss within each simulation. This
+        converts event-level FreqSevSims data to simulation-level StochasticScalar
         data suitable for statistical analysis.
 
         Example:
@@ -308,7 +308,7 @@ class FreqSevSims(ProteusStochasticVariable):
             5.33
 
         Returns:
-            StochasticScalar: Array containing the maximum occurrence loss for each 
+            StochasticScalar: Array containing the maximum occurrence loss for each
                 simulation. Use this for statistical analysis (mean, std, percentiles, etc.).
         """
         return self._reduce_over_events(np.maximum.at)

@@ -1,4 +1,5 @@
 """Tests for statistical utilities in the stats module."""
+
 import numpy as np
 import pytest
 from pal.stats import tvar

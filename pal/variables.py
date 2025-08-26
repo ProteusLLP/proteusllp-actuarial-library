@@ -300,8 +300,8 @@ class ProteusVariable(ProteusLike):
         if dimensions is None:
             dimensions = []
         if dimensions == []:
-            result = self.sum()
-            return result
+            # Sum all values in this ProteusVariable
+            return sum(self.values.values())
 
         return self
 

@@ -3,6 +3,7 @@
 Tests covering copula sampling, margin validation, and integration
 with ProteusVariable for dependency modeling in actuarial applications.
 """
+
 import numpy as np
 import pytest
 import scipy
