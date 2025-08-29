@@ -499,9 +499,9 @@ class ProteusVariable(ProteusLike):
         def _mean_helper(value: NumericLike) -> t.Any:
             """Helper function to compute mean for different value types."""
             if isinstance(value, FreqSevSims):
-                return value.aggregate().mean()
+                return np.mean(value.aggregate())
             if isinstance(value, StochasticScalar):
-                return value.mean()
+                return np.mean(value)
             if isinstance(value, ProteusVariable):
                 # For nested ProteusVariable, recursively compute mean
                 return value.mean()

@@ -7,7 +7,6 @@ Supports arithmetic operations, statistical functions, and numpy integration.
 
 from __future__ import annotations
 
-import math
 import os
 import typing as t
 
@@ -16,7 +15,7 @@ import plotly.graph_objects as go  # type: ignore
 
 from ._maths import xp as np
 from .couplings import CouplingGroup, ProteusStochasticVariable
-from .types import Numeric, NumericLike, ScipyNumeric
+from .types import Numeric, NumericLike
 
 NumberOrList = Numeric | list[Numeric]
 NumericOrStochasticScalar = t.TypeVar(
@@ -246,7 +245,7 @@ class StochasticScalar(ProteusStochasticVariable):
 
     def _wrap_result_with_coupling(
         self, result_array: t.Any, inputs: tuple[t.Any, ...]
-    ) -> "StochasticScalar":
+    ) -> StochasticScalar:
         """Wrap result in StochasticScalar and merge coupling groups.
 
         Args:

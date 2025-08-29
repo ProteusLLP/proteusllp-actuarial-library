@@ -26,10 +26,10 @@ def copula_margins(copula_samples: list[StochasticScalar] | ProteusVariable):
 
     # check the values are uniform by checking the moments
     for u in copula_samples:
-        assert np.isclose(u.mean(), 0.5, atol=1e-2)
-        assert np.isclose(u.std(), 1 / np.sqrt(12), atol=1e-2)
-        assert np.isclose(u.skew(), 0, atol=1e-1)
-        assert np.isclose(u.kurt(), 3 - 6 / 5, atol=1e-1)
+        assert np.isclose(np.mean(u), 0.5, atol=1e-2)
+        assert np.isclose(np.std(u), 1 / np.sqrt(12), atol=1e-2)
+        assert np.isclose(scipy.stats.skew(u), 0, atol=1e-1)
+        assert np.isclose(scipy.stats.kurtosis(u, fisher=False), 3 - 6 / 5, atol=1e-1)
 
 
 @pytest.mark.parametrize("correlation", [-0.999, 0.5, 0, -0.5, 0.25, 0.75, 0.999])

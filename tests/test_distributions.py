@@ -8,6 +8,7 @@ import math
 
 import pytest
 import scipy.special
+import scipy.stats
 from pal import distributions
 from pal._maths import xp as np
 from pal.config import set_random_seed
@@ -26,8 +27,8 @@ def test_poisson() -> None:
         1e-8,
     )
     sims = dist.generate(100000)
-    assert np.isclose(sims.mean(), lamda, 1e-3)
-    assert np.isclose(sims.std() ** 2, lamda, 1e-2)
+    assert np.isclose(np.mean(sims), lamda, 1e-3)
+    assert np.isclose(np.std(sims) ** 2, lamda, 1e-2)
 
 
 def test_poisson_gamma() -> None:
@@ -37,8 +38,8 @@ def test_poisson_gamma() -> None:
     beta = 3
     lamda = distributions.Gamma(alpha, beta).generate(100000)
     sims = distributions.Poisson(lamda).generate(100000)
-    sims_mean = sims.mean()
-    sims_std = sims.std()
+    sims_mean = np.mean(sims)
+    sims_std = np.std(sims)
     assert np.isclose(sims_mean, alpha * beta, 1e-2)
     assert np.isclose(sims_std**2, alpha * beta + alpha * beta**2, 1e-2)
     assert sims.coupled_variable_group == lamda.coupled_variable_group
@@ -51,8 +52,8 @@ def test_gamma_exp() -> None:
     beta = 3
     lamda = distributions.Gamma(alpha, beta).generate(1000000)
     sims = distributions.Exponential(lamda).generate(1000000)
-    sims_mean = sims.mean()
-    sims_std = sims.std()
+    sims_mean = np.mean(sims)
+    sims_std = np.std(sims)
     assert np.isclose(sims_mean, alpha * beta, 1e-2)
     assert np.isclose(sims_std**2, (2 * alpha + alpha**2) * beta**2, 1e-2)
     assert sims.coupled_variable_group == lamda.coupled_variable_group
@@ -74,9 +75,9 @@ def test_beta() -> None:
     )
 
     sims = dist.generate(1000000)
-    assert np.allclose(sims.mean(), alpha / (alpha + beta) * scale + loc, 1e-3)
+    assert np.allclose(np.mean(sims), alpha / (alpha + beta) * scale + loc, 1e-3)
     assert np.allclose(
-        sims.std(),
+        np.std(sims),
         math.sqrt(alpha * beta / ((alpha + beta) ** 2 * (alpha + beta + 1))) * scale,
         1e-3,
     )
@@ -94,8 +95,8 @@ def test_gpd() -> None:
     assert dist.invcdf(0.960981557689) == pytest.approx(1500000, 1e-4)
 
     sims = dist.generate(100000000)
-    assert sims.mean() == pytest.approx(scale / (1 - shape) + threshold, 1e-3)
-    assert sims.std() == pytest.approx(
+    assert np.mean(sims) == pytest.approx(scale / (1 - shape) + threshold, 1e-3)
+    assert np.std(sims) == pytest.approx(
         scale / (1 - shape) / math.sqrt(1 - 2 * shape), 1e-3
     )
 
@@ -113,10 +114,10 @@ def test_burr() -> None:
     assert dist.invcdf(0.9999431042330451) == pytest.approx(1500000, 1e-8)
 
     sims = dist.generate(10000000)
-    assert sims.mean() == pytest.approx(
+    assert np.mean(sims) == pytest.approx(
         shape * scipy.special.beta(shape - 1 / power, 1 + 1 / power) * scale + loc, 1e-3
     )
-    assert sims.std() == pytest.approx(
+    assert np.std(sims) == pytest.approx(
         math.sqrt(
             shape * scipy.special.beta(shape - 2 / power, 1 + 2 / power)
             - shape**2 * scipy.special.beta(shape - 1 / power, 1 + 1 / power) ** 2
@@ -140,11 +141,11 @@ def test_inverse_burr() -> None:
 
     sims = dist.generate(10000000)
 
-    assert sims.mean() == pytest.approx(
+    assert np.mean(sims) == pytest.approx(
         gamma(1 - 1 / power) * gamma(shape + 1 / power) / gamma(shape) * scale + loc,
         1e-3,
     )
-    assert sims.std() == pytest.approx(
+    assert np.std(sims) == pytest.approx(
         math.sqrt(
             gamma(1 - 2 / power) * gamma(shape + 2 / power) / gamma(shape)
             - (gamma(1 - 1 / power) * gamma(shape + 1 / power) / gamma(shape)) ** 2
@@ -167,8 +168,8 @@ def test_logistic() -> None:
     )
 
     sims = dist.generate(10000000)
-    sims_mean = sims.mean()
-    sims_std = sims.std()
+    sims_mean = np.mean(sims)
+    sims_std = np.std(sims)
     assert np.isclose(sims_mean, mu, 1e-3)
     assert np.isclose(sims_std, np.pi * sigma / np.sqrt(3), 1e-3)
 
@@ -186,10 +187,10 @@ def test_log_logistic() -> None:
     assert dist.invcdf(0.9984025559105432) == pytest.approx(1500000, 1e-8)
 
     sims = dist.generate(100000000)
-    assert sims.mean() == pytest.approx(
+    assert np.mean(sims) == pytest.approx(
         scipy.special.beta(1 - 1 / shape, 1 + 1 / shape) * scale + loc, 1e-3
     )
-    assert sims.std() == pytest.approx(
+    assert np.std(sims) == pytest.approx(
         math.sqrt(
             scipy.special.beta(1 - 2 / shape, 1 + 2 / shape)
             - scipy.special.beta(1 - 1 / shape, 1 + 1 / shape) ** 2
@@ -214,7 +215,7 @@ def test_para_logistic() -> None:
 
     sims = dist.generate(100000000)
 
-    assert sims.mean() == pytest.approx(
+    assert np.mean(sims) == pytest.approx(
         scale * gamma(1 + 1 / shape) * gamma(shape - 1 / shape) / gamma(shape) + loc,
         1e-5,
     )
@@ -235,11 +236,11 @@ def test_inverse_para_logistic() -> None:
 
     sims = dist.generate(100000000)
 
-    assert sims.mean() == pytest.approx(
+    assert np.mean(sims) == pytest.approx(
         scale * gamma(shape + 1 / shape) * gamma(1 - 1 / shape) / gamma(shape) + loc,
         1e-3,
     )
-    assert sims.std() == pytest.approx(
+    assert np.std(sims) == pytest.approx(
         scale
         * np.sqrt(
             (gamma(shape + 2 / shape) * gamma(1 - 2 / shape) / gamma(shape))
@@ -264,8 +265,8 @@ def test_weibull() -> None:
 
     sims = dist.generate(100000000)
 
-    assert sims.mean() == pytest.approx(scale * gamma(1 + 1 / shape) + loc, 1e-3)
-    assert sims.std() == pytest.approx(
+    assert np.mean(sims) == pytest.approx(scale * gamma(1 + 1 / shape) + loc, 1e-3)
+    assert np.std(sims) == pytest.approx(
         scale * np.sqrt(gamma(1 + 2 / shape) - (gamma(1 + 1 / shape)) ** 2), 1e-3
     )
 
@@ -285,8 +286,8 @@ def test_inverse_weibull() -> None:
 
     sims = dist.generate(100000000)
 
-    assert sims.mean() == pytest.approx(scale * gamma(1 - 1 / shape) + loc, 1e-3)
-    assert sims.std() == pytest.approx(
+    assert np.mean(sims) == pytest.approx(scale * gamma(1 - 1 / shape) + loc, 1e-3)
+    assert np.std(sims) == pytest.approx(
         scale * np.sqrt(gamma(1 - 2 / shape) - (gamma(1 - 1 / shape)) ** 2), 1e-3
     )
 
@@ -305,8 +306,8 @@ def test_exponential() -> None:
 
     sims = dist.generate(100000000)
 
-    assert sims.mean() == pytest.approx(scale + loc, 1e-3)
-    assert sims.std() == pytest.approx(scale, 1e-3)
+    assert np.mean(sims) == pytest.approx(scale + loc, 1e-3)
+    assert np.std(sims) == pytest.approx(scale, 1e-3)
 
 
 def test_inverse_exponential() -> None:
@@ -339,8 +340,8 @@ def test_gamma() -> None:
 
     sims = dist.generate(10000000)
 
-    assert np.allclose(sims.mean(), scale * shape + loc, 1e-3)
-    assert np.allclose(sims.std(), scale * np.sqrt(shape), 1e-3)
+    assert np.allclose(np.mean(sims), scale * shape + loc, 1e-3)
+    assert np.allclose(np.std(sims), scale * np.sqrt(shape), 1e-3)
 
 
 def test_log_normal() -> None:
@@ -362,8 +363,8 @@ def test_log_normal() -> None:
     mean = np.exp(mu + 0.5 * sigma**2)
     sd = np.sqrt((np.exp(sigma**2) - 1) * np.exp(2 * mu + sigma**2))
 
-    assert np.allclose(sims.mean(), mean, 1e-3)
-    assert np.allclose(sims.std(), sd, 1e-3)
+    assert np.allclose(np.mean(sims), mean, 1e-3)
+    assert np.allclose(np.std(sims), sd, 1e-3)
 
 
 def test_inverse_gamma() -> None:
@@ -383,9 +384,11 @@ def test_inverse_gamma() -> None:
 
     sims = dist.generate(10000000)
 
-    assert np.allclose(sims.mean(), scale * gamma(shape - 1) / gamma(shape) + loc, 1e-3)
     assert np.allclose(
-        sims.std(),
+        np.mean(sims), scale * gamma(shape - 1) / gamma(shape) + loc, 1e-3
+    )
+    assert np.allclose(
+        np.std(sims),
         scale
         * np.sqrt(
             gamma(shape - 2) / gamma(shape) - (gamma(shape - 1) / gamma(shape)) ** 2

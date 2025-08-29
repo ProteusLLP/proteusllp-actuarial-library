@@ -5,6 +5,7 @@
 help:
 	@echo "Available targets:"
 	@echo "  lint           - Run ruff linting"
+	@echo "  lint-fix       - Auto-fix lint issues with ruff"
 	@echo "  format         - Run ruff formatting"
 	@echo "  format-check   - Check ruff formatting without making changes"
 	@echo "  typecheck      - Run pyright type checking"
@@ -14,6 +15,7 @@ help:
 	@echo "  test           - Run pytest with coverage"
 	@echo "  check-examples - Check that examples compile"
 	@echo "  check-notebooks - Execute all notebooks to verify they work"
+	@echo "  check          - Run all checks (lint, typecheck, security, deadcode, test, examples, notebooks)"
 	@echo "  build          - Build the package"
 	@echo "  clean          - Clean build artifacts"
 
@@ -21,6 +23,10 @@ help:
 .PHONY: lint
 lint:
 	pdm run ruff check pal tests examples
+
+.PHONY: lint-fix
+lint-fix:
+	pdm run ruff check --fix pal tests examples
 
 .PHONY: format
 format:
@@ -70,6 +76,11 @@ check-notebooks:
 			"$$notebook" || exit 1; \
 	done
 	@echo "All notebooks executed successfully"
+
+# All checks combined
+.PHONY: check
+check: lint typecheck security deadcode test check-examples check-notebooks
+	@echo "✓ All checks passed successfully!"
 
 # Build targets
 .PHONY: build

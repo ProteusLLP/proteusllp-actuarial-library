@@ -46,7 +46,7 @@ ProteusCompatibleTypes = t.Union[
 ReductionOperation = t.Callable[
     [
         npt.NDArray[np.floating],  # result: array to store reduced values
-        npt.NDArray[np.integer],  # indices: simulation indices for each event
+        npt.NDArray[np.int64],  # indices: simulation indices for each event
         npt.NDArray[np.floating],  # values: event values to reduce
     ],
     None,
@@ -60,8 +60,8 @@ ArrayTransform = t.Callable[
 
 
 def _get_sims_of_events(
-    n_events_by_sim: npt.NDArray[np.integer],
-) -> npt.NDArray[np.integer]:
+    n_events_by_sim: npt.NDArray[np.int64],
+) -> npt.NDArray[np.int64]:
     """Get the simulation index for each event.
 
     Given the number of events in each simulation, returns the simulation
@@ -79,7 +79,7 @@ def _get_sims_of_events(
     """
     cumulative_n_events = n_events_by_sim.cumsum()
     total_events = cumulative_n_events[-1]
-    event_no = t.cast(npt.NDArray[np.integer], np.arange(total_events))
+    event_no = t.cast(npt.NDArray[np.int64], np.arange(total_events))
     return cumulative_n_events.searchsorted(event_no + 1)
 
 
@@ -117,12 +117,12 @@ class FrequencySeverityModel:
         if n_sims is None:
             n_sims = config.n_sims
         n_events = self.freq_dist.generate(n_sims, rng)
-        total_events = n_events.ssum()
+        total_events = np.sum(n_events)
         sev = self.sev_dist.generate(int(total_events), rng)
         # Convert n_events to integers since _get_sims_of_events expects integer counts
         # but n_events.values comes from distributions which return floating arrays
         result = FreqSevSims(
-            _get_sims_of_events(n_events.values.astype(np.integer)), sev.values, n_sims
+            _get_sims_of_events(n_events.values.astype(np.int64)), sev.values, n_sims
         )
         result.coupled_variable_group.merge(n_events.coupled_variable_group)
         result.coupled_variable_group.merge(sev.coupled_variable_group)
@@ -166,7 +166,7 @@ class FreqSevSims(ProteusStochasticVariable):
 
     def __init__(
         self,
-        sim_index: npt.NDArray[np.integer],
+        sim_index: npt.NDArray[np.int64],
         values: npt.NDArray[np.floating],
         n_sims: int | None = None,
     ):
@@ -309,7 +309,8 @@ class FreqSevSims(ProteusStochasticVariable):
 
         Returns:
             StochasticScalar: Array containing the maximum occurrence loss for each
-                simulation. Use this for statistical analysis (mean, std, percentiles, etc.).
+                simulation. Use this for statistical analysis (mean, std,
+                percentiles, etc.).
         """
         return self._reduce_over_events(np.maximum.at)
 

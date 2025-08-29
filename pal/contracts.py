@@ -211,16 +211,16 @@ class XoL:
             None
 
         """
-        mean = aggregate_recoveries.mean()
-        sd = aggregate_recoveries.std()
-        count = (aggregate_recoveries > 0).ssum()
+        mean = np.mean(aggregate_recoveries)
+        sd = np.std(aggregate_recoveries)
+        count = np.sum(aggregate_recoveries > 0)
         vertical_exhaust: FreqSevSims = np.maximum(
             gross_losses - self.limit + self.excess, 0
         )
         aggregate_vertical_exhaust = vertical_exhaust.aggregate()
 
-        v_count = (aggregate_vertical_exhaust > 0).ssum()
-        h_count = (aggregate_recoveries >= self.aggregate_limit).ssum()
+        v_count = np.sum(aggregate_vertical_exhaust > 0)
+        h_count = np.sum(aggregate_recoveries >= self.aggregate_limit)
 
         self.summary = {
             "mean": float(mean),

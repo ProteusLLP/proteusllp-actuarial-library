@@ -43,6 +43,30 @@ def calculate_premium(base_amount: float, rate: float) -> float:
     return base_amount * rate
 ```
 
+## Comments
+
+- **Purpose**: Comments should explain WHY, not WHAT the code does
+- **Line Length**: Must not exceed 88 characters per line
+- **Quality**: The code itself shows what it does - comments that repeat this are redundant noise
+- **Good comments explain**:
+  - Business logic and domain-specific rules
+  - Non-obvious design decisions
+  - Edge cases and their handling
+  - Performance or security considerations
+
+```python
+# Bad - explains WHAT (redundant)
+# Loop through all items in the list
+for item in items:
+    process(item)
+
+# Good - explains WHY
+# Process items in reverse order to avoid index shifting when removing elements
+for item in reversed(items):
+    if should_remove(item):
+        items.remove(item)
+```
+
 ## Docstrings
 
 - **Style**: Google-style docstrings

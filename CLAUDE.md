@@ -51,7 +51,12 @@ docker ps --filter name=pal-devcontainer
 
 ## Code Style
 
-**See [STYLE_GUIDE.md](./STYLE_GUIDE.md) for all coding standards and examples.**
+**See [STYLE_GUIDE.md](./STYLE_GUIDE.md) for all coding standards including:**
+- Line length (88 characters max)
+- Type annotations
+- Comments (explain WHY, not WHAT)
+- Docstring format
+- Import ordering
 
 ### Linting Workflow
 1. Run: `docker exec pal-devcontainer make lint`

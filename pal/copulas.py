@@ -19,6 +19,7 @@ from ._maths import xp as np
 
 # Local imports
 from .config import config
+from .types import NumericLike
 
 
 class Copula(ABC):
@@ -40,19 +41,30 @@ class Copula(ABC):
         """
         raise NotImplementedError("Subclasses must implement this method.")
 
-    def apply(self, variables: ProteusVariable | list[StochasticScalar]) -> None:
+    def apply(self, variables: ProteusVariable | list[NumericLike]) -> None:
         """Apply the copula to a list of variables.
 
         Parameters:
-            variables: A ProteusVariable or list of StochasticScalar instances.
+            variables: A ProteusVariable or list of NumericLike instances
+                (must be StochasticScalar at runtime).
         """
-        # Convert ProteusVariable to list of StochasticScalar if needed
+        # ProteusVariable may contain mixed types (StochasticScalar, FreqSevSims,
+        # nested ProteusVariables). We silently filter to only StochasticScalar
+        # values since ProteusVariable is often used as a container where only some
+        # elements need correlation (e.g., aggregate losses but not individual event
+        # details). For explicit lists, we enforce strict typing to catch user errors.
         if isinstance(variables, ProteusVariable):
             variables_list = [
                 val for val in variables if isinstance(val, StochasticScalar)
             ]
         else:
-            variables_list = variables
+            variables_list: list[StochasticScalar] = []
+            for var in variables:
+                if not isinstance(var, StochasticScalar):
+                    raise TypeError(
+                        f"Expected StochasticScalar, got {type(var).__name__}"
+                    )
+                variables_list.append(var)
 
         # Generate the copula samples
         rng_generator = config.rng

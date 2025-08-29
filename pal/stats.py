@@ -5,7 +5,6 @@ and statistical analysis of frequency-severity simulation results.
 """
 
 import math
-import typing as t
 
 import numpy.typing as npt
 
@@ -54,19 +53,25 @@ def tvar(values: npt.ArrayLike, p: NumberOrList) -> NumberOrList:
     # Get the rank of the variable
     rank_positions = np.argsort(values_array)
     if isinstance(p, list):
-        result = []
+        result: list[Numeric] = []
         for perc in p:
             idx = math.ceil(perc / 100 * n_sims)
-            result.append(values_array[rank_positions[idx:]].mean())
+            if idx >= n_sims:
+                # For high percentiles with small datasets, return the maximum value
+                result.append(float(values_array[rank_positions[-1]]))
+                continue
+            result.append(float(values_array[rank_positions[idx:]].mean()))
         return result
 
     idx = math.ceil(p / 100 * n_sims)
-    if idx >= n_sims:
+    if idx > n_sims:
         raise ValueError(
             f"Percentile {p}% requires more data points than available ({n_sims})"
         )
-    result = values_array[rank_positions[idx:]].mean()
-    return t.cast(NumberOrList, result)
+    # Handle edge case where idx == n_sims (e.g., single value at 50th percentile)
+    if idx >= n_sims:
+        return float(values_array[rank_positions[-1]])  # Return the maximum value
+    return float(values_array[rank_positions[idx:]].mean())
 
 
 def loss_summary(losses: FreqSevSims) -> dict[str, npt.NDArray[np.floating]]:
