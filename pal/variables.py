@@ -106,6 +106,7 @@ class ProteusVariable(ProteusLike):
         # TODO: Clarify whether the values dict is intended to be mutable during the
         # variable's lifetime, or if it should be treated as immutable after
         # initialization. Consider using a frozen dict if immutability is desired.
+        # See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/20
         self.values = values
         self.dimensions = [dim_name]
         self._dimension_set = set(self.dimensions)
