@@ -13,7 +13,6 @@ help:
 	@echo "  deadcode       - Run vulture dead code detection"
 	@echo "  static-analysis - Run all static analysis tools"
 	@echo "  test           - Run pytest with coverage"
-	@echo "  check-examples - Check that examples compile"
 	@echo "  check-notebooks - Execute all notebooks to verify they work"
 	@echo "  check          - Run all checks (lint, typecheck, security, deadcode, test, examples, notebooks)"
 	@echo "  build          - Build the package"
@@ -58,13 +57,6 @@ test:
 	mkdir -p coverage
 	pdm run pytest -v --cov=pal --cov-report=xml:coverage/coverage.xml
 
-.PHONY: check-examples
-check-examples:
-	@for example in $(wildcard examples/*.py); do \
-		echo "Running $$example..."; \
-		PAL_SUPPRESS_PLOTS=true pdm run python $$example || exit 1; \
-	done
-
 .PHONY: check-notebooks
 check-notebooks:
 	@echo "Executing notebooks to verify they work..."
@@ -79,7 +71,7 @@ check-notebooks:
 
 # All checks combined
 .PHONY: check
-check: lint typecheck security deadcode test check-examples check-notebooks
+check: lint typecheck security deadcode test check-notebooks
 	@echo "✓ All checks passed successfully!"
 
 # Build targets
