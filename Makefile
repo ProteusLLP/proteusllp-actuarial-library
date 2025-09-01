@@ -11,10 +11,10 @@ help:
 	@echo "  typecheck      - Run pyright type checking"
 	@echo "  security       - Run bandit security scanning"
 	@echo "  deadcode       - Run vulture dead code detection"
-	@echo "  static-analysis - Run all static analysis tools"
+	@echo "  static-analysis - Run all static analysis tools (lint, format, typecheck, security, deadcode)"
 	@echo "  test           - Run pytest with coverage"
 	@echo "  check-notebooks - Execute all notebooks to verify they work"
-	@echo "  check          - Run all checks (lint, typecheck, security, deadcode, test, examples, notebooks)"
+	@echo "  check          - Run all checks (static-analysis + tests + notebooks)"
 	@echo "  build          - Build the package"
 	@echo "  clean          - Clean build artifacts"
 
@@ -71,7 +71,7 @@ check-notebooks:
 
 # All checks combined
 .PHONY: check
-check: lint typecheck security deadcode test check-notebooks
+check: static-analysis test check-notebooks
 	@echo "✓ All checks passed successfully!"
 
 # Build targets

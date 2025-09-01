@@ -4,14 +4,26 @@ This file contains project-specific information to help Claude work effectively 
 
 ## Development Environment
 
-This project uses Docker for consistent development environments. All commands should be executed inside the Docker container.
+This project uses Docker for consistent development environments.
+
+### Command Execution Guidelines
+
+**Run INSIDE the Docker container (`pal-devcontainer`):**
+- All `make` commands (lint, test, typecheck, etc.)
+- Python/PDM commands
+- Package builds
+
+**Run on the HOST machine:**
+- Git commands (`git add`, `git commit`, `git push`, etc.)
+- GitHub CLI (`gh` commands for issues, PRs, etc.)
+- File editing (though this works in both environments)
 
 ### Docker Commands
 
 The container name is configured in `.devcontainer/devcontainer.json` as `pal-devcontainer`:
 
 ```bash
-# All development commands:
+# All development commands (run inside container):
 # Lint code
 docker exec pal-devcontainer make lint
 

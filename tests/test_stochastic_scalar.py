@@ -280,6 +280,7 @@ def test_percentile():
 def test_tvar():
     """Test the tail value at risk (TVAR) of the variable."""
     from pal.stats import tvar
+
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = tvar(x, 50)
     assert y == 4.5
@@ -288,6 +289,7 @@ def test_tvar():
 def test_tvar2():
     """Test the tail value at risk (TVAR) of the variable."""
     from pal.stats import tvar
+
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = tvar(x, [50, 80])
     assert y == [4.5, 5]

@@ -368,7 +368,7 @@ class FreqSevSims(ProteusStochasticVariable):
         return result
 
     def __array_function__(
-        self, func: Callable[..., t.Any], types: t.Any, args: t.Any, kwargs: t.Any
+        self, func: Callable[..., t.Any], _: t.Any, args: t.Any, kwargs: t.Any
     ) -> t.Union[np.number[t.Any], "FreqSevSims"]:
         """Handle numpy array functions for FreqSevSims objects.
 

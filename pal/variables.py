@@ -80,6 +80,11 @@ class ProteusVariable(ProteusLike):
 
     Sub elements of a ProteusVariable can be accessed using the [] notation.
 
+    Note: Statistical operations should be performed using numpy and scipy functions
+    directly on ProteusVariable instances. For example:
+    - Use np.percentile(variable, p)
+    - Use np.mean(variable)
+    - Use pal.stats.tvar(variable, p)
     """
 
     dim_name: str
@@ -458,41 +463,6 @@ class ProteusVariable(ProteusLike):
                 return bool(value)
 
         return any(_is_truthy(value) for value in self.values.values())
-
-    def percentile(self, p: float | list[float]) -> ProteusVariable:
-        """Return the percentile of the variable across the simulation dimension."""
-        raise NotImplementedError
-        # FIXME: This code is untested and will also raise an AttributeError if it's
-        # called. Notice that the ProteusStochasticVariable class does not have a
-        # percentile method.
-        return ProteusVariable(
-            dim_name=self.dim_name,
-            values={
-                key: (
-                    value.percentile(p)
-                    if isinstance(value, ProteusStochasticVariable)
-                    else value
-                )
-                for key, value in self.values.items()
-            },
-        )
-
-    def tvar(self, p: float | list[float]) -> ProteusVariable:
-        """Return the tail value at risk (TVAR) of the variable."""
-        raise NotImplementedError
-        # Again, ProteusStochasticVariable does not have a tvar method, so this code
-        # is not expected to work as is.
-        return ProteusVariable(
-            dim_name=self.dim_name,
-            values={
-                key: (
-                    value.tvar(p)
-                    if isinstance(value, ProteusStochasticVariable)
-                    else value
-                )
-                for key, value in self.values.items()
-            },
-        )
 
     def mean(self) -> ProteusVariable:
         """Return the mean of the variable across the simulation dimension."""
