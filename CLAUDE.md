@@ -64,11 +64,13 @@ docker ps --filter name=pal-devcontainer
 ## Code Style
 
 **See [STYLE_GUIDE.md](./STYLE_GUIDE.md) for all coding standards including:**
-- Line length (88 characters max)
+- Line length (88 characters max) - IMPORTANT: Never exceed 88 characters
 - Type annotations
 - Comments (explain WHY, not WHAT)
 - Docstring format
 - Import ordering
+- No trailing whitespace at end of lines
+- No unnecessary blank lines
 
 ### Linting Workflow
 1. Run: `docker exec pal-devcontainer make lint`
@@ -83,3 +85,4 @@ docker ps --filter name=pal-devcontainer
 - `examples/` - Usage examples
 - `pyproject.toml` - Project configuration including ruff lint rules
 - `STYLE_GUIDE.md` - **All coding standards and examples**
+- `docs/structure.md` - **Type system architecture and design principles**

@@ -139,9 +139,13 @@ class XoL:
             # FreqSevSims supports np.where through __array_function__
             claims = np.where(is_in_window, claims, 0)  # type: ignore[assignment]
 
-        individual_recoveries_pre_aggregate: FreqSevSims = np.minimum(
+        individual_recoveries_pre_aggregate = np.minimum(
             np.maximum(claims - self.excess, 0), self.limit
         )
+        # numpy operations preserve FreqSevSims type through __array_function__
+        if not isinstance(individual_recoveries_pre_aggregate, FreqSevSims):
+            msg = "Expected FreqSevSims but got different type"
+            raise TypeError(msg)
         if self.aggregate_limit == np.inf and self.aggregate_deductible == 0:
             self.calc_summary(claims, individual_recoveries_pre_aggregate.aggregate())
             return ContractResults(individual_recoveries_pre_aggregate)
@@ -154,13 +158,13 @@ class XoL:
             aggregate_limit,
         )
         non_zero_recoveries = aggregate_recoveries != 0
-        ratio = np.ones(aggregate_recoveries_pre_agg.values.shape)
+        ratio = np.ones(np.shape(aggregate_recoveries_pre_agg))
         np.putmask(
             ratio,
-            non_zero_recoveries.values,
+            non_zero_recoveries,
             np.divide(
-                aggregate_recoveries.values[non_zero_recoveries.values],
-                aggregate_recoveries_pre_agg.values[non_zero_recoveries.values],
+                aggregate_recoveries[non_zero_recoveries],
+                aggregate_recoveries_pre_agg[non_zero_recoveries],
             ),
         )
 
@@ -174,17 +178,17 @@ class XoL:
             limits_used = aggregate_recoveries / self.limit
             reinstatements_used = np.minimum(limits_used, self.num_reinstatements)
             reinstatements_used_full = StochasticScalar(
-                np.floor(reinstatements_used).values.astype(int)
+                np.floor(reinstatements_used).astype(int)
             )
             reinstatements_used_fraction = (
                 reinstatements_used - reinstatements_used_full
             )
             reinstatement_number = np.maximum(reinstatements_used_full - 1, 0)
             reinstatement_premium_proportion = self.reinstatement_premium_cost[
-                reinstatement_number.values
+                reinstatement_number
             ] * reinstatements_used_fraction + np.where(
-                reinstatements_used_full.values > 0,
-                cumulative_reinstatement_cost[reinstatement_number.values],
+                reinstatements_used_full > 0,
+                cumulative_reinstatement_cost[reinstatement_number],
                 0,
             )
             reinstatement_premium = reinstatement_premium_proportion * self.premium
@@ -214,9 +218,13 @@ class XoL:
         mean = np.mean(aggregate_recoveries)
         sd = np.std(aggregate_recoveries)
         count = np.sum(aggregate_recoveries > 0)
-        vertical_exhaust: FreqSevSims = np.maximum(
+        vertical_exhaust = np.maximum(
             gross_losses - self.limit + self.excess, 0
         )
+        # numpy operations preserve FreqSevSims type through __array_function__
+        if not isinstance(vertical_exhaust, FreqSevSims):
+            msg = "Expected FreqSevSims but got different type"
+            raise TypeError(msg)
         aggregate_vertical_exhaust = vertical_exhaust.aggregate()
 
         v_count = np.sum(aggregate_vertical_exhaust > 0)

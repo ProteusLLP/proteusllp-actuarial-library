@@ -53,6 +53,7 @@ def test_xol_reinstatements():
     )
     result = layer.apply(claims)
     assert result.recoveries.values.tolist() == [0, 500000, 250000, 0]
+    assert result.reinstatement_premium is not None
     assert result.reinstatement_premium.tolist() == [1000]
 
 
@@ -70,6 +71,7 @@ def test_xol_multiple_reinstatements():
     )
     result = layer.apply(claims)
     assert result.recoveries.values.tolist() == [0, 350000, 250000, 0]
+    assert result.reinstatement_premium is not None
     assert np.allclose(result.reinstatement_premium.tolist(), [1200])
 
 
@@ -93,6 +95,7 @@ def test_xol_aggregate_limit():
         250000 * (1000000 / 1250000),
         500000 * (1000000 / 1250000),
     ]
+    assert result.reinstatement_premium is not None
     assert np.allclose(result.reinstatement_premium.tolist(), [1000])
 
 
@@ -117,4 +120,5 @@ def test_xol_aggregate_deductible():
         250000 * (350000 / 600000),
         0,
     ]
+    assert result.reinstatement_premium is not None
     assert np.allclose(result.reinstatement_premium.values.tolist(), [700])

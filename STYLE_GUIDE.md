@@ -8,12 +8,45 @@ This document outlines the coding standards and style guidelines for the Proteus
 - **Python Version**: 3.13+
 - **Import Sorting**: Automatic via ruff (isort rules)
 - **Code Formatting**: Automatic via ruff formatter
+- **Whitespace**: No trailing whitespace at end of lines
+- **Blank Lines**: No unnecessary blank lines (follow PEP 8 guidelines)
 
 ## Type Annotations
 
 - **Required**: All public functions, methods, and classes must have complete type annotations
 - **Authority**: Type hints are the authoritative source for type information
 - **No Duplication**: Do not repeat type information in docstrings
+
+### Type Ignore Comments
+
+Only use `# type: ignore` when there's a legitimate reason. Always:
+1. Use specific error codes, not broad ignores
+2. Document why the ignore is necessary
+3. Consider if there's a better solution (type assertion, protocol, etc.)
+
+**Good:**
+```python
+# plotly-stubs has incomplete type information for Figure.show()
+fig.show()  # type: ignore[misc]
+
+# pandas-stubs incorrectly types DataFrame.pivot return value
+pivoted_df = df.pivot(  # type: ignore[assignment]
+    index="id", columns="category", values="amount"
+)
+```
+
+**Bad:**
+```python
+fig.show()  # type: ignore  # Too broad, no explanation
+
+# Unnecessary ignore - fix the actual type issue instead
+result = some_function()  # type: ignore
+```
+
+**Legitimate reasons for type ignores:**
+- Incomplete or incorrect type stubs in third-party libraries
+- Known limitations in the type checker (e.g., complex generics)
+- Dynamic code that's correct but hard for static analysis to understand
 
 ```python
 # Good

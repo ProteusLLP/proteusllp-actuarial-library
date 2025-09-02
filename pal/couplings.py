@@ -63,9 +63,9 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
         """Initialize stochastic variable with new coupling group."""
         self.coupled_variable_group = CouplingGroup(self)
 
-    def __array__(self) -> npt.NDArray[np.floating]:
+    def __array__(self, dtype: t.Any = None) -> npt.NDArray[np.floating]:
         """Return the underlying numpy array for compatibility with numpy functions."""
-        return self.values
+        return self.values if dtype is None else np.asarray(self.values, dtype=dtype)
 
     def all(self) -> bool:
         """Return True if all values are True."""
@@ -92,6 +92,78 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
             A new numpy array with the specified dtype.
         """
         return self.values.astype(dtype)
+
+    # Override NDArrayOperatorsMixin comparison operators with proper return
+    # type annotations.
+    # NDArrayOperatorsMixin provides comparison operations but returns Any/object types.
+    # Since our __array_ufunc__ correctly returns Self, we override these methods
+    # to provide accurate type information to static type checkers.
+    def __gt__(self, other: t.Any) -> t.Self:
+        """Greater than comparison returning instance of same type."""
+        return super().__gt__(other)  # type: ignore[return-value]
+
+    def __ge__(self, other: t.Any) -> t.Self:
+        """Greater than or equal comparison returning instance of same type."""
+        return super().__ge__(other)  # type: ignore[return-value]
+
+    def __lt__(self, other: t.Any) -> t.Self:
+        """Less than comparison returning instance of same type."""
+        return super().__lt__(other)  # type: ignore[return-value]
+
+    def __le__(self, other: t.Any) -> t.Self:
+        """Less than or equal comparison returning instance of same type."""
+        return super().__le__(other)  # type: ignore[return-value]
+
+    def __eq__(self, other: t.Any) -> t.Self:  # type: ignore[override]
+        """Equality comparison returning instance of same type."""
+        return super().__eq__(other)  # type: ignore[return-value]
+
+    def __ne__(self, other: t.Any) -> t.Self:  # type: ignore[override]
+        """Not equal comparison returning instance of same type."""
+        return super().__ne__(other)  # type: ignore[return-value]
+
+    # Override NDArrayOperatorsMixin arithmetic operators with proper return
+    # type annotations. These are needed for operations like np.where() that
+    # delegate to arithmetic operations.
+    def __add__(self, other: t.Any) -> t.Self:
+        """Add operation returning instance of same type."""
+        return super().__add__(other)  # type: ignore[return-value]
+
+    def __radd__(self, other: t.Any) -> t.Self:
+        """Right add operation returning instance of same type."""
+        return super().__radd__(other)  # type: ignore[return-value]
+
+    def __sub__(self, other: t.Any) -> t.Self:
+        """Subtract operation returning instance of same type."""
+        return super().__sub__(other)  # type: ignore[return-value]
+
+    def __rsub__(self, other: t.Any) -> t.Self:
+        """Right subtract operation returning instance of same type."""
+        return super().__rsub__(other)  # type: ignore[return-value]
+
+    def __mul__(self, other: t.Any) -> t.Self:
+        """Multiply operation returning instance of same type."""
+        return super().__mul__(other)  # type: ignore[return-value]
+
+    def __rmul__(self, other: t.Any) -> t.Self:
+        """Right multiply operation returning instance of same type."""
+        return super().__rmul__(other)  # type: ignore[return-value]
+
+    def __truediv__(self, other: t.Any) -> t.Self:
+        """Division operation returning instance of same type."""
+        return super().__truediv__(other)  # type: ignore[return-value]
+
+    def __rtruediv__(self, other: t.Any) -> t.Self:
+        """Right division operation returning instance of same type."""
+        return super().__rtruediv__(other)  # type: ignore[return-value]
+
+    def __pow__(self, other: t.Any) -> t.Self:
+        """Power operation returning instance of same type."""
+        return super().__pow__(other)  # type: ignore[return-value]
+
+    def __rpow__(self, other: t.Any) -> t.Self:
+        """Right power operation returning instance of same type."""
+        return super().__rpow__(other)  # type: ignore[return-value]
 
     # Private methods for internal use
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:

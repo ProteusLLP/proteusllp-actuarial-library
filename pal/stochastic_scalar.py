@@ -15,7 +15,7 @@ import plotly.graph_objects as go  # type: ignore
 
 from ._maths import xp as np
 from .couplings import CouplingGroup, ProteusStochasticVariable
-from .types import Numeric, NumericLike
+from .types import Numeric, NumericLike, VectorLike
 
 NumberOrList = Numeric | list[Numeric]
 NumericOrStochasticScalar = t.TypeVar(
@@ -148,10 +148,10 @@ class StochasticScalar(ProteusStochasticVariable):
         result = getattr(ufunc, method)(*_inputs, **kwargs)
         return self._wrap_result_with_coupling(result, inputs)
 
-    def __getitem__(self, index: int | float | StochasticScalar) -> NumericLike:
+    def __getitem__(self, index: int | float | StochasticScalar) -> VectorLike:
         # handle an actual numeric index...
         if isinstance(index, int | float):
-            return t.cast(NumericLike, self.values[int(index)])
+            return t.cast(VectorLike, self.values[int(index)])
 
         if isinstance(index, type(self)):
             # Convert floating point indices to integers for array indexing

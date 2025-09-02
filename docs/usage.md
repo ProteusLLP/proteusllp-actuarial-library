@@ -185,6 +185,73 @@ For additional Python scripts, see the [examples directory](../examples/) in thi
 - [Development Guide](development.md) - Setting up the development environment
 - [Main README](../README.md) - Project overview and quick start
 
+## Type Hints and Protocol Usage
+
+PAL provides rich type annotations using protocols for better type safety in your code. You can use these protocols in your own functions without inheriting from them.
+
+### Using Protocol Types in Function Signatures
+
+```python
+from pal.types import ProteusLike, VectorLike, DistributionLike
+
+# Accept any ProteusLike container with StochasticScalar values
+def analyze_risk(variable: ProteusLike[StochasticScalar]) -> float:
+    """Calculate risk metric from a multi-dimensional stochastic variable."""
+    return variable.mean()  # Type-safe, returns StochasticScalar
+
+# Work with any vector-like stochastic variable
+def transform_variable(v: VectorLike) -> VectorLike:
+    """Apply transformation to any vector-like variable."""
+    return v * 1.1 + 100  # Type checker knows this returns VectorLike
+
+# Use distribution protocols for flexible distribution handling
+def sample_from_dist(dist: DistributionLike[float], n: int) -> VectorLike:
+    """Sample from any distribution that works with float values."""
+    return dist.generate(n_sims=n)
+```
+
+### Type Safety Benefits
+
+1. **Automatic Type Checking**: Your IDE and type checker will catch type errors
+2. **Better IntelliSense**: Get accurate autocomplete and method suggestions
+3. **Flexible Implementation**: Works with any object that implements the protocol methods
+4. **Clear Interfaces**: Protocol types document what methods your functions expect
+
+### Understanding Structural Typing
+
+**Structural typing** (also called "duck typing" in dynamic languages) means that type compatibility is determined by the structure (methods and attributes) of an object, not by explicit inheritance relationships.
+
+In PAL's protocol system:
+- If your class has the methods a protocol requires, it automatically satisfies that protocol
+- No need to explicitly inherit or declare that you implement the protocol
+- The type checker verifies compatibility based on method signatures
+
+**Example**:
+```python
+# This class automatically satisfies VectorLike protocol
+class MyCustomVariable:
+    def __add__(self, other): return self
+    def __array__(self): return np.array([1, 2, 3])
+    def __len__(self): return 3
+    # ... other VectorLike methods
+
+# Works automatically - no inheritance needed!
+def process(v: VectorLike) -> VectorLike:
+    return v + 1
+
+my_var = MyCustomVariable()
+result = process(my_var)  # Type checker accepts this!
+```
+
+**Learn More**: See [PEP 544](https://peps.python.org/pep-0544/) for the full specification of Python's Protocol system and structural subtyping.
+
+### Protocol Guidelines for Client Code
+
+- **Use protocols in function signatures** for maximum flexibility
+- **Don't inherit from protocols** - just implement the methods you need
+- **Let structural typing work** - if your object has the right methods, it works
+- **Leverage generics** like `ProteusLike[T]` to maintain type information
+
 ## Performance Tips
 
 1. **Use appropriate simulation counts** - Start with smaller counts for development

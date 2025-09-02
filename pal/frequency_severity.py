@@ -384,7 +384,7 @@ class FreqSevSims(ProteusStochasticVariable):
         Raises:
             NotImplementedError: If the function is not supported
         """
-        if func not in (np.where, np.sum):
+        if func not in (np.where, np.sum, np.array_equal, np.minimum, np.maximum):
             raise NotImplementedError(f"Function {func.__name__} not supported")
 
         # Extract values from FreqSevSims objects, leave others as-is
@@ -396,7 +396,7 @@ class FreqSevSims(ProteusStochasticVariable):
 
         # If result is a scalar, return it directly
         # Type ignore: Pyright can't infer the exact numpy scalar type
-        if isinstance(result, np.number):
+        if isinstance(result, np.number | np.bool_ | bool) or np.isscalar(result):
             return result  # type: ignore[misc]
 
         # Otherwise create a new FreqSevSims object with the result

@@ -8,7 +8,6 @@ import math
 
 import pytest
 import scipy.special
-import scipy.stats
 from pal import distributions
 from pal._maths import xp as np
 from pal.config import set_random_seed

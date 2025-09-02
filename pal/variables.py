@@ -57,7 +57,7 @@ import scipy.stats
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
-from .types import NumericLike, ProteusLike
+from .types import ScalarOrVector, VectorLike
 
 pio.templates.default = "none"
 
@@ -66,19 +66,56 @@ __all__ = [
 ]
 
 
-class ProteusVariable(ProteusLike):
-    """A class to hold a multivariate variable in a simulation.
+class ProteusVariable[T: ScalarOrVector]:
+    """A generic, homogeneous container for multivariate variables in simulations.
 
-    A Proteus Variable is a hierarchical structure that can hold multiple
-    scalar variables. The purpose of this class is to allow
-    for the creation of more complex variables that can be used in
-    simulations.
+    ProteusVariable is a hierarchical structure that holds multiple variables of
+    the SAME type (homogeneous container). Each instance must contain either all
+    scalars, all vectors (like StochasticScalar), or all nested ProteusVariables
+    - but never a mix of different types.
 
-    Each level of a Proteus Variable can be a list or dictionary of scalar variables or
-    other ProteusVariable objects. Each level can have a different number of elements.
-    Each level has a name that can be used to access the level in the hierarchy.
+    Type Parameter:
+        T: The type of values stored, constrained to ScalarOrVector
+           (NumericLike | VectorLike)
 
-    Sub elements of a ProteusVariable can be accessed using the [] notation.
+    Key Features:
+    - **Homogeneous**: All values in a single instance must be the same type.
+      Like List[T], you cannot mix types within one container.
+    - **Type Safety**: Operations like mean() return type T, preserving type
+      information through the computation.
+    - **Nesting**: ProteusVariable[ProteusVariable[T]] enables hierarchical
+      data structures (e.g., risks by region by peril)
+    - **Dictionary Access**: Sub-elements accessed via [] notation with
+      string keys or integer indices
+
+    Examples:
+        >>> # Homogeneous scalar container
+        >>> scalar_risks = ProteusVariable[int](
+        ...     dim_name="risk_amounts",
+        ...     values={"fire": 100000, "flood": 200000}  # All int
+        ... )
+
+        >>> # Homogeneous vector container
+        >>> vector_risks = ProteusVariable[StochasticScalar](
+        ...     dim_name="stochastic_losses",
+        ...     values={
+        ...         "fire": StochasticScalar([100, 200, 300]),
+        ...         "flood": StochasticScalar([150, 250, 350])
+        ...     }  # All StochasticScalar
+        ... )
+
+        >>> # Homogeneous nested container
+        >>> nested_risks = ProteusVariable[ProteusVariable[int]](
+        ...     dim_name="regions",
+        ...     values={
+        ...         "north": scalar_risks,
+        ...         "south": scalar_risks
+        ...     }  # All ProteusVariable[int]
+        ... )
+
+        >>> # INVALID - mixing types not allowed
+        >>> # mixed = ProteusVariable(values={"a": 100, "b": StochasticScalar([1])})
+        >>> # This would violate homogeneity and cause type errors
 
     Note: Statistical operations should be performed using numpy and scipy functions
     directly on ProteusVariable instances. For example:
@@ -88,13 +125,13 @@ class ProteusVariable(ProteusLike):
     """
 
     dim_name: str
-    values: t.Mapping[str, NumericLike]
+    values: t.Mapping[str, T]
     dimensions: list[str]
 
     def __init__(
         self,
         dim_name: str,
-        values: t.Mapping[str, NumericLike],
+        values: t.Mapping[str, T],
     ):
         """Initialize a ProteusVariable.
 
@@ -155,7 +192,7 @@ class ProteusVariable(ProteusLike):
 
     def __array_ufunc__(
         self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any
-    ) -> ProteusVariable:
+    ) -> ProteusVariable[T]:
         """Handle numpy universal functions applied to ProteusVariable objects.
 
         This method enables ProteusVariable objects to work with numpy ufuncs by
@@ -206,31 +243,47 @@ class ProteusVariable(ProteusLike):
                 )
 
             # Process dictionary containers.
-            if isinstance(first_container.values, dict):
+            if isinstance(
+                first_container.values,  # type: ignore[reportUnknownMemberType]
+                dict,
+            ):
                 new_data: dict[str, t.Any] = {}
                 # Iterate over each key in the container.
-                for key in first_container.values:
+                # Type ignore: Runtime type narrowing - we're intentionally checking
+                # types at runtime to handle heterogeneous inputs from numpy ufuncs
+                for key in first_container.values:  # type: ignore[reportUnknownMemberType]  # noqa[E501]
                     new_items: list[t.Any] = []
                     for item in items:
                         # Assumes that data types are homogeneous across nodes ie. if
                         # the parent ProteusVariable contains dicts, then children
                         # should also contain dicts.
                         if isinstance(item, ProteusVariable):
-                            if not isinstance(item.values, dict):
+                            # Type ignore: Runtime type checking for structural
+                            # validation. We need to verify dict structure at runtime
+                            # for ufunc recursion
+                            vals = item.values  # type: ignore[reportUnknownMemberType]
+                            if not isinstance(vals, dict):
                                 raise TypeError(
                                     f"Expected dict values in {type(self).__name__}, "
-                                    f"but got {type(item.values).__name__}."
+                                    f"but got {type(vals).__name__}."  # type: ignore[reportArgumentType]  # noqa[E501]
                                 )
-                            new_items.append(item.values[key])
+                            new_items.append(vals[key])
                         else:
                             new_items.append(item)
                     new_data[key] = recursive_apply(*new_items, **kwargs)
+                # Return ProteusVariable without type parameter: The type is determined
+                # at runtime through recursive_apply, not statically knowable
                 return ProteusVariable(first_container.dim_name, new_data)
 
             # In case data is not a dict, try applying ufunc directly.
-            return t.cast(ProteusVariable, ufunc(first_container.values, **kwargs))
+            # Type ignore: Return type depends on runtime ufunc behavior and value
+            # types, not statically determinable in this dynamic dispatch context
+            return ufunc(first_container.values, **kwargs)  # type: ignore[return-value]
 
-        return t.cast(ProteusVariable, recursive_apply(*inputs, **kwargs))
+        # Type ignore: recursive_apply's return type is determined at runtime based on
+        # the actual ufunc and input types - this method handles arbitrary numpy
+        # operations with dynamic type resolution
+        return recursive_apply(*inputs, **kwargs)  # type: ignore[return-value]
 
     def __array_function__(
         self,
@@ -238,7 +291,7 @@ class ProteusVariable(ProteusLike):
         _: tuple[type, ...],
         args: tuple[t.Any, ...],
         kwargs: dict[str, t.Any],
-    ) -> ProteusVariable:
+    ) -> ProteusVariable[StochasticScalar]:
         """Handle numpy array functions applied to ProteusVariable objects.
 
         This method enables ProteusVariable objects to work with numpy array functions
@@ -276,7 +329,7 @@ class ProteusVariable(ProteusLike):
             # If result is 1D, distribute evenly across keys
             n_keys = len(self.values.keys())
             chunk_size = len(temp) // n_keys
-            return ProteusVariable(
+            return ProteusVariable[StochasticScalar](
                 self.dim_name,
                 {
                     key: StochasticScalar(temp[i * chunk_size : (i + 1) * chunk_size])
@@ -285,7 +338,7 @@ class ProteusVariable(ProteusLike):
             )
         else:
             # If result is 2D, use columns
-            return ProteusVariable(
+            return ProteusVariable[StochasticScalar](
                 self.dim_name,
                 {
                     key: StochasticScalar(temp[:, i])
@@ -293,44 +346,7 @@ class ProteusVariable(ProteusLike):
                 },
             )
 
-    @t.overload
-    def sum(self) -> StochasticScalar | FreqSevSims | float | int: ...
-    @t.overload
-    def sum(self, dimensions: list[str]) -> ProteusVariable: ...
-
-    def sum(self, dimensions: list[str] | None = None) -> NumericLike:
-        """Sum the variables across the specified dimensions.
-
-        Returns a new ProteusVariable with the summed values.
-        """
-        if dimensions is None:
-            dimensions = []
-        if dimensions == []:
-            # Sum all values in this ProteusVariable
-            return sum(self.values.values())
-
-        return self
-
-        # FIXME: This always evaluates to false and so the code never executes in this
-        # block. Basically, self.dimensions is always a list of strings and so is
-        # dimensions therefore dimensions would have to be a list of lists for this to
-        # evaluate to true - perhaps the intention was to check if the set of dimensions
-        # in self is a subset of the dimensions passed in? ie.
-        # if set(self.dimensions) <= set(dimensions): ...
-        # Here is the original code...
-        # if self.dimensions in dimensions:
-        #     # Also, the values here could be a dict?
-        #     result = ProteusVariable(dim_name=self.values[0].dimensions, values=0)
-        #     for value in self.values:
-        #         if isinstance(value, (ProteusVariable, StochasticScalar)):
-        #             result += value.sum(dimensions)
-        #         else:
-        #             result += value
-        #     return result
-        # else:
-        #     return self
-
-    def __iter__(self) -> t.Iterator[NumericLike]:
+    def __iter__(self) -> t.Iterator[T]:
         """Iterate over the values in the variable."""
         return iter(self.values.values())
 
@@ -373,38 +389,38 @@ class ProteusVariable(ProteusLike):
         return t.cast(t.Self, self._binary_operation(self, lambda a, _: -a))
 
     # Comparison operations
-    def __lt__(self, other: t.Any) -> bool:
-        return t.cast(bool, self._binary_operation(other, lambda a, b: a < b))
+    def __lt__(self, other: t.Any) -> t.Self:
+        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a < b))
 
-    def __rlt__(self, other: t.Any) -> bool:
+    def __rlt__(self, other: t.Any) -> t.Self:
         return self.__ge__(other)
 
-    def __le__(self, other: t.Any) -> bool:
-        return t.cast(bool, self._binary_operation(other, lambda a, b: a <= b))
+    def __le__(self, other: t.Any) -> t.Self:
+        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a <= b))
 
-    def __rle__(self, other: t.Any) -> bool:
+    def __rle__(self, other: t.Any) -> t.Self:
         return self.__gt__(other)
 
-    def __gt__(self, other: t.Any) -> bool:
-        return t.cast(bool, self._binary_operation(other, lambda a, b: a > b))
+    def __gt__(self, other: t.Any) -> t.Self:
+        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a > b))
 
-    def __rgt__(self, other: t.Any) -> bool:
+    def __rgt__(self, other: t.Any) -> t.Self:
         return self.__le__(other)
 
-    def __ge__(self, other: t.Any) -> bool:
-        return t.cast(bool, self._binary_operation(other, lambda a, b: a >= b))
+    def __ge__(self, other: t.Any) -> t.Self:
+        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a >= b))
 
-    def __rge__(self, other: t.Any) -> bool:
+    def __rge__(self, other: t.Any) -> t.Self:
         return self.__lt__(other)
 
     # Equality operations
-    def __eq__(self, other: object) -> bool:
-        return t.cast(bool, self._binary_operation(other, lambda a, b: a == b))
+    def __eq__(self, other: object) -> t.Self:  # type: ignore[override]
+        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a == b))
 
-    def __ne__(self, other: object) -> bool:
-        return t.cast(bool, self._binary_operation(other, lambda a, b: a != b))
+    def __ne__(self, other: object) -> t.Self:  # type: ignore[override]
+        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a != b))
 
-    def __getitem__(self, key: int | str) -> NumericLike:
+    def __getitem__(self, key: int | str) -> T:
         # FIXME: This assumes that the ordering of the values never changes. At the
         # moment, this is not true. The values are stored in mutable container!
         if isinstance(key, int):
@@ -413,12 +429,12 @@ class ProteusVariable(ProteusLike):
             return self.values[key]
         raise TypeError(f"Key must be an integer or string, got {type(key).__name__}.")
 
-    def get_value_at_sim(self, sim_no: NumericLike | list[int]) -> ProteusVariable:
+    def get_value_at_sim(self, sim_no: VectorLike) -> ProteusVariable[t.Any]:
         """Get values at specific simulation number(s).
 
         Args:
             sim_no: Simulation index(es) to extract. Can be a single numeric value,
-                    a list of integers, or a NumericLike object such as
+                    a list of integers, or a VectorLike object such as
                     StochasticScalar.
 
         Returns:
@@ -427,7 +443,7 @@ class ProteusVariable(ProteusLike):
         # FIXME: this makes a bit of a mess of the interface. Would make sense to just
         # make use of the __getitem__ method instead. Since ProteusVariable is
         # SequenceLike, it should support indexing with integers and strings.
-        return type(self)(
+        return ProteusVariable[t.Any](
             dim_name=self.dim_name,
             values={
                 k: self._get_value_at_sim_helper(v, sim_no)
@@ -464,10 +480,10 @@ class ProteusVariable(ProteusLike):
 
         return any(_is_truthy(value) for value in self.values.values())
 
-    def mean(self) -> ProteusVariable:
+    def mean(self) -> ProteusVariable[t.Any]:
         """Return the mean of the variable across the simulation dimension."""
 
-        def _mean_helper(value: NumericLike) -> t.Any:
+        def _mean_helper(value: t.Any) -> t.Any:
             """Helper function to compute mean for different value types."""
             if isinstance(value, FreqSevSims):
                 return np.mean(value.aggregate())
@@ -484,12 +500,12 @@ class ProteusVariable(ProteusLike):
                 "Mean cannot be computed."
             )
 
-        return ProteusVariable(
+        return ProteusVariable[t.Any](
             dim_name=self.dim_name,
             values={key: _mean_helper(value) for key, value in self.values.items()},
         )
 
-    def upsample(self, n_sims: int) -> ProteusVariable:
+    def upsample(self, n_sims: int) -> ProteusVariable[t.Any]:
         """Upsample the variable to the specified number of simulations."""
         if self.n_sims == n_sims:
             return self
@@ -560,9 +576,7 @@ class ProteusVariable(ProteusLike):
         """
         result = cls(
             dim_name=str(data.index.name),
-            values={
-                str(label): t.cast(NumericLike, data[label]) for label in data.index
-            },
+            values={str(label): data[label] for label in data.index},
         )
         result.n_sims = 1
 
@@ -681,9 +695,9 @@ class ProteusVariable(ProteusLike):
 
     def _get_value_at_sim_helper(
         self,
-        x: NumericLike,
-        sim_no: NumericLike | list[int],
-    ) -> NumericLike:
+        x: VectorLike,
+        sim_no: VectorLike | list[int],
+    ) -> t.Any:
         """Helper method to get value at simulation for a single element."""
         if isinstance(x, ProteusVariable):
             return x.get_value_at_sim(sim_no)

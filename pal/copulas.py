@@ -19,17 +19,37 @@ from ._maths import xp as np
 
 # Local imports
 from .config import config
-from .types import NumericLike
+from .types import ProteusLike, VectorLike
 
 
 class Copula(ABC):
-    """A base class to represent a copula."""
+    """Base class for copula implementations.
+    
+    A copula is a multivariate probability distribution that describes the 
+    dependence structure between random variables, separate from their individual
+    marginal distributions. Copulas are used in risk modeling to simulate
+    correlated stochastic variables.
+    
+    All copula implementations generate ProteusVariable containers with VectorLike
+    values (typically StochasticScalar instances) that represent correlated 
+    uniform random samples on [0,1].
+    """
 
     @abstractmethod
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
-    ) -> ProteusVariable:
-        """Generate samples from the copula."""
+    ) -> ProteusLike[VectorLike]:
+        """Generate correlated uniform samples from the copula.
+        
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+            
+        Returns:
+            ProteusVariable containing VectorLike values (typically StochasticScalar)
+            with uniform marginal distributions on [0,1] and the copula's 
+            correlation structure.
+        """
         pass
 
     def _generate_unnormalised(
@@ -41,12 +61,22 @@ class Copula(ABC):
         """
         raise NotImplementedError("Subclasses must implement this method.")
 
-    def apply(self, variables: ProteusVariable | list[NumericLike]) -> None:
-        """Apply the copula to a list of variables.
+    def apply(self, variables: ProteusLike[VectorLike] | list[VectorLike]) -> None:
+        """Apply the copula's correlation structure to existing variables.
+        
+        This method modifies the input variables in-place to exhibit the 
+        correlation structure defined by this copula while preserving their
+        marginal distributions.
 
-        Parameters:
-            variables: A ProteusVariable or list of NumericLike instances
-                (must be StochasticScalar at runtime).
+        Args:
+            variables: Either a ProteusVariable containing VectorLike values or 
+                      a list of VectorLike instances. Only StochasticScalar 
+                      values are processed; other types are silently ignored
+                      when passed in a ProteusVariable.
+        
+        Raises:
+            TypeError: If list contains non-StochasticScalar values.
+            ValueError: If variables have inconsistent simulation counts.
         """
         # ProteusVariable may contain mixed types (StochasticScalar, FreqSevSims,
         # nested ProteusVariables). We silently filter to only StochasticScalar
@@ -54,11 +84,11 @@ class Copula(ABC):
         # elements need correlation (e.g., aggregate losses but not individual event
         # details). For explicit lists, we enforce strict typing to catch user errors.
         if isinstance(variables, ProteusVariable):
-            variables_list = [
+            variables_list: list[StochasticScalar] = [
                 val for val in variables if isinstance(val, StochasticScalar)
             ]
         else:
-            variables_list: list[StochasticScalar] = []
+            variables_list = []
             for var in variables:
                 if not isinstance(var, StochasticScalar):
                     raise TypeError(
@@ -73,7 +103,7 @@ class Copula(ABC):
         if n_sims is None:
             raise ValueError("Cannot apply copula: n_sims is not set on variables")
 
-        copula_samples_pv = ProteusVariable(
+        copula_samples_pv = ProteusVariable[StochasticScalar](
             dim_name="dim1",
             values={
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)
@@ -148,7 +178,7 @@ class GaussianCopula(EllipticalCopula):
 
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
-    ) -> ProteusVariable:
+    ) -> ProteusLike[VectorLike]:
         """Generate samples from the Gaussian copula."""
         if n_sims is None:
             n_sims = config.n_sims
@@ -158,7 +188,7 @@ class GaussianCopula(EllipticalCopula):
         # Generate samples from a multivariate normal distribution
         samples = self._generate_unnormalised(n_sims, rng)
         uniform_samples = special.ndtr(samples)
-        result = ProteusVariable(
+        result = ProteusVariable[StochasticScalar](
             "dim1",
             {
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)
@@ -206,7 +236,7 @@ class StudentsTCopula(EllipticalCopula):
 
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
-    ) -> ProteusVariable:
+    ) -> ProteusLike[VectorLike]:
         """Generate samples from the Student's T copula."""
         if n_sims is None:
             n_sims = config.n_sims
@@ -214,7 +244,7 @@ class StudentsTCopula(EllipticalCopula):
             rng = config.rng
         t_samples = self._generate_unnormalised(n_sims, rng)
         uniform_samples = distributions.t(self.dof).cdf(t_samples)
-        return ProteusVariable(
+        return ProteusVariable[StochasticScalar](
             "dim1",
             {
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)
@@ -260,12 +290,12 @@ class ArchimedeanCopula(Copula, ABC):
 
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
-    ) -> ProteusVariable:
+    ) -> ProteusLike[VectorLike]:
         """Generate samples from the Archimedean copula."""
         if rng is None:
             rng = config.rng
         copula_samples = self.generator_inv(-self._generate_unnormalised(n_sims, rng))
-        result = ProteusVariable(
+        result = ProteusVariable[StochasticScalar](
             "dim1",
             {
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)
