@@ -24,14 +24,14 @@ from .types import ProteusLike, VectorLike
 
 class Copula(ABC):
     """Base class for copula implementations.
-    
-    A copula is a multivariate probability distribution that describes the 
+
+    A copula is a multivariate probability distribution that describes the
     dependence structure between random variables, separate from their individual
     marginal distributions. Copulas are used in risk modeling to simulate
     correlated stochastic variables.
-    
+
     All copula implementations generate ProteusVariable containers with VectorLike
-    values (typically StochasticScalar instances) that represent correlated 
+    values (typically StochasticScalar instances) that represent correlated
     uniform random samples on [0,1].
     """
 
@@ -40,14 +40,14 @@ class Copula(ABC):
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
     ) -> ProteusLike[VectorLike]:
         """Generate correlated uniform samples from the copula.
-        
+
         Args:
             n_sims: Number of simulations to generate. Uses config.n_sims if None.
             rng: Random number generator. Uses config.rng if None.
-            
+
         Returns:
             ProteusVariable containing VectorLike values (typically StochasticScalar)
-            with uniform marginal distributions on [0,1] and the copula's 
+            with uniform marginal distributions on [0,1] and the copula's
             correlation structure.
         """
         pass
@@ -63,17 +63,17 @@ class Copula(ABC):
 
     def apply(self, variables: ProteusLike[VectorLike] | list[VectorLike]) -> None:
         """Apply the copula's correlation structure to existing variables.
-        
-        This method modifies the input variables in-place to exhibit the 
+
+        This method modifies the input variables in-place to exhibit the
         correlation structure defined by this copula while preserving their
         marginal distributions.
 
         Args:
-            variables: Either a ProteusVariable containing VectorLike values or 
-                      a list of VectorLike instances. Only StochasticScalar 
+            variables: Either a ProteusVariable containing VectorLike values or
+                      a list of VectorLike instances. Only StochasticScalar
                       values are processed; other types are silently ignored
                       when passed in a ProteusVariable.
-        
+
         Raises:
             TypeError: If list contains non-StochasticScalar values.
             ValueError: If variables have inconsistent simulation counts.

@@ -154,9 +154,16 @@ class StochasticScalar(ProteusStochasticVariable):
             return t.cast(VectorLike, self.values[int(index)])
 
         if isinstance(index, type(self)):
-            # Convert floating point indices to integers for array indexing
-            indices = index.values.astype(int)
-            result = type(self)(self.values[indices])
+            # Check if index contains boolean values for masking
+            if np.issubdtype(index.values.dtype, np.bool_):
+                # Use boolean indexing directly - no conversion needed
+                # Type ignore: Runtime type checking ensures boolean indexing is valid
+                result = type(self)(self.values[index.values])  # type: ignore[arg-type]
+            else:
+                # Convert numeric indices to integers for positional indexing
+                indices = index.values.astype(int)
+                result = type(self)(self.values[indices])
+
             result.coupled_variable_group.merge(index.coupled_variable_group)
             return result
 

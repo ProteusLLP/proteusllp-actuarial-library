@@ -94,6 +94,26 @@ class SupportsArray(t.Protocol):
     converted to and interact with numpy arrays. It's separated from
     VectorLikeProtocol to allow containers like ProteusVariable to have
     vector-like arithmetic semantics without requiring array conversion.
+
+    Array Protocol Methods in PAL:
+    -----------------------------
+
+    **__array__ method:**
+    - **Purpose**: Converts an object to a numpy array for basic array operations
+    - **When called**: When np.asarray(obj) or similar conversion functions are used
+    - **Return type**: Always returns a numpy array (npt.NDArray)
+    - **Usage**: Simple array conversion, enables basic numpy compatibility
+
+    **__array_function__ method:**
+    - **Purpose**: Handles numpy function dispatch - intercepts numpy function calls
+    - **When called**: When numpy functions like np.sum(), np.mean(), etc. are called on the object
+    - **Return type**: Can return any type (scalars, arrays, custom objects)
+    - **Usage**: Custom behavior for numpy functions, maintains object semantics
+
+    The key difference is that __array__ is for conversion, while __array_function__
+    is for preserving custom behavior in numpy operations. For example:
+    - np.asarray(proteus_var) uses __array__ to get raw array data
+    - np.sum(proteus_var) uses __array_function__ to maintain ProteusVariable semantics
     """
 
     def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:

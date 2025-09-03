@@ -218,9 +218,7 @@ class XoL:
         mean = np.mean(aggregate_recoveries)
         sd = np.std(aggregate_recoveries)
         count = np.sum(aggregate_recoveries > 0)
-        vertical_exhaust = np.maximum(
-            gross_losses - self.limit + self.excess, 0
-        )
+        vertical_exhaust = np.maximum(gross_losses - self.limit + self.excess, 0)
         # numpy operations preserve FreqSevSims type through __array_function__
         if not isinstance(vertical_exhaust, FreqSevSims):
             msg = "Expected FreqSevSims but got different type"

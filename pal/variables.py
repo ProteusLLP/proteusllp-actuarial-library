@@ -12,6 +12,11 @@ Key features:
 - Correlation analysis and upsampling capabilities
 - Export functionality for analysis and reporting
 
+NOTE: The serialization/deserialization methods (from_csv, from_dict, from_series)
+      are currently incomplete and have significant limitations. A comprehensive
+      codec system is planned to address these issues.
+      See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
+
 The ProteusVariable is designed for actuarial applications such as:
 - Multi-factor risk modeling (e.g., frequency, severity, inflation)
 - Portfolio-level aggregation across risk dimensions
@@ -190,6 +195,57 @@ class ProteusVariable[T: ScalarOrVector]:
         """Return the number of elements in the variable."""
         return len(self.values)
 
+    def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:
+        """Convert ProteusVariable to numpy array for basic operations.
+
+        This method enables ProteusVariable to work with numpy functions like
+        np.sum(), making it VectorLike protocol compliant. Current implementation
+        provides basic functionality by concatenating all values into a 1D array.
+
+        NOTE: This is a simplified implementation. Complex nested container
+              scenarios and multi-dimensional operations need architectural
+              decisions about data representation and operation semantics.
+              See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/23
+
+        Args:
+            dtype: Optional data type for the resulting array.
+
+        Returns:
+            A numpy array created by concatenating all values.
+
+        Raises:
+            NotImplementedError: For mismatched simulation lengths or other
+                               complex scenarios requiring architectural decisions.
+        """
+        # For basic 1D operations like np.sum(), concatenate all values
+        arrays = [np.asarray(value) for value in self.values.values()]
+
+        # If we have any scalars (0D arrays), convert them to 1D arrays with single
+        # element
+        processed_arrays: list[npt.NDArray[t.Any]] = []
+        for arr in arrays:
+            if arr.ndim == 0:
+                # Convert scalar to 1D array with single element
+                processed_arrays.append(np.array([arr.item()]))
+            else:
+                processed_arrays.append(arr)
+
+        # Now check if all 1D arrays have the same length (simulation dimension)
+        lengths = [len(arr) for arr in processed_arrays]
+        if len(set(lengths)) > 1:
+            raise NotImplementedError(
+                "Array conversion not supported for ProteusVariable with "
+                "mismatched simulation lengths. Use .upsample() first."
+            )
+
+        # Concatenate arrays - this creates a 1D array suitable for np.sum()
+        result = np.concatenate(processed_arrays)
+
+        if dtype is not None:
+            result = result.astype(dtype)
+
+        return result
+
     def __array_ufunc__(
         self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any
     ) -> ProteusVariable[T]:
@@ -321,21 +377,62 @@ class ProteusVariable[T: ScalarOrVector]:
         # For functions that need axis specification, add axis=1 to kwargs
         if func.__name__ in ["cumsum", "cumprod", "diff"] and "axis" not in kwargs:
             kwargs["axis"] = 1
+        elif func.__name__ in ["sum", "mean", "std", "var"] and "axis" not in kwargs:
+            # For reduction operations, check the type of values to determine axis
+            # behavior...
+            first_value = next(iter(self.values.values())) if self.values else None
+
+            # Check if we have vector-like values (StochasticScalar, FreqSevSims, etc.)
+            if (
+                first_value is not None
+                and hasattr(first_value, "values")
+                and hasattr(first_value, "n_sims")
+            ):
+                # Vector-like values: use axis=1 to sum across dimensions (row-wise)
+                # This preserves simulation structure for StochasticScalar objects
+                kwargs["axis"] = 1
+            # For scalar values, use default (no axis) which will return a scalar result
 
         temp = func(*parsed_args, **kwargs)
 
-        # Handle both 1D and 2D results
-        if temp.ndim == 1:
-            # If result is 1D, distribute evenly across keys
-            n_keys = len(self.values.keys())
-            chunk_size = len(temp) // n_keys
-            return ProteusVariable[StochasticScalar](
-                self.dim_name,
-                {
-                    key: StochasticScalar(temp[i * chunk_size : (i + 1) * chunk_size])
-                    for i, key in enumerate(self.values.keys())
-                },
-            )
+        # Handle 0D (scalar), 1D and 2D results
+        if temp.ndim == 0:
+            # If result is scalar (0D), return the scalar directly
+            return temp.item()
+        elif temp.ndim == 1:
+            # Check if this is a reduction result from vector-like values
+            first_value = next(iter(self.values.values())) if self.values else None
+
+            if (
+                func.__name__ in ["sum", "mean", "std", "var"]
+                and first_value is not None
+                and hasattr(first_value, "values")
+                and hasattr(first_value, "n_sims")
+            ):
+                # Reduction of vector-like values: return a single StochasticScalar
+                result = StochasticScalar(temp)
+
+                # Merge coupling groups from all original values
+                for value in self.values.values():
+                    if hasattr(value, "coupled_variable_group"):
+                        result.coupled_variable_group.merge(
+                            value.coupled_variable_group
+                        )
+
+                return result
+            else:
+                # Other 1D results: distribute evenly across keys
+                n_keys = len(self.values.keys())
+                chunk_size = len(temp) // n_keys
+                return ProteusVariable[StochasticScalar](
+                    self.dim_name,
+                    {
+                        key: StochasticScalar(
+                            temp[i * chunk_size : (i + 1) * chunk_size]
+                        )
+                        for i, key in enumerate(self.values.keys())
+                    },
+                )
         else:
             # If result is 2D, use columns
             return ProteusVariable[StochasticScalar](
@@ -443,6 +540,9 @@ class ProteusVariable[T: ScalarOrVector]:
         # FIXME: this makes a bit of a mess of the interface. Would make sense to just
         # make use of the __getitem__ method instead. Since ProteusVariable is
         # SequenceLike, it should support indexing with integers and strings.
+        # For this to work, we need to be sure that the contents of values is indeed
+        # VectorLike. Remember that ProteusVariables may be nested and a ProteusVariable
+        # will not be VectorLike.
         return ProteusVariable[t.Any](
             dim_name=self.dim_name,
             values={
@@ -492,7 +592,7 @@ class ProteusVariable[T: ScalarOrVector]:
             if isinstance(value, ProteusVariable):
                 # For nested ProteusVariable, recursively compute mean
                 return value.mean()
-            if isinstance(value, int | float | np.number):
+            if isinstance(value, int | float):
                 # If the value is a scalar, return it directly
                 return float(value)
             raise TypeError(
@@ -528,10 +628,29 @@ class ProteusVariable[T: ScalarOrVector]:
         dim_name: str,
         values_column: str,
         simulation_column: str = "Simulation",
-    ) -> ProteusVariable:
+    ) -> ProteusVariable[t.Any]:
         """Import a ProteusVariable from a CSV file.
 
-        Note that only one dimensional variables are supported.
+        This method currently has significant limitations and will be replaced
+        with a more comprehensive serialization system.
+
+        Current Limitations:
+        - Only supports one-dimensional variables
+        - Always creates StochasticScalar values regardless of intended type
+        - Cannot preserve generic type information through deserialization
+        - No support for nested ProteusVariable structures
+
+        Args:
+            file_name: Path to the CSV file to read
+            dim_name: Name of the dimension column in the CSV
+            values_column: Name of the column containing the values
+            simulation_column: Name of the column containing simulation indices
+
+        Returns:
+            ProteusVariable with StochasticScalar values loaded from the CSV
+
+        TODO: Implement comprehensive codec system for proper serialization
+              See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
         """
         # Type ignore: pandas-stubs has complex overloads causing Pyright to report
         # the function signature as "partially unknown" despite correct usage
@@ -543,6 +662,10 @@ class ProteusVariable[T: ScalarOrVector]:
         # Type ignore: pandas-stubs overloads cause "partially unknown" warnings
         pivoted_df.sort_index(inplace=True)  # type: ignore[misc]
 
+        # classmethods can't preserve generic type parameters so we need a type ignore
+        # here. When data is loaded, the contents of the ProteusVariable will be
+        # whatever was present in the CSV file. It may be necessary to separate these
+        # factory functions from ProteusVariable completely.
         result = cls(
             dim_name,
             {
@@ -555,28 +678,67 @@ class ProteusVariable[T: ScalarOrVector]:
         return result
 
     @classmethod
-    def from_dict(cls, data: dict[str, list[float]]) -> ProteusVariable:
+    def from_dict(
+        cls,
+        data: dict[str, list[float]],
+    ) -> ProteusVariable[t.Any]:
         """Create a ProteusVariable from a dictionary.
 
-        Note that only one dimensional variables are supported.
+        This method currently has significant limitations and will be replaced
+        with a more comprehensive serialization system.
+
+        Current Limitations:
+        - Only supports one-dimensional variables
+        - Always creates StochasticScalar values from float lists
+        - Cannot preserve generic type information
+        - No support for nested structures or other value types
+
+        Args:
+            data: Dictionary mapping dimension labels to lists of float values
+
+        Returns:
+            ProteusVariable with StochasticScalar values created from the data
+
+        TODO: Implement comprehensive codec system for proper serialization
+              See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
         """
-        result = cls(
+        # Type ignore: Classmethods can't preserve generic type parameters.
+        # This always creates StochasticScalar values regardless of T.
+        result = cls(  # type: ignore[arg-type]
             dim_name="Dim1",
-            values={str(label): StochasticScalar(data[label]) for label in data.keys()},
+            values={str(label): StochasticScalar(data[label]) for label in data.keys()},  # type: ignore[arg-type]
         )
         result.n_sims = max([len(v) for v in data.values()])
 
         return result
 
     @classmethod
-    def from_series(cls, data: pd.Series) -> ProteusVariable:
+    def from_series(cls, data: pd.Series) -> ProteusVariable[t.Any]:
         """Create a ProteusVariable from a pandas Series.
 
-        Note that only one dimensional variables are supported.
+        This method currently has significant limitations and will be replaced
+        with a more comprehensive serialization system.
+
+        Current Limitations:
+        - Only supports one-dimensional variables
+        - Creates scalar values, not StochasticScalar
+        - Cannot preserve generic type information
+        - Limited to single simulation (n_sims=1)
+
+        Args:
+            data: Pandas Series with values to load
+
+        Returns:
+            ProteusVariable with scalar values from the Series
+
+        TODO: Implement comprehensive codec system for proper serialization
+              See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
         """
-        result = cls(
+        # Type ignore: Classmethods can't preserve generic type parameters.
+        # The values type depends on the Series content, not the generic T.
+        result = cls(  # type: ignore[arg-type]
             dim_name=str(data.index.name),
-            values={str(label): data[label] for label in data.index},
+            values={str(label): data[label] for label in data.index},  # type: ignore[arg-type]
         )
         result.n_sims = 1
 
@@ -661,7 +823,9 @@ class ProteusVariable[T: ScalarOrVector]:
             # Type ignore: plotly-stubs has incomplete type information
             fig.add_trace(  # type: ignore[misc]
                 go.Scatter(
-                    x=np.sort(np.array(value.values)),
+                    # Type ignore: value.values is known to exist due to isinstance
+                    # check
+                    x=np.sort(np.array(value.values)),  # type: ignore[attr-defined]
                     y=np.arange(value.n_sims) / value.n_sims,
                     name=label,
                 )
@@ -684,7 +848,9 @@ class ProteusVariable[T: ScalarOrVector]:
             return ProteusVariable(
                 dim_name=self.dim_name,
                 values={
-                    key: operation(value, other.values[key])
+                    # Type ignore: Runtime type checking - values is dict-like at this
+                    # point. We've had to lean on runtime checks here over static.
+                    key: operation(value, other.values[key])  # type: ignore[index]
                     for key, value in self.values.items()
                 },
             )
@@ -695,8 +861,8 @@ class ProteusVariable[T: ScalarOrVector]:
 
     def _get_value_at_sim_helper(
         self,
-        x: VectorLike,
-        sim_no: VectorLike | list[int],
+        x: t.Any,
+        sim_no: VectorLike,
     ) -> t.Any:
         """Helper method to get value at simulation for a single element."""
         if isinstance(x, ProteusVariable):
