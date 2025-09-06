@@ -22,11 +22,6 @@ class CouplingGroup:
 
     variables: weakref.WeakSet[ProteusStochasticVariable]
 
-    @property
-    def id(self) -> int:
-        """Get the unique identifier for this coupling group."""
-        return id(self)
-
     def __init__(self, variable: ProteusStochasticVariable):
         """Initialize coupling group with a single variable.
 
@@ -37,6 +32,11 @@ class CouplingGroup:
         self.variables: weakref.WeakSet[ProteusStochasticVariable] = weakref.WeakSet(
             [variable]
         )
+
+    @property
+    def id(self) -> int:
+        """Get the unique identifier for this coupling group."""
+        return id(self)
 
     def merge(self, other: CouplingGroup) -> None:
         """Merge another coupling group into this one.
@@ -59,6 +59,10 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
     n_sims: int | None = None
     values: npt.NDArray[np.floating]
 
+    # ===================
+    # DUNDER METHODS
+    # ===================
+
     def __init__(self) -> None:
         """Initialize stochastic variable with new coupling group."""
         self.coupled_variable_group = CouplingGroup(self)
@@ -70,28 +74,6 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
     def all(self) -> bool:
         """Return True if all values are True."""
         return t.cast(bool, self.values.all())
-
-    def upsample(self, n_sims: int) -> t.Self:
-        """Upsample the variable to match the specified number of simulations.
-
-        Args:
-            n_sims: The number of simulations to upsample to.
-
-        Returns:
-            A new instance of self with the upsampled values.
-        """
-        raise NotImplementedError
-
-    def astype(self, dtype: np.dtype[t.Any] | type[t.Any]) -> npt.NDArray[t.Any]:
-        """Convert the underlying values to a specified dtype.
-
-        Args:
-            dtype: The data type to convert to.
-
-        Returns:
-            A new numpy array with the specified dtype.
-        """
-        return self.values.astype(dtype)
 
     # Override NDArrayOperatorsMixin comparison operators with proper return
     # type annotations.
@@ -123,8 +105,7 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
         return super().__ne__(other)  # type: ignore[return-value]
 
     # Override NDArrayOperatorsMixin arithmetic operators with proper return
-    # type annotations. These are needed for operations like np.where() that
-    # delegate to arithmetic operations.
+    # type annotations for direct arithmetic operations and ufuncs.
     def __add__(self, other: t.Any) -> t.Self:
         """Add operation returning instance of same type."""
         return super().__add__(other)  # type: ignore[return-value]
@@ -164,6 +145,37 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
     def __rpow__(self, other: t.Any) -> t.Self:
         """Right power operation returning instance of same type."""
         return super().__rpow__(other)  # type: ignore[return-value]
+
+
+    # ===================
+    # PUBLIC METHODS
+    # ===================
+
+    def upsample(self, n_sims: int) -> t.Self:
+        """Upsample the variable to match the specified number of simulations.
+
+        Args:
+            n_sims: The number of simulations to upsample to.
+
+        Returns:
+            A new instance of self with the upsampled values.
+        """
+        raise NotImplementedError
+
+    def astype(self, dtype: np.dtype[t.Any] | type[t.Any]) -> npt.NDArray[t.Any]:
+        """Convert the underlying values to a specified dtype.
+
+        Args:
+            dtype: The data type to convert to.
+
+        Returns:
+            A new numpy array with the specified dtype.
+        """
+        return self.values.astype(dtype)
+
+    # ===================
+    # PRIVATE METHODS
+    # ===================
 
     # Private methods for internal use
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:

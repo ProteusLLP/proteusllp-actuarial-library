@@ -106,7 +106,8 @@ class SupportsArray(t.Protocol):
 
     **__array_function__ method:**
     - **Purpose**: Handles numpy function dispatch - intercepts numpy function calls
-    - **When called**: When numpy functions like np.sum(), np.mean(), etc. are called on the object
+    - **When called**: When numpy functions like np.sum(), np.mean(), etc. are called on
+      the object
     - **Return type**: Can return any type (scalars, arrays, custom objects)
     - **Usage**: Custom behavior for numpy functions, maintains object semantics
 
@@ -118,6 +119,16 @@ class SupportsArray(t.Protocol):
 
     def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:
         """Convert to numpy array for compatibility with numpy functions."""
+        ...
+
+    def __array_function__(
+        self,
+        func: t.Any,
+        types: tuple[type, ...],
+        args: tuple[t.Any, ...],
+        kwargs: dict[str, t.Any],
+    ) -> t.Any:
+        """Handle numpy function dispatch to preserve object semantics."""
         ...
 
 
@@ -244,6 +255,12 @@ NumericLike = Numeric | NumericProtocol
 # Type for objects that implement vector-like operations
 # (comparison operations return Self for element-wise operations)
 VectorLike = VectorLikeProtocol
+
+# FIXME: VectorLike should be generic VectorLike[T] to enable proper typing
+# of math functions like sum(VectorLike[T]) -> T. This would allow:
+# - sum(StochasticScalar) -> float
+# - sum(ProteusVariable[StochasticScalar]) -> StochasticScalar
+# Currently blocked by need to refactor all VectorLike usage sites.
 
 # Union type for values that can be either scalar or vector-like
 # This is useful for containers that can hold both types (e.g., ProteusVariable.values)

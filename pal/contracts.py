@@ -5,6 +5,7 @@ including individual layers and complete towers with aggregate limits,
 reinstatement premiums, franchise deductibles, and complex layering.
 """
 
+import typing as t
 from dataclasses import dataclass
 
 from ._maths import xp as np
@@ -139,13 +140,12 @@ class XoL:
             # FreqSevSims supports np.where through __array_function__
             claims = np.where(is_in_window, claims, 0)  # type: ignore[assignment]
 
-        individual_recoveries_pre_aggregate = np.minimum(
-            np.maximum(claims - self.excess, 0), self.limit
-        )
         # numpy operations preserve FreqSevSims type through __array_function__
-        if not isinstance(individual_recoveries_pre_aggregate, FreqSevSims):
-            msg = "Expected FreqSevSims but got different type"
-            raise TypeError(msg)
+        # however the typechecker can't track this through numpy operations so we
+        # need to use a cast here
+        coerced = np.minimum(np.maximum(claims - self.excess, 0), self.limit)
+        individual_recoveries_pre_aggregate: FreqSevSims = t.cast(FreqSevSims, coerced)
+
         if self.aggregate_limit == np.inf and self.aggregate_deductible == 0:
             self.calc_summary(claims, individual_recoveries_pre_aggregate.aggregate())
             return ContractResults(individual_recoveries_pre_aggregate)

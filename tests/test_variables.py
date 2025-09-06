@@ -9,6 +9,7 @@ import typing as t
 
 import numpy as np
 import pytest
+from pal.types import Numeric, ScalarOrVector
 from pal.variables import FreqSevSims, ProteusVariable, StochasticScalar
 
 
@@ -73,13 +74,23 @@ def test_sum():
     assert y_builtin == 3
 
 
-def test_sum_stochastic():
+def test_sum_stochastic() -> None:
     x = ProteusVariable[StochasticScalar](
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
-    y = np.sum(x)
-    y_builtin = sum(x)
+
+    # Enforce type expectations - these should both return StochasticScalar at runtime
+    y: ScalarOrVector = np.sum(x)  # Calls x.__array_function__, returns ScalarOrVector
+    y_builtin: StochasticScalar | int = sum(
+        x
+    )  # Type system correctly sees | Literal[0]
+
+    # Type narrowing - we know x is non-empty so sum() returns StochasticScalar
+    assert isinstance(y, StochasticScalar)
+    assert isinstance(y_builtin, StochasticScalar)
+
+    # Now comparisons work properly
     assert (y == StochasticScalar([3, 5, 7])).all()
     assert (y_builtin == StochasticScalar([3, 5, 7])).all()
     assert (
@@ -359,15 +370,26 @@ def test_get_value_at_sim_stochastic():
     ).all()
 
 
-def test_array_ufunc():
+def test_array_ufunc() -> None:
     x = ProteusVariable[StochasticScalar](
         dim_name="dim1",
         values={"foo": StochasticScalar([1, 2, 3])},
     )
-    y = np.exp(x)
-    assert (
-        y.values["foo"] == StochasticScalar([np.exp(1), np.exp(2), np.exp(3)])
-    ).all()
+
+    # np.exp(x) calls x.__array_ufunc__ which has return type ProteusVariable[T]
+    # However, numpy's type stubs don't understand custom __array_ufunc__
+    # implementations so we need to cast the result to help the type checker infer
+    # the actual type.
+    y: ProteusVariable[StochasticScalar] = t.cast(
+        ProteusVariable[StochasticScalar], np.exp(x)
+    )
+    assert isinstance(y, ProteusVariable)  # Runtime verification of actual behavior
+
+    # Now we can access values with proper type information
+    comparison: StochasticScalar = y.values["foo"] == StochasticScalar(
+        [np.exp(1), np.exp(2), np.exp(3)]
+    )
+    assert comparison.all()
 
 
 def test_array_func2():
@@ -422,13 +444,11 @@ def test_mean_dict_stochastic():
 
 def test_mean_dict_freqsev():
     """Test mean method with dict values containing FreqSevSims."""
-    from pal.frequency_severity import FreqSevSims
-
     # Create some simple FreqSevSims for testing
     freq_sev_1 = FreqSevSims([0, 1], [10.0, 20.0], 2)
     freq_sev_2 = FreqSevSims([0, 1], [30.0, 40.0], 2)
 
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable[FreqSevSims](
         dim_name="coverage",
         values={
             "CompDamage": freq_sev_1,
@@ -451,7 +471,7 @@ def test_mean_dict_freqsev():
 
 def test_mean_dict_scalars():
     """Test mean method with dict values containing scalar values."""
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable[float](
         dim_name="factor",
         values={
             "inflation": 1.03,
@@ -611,7 +631,7 @@ def test_upsample_dict_stochastic_scalar():
 
 def test_upsample_dict_scalar_values():
     """Test upsample method with dict values containing scalar values."""
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable[Numeric](
         dim_name="test",
         values={
             "a": 10,

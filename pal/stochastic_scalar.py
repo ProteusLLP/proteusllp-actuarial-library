@@ -15,12 +15,7 @@ import plotly.graph_objects as go  # type: ignore
 
 from ._maths import xp as np
 from .couplings import CouplingGroup, ProteusStochasticVariable
-from .types import Numeric, NumericLike, VectorLike
-
-NumberOrList = Numeric | list[Numeric]
-NumericOrStochasticScalar = t.TypeVar(
-    "NumericOrStochasticScalar", Numeric, "StochasticScalar"
-)
+from .types import Numeric, NumericLike, ScipyNumeric
 
 
 class StochasticScalar(ProteusStochasticVariable):
@@ -85,7 +80,7 @@ class StochasticScalar(ProteusStochasticVariable):
         method: str,
         *inputs: t.Any,
         **kwargs: t.Any,
-    ) -> t.Any:
+    ) -> StochasticScalar:
         """Override the __array_ufunc__ method to apply standard numpy functions.
 
         If there's a mix of different variable types in the inputs, delegate to the
@@ -148,10 +143,17 @@ class StochasticScalar(ProteusStochasticVariable):
         result = getattr(ufunc, method)(*_inputs, **kwargs)
         return self._wrap_result_with_coupling(result, inputs)
 
-    def __getitem__(self, index: int | float | StochasticScalar) -> VectorLike:
+    def __getitem__(self, index: ScipyNumeric | StochasticScalar) -> StochasticScalar:
+        # FIXME: Type signature inconsistent with SequenceLike protocol and runtime
+        # - SequenceLike expects __getitem__(int) -> T_co (should return float)
+        # - Runtime: int indexing returns scalar, StochasticScalar returns
+        #   StochasticScalar.
+        # - Current signature claims all indexing returns StochasticScalar (wrong)
+        # Need overloads to match runtime behavior and protocol expectations
+        # See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/24
         # handle an actual numeric index...
-        if isinstance(index, int | float):
-            return t.cast(VectorLike, self.values[int(index)])
+        if isinstance(index, ScipyNumeric):
+            return self.values[int(index)]  # type: ignore[return-value]
 
         if isinstance(index, type(self)):
             # Check if index contains boolean values for masking

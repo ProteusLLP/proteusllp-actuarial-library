@@ -347,7 +347,7 @@ class ProteusVariable[T: ScalarOrVector]:
         _: tuple[type, ...],
         args: tuple[t.Any, ...],
         kwargs: dict[str, t.Any],
-    ) -> ProteusVariable[StochasticScalar]:
+    ) -> ScalarOrVector:
         """Handle numpy array functions applied to ProteusVariable objects.
 
         This method enables ProteusVariable objects to work with numpy array functions
@@ -374,24 +374,30 @@ class ProteusVariable[T: ScalarOrVector]:
             else:
                 parsed_args.append(arg)
 
-        # For functions that need axis specification, add axis=1 to kwargs
-        if func.__name__ in ["cumsum", "cumprod", "diff"] and "axis" not in kwargs:
-            kwargs["axis"] = 1
-        elif func.__name__ in ["sum", "mean", "std", "var"] and "axis" not in kwargs:
-            # For reduction operations, check the type of values to determine axis
-            # behavior...
-            first_value = next(iter(self.values.values())) if self.values else None
-
-            # Check if we have vector-like values (StochasticScalar, FreqSevSims, etc.)
-            if (
-                first_value is not None
-                and hasattr(first_value, "values")
-                and hasattr(first_value, "n_sims")
-            ):
-                # Vector-like values: use axis=1 to sum across dimensions (row-wise)
-                # This preserves simulation structure for StochasticScalar objects
+        if "axis" in kwargs:
+            # Nothing to do here as the axis is already specified.
+            pass
+        else:
+            if func.__name__ in ["cumsum", "cumprod", "diff"]:
+                # For functions that need axis specification, add axis=1 to kwargs
                 kwargs["axis"] = 1
-            # For scalar values, use default (no axis) which will return a scalar result
+            elif func.__name__ in ["sum", "mean", "std", "var"]:
+                # For reduction operations, check the type of values to determine axis
+                # behavior...
+                first_value = next(iter(self.values.values())) if self.values else None
+
+                # Check if we have vector-like values (StochasticScalar, FreqSevSims,
+                # etc.)
+                if first_value is not None and isinstance(first_value, VectorLike):
+                    # Vector-like values: use axis=1 to sum across dimensions (row-wise)
+                    # This preserves simulation structure for StochasticScalar objects
+                    kwargs["axis"] = 1
+
+                # In case this if doesn't match, for scalar values, use default (no
+                # axis) which will return a scalar result.
+            else:
+                # In all other cases, do not specify axis and let numpy decide
+                pass
 
         temp = func(*parsed_args, **kwargs)
 
@@ -406,8 +412,7 @@ class ProteusVariable[T: ScalarOrVector]:
             if (
                 func.__name__ in ["sum", "mean", "std", "var"]
                 and first_value is not None
-                and hasattr(first_value, "values")
-                and hasattr(first_value, "n_sims")
+                and isinstance(first_value, VectorLike)
             ):
                 # Reduction of vector-like values: return a single StochasticScalar
                 result = StochasticScalar(temp)
@@ -415,8 +420,10 @@ class ProteusVariable[T: ScalarOrVector]:
                 # Merge coupling groups from all original values
                 for value in self.values.values():
                     if hasattr(value, "coupled_variable_group"):
+                        # Type ignore: we know that this attribute exists because we've
+                        # done a runtime check above.
                         result.coupled_variable_group.merge(
-                            value.coupled_variable_group
+                            value.coupled_variable_group  # type: ignore[attr-defined]
                         )
 
                 return result
@@ -526,13 +533,12 @@ class ProteusVariable[T: ScalarOrVector]:
             return self.values[key]
         raise TypeError(f"Key must be an integer or string, got {type(key).__name__}.")
 
-    def get_value_at_sim(self, sim_no: VectorLike) -> ProteusVariable[t.Any]:
+    def get_value_at_sim(self, sim_no: ScalarOrVector) -> ProteusVariable[t.Any]:
         """Get values at specific simulation number(s).
 
         Args:
             sim_no: Simulation index(es) to extract. Can be a single numeric value,
-                    a list of integers, or a VectorLike object such as
-                    StochasticScalar.
+                a list of integers, or a VectorLike object such as StochasticScalar.
 
         Returns:
             A new ProteusVariable with values at the specified simulation indices.
@@ -862,7 +868,7 @@ class ProteusVariable[T: ScalarOrVector]:
     def _get_value_at_sim_helper(
         self,
         x: t.Any,
-        sim_no: VectorLike,
+        sim_no: ScalarOrVector,
     ) -> t.Any:
         """Helper method to get value at simulation for a single element."""
         if isinstance(x, ProteusVariable):
