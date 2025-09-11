@@ -63,6 +63,10 @@ docker ps --filter name=pal-devcontainer
 
 ## Code Style
 
+**IMPORTANT**: 
+- Do not add cruft comments like "# mean() removed - use numpy.mean() instead". When removing code, just remove it cleanly without leaving placeholder comments.
+- **No nested imports** - Always import modules at the top of the file, not inside functions. Nested imports hide import errors and delay them until runtime instead of catching them at load time.
+
 **See [STYLE_GUIDE.md](./STYLE_GUIDE.md) for all coding standards including:**
 - Line length (88 characters max) - IMPORTANT: Never exceed 88 characters
 - Type annotations

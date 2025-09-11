@@ -5,35 +5,32 @@ operations, aggregation, upsampling, correlation analysis, and integration
 with various stochastic variable types.
 """
 
-import typing as t
-
 import numpy as np
 import pytest
-from pal.types import Numeric, ScalarOrVector
 from pal.variables import FreqSevSims, ProteusVariable, StochasticScalar
 
 
 def test_empty():
-    x = ProteusVariable[t.Any](dim_name="dim1", values={})
+    x = ProteusVariable(dim_name="dim1", values={})
     assert x.values == {}
 
 
 def test_variable():
-    x = ProteusVariable[int](dim_name="dim1", values={"a": 1, "b": 2, "c": 3})
+    x = ProteusVariable(dim_name="dim1", values={"a": 1, "b": 2, "c": 3})
     y = x + 1
     assert y.values == {"a": 2, "b": 3, "c": 4}
 
 
 def test_variable2():
     """Test that a variable can be created with a dict of StochasticScalars."""
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     y = x + 2.2
     assert (
         y
-        == ProteusVariable[StochasticScalar](
+        == ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([3.2, 4.2, 5.2]),
@@ -45,11 +42,11 @@ def test_variable2():
 
 def test_variable3():
     """Test variable creation with dictionary, label matching, and summing."""
-    x = ProteusVariable[int](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": 1, "b": 2},
     )
-    y = ProteusVariable[int](
+    y = ProteusVariable(
         dim_name="dim1",
         values={"b": 5, "a": 8},
     )
@@ -58,7 +55,7 @@ def test_variable3():
 
 
 def test_array_variable_dereferencing():
-    x = ProteusVariable[int](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"first": 1, "second": 2},
     )
@@ -67,32 +64,18 @@ def test_array_variable_dereferencing():
 
 
 def test_sum():
-    x = ProteusVariable[int](dim_name="dim1", values={"a": 1, "b": 2})
-    y = np.sum(x)
+    x = ProteusVariable(dim_name="dim1", values={"a": 1, "b": 2})
+    y = sum(x)
     assert y == 3
-    y_builtin = sum(x)
-    assert y_builtin == 3
 
 
-def test_sum_stochastic() -> None:
-    x = ProteusVariable[StochasticScalar](
+def test_sum_stochastic():
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
-
-    # Enforce type expectations - these should both return StochasticScalar at runtime
-    y: ScalarOrVector = np.sum(x)  # Calls x.__array_function__, returns ScalarOrVector
-    y_builtin: StochasticScalar | int = sum(
-        x
-    )  # Type system correctly sees | Literal[0]
-
-    # Type narrowing - we know x is non-empty so sum() returns StochasticScalar
-    assert isinstance(y, StochasticScalar)
-    assert isinstance(y_builtin, StochasticScalar)
-
-    # Now comparisons work properly
+    y = sum(x)
     assert (y == StochasticScalar([3, 5, 7])).all()
-    assert (y_builtin == StochasticScalar([3, 5, 7])).all()
     assert (
         y.coupled_variable_group
         == x[0].coupled_variable_group
@@ -101,13 +84,13 @@ def test_sum_stochastic() -> None:
 
 
 def test_divide():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     y = x / 2.0
     assert (
-        ProteusVariable[StochasticScalar](
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([0.5, 1, 3 / 2]),
@@ -119,30 +102,29 @@ def test_divide():
 
 
 def test_divide_two():
-    x = ProteusVariable[int](dim_name="dim1", values={"a": 1, "b": 2, "c": 3})
-    y = x / ProteusVariable[int](dim_name="dim1", values={"a": 2, "b": 4, "c": 6})
+    x = ProteusVariable(dim_name="dim1", values={"a": 1, "b": 2, "c": 3})
+    y = x / ProteusVariable(dim_name="dim1", values={"a": 2, "b": 4, "c": 6})
     assert y.values == {"a": 0.5, "b": 0.5, "c": 0.5}
 
 
 def test_rdivide():
-    x = ProteusVariable[int](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": 1, "b": 2, "c": 3},
     )
     y = 2 / x
-    # Ignore error from third-party library here as pytest library is not fully typed.
-    assert y.values == pytest.approx({"a": 2, "b": 1, "c": 2 / 3})  # type: ignore[unknownMemberType]
+    assert y.values == pytest.approx({"a": 2, "b": 1, "c": 2 / 3})
 
 
 def test_multiply_stochastic():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     y = StochasticScalar([2, 3, 4])
     z = y * x
     assert (
-        ProteusVariable[StochasticScalar](
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([2, 6, 12]),
@@ -154,14 +136,14 @@ def test_multiply_stochastic():
 
 
 def test_rmultiply_stochastic():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     y = StochasticScalar([2, 3, 4])
     z = x * y
     assert (
-        ProteusVariable[StochasticScalar](
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([2, 6, 12]),
@@ -173,13 +155,13 @@ def test_rmultiply_stochastic():
 
 
 def test_subtract():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     y = x - 1
     assert (
-        ProteusVariable[StochasticScalar](
+        ProteusVariable(
             dim_name="dim1",
             values={"a": StochasticScalar([0, 1, 2]), "b": StochasticScalar([1, 2, 3])},
         )
@@ -188,13 +170,13 @@ def test_subtract():
 
 
 def test_rsubtract():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     y = 1 - x
     assert (
-        ProteusVariable[StochasticScalar](
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([0, -1, -2]),
@@ -206,23 +188,23 @@ def test_rsubtract():
 
 
 def test_subtract_two():
-    x = ProteusVariable[int](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": 1, "b": 2, "c": 3},
     )
-    y = x - ProteusVariable[int](dim_name="dim1", values={"a": 2, "b": 4, "c": 6})
+    y = x - ProteusVariable(dim_name="dim1", values={"a": 2, "b": 4, "c": 6})
     assert y.values == {"a": -1, "b": -2, "c": -3}
 
 
 def test_sub_stochastic():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     y = StochasticScalar([2, 3, 4])
     z = y - x
     assert (
-        ProteusVariable[StochasticScalar](
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([1, 1, 1]),
@@ -234,14 +216,14 @@ def test_sub_stochastic():
 
 
 def test_rsub_stochastic():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     y = StochasticScalar([2, 3, 4])
     z = x - y
     assert (
-        ProteusVariable[StochasticScalar](
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([-1, -1, -1]),
@@ -253,17 +235,17 @@ def test_rsub_stochastic():
 
 
 def test_sub_stochastic_scalar():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
-    y = ProteusVariable[int](
+    y = ProteusVariable(
         dim_name="dim1",
         values={"a": 1, "b": 2},
     )
     z = x - y
     assert (
-        ProteusVariable[StochasticScalar](
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([0, 1, 2]),
@@ -275,17 +257,17 @@ def test_sub_stochastic_scalar():
 
 
 def test_rsub_stochastic_scalar():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
-    y = ProteusVariable[int](
+    y = ProteusVariable(
         dim_name="dim1",
         values={"a": 1, "b": 2},
     )
     z = y - x
     assert (
-        ProteusVariable[StochasticScalar](
+        ProteusVariable(
             dim_name="dim1",
             values={
                 "a": StochasticScalar([0, -1, -2]),
@@ -298,41 +280,37 @@ def test_rsub_stochastic_scalar():
 
 def test_sub_2():
     a = StochasticScalar([1, 2, 3])
-    b = FreqSevSims(np.array([0, 0, 1, 2]), np.array([1, 2, 3, 4]), 3)
+    b = FreqSevSims([0, 0, 1, 2], [1, 2, 3, 4], 3)
     x = a - b
-    assert (
-        x == FreqSevSims(np.array([0, 0, 1, 2]), np.array([0, -1, -1, -1]), 3)
-    ).values.all()
+    assert (x == FreqSevSims([0, 0, 1, 2], [0, -1, -1, -1], 3)).values.all()
 
 
 def test_sub_3():
     a = StochasticScalar([2, 3, 4])
-    b = FreqSevSims(np.array([0, 1, 1, 2]), np.array([1, 2, 3, 4]), 3)
+    b = FreqSevSims([0, 1, 1, 2], [1, 2, 3, 4], 3)
     x = a - b
-    assert (
-        x == FreqSevSims(np.array([0, 1, 1, 2]), np.array([1, 1, 0, 0]), 3)
-    ).values.all()
+    assert (x == FreqSevSims([0, 1, 1, 2], [1, 1, 0, 0], 3)).values.all()
 
 
 def test_sub_stochastic_scalar_frequency_severity():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
-    y = ProteusVariable[FreqSevSims](
+    y = ProteusVariable(
         dim_name="dim1",
         values={
-            "a": FreqSevSims(np.array([0, 0, 1, 2]), np.array([1, 2, 3, 4]), 3),
-            "b": FreqSevSims(np.array([0, 1, 1, 2]), np.array([1, 2, 3, 4]), 3),
+            "a": FreqSevSims([0, 0, 1, 2], [1, 2, 3, 4], 3),
+            "b": FreqSevSims([0, 1, 1, 2], [1, 2, 3, 4], 3),
         },
     )
     z = x - y
     assert (
-        ProteusVariable[FreqSevSims](
+        ProteusVariable(
             dim_name="dim1",
             values={
-                "a": FreqSevSims(np.array([0, 0, 1, 2]), np.array([0, -1, -1, -1]), 3),
-                "b": FreqSevSims(np.array([0, 1, 1, 2]), np.array([1, 1, 0, 0]), 3),
+                "a": FreqSevSims([0, 0, 1, 2], [0, -1, -1, -1], 3),
+                "b": FreqSevSims([0, 1, 1, 2], [1, 1, 0, 0], 3),
             },
         )
         == z
@@ -340,7 +318,7 @@ def test_sub_stochastic_scalar_frequency_severity():
 
 
 def test_corr():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 10, 2]), "b": StochasticScalar([2, 3, 4])},
     )
@@ -349,7 +327,7 @@ def test_corr():
 
 
 def test_get_value_at_sim():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
@@ -358,49 +336,38 @@ def test_get_value_at_sim():
 
 
 def test_get_value_at_sim_stochastic():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([2, 3, 4])},
     )
     assert (
         x.get_value_at_sim(StochasticScalar([0, 2]))
-        == ProteusVariable[StochasticScalar](
+        == ProteusVariable(
             "dim1", {"a": StochasticScalar([1, 3]), "b": StochasticScalar([2, 4])}
         )
     ).all()
 
 
-def test_array_ufunc() -> None:
-    x = ProteusVariable[StochasticScalar](
+def test_array_ufunc():
+    x = ProteusVariable(
         dim_name="dim1",
         values={"foo": StochasticScalar([1, 2, 3])},
     )
-
-    # np.exp(x) calls x.__array_ufunc__ which has return type ProteusVariable[T]
-    # However, numpy's type stubs don't understand custom __array_ufunc__
-    # implementations so we need to cast the result to help the type checker infer
-    # the actual type.
-    y: ProteusVariable[StochasticScalar] = t.cast(
-        ProteusVariable[StochasticScalar], np.exp(x)
-    )
-    assert isinstance(y, ProteusVariable)  # Runtime verification of actual behavior
-
-    # Now we can access values with proper type information
-    comparison: StochasticScalar = y.values["foo"] == StochasticScalar(
-        [np.exp(1), np.exp(2), np.exp(3)]
-    )
-    assert comparison.all()
+    y = np.exp(x)
+    assert (
+        y.values["foo"] == StochasticScalar([np.exp(1), np.exp(2), np.exp(3)])
+    ).all()
 
 
 def test_array_func2():
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="dim1",
         values={"foo": StochasticScalar([1, 2, 3]), "bar": StochasticScalar([1, 2, 3])},
     )
     y = np.cumsum(x)
     assert (
         y
-        == ProteusVariable[StochasticScalar](
+        == ProteusVariable(
             "dim1",
             {"foo": StochasticScalar([1, 2, 3]), "bar": StochasticScalar([2, 4, 6])},
         )
@@ -409,7 +376,7 @@ def test_array_func2():
 
 def test_from_csv():
     x = ProteusVariable.from_csv("tests/data/variable.csv", "class", "value")
-    expected = ProteusVariable[StochasticScalar](
+    expected = ProteusVariable(
         dim_name="class",
         values={
             "Motor": StochasticScalar([0.1, 0.4]),
@@ -422,7 +389,7 @@ def test_from_csv():
 
 def test_mean_dict_stochastic():
     """Test mean method with dict values containing StochasticScalar."""
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="class",
         values={
             "Motor": StochasticScalar([1.0, 2.0, 3.0]),
@@ -444,11 +411,13 @@ def test_mean_dict_stochastic():
 
 def test_mean_dict_freqsev():
     """Test mean method with dict values containing FreqSevSims."""
+    from pal.frequency_severity import FreqSevSims
+
     # Create some simple FreqSevSims for testing
     freq_sev_1 = FreqSevSims([0, 1], [10.0, 20.0], 2)
     freq_sev_2 = FreqSevSims([0, 1], [30.0, 40.0], 2)
 
-    x = ProteusVariable[FreqSevSims](
+    x = ProteusVariable(
         dim_name="coverage",
         values={
             "CompDamage": freq_sev_1,
@@ -471,7 +440,7 @@ def test_mean_dict_freqsev():
 
 def test_mean_dict_scalars():
     """Test mean method with dict values containing scalar values."""
-    x = ProteusVariable[float](
+    x = ProteusVariable(
         dim_name="factor",
         values={
             "inflation": 1.03,
@@ -495,7 +464,7 @@ def test_mean_dict_scalars():
 
 def test_mean_mixed_dict():
     """Test mean method with dict values containing mixed types."""
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="mixed",
         values={
             "stochastic": StochasticScalar([10.0, 20.0, 30.0]),
@@ -517,12 +486,12 @@ def test_mean_mixed_dict():
 
 def test_mean_nested_proteus_variable() -> None:
     """Test mean method with nested ProteusVariable objects."""
-    inner_var = ProteusVariable[StochasticScalar](
+    inner_var = ProteusVariable(
         dim_name="inner",
         values={"a": StochasticScalar([2.0, 4.0, 6.0]), "b": 10.0},
     )
 
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="outer",
         values={
             "nested": inner_var,
@@ -544,7 +513,7 @@ def test_mean_nested_proteus_variable() -> None:
 
 def test_mean_empty_values():
     """Test mean method with empty values (edge case)."""
-    x = ProteusVariable[StochasticScalar](dim_name="empty", values={})
+    x = ProteusVariable(dim_name="empty", values={})
 
     result = x.mean()
 
@@ -555,7 +524,7 @@ def test_mean_empty_values():
 
 def test_mean_single_value():
     """Test mean method with single stochastic value."""
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="single",
         values={"only": StochasticScalar([5.0])},
     )
@@ -575,7 +544,7 @@ def test_mean_large_dataset():
     large_array_1 = np.random.RandomState(42).normal(100, 15, 1000)
     large_array_2 = np.random.RandomState(123).exponential(50, 1000)
 
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="large",
         values={
             "normal": StochasticScalar(large_array_1),
@@ -597,7 +566,7 @@ def test_mean_large_dataset():
 
 def test_upsample_same_n_sims():
     """Test upsample method when current n_sims equals target n_sims."""
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="test",
         values={"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([4, 5, 6])},
     )
@@ -609,7 +578,7 @@ def test_upsample_same_n_sims():
 
 def test_upsample_dict_stochastic_scalar():
     """Test upsample method with dict values containing StochasticScalar."""
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="test",
         values={
             "a": StochasticScalar([1, 2]),
@@ -631,7 +600,7 @@ def test_upsample_dict_stochastic_scalar():
 
 def test_upsample_dict_scalar_values():
     """Test upsample method with dict values containing scalar values."""
-    x = ProteusVariable[Numeric](
+    x = ProteusVariable(
         dim_name="test",
         values={
             "a": 10,
@@ -653,7 +622,7 @@ def test_upsample_dict_scalar_values():
 
 def test_upsample_dict_mixed_types():
     """Test upsample method with dict values containing mixed types."""
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="test",
         values={
             "stochastic": StochasticScalar([1, 2, 3]),
@@ -679,7 +648,7 @@ def test_upsample_dict_freqsev():
     from pal.frequency_severity import FreqSevSims
 
     freq_sev = FreqSevSims([0, 1], [10.0, 20.0], 2)
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="test",
         values={
             "coverage": freq_sev,
@@ -704,7 +673,7 @@ def test_upsample_dict_freqsev():
 
 def test_upsample_empty_dict():
     """Test upsample method with empty dict values."""
-    x = ProteusVariable[StochasticScalar](dim_name="test", values={})
+    x = ProteusVariable(dim_name="test", values={})
 
     result = x.upsample(10)
 
@@ -715,7 +684,7 @@ def test_upsample_empty_dict():
 
 def test_upsample_single_value():
     """Test upsample method with single stochastic value."""
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="test",
         values={"single": StochasticScalar([5.0])},
     )
@@ -733,7 +702,7 @@ def test_upsample_single_value():
 
 def test_upsample_n_sims_property():
     """Test that upsample correctly updates n_sims property."""
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="test",
         values={"a": StochasticScalar([1, 2, 3])},
     )
@@ -749,7 +718,7 @@ def test_upsample_n_sims_property():
 
 def test_upsample_preserve_dim_name():
     """Test that upsample preserves the dimension name."""
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="custom_dimension",
         values={"a": StochasticScalar([1, 2])},
     )
@@ -761,7 +730,7 @@ def test_upsample_preserve_dim_name():
 
 def test_upsample_large_multiplier():
     """Test upsample with a large multiplier."""
-    x = ProteusVariable[StochasticScalar](
+    x = ProteusVariable(
         dim_name="test",
         values={"a": StochasticScalar([1, 2])},
     )

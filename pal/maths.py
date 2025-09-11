@@ -8,18 +8,21 @@ for type checkers. Import as 'pnp' to mimic numpy usage patterns.
 import typing as t
 from numbers import Number
 
+import numpy.typing as npt
+
 from ._maths import xp
 
 # Import types only during type checking to avoid circular imports
 # (StochasticScalar may import from _maths, which would create a cycle)
 if t.TYPE_CHECKING:
     from .stochastic_scalar import StochasticScalar
+    from .frequency_severity import FreqSevSims
 
 T = t.TypeVar("T")
 
 
 @t.overload
-def exp(x: T) -> T: ...
+def exp[T](x: T) -> T: ...
 
 
 def exp(x: t.Any) -> t.Any:
@@ -46,11 +49,18 @@ def mean(x: "StochasticScalar") -> float: ...
 
 
 @t.overload
+def mean(x: "FreqSevSims") -> float: ...
+
+
+@t.overload
 def mean(x: t.Any) -> t.Any: ...
 
 
 def mean(x: t.Any) -> t.Any:
     """Mean function that works with PAL types."""
+    # Special handling for FreqSevSims - aggregate first, then take mean
+    if hasattr(x, 'aggregate') and hasattr(x, '__class__') and 'FreqSevSims' in str(x.__class__):
+        return xp.mean(x.aggregate())
     return xp.mean(x)
 
 
@@ -121,3 +131,105 @@ def max(x: t.Any) -> t.Any: ...
 def max(x: t.Any) -> t.Any:
     """Max function that works with PAL types."""
     return xp.max(x)
+
+
+@t.overload
+def where(
+    condition: t.Any, x: "StochasticScalar", y: "StochasticScalar"
+) -> "StochasticScalar": ...
+
+
+@t.overload
+def where(
+    condition: t.Any, x: "StochasticScalar", y: float | int
+) -> "StochasticScalar": ...
+
+
+@t.overload
+def where(
+    condition: t.Any, x: float | int, y: "StochasticScalar"
+) -> "StochasticScalar": ...
+
+
+@t.overload
+def where(
+    condition: t.Any, x: npt.NDArray[t.Any], y: npt.NDArray[t.Any]
+) -> npt.NDArray[t.Any]: ...
+
+
+@t.overload
+def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any: ...
+
+
+def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any:
+    """Conditional selection that preserves PAL types."""
+    return xp.where(condition, x, y)
+
+
+# Additional functions for contracts.py and other modules
+@t.overload
+def minimum(x: "StochasticScalar", y: "StochasticScalar") -> "StochasticScalar": ...
+
+
+@t.overload
+def minimum(x: "StochasticScalar", y: float | int) -> "StochasticScalar": ...
+
+
+@t.overload
+def minimum(x: float | int, y: "StochasticScalar") -> "StochasticScalar": ...
+
+
+@t.overload
+def minimum(x: t.Any, y: t.Any) -> t.Any: ...
+
+
+def minimum(x: t.Any, y: t.Any) -> t.Any:
+    """Element-wise minimum that preserves PAL types."""
+    return xp.minimum(x, y)
+
+
+@t.overload
+def maximum(x: "StochasticScalar", y: "StochasticScalar") -> "StochasticScalar": ...
+
+
+@t.overload
+def maximum(x: "StochasticScalar", y: float | int) -> "StochasticScalar": ...
+
+
+@t.overload
+def maximum(x: float | int, y: "StochasticScalar") -> "StochasticScalar": ...
+
+
+@t.overload
+def maximum(x: t.Any, y: t.Any) -> t.Any: ...
+
+
+def maximum(x: t.Any, y: t.Any) -> t.Any:
+    """Element-wise maximum that preserves PAL types."""
+    return xp.maximum(x, y)
+
+
+@t.overload
+def cumsum(x: "StochasticScalar") -> "StochasticScalar": ...
+
+
+@t.overload
+def cumsum(x: t.Any) -> t.Any: ...
+
+
+def cumsum(x: t.Any) -> t.Any:
+    """Cumulative sum that preserves PAL types."""
+    return xp.cumsum(x)
+
+
+@t.overload
+def floor(x: "StochasticScalar") -> "StochasticScalar": ...
+
+
+@t.overload
+def floor(x: t.Any) -> t.Any: ...
+
+
+def floor(x: t.Any) -> t.Any:
+    """Floor function that preserves PAL types."""
+    return xp.floor(x)

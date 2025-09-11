@@ -59,10 +59,11 @@ import plotly.io as pio  # type: ignore
 import scipy.stats
 
 # local imports
+from . import maths as pnp
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
-from .types import ScalarOrVector, VectorLike
+from .types import ProteusLike, VectorLike
 
 pio.templates.default = "none"
 
@@ -71,7 +72,7 @@ __all__ = [
 ]
 
 
-class ProteusVariable[T: ScalarOrVector]:
+class ProteusVariable[T]:
     """A generic, homogeneous container for multivariate variables in simulations.
 
     ProteusVariable is a hierarchical structure that holds multiple variables of
@@ -80,28 +81,30 @@ class ProteusVariable[T: ScalarOrVector]:
     - but never a mix of different types.
 
     Type Parameter:
-        T: The type of values stored, constrained to ScalarOrVector
-           (NumericLike | VectorLike)
+        T: The type of values stored. By convention, T should be a ScalarOrVector
+           type (NumericLike | VectorLike), though the parameter is unconstrained
+           to allow flexible type inference. Usage with non-ScalarOrVector types
+           may not be fully supported by all operations.
 
     Key Features:
     - **Homogeneous**: All values in a single instance must be the same type.
       Like List[T], you cannot mix types within one container.
     - **Type Safety**: Operations like mean() return type T, preserving type
       information through the computation.
-    - **Nesting**: ProteusVariable[ProteusVariable[T]] enables hierarchical
+    - **Nesting**: ProteusVariable containing ProteusVariable enables hierarchical
       data structures (e.g., risks by region by peril)
     - **Dictionary Access**: Sub-elements accessed via [] notation with
       string keys or integer indices
 
     Examples:
         >>> # Homogeneous scalar container
-        >>> scalar_risks = ProteusVariable[int](
+        >>> scalar_risks = ProteusVariable(
         ...     dim_name="risk_amounts",
         ...     values={"fire": 100000, "flood": 200000}  # All int
         ... )
 
         >>> # Homogeneous vector container
-        >>> vector_risks = ProteusVariable[StochasticScalar](
+        >>> vector_risks = ProteusVariable(
         ...     dim_name="stochastic_losses",
         ...     values={
         ...         "fire": StochasticScalar([100, 200, 300]),
@@ -110,12 +113,12 @@ class ProteusVariable[T: ScalarOrVector]:
         ... )
 
         >>> # Homogeneous nested container
-        >>> nested_risks = ProteusVariable[ProteusVariable[int]](
+        >>> nested_risks = ProteusVariable(
         ...     dim_name="regions",
         ...     values={
         ...         "north": scalar_risks,
         ...         "south": scalar_risks
-        ...     }  # All ProteusVariable[int]
+        ...     }  # All ProteusVariable instances
         ... )
 
         >>> # INVALID - mixing types not allowed
@@ -344,15 +347,18 @@ class ProteusVariable[T: ScalarOrVector]:
     def __array_function__(
         self,
         func: t.Any,
-        _: tuple[type, ...],
+        types: tuple[type, ...],
         args: tuple[t.Any, ...],
         kwargs: dict[str, t.Any],
-    ) -> ScalarOrVector:
+    ) -> t.Any:
         """Handle numpy array functions applied to ProteusVariable objects.
 
         This method enables ProteusVariable objects to work with numpy array functions
         by extracting the underlying values, applying the function, and reconstructing
         the ProteusVariable with the result.
+
+        Special handling for mean(): Returns a ProteusVariable where each key's value
+        is replaced by its mean, preserving the original structure.
 
         Args:
             func: The numpy array function to apply.
@@ -363,13 +369,21 @@ class ProteusVariable[T: ScalarOrVector]:
         Returns:
             A new ProteusVariable with the function applied to its values.
         """
+        # Special handling for mean() to preserve ProteusVariable structure
+        if func.__name__ == "mean" and len(args) == 1 and args[0] is self:
+            mean_values: dict[str, T] = {}
+            for key, value in self.values.items():
+                # Use pnp.mean() for all values to ensure consistent behavior
+                # across all PAL types (StochasticScalar, FreqSevSims, etc.)
+                mean_values[key] = pnp.mean(value)
+
+            return ProteusVariable(dim_name=self.dim_name, values=mean_values)
+
         parsed_args: list[t.Any] = []
         for arg in args:
-            if hasattr(arg, "__iter__") and hasattr(arg, "values"):
-                # Stack the values as columns for ProteusVariable
-                value_arrays = [
-                    item.values if hasattr(item, "values") else item for item in arg
-                ]
+            if arg is self:
+                # For the ProteusVariable itself, stack its dictionary values as columns
+                value_arrays = [np.asarray(value) for value in self.values.values()]
                 parsed_args.append(np.column_stack(value_arrays))
             else:
                 parsed_args.append(arg)
@@ -405,7 +419,8 @@ class ProteusVariable[T: ScalarOrVector]:
         if temp.ndim == 0:
             # If result is scalar (0D), return the scalar directly
             return temp.item()
-        elif temp.ndim == 1:
+
+        if temp.ndim == 1:
             # Check if this is a reduction result from vector-like values
             first_value = next(iter(self.values.values())) if self.values else None
 
@@ -427,22 +442,21 @@ class ProteusVariable[T: ScalarOrVector]:
                         )
 
                 return result
-            else:
-                # Other 1D results: distribute evenly across keys
-                n_keys = len(self.values.keys())
-                chunk_size = len(temp) // n_keys
-                return ProteusVariable[StochasticScalar](
-                    self.dim_name,
-                    {
-                        key: StochasticScalar(
-                            temp[i * chunk_size : (i + 1) * chunk_size]
-                        )
-                        for i, key in enumerate(self.values.keys())
-                    },
-                )
-        else:
+
+            # Other 1D results: distribute evenly across keys
+            n_keys = len(self.values.keys())
+            chunk_size = len(temp) // n_keys
+            return ProteusVariable(
+                self.dim_name,
+                {
+                    key: StochasticScalar(temp[i * chunk_size : (i + 1) * chunk_size])
+                    for i, key in enumerate(self.values.keys())
+                },
+            )
+
+        if temp.ndim == 2:
             # If result is 2D, use columns
-            return ProteusVariable[StochasticScalar](
+            return ProteusVariable(
                 self.dim_name,
                 {
                     key: StochasticScalar(temp[:, i])
@@ -450,9 +464,29 @@ class ProteusVariable[T: ScalarOrVector]:
                 },
             )
 
+        # This should be unreachable - we've handled 0D, 1D, and 2D arrays
+        raise NotImplementedError(
+            f"Unexpected array dimensionality: {temp.ndim}D array returned by "
+            f"{func.__name__}. Only 0D (scalar), 1D, and 2D arrays are supported."
+        )
+
     def __iter__(self) -> t.Iterator[T]:
         """Iterate over the values in the variable."""
         return iter(self.values.values())
+
+    def __contains__(self, value: object) -> bool:
+        """Check if value is in the container.
+
+        Required for Sequence protocol compatibility.
+        """
+        return value in self.values.values()
+
+    def __reversed__(self) -> t.Iterator[T]:
+        """Return a reverse iterator over the values.
+
+        Required for Sequence protocol compatibility.
+        """
+        return reversed(list(self.values.values()))
 
     def __repr__(self) -> str:
         return f"ProteusVariable(dim_name={self.dim_name}, values={self.values})"
@@ -533,7 +567,32 @@ class ProteusVariable[T: ScalarOrVector]:
             return self.values[key]
         raise TypeError(f"Key must be an integer or string, got {type(key).__name__}.")
 
-    def get_value_at_sim(self, sim_no: ScalarOrVector) -> ProteusVariable[t.Any]:
+    def count(self, value: T) -> int:
+        """Count occurrences of value in the container.
+
+        Required for Sequence protocol compatibility.
+        """
+        return list(self.values.values()).count(value)
+
+    def index(self, value: T, start: int = 0, stop: int | None = None) -> int:
+        """Return index of first occurrence of value.
+
+        Required for Sequence protocol compatibility.
+
+        Raises:
+            ValueError: If value is not found.
+        """
+        values_list = list(self.values.values())
+        if stop is None:
+            stop = len(values_list)
+        try:
+            return values_list.index(value, start, stop)
+        except ValueError:
+            raise ValueError(f"{value!r} is not in ProteusVariable")
+
+    def get_value_at_sim(
+        self, sim_no: int | VectorLike[int]
+    ) -> ProteusVariable[T | VectorLike[T] | ProteusLike[T]]:
         """Get values at specific simulation number(s).
 
         Args:
@@ -549,7 +608,7 @@ class ProteusVariable[T: ScalarOrVector]:
         # For this to work, we need to be sure that the contents of values is indeed
         # VectorLike. Remember that ProteusVariables may be nested and a ProteusVariable
         # will not be VectorLike.
-        return ProteusVariable[t.Any](
+        return ProteusVariable(
             dim_name=self.dim_name,
             values={
                 k: self._get_value_at_sim_helper(v, sim_no)
@@ -586,32 +645,7 @@ class ProteusVariable[T: ScalarOrVector]:
 
         return any(_is_truthy(value) for value in self.values.values())
 
-    def mean(self) -> ProteusVariable[t.Any]:
-        """Return the mean of the variable across the simulation dimension."""
-
-        def _mean_helper(value: t.Any) -> t.Any:
-            """Helper function to compute mean for different value types."""
-            if isinstance(value, FreqSevSims):
-                return np.mean(value.aggregate())
-            if isinstance(value, StochasticScalar):
-                return np.mean(value)
-            if isinstance(value, ProteusVariable):
-                # For nested ProteusVariable, recursively compute mean
-                return value.mean()
-            if isinstance(value, int | float):
-                # If the value is a scalar, return it directly
-                return float(value)
-            raise TypeError(
-                f"{type(value).__name__} cannot be converted to float. "
-                "Mean cannot be computed."
-            )
-
-        return ProteusVariable[t.Any](
-            dim_name=self.dim_name,
-            values={key: _mean_helper(value) for key, value in self.values.items()},
-        )
-
-    def upsample(self, n_sims: int) -> ProteusVariable[t.Any]:
+    def upsample(self, n_sims: int) -> ProteusVariable[T]:
         """Upsample the variable to the specified number of simulations."""
         if self.n_sims == n_sims:
             return self
@@ -634,7 +668,7 @@ class ProteusVariable[T: ScalarOrVector]:
         dim_name: str,
         values_column: str,
         simulation_column: str = "Simulation",
-    ) -> ProteusVariable[t.Any]:
+    ) -> ProteusVariable[T]:
         """Import a ProteusVariable from a CSV file.
 
         This method currently has significant limitations and will be replaced
@@ -687,7 +721,7 @@ class ProteusVariable[T: ScalarOrVector]:
     def from_dict(
         cls,
         data: dict[str, list[float]],
-    ) -> ProteusVariable[t.Any]:
+    ) -> ProteusVariable[T]:
         """Create a ProteusVariable from a dictionary.
 
         This method currently has significant limitations and will be replaced
@@ -719,7 +753,7 @@ class ProteusVariable[T: ScalarOrVector]:
         return result
 
     @classmethod
-    def from_series(cls, data: pd.Series) -> ProteusVariable[t.Any]:
+    def from_series(cls, data: pd.Series) -> ProteusVariable[T]:
         """Create a ProteusVariable from a pandas Series.
 
         This method currently has significant limitations and will be replaced
@@ -867,12 +901,15 @@ class ProteusVariable[T: ScalarOrVector]:
 
     def _get_value_at_sim_helper(
         self,
-        x: t.Any,
-        sim_no: ScalarOrVector,
-    ) -> t.Any:
+        x: T,
+        sim_no: int | VectorLike[int],
+    ) -> T | VectorLike[T] | ProteusLike[T]:
         """Helper method to get value at simulation for a single element."""
         if isinstance(x, ProteusVariable):
-            return x.get_value_at_sim(sim_no)
+            # Type ignore: Private helper method with runtime type checks ensures correct
+            # return type based on isinstance branching - static analyzer cannot infer
+            # the precise type through the generic parameter T
+            return x.get_value_at_sim(sim_no)  # type: ignore[return-value]
 
         if isinstance(x, StochasticScalar) or isinstance(x, FreqSevSims):
             # Handle StochasticScalar and FreqSevSims types
@@ -899,7 +936,7 @@ class ProteusVariable[T: ScalarOrVector]:
 
             return x
 
-        if isinstance(x, Number):
+        if isinstance(x, Number):  # type: ignore[uneccesaryIsInstance]
             # If x is a numeric type, return it directly
             return x
 
