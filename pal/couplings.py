@@ -145,7 +145,7 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
     def __array_function__(
         self,
         func: t.Any,
-        types: tuple[type, ...],
+        _: tuple[type, ...],
         args: tuple[t.Any, ...],
         kwargs: dict[str, t.Any],
     ) -> t.Any:
