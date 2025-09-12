@@ -103,7 +103,7 @@ class Copula(ABC):
         if n_sims is None:
             raise ValueError("Cannot apply copula: n_sims is not set on variables")
 
-        copula_samples_pv = ProteusVariable[StochasticScalar](
+        copula_samples_pv = ProteusVariable(
             dim_name="dim1",
             values={
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)
@@ -188,7 +188,7 @@ class GaussianCopula(EllipticalCopula):
         # Generate samples from a multivariate normal distribution
         samples = self._generate_unnormalised(n_sims, rng)
         uniform_samples = special.ndtr(samples)
-        result = ProteusVariable[StochasticScalar](
+        result = ProteusVariable(
             "dim1",
             {
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)
@@ -244,7 +244,7 @@ class StudentsTCopula(EllipticalCopula):
             rng = config.rng
         t_samples = self._generate_unnormalised(n_sims, rng)
         uniform_samples = distributions.t(self.dof).cdf(t_samples)
-        return ProteusVariable[StochasticScalar](
+        return ProteusVariable(
             "dim1",
             {
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)
@@ -295,7 +295,7 @@ class ArchimedeanCopula(Copula, ABC):
         if rng is None:
             rng = config.rng
         copula_samples = self.generator_inv(-self._generate_unnormalised(n_sims, rng))
-        result = ProteusVariable[StochasticScalar](
+        result = ProteusVariable(
             "dim1",
             {
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)

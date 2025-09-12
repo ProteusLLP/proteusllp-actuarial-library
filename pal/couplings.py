@@ -71,10 +71,6 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
         """Return the underlying numpy array for compatibility with numpy functions."""
         return self.values if dtype is None else np.asarray(self.values, dtype=dtype)
 
-    def all(self) -> bool:
-        """Return True if all values are True."""
-        return t.cast(bool, self.values.all())
-
     # Override NDArrayOperatorsMixin comparison operators with proper return
     # type annotations.
     # NDArrayOperatorsMixin provides comparison operations but returns Any/object types.
@@ -146,6 +142,37 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
         """Right power operation returning instance of same type."""
         return super().__rpow__(other)  # type: ignore[return-value]
 
+    def __array_function__(
+        self,
+        func: t.Any,
+        types: tuple[type, ...],
+        args: tuple[t.Any, ...],
+        kwargs: dict[str, t.Any],
+    ) -> t.Any:
+        """Handle numpy array functions by delegating to numpy after array conversion.
+
+        This implementation satisfies the SupportsArray protocol requirement while
+        maintaining backward compatibility. Array functions like np.sum(), np.mean()
+        will work by converting to array first, returning numpy scalars/arrays.
+
+        For type-preserving operations:
+        - Use pal.maths functions (pnp.sum, pnp.mean) for explicit type preservation
+        - Element-wise ufuncs (np.exp, +, -, etc.) preserve types via __array_ufunc__
+
+        This approach is intentionally simple: we convert our custom types to arrays
+        and let numpy handle the function, which matches numpy's default behavior.
+        """
+        # Convert arguments that are our type to arrays
+        converted_args: list[t.Any] = []
+        for arg in args:
+            if isinstance(arg, ProteusStochasticVariable):
+                # Use self.__array__() since super() doesn't have __array__
+                converted_args.append(arg.__array__())
+            else:
+                converted_args.append(arg)
+
+        # Let numpy handle the function with array arguments
+        return func(*converted_args, **kwargs)
 
     # ===================
     # PUBLIC METHODS

@@ -5,6 +5,7 @@ with ProteusVariable for dependency modeling in actuarial applications.
 """
 
 import numpy as np
+import pal.maths as pnp
 import pytest
 import scipy
 import scipy.special
@@ -22,7 +23,7 @@ def copula_margins(copula_samples: list[StochasticScalar] | ProteusVariable):
         {f"margin_{i}": (x >= 0) & (x <= 1) for i, x in enumerate(copula_samples)},
     )
 
-    assert y.all()
+    assert pnp.all(y)
 
     # check the values are uniform by checking the moments
     for u in copula_samples:

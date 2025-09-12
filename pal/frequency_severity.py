@@ -384,8 +384,19 @@ class FreqSevSims(ProteusStochasticVariable):
         Raises:
             NotImplementedError: If the function is not supported
         """
-        if func not in (np.where, np.sum, np.array_equal, np.minimum, np.maximum):
+        if func not in (
+            np.where,
+            np.sum,
+            np.array_equal,
+            np.minimum,
+            np.maximum,
+            np.mean,
+        ):
             raise NotImplementedError(f"Function {func.__name__} not supported")
+
+        # Special handling for mean - aggregate first, then take mean
+        if func is np.mean and len(args) == 1 and args[0] is self:
+            return func(self.aggregate(), **kwargs)
 
         # Extract values from FreqSevSims objects, leave others as-is
         processed_args = tuple(

@@ -5,24 +5,31 @@ PAL's custom types (StochasticScalar, etc.) with explicit type information
 for type checkers. Import as 'pnp' to mimic numpy usage patterns.
 """
 
+# standard library
 import typing as t
 from numbers import Number
 
+# third party
 import numpy.typing as npt
 
+# project
 from ._maths import xp
 
-# Import types only during type checking to avoid circular imports
-# (StochasticScalar may import from _maths, which would create a cycle)
+# Import concrete types for type checking
 if t.TYPE_CHECKING:
-    from .stochastic_scalar import StochasticScalar
     from .frequency_severity import FreqSevSims
+    from .stochastic_scalar import StochasticScalar
+    from .variables import ProteusVariable
 
 T = t.TypeVar("T")
 
 
 @t.overload
 def exp[T](x: T) -> T: ...
+
+
+@t.overload
+def exp(x: t.Any) -> t.Any: ...
 
 
 def exp(x: t.Any) -> t.Any:
@@ -53,15 +60,21 @@ def mean(x: "FreqSevSims") -> float: ...
 
 
 @t.overload
+def mean[T](x: "ProteusVariable[T]") -> "ProteusVariable[T]": ...
+
+
+@t.overload
 def mean(x: t.Any) -> t.Any: ...
 
 
 def mean(x: t.Any) -> t.Any:
-    """Mean function that works with PAL types."""
-    # Special handling for FreqSevSims - aggregate first, then take mean
-    if hasattr(x, 'aggregate') and hasattr(x, '__class__') and 'FreqSevSims' in str(x.__class__):
-        return xp.mean(x.aggregate())
-    return xp.mean(x)
+    """Mean function that works with PAL types.
+
+    All PAL types implement the numpy array protocol, so this just
+    delegates to numpy's mean function which will dispatch to the
+    appropriate __array_function__ or __array__ method.
+    """
+    return xp.mean(x)  # pyright: ignore[reportUnknownVariableType]
 
 
 @t.overload
@@ -104,7 +117,7 @@ def percentile(x: t.Any, q: t.Any) -> t.Any: ...
 
 def percentile(x: t.Any, q: t.Any) -> t.Any:
     """Percentile function that works with PAL types."""
-    return xp.percentile(x, q)
+    return xp.percentile(x, q)  # pyright: ignore[reportUnknownVariableType]
 
 
 @t.overload
@@ -233,3 +246,20 @@ def floor(x: t.Any) -> t.Any: ...
 def floor(x: t.Any) -> t.Any:
     """Floor function that preserves PAL types."""
     return xp.floor(x)
+
+
+@t.overload
+def all(x: "StochasticScalar") -> bool: ...
+
+
+@t.overload
+def all(x: "ProteusVariable[t.Any]") -> bool: ...
+
+
+@t.overload
+def all(x: t.Any) -> bool: ...
+
+
+def all(x: t.Any) -> bool:
+    """Check if all elements are True."""
+    return bool(xp.all(x))

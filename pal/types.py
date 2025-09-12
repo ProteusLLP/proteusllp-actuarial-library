@@ -4,16 +4,19 @@ Defines common type aliases, protocols, and configuration classes used
 throughout the library for type safety and consistency.
 """
 
+# standard library
 from __future__ import annotations
 
 import dataclasses
 import typing as t
 
+# third party
 import numpy.typing as npt
 
+# project
 from ._maths import xp as np
 
-__all___ = [
+__all__ = [
     "ArithmeticProtocol",
     "Config",
     "DistributionLike",
@@ -22,7 +25,6 @@ __all___ = [
     "NumericProtocol",
     "ScipyNumeric",
     "VectorLike",
-    "VectorLikeProtocol",
 ]
 
 Numeric = float | int | np.number[t.Any]
@@ -268,7 +270,7 @@ NumericLike = Numeric | NumericProtocol
 @t.runtime_checkable
 class SequenceLike(t.Protocol[T_value]):
     """Protocol for sequence-like objects."""
-    
+
     def __len__(self) -> int: ...
     def __getitem__(self, index: int) -> T_value: ...
     def __iter__(self) -> t.Iterator[T_value]: ...
@@ -349,13 +351,13 @@ class ProteusLike(VectorOperations, SequenceLike[T_value], t.Protocol):
     n_sims: int | None
     values: t.Mapping[str, T_value]
 
-    def __getitem__(self, key: int | str) -> T_value: 
+    def __getitem__(self, key: int | str) -> T_value:
         """Override SequenceLike.__getitem__ to support both int and str indexing.
-        
+
         ProteusLike containers support both:
-        - Integer indexing: Access by position in iteration order  
+        - Integer indexing: Access by position in iteration order
         - String indexing: Access by dimension name (e.g., obj["region"])
-        
+
         This override is necessary because SequenceLike protocol only supports
         int indexing, but ProteusLike containers are mapping-like and need
         string key access for dimension names.

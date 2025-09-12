@@ -310,7 +310,7 @@ class ProteusVariable[T]:
                 # Iterate over each key in the container.
                 # Type ignore: Runtime type narrowing - we're intentionally checking
                 # types at runtime to handle heterogeneous inputs from numpy ufuncs
-                for key in first_container.values:  # type: ignore[reportUnknownMemberType]  # noqa[E501]
+                for key in first_container.values:  # type: ignore[reportUnknownMemberType]  # noqa: E501
                     new_items: list[t.Any] = []
                     for item in items:
                         # Assumes that data types are homogeneous across nodes ie. if
@@ -324,7 +324,7 @@ class ProteusVariable[T]:
                             if not isinstance(vals, dict):
                                 raise TypeError(
                                     f"Expected dict values in {type(self).__name__}, "
-                                    f"but got {type(vals).__name__}."  # type: ignore[reportArgumentType]  # noqa[E501]
+                                    f"but got {type(vals).__name__}."  # type: ignore[reportArgumentType]  # noqa: E501
                                 )
                             new_items.append(vals[key])
                         else:
@@ -347,7 +347,7 @@ class ProteusVariable[T]:
     def __array_function__(
         self,
         func: t.Any,
-        types: tuple[type, ...],
+        _: tuple[t.Any, ...],
         args: tuple[t.Any, ...],
         kwargs: dict[str, t.Any],
     ) -> t.Any:
@@ -587,8 +587,8 @@ class ProteusVariable[T]:
             stop = len(values_list)
         try:
             return values_list.index(value, start, stop)
-        except ValueError:
-            raise ValueError(f"{value!r} is not in ProteusVariable")
+        except ValueError as error:
+            raise ValueError(f"{value!r} is not in ProteusVariable") from error
 
     def get_value_at_sim(
         self, sim_no: int | VectorLike[int]
@@ -615,35 +615,6 @@ class ProteusVariable[T]:
                 for k, v in self.values.items()
             },
         )
-
-    def all(self) -> bool:
-        """Return True if all values are True.
-
-        Assumes that values also support the `all()` method, such as
-        ProteusStochasticVariable or FreqSevSims. If not, just checks for truthiness.
-
-        Returns:
-            True if all values are True, False otherwise.
-        """
-
-        def _is_truthy(value: t.Any) -> bool:
-            try:
-                return bool(value.all())
-            except AttributeError:
-                return bool(value)
-
-        return all(_is_truthy(value) for value in self.values.values())
-
-    def any(self) -> bool:
-        """Return True if any value is True."""
-
-        def _is_truthy(value: t.Any) -> bool:
-            try:
-                return bool(value.any())
-            except AttributeError:
-                return bool(value)
-
-        return any(_is_truthy(value) for value in self.values.values())
 
     def upsample(self, n_sims: int) -> ProteusVariable[T]:
         """Upsample the variable to the specified number of simulations."""
@@ -906,10 +877,10 @@ class ProteusVariable[T]:
     ) -> T | VectorLike[T] | ProteusLike[T]:
         """Helper method to get value at simulation for a single element."""
         if isinstance(x, ProteusVariable):
-            # Type ignore: Private helper method with runtime type checks ensures correct
-            # return type based on isinstance branching - static analyzer cannot infer
-            # the precise type through the generic parameter T
-            return x.get_value_at_sim(sim_no)  # type: ignore[return-value]
+            # Type ignore: Private helper method with runtime type checks ensures
+            # correct return type based on isinstance branching - static analyzer cannot
+            # infer the precise type through the generic parameter T
+            return x.get_value_at_sim(sim_no)  # pyright: ignore[reportReturnType, reportUnknownVariableType]
 
         if isinstance(x, StochasticScalar) or isinstance(x, FreqSevSims):
             # Handle StochasticScalar and FreqSevSims types
