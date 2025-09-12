@@ -18,7 +18,8 @@ https://docs.scipy.org/doc/scipy-1.16.0/reference/generated/scipy.special.pdtr.h
 
 Type Definitions:
 - NumericType: Union[float, int, bool] - Basic numeric scalars
-- NumericOrArray: NumericType | npt.NDArray[t.Any] - Union for maximum flexibility
+- NumericOrArray: NumericType | npt.NDArray[t.Any] | StochasticScalar - Union for
+  maximum flexibility
 """
 
 # Standard library imports
@@ -37,7 +38,8 @@ from .types import ScipyNumeric
 
 TOLERANCE = 1e-10  # Tolerance for numerical comparisons
 
-NumericOrArray = ScipyNumeric | npt.NDArray[t.Any]
+# FIXME: Consider replaching with VectorLike from types.py
+NumericOrArray = ScipyNumeric | npt.NDArray[t.Any] | StochasticScalar
 ReturnType = NumericOrArray
 
 

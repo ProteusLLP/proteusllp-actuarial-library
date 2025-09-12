@@ -19,7 +19,6 @@ from ._maths import xp as np
 
 # Local imports
 from .config import config
-from .types import ProteusLike, VectorLike
 
 
 class Copula(ABC):
@@ -38,7 +37,7 @@ class Copula(ABC):
     @abstractmethod
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
-    ) -> ProteusLike[VectorLike]:
+    ) -> ProteusVariable[StochasticScalar]:
         """Generate correlated uniform samples from the copula.
 
         Args:
@@ -61,7 +60,9 @@ class Copula(ABC):
         """
         raise NotImplementedError("Subclasses must implement this method.")
 
-    def apply(self, variables: ProteusLike[VectorLike] | list[VectorLike]) -> None:
+    def apply(
+        self, variables: ProteusVariable[StochasticScalar] | list[StochasticScalar]
+    ) -> None:
         """Apply the copula's correlation structure to existing variables.
 
         This method modifies the input variables in-place to exhibit the
@@ -84,13 +85,11 @@ class Copula(ABC):
         # elements need correlation (e.g., aggregate losses but not individual event
         # details). For explicit lists, we enforce strict typing to catch user errors.
         if isinstance(variables, ProteusVariable):
-            variables_list: list[StochasticScalar] = [
-                val for val in variables if isinstance(val, StochasticScalar)
-            ]
+            variables_list: list[StochasticScalar] = list(variables)
         else:
             variables_list = []
             for var in variables:
-                if not isinstance(var, StochasticScalar):
+                if not isinstance(var, StochasticScalar):  # pyright: ignore[reportUnnecessaryIsInstance] - Runtime validation of user-provided list contents
                     raise TypeError(
                         f"Expected StochasticScalar, got {type(var).__name__}"
                     )
@@ -103,7 +102,7 @@ class Copula(ABC):
         if n_sims is None:
             raise ValueError("Cannot apply copula: n_sims is not set on variables")
 
-        copula_samples_pv = ProteusVariable(
+        copula_samples_pv = ProteusVariable[StochasticScalar](
             dim_name="dim1",
             values={
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)
@@ -112,9 +111,7 @@ class Copula(ABC):
                 )
             },
         )
-        copula_samples_list = [
-            val for val in copula_samples_pv if isinstance(val, StochasticScalar)
-        ]
+        copula_samples_list = list(copula_samples_pv)
 
         if len(variables_list) != len(copula_samples_list):
             raise ValueError("Number of variables and copula samples do not match.")
@@ -178,7 +175,7 @@ class GaussianCopula(EllipticalCopula):
 
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
-    ) -> ProteusLike[VectorLike]:
+    ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from the Gaussian copula."""
         if n_sims is None:
             n_sims = config.n_sims
@@ -188,7 +185,7 @@ class GaussianCopula(EllipticalCopula):
         # Generate samples from a multivariate normal distribution
         samples = self._generate_unnormalised(n_sims, rng)
         uniform_samples = special.ndtr(samples)
-        result = ProteusVariable(
+        result = ProteusVariable[StochasticScalar](
             "dim1",
             {
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)
@@ -196,11 +193,9 @@ class GaussianCopula(EllipticalCopula):
             },
         )
         for val in result:
-            # we know that all values are stochastic scalar from the dict comp above.
-            first_scalar = t.cast(StochasticScalar, result[0])
-            t.cast(StochasticScalar, val).coupled_variable_group.merge(
-                first_scalar.coupled_variable_group
-            )
+            # All values are StochasticScalar from the generic type annotation
+            first_scalar = result[0]
+            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
         return result
 
     def _generate_unnormalised(
@@ -236,7 +231,7 @@ class StudentsTCopula(EllipticalCopula):
 
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
-    ) -> ProteusLike[VectorLike]:
+    ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from the Student's T copula."""
         if n_sims is None:
             n_sims = config.n_sims
@@ -244,7 +239,7 @@ class StudentsTCopula(EllipticalCopula):
             rng = config.rng
         t_samples = self._generate_unnormalised(n_sims, rng)
         uniform_samples = distributions.t(self.dof).cdf(t_samples)
-        return ProteusVariable(
+        return ProteusVariable[StochasticScalar](
             "dim1",
             {
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)
@@ -290,12 +285,12 @@ class ArchimedeanCopula(Copula, ABC):
 
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
-    ) -> ProteusLike[VectorLike]:
+    ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from the Archimedean copula."""
         if rng is None:
             rng = config.rng
         copula_samples = self.generator_inv(-self._generate_unnormalised(n_sims, rng))
-        result = ProteusVariable(
+        result = ProteusVariable[StochasticScalar](
             "dim1",
             {
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)
@@ -303,11 +298,9 @@ class ArchimedeanCopula(Copula, ABC):
             },
         )
         for val in result:
-            # we know that all values are stochastic scalar from the dict comp above.
-            first_scalar = t.cast(StochasticScalar, result[0])
-            t.cast(StochasticScalar, val).coupled_variable_group.merge(
-                first_scalar.coupled_variable_group
-            )
+            # All values are StochasticScalar from the generic type annotation
+            first_scalar: StochasticScalar = result[0]
+            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
         return result
 
     def _generate_unnormalised(

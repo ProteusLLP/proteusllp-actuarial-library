@@ -4,9 +4,15 @@ Comprehensive tests covering arithmetic operations, statistics computation,
 stochastic indexing, and integration with numpy operations.
 """
 
+# standard library
+# none
+
+# third party
 import numpy as np
 import pal.maths as pnp
 import pytest
+
+# project
 from pal.types import NumericProtocol
 from pal.variables import StochasticScalar
 
@@ -132,7 +138,7 @@ def test_divide():
     """Tests the division of two stochastic scalars."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = StochasticScalar([1, 2, 3, 4, 5])
-    z = x / y
+    z: StochasticScalar = x / y
     assert (z.values == [4, 2.5, 2 / 3, 0.25, 0.6]).all()
     assert (
         x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
@@ -142,7 +148,7 @@ def test_divide():
 def test_divide_scalar():
     """Tests the division of a stochastic scalar and a scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
-    z = x / 2
+    z: StochasticScalar = x / 2
     assert (z.values == [2, 2.5, 1, 0.5, 1.5]).all()
     assert x.coupled_variable_group == z.coupled_variable_group
 

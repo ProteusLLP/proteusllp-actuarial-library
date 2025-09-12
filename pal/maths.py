@@ -7,7 +7,6 @@ for type checkers. Import as 'pnp' to mimic numpy usage patterns.
 
 # standard library
 import typing as t
-from numbers import Number
 
 # third party
 import numpy.typing as npt
@@ -121,7 +120,7 @@ def percentile(x: t.Any, q: t.Any) -> t.Any:
 
 
 @t.overload
-def min(x: "StochasticScalar") -> float: ...
+def min(x: "StochasticScalar") -> int: ...
 
 
 @t.overload
@@ -134,7 +133,7 @@ def min(x: t.Any) -> t.Any:
 
 
 @t.overload
-def max(x: "StochasticScalar") -> Number: ...
+def max(x: "StochasticScalar") -> int: ...
 
 
 @t.overload

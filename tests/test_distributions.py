@@ -3,10 +3,11 @@
 Comprehensive tests for actuarial distributions including parametric tests,
 CDF/inverse CDF validation, and simulation accuracy checks.
 """
+# pyright: reportUnknownMemberType=false
 
 import math
 
-import pytest
+import pytest  # pyright: ignore[reportUnknownMemberType] - pytest.approx not fully typed
 import scipy.special
 from pal import distributions
 from pal._maths import xp as np

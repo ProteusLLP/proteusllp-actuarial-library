@@ -192,8 +192,8 @@ class XoL:
                 0,
             )
             reinstatement_premium = reinstatement_premium_proportion * self.premium
-            results.reinstatement_premium = reinstatement_premium
-        self.calc_summary(claims, aggregate_recoveries)
+            results.reinstatement_premium = StochasticScalar(reinstatement_premium)
+        self.calc_summary(claims, StochasticScalar(aggregate_recoveries))
         return results
 
     def calc_summary(
