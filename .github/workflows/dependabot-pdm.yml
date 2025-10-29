@@ -1,0 +1,44 @@
+# Auto-update pdm.lock when Dependabot updates pyproject.toml
+# This ensures the lock file stays in sync with dependency changes
+
+name: Update PDM Lock File
+
+on:
+  pull_request:
+    paths:
+      - 'pyproject.toml'
+
+jobs:
+  update-lock:
+    # Only run on Dependabot PRs
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Use the Dependabot token to push changes
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      
+      - name: Build CI Docker image
+        run: docker build --target ci -t proteus-ci .
+        
+      - name: Update PDM lock file
+        run: |
+          # Run pdm sync in container and copy updated lock file out
+          docker run --name temp-container proteus-ci pdm sync --no-editable
+          docker cp temp-container:/app/pdm.lock ./pdm.lock
+          docker rm temp-container
+            
+      - name: Commit updated lock file
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add pdm.lock
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update pdm.lock after dependency changes"
+            git push
+          fi
