@@ -31,6 +31,12 @@ dependencies = [
 
 [project.optional-dependencies]
 gpu = ["cupy-cuda12x"]
+docs = [
+    "sphinx>=8.2.3",
+    "sphinx-rtd-theme>=3.0.2",
+    "myst-parser>=4.0.1",
+    "sphinx-autodoc-typehints>=3.5.2",
+]
 
 [project.urls]
 Homepage = "https://github.com/ProteusLLP/proteus-actuarial-library"
@@ -115,10 +121,3 @@ dev = [
 ]
 
 
-[dependency-groups]
-docs = [
-    "sphinx>=8.2.3",
-    "sphinx-rtd-theme>=3.0.2",
-    "myst-parser>=4.0.1",
-    "sphinx-autodoc-typehints>=3.5.2",
-]
