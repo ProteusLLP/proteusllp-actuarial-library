@@ -34,7 +34,7 @@ jobs:
   docker-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Build CI Docker image
         run: docker build --target ci -t proteus-ci .
@@ -43,7 +43,7 @@ jobs:
         run: docker save proteus-ci > proteus-ci.tar
         
       - name: Upload Docker image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: proteus-ci-image
           path: proteus-ci.tar
@@ -75,7 +75,7 @@ jobs:
     needs: docker-build
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Download Docker image
         uses: actions/download-artifact@v6
@@ -102,7 +102,7 @@ jobs:
             pdm run python -m compileall examples/ -f
             
       - name: Upload coverage reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: coverage-reports
           path: coverage/
@@ -113,7 +113,7 @@ jobs:
     # Always build package to ensure build process works
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Download Docker image
         uses: actions/download-artifact@v6
@@ -132,7 +132,7 @@ jobs:
             pdm build
 
       - name: Upload distributions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: release-dists
           path: dist/
