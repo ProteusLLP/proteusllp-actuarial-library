@@ -5,6 +5,8 @@ including individual layers and complete towers with aggregate limits,
 reinstatement premiums, franchise deductibles, and complex layering.
 """
 
+from __future__ import annotations
+
 import typing as t
 from dataclasses import dataclass
 

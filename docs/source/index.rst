@@ -46,10 +46,9 @@ Installation
    :caption: User Guide
 
    usage
-   development
-
+   
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    :caption: API Reference
 
    api/modules

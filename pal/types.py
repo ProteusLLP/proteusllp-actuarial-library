@@ -27,7 +27,7 @@ __all__ = [
     "VectorLike",
 ]
 
-Numeric = float | int | np.number[t.Any]
+Numeric = float | int | np.number
 
 # Type alias for scipy special functions and numpy random generators
 # These functions expect more restrictive types than our general Numeric type.

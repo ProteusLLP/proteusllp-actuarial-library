@@ -23,6 +23,8 @@ Type Definitions:
 """
 
 # Standard library imports
+from __future__ import annotations
+
 import typing as t
 from abc import ABC
 

@@ -22,6 +22,8 @@ Example:
     >>> simulations = model.simulate(n_sims=10000)
 """
 
+from __future__ import annotations
+
 import typing as t
 from collections.abc import Callable
 
@@ -102,7 +104,7 @@ class FrequencySeverityModel:
 
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator = config.rng
-    ) -> "FreqSevSims":
+    ) -> FreqSevSims:
         """Generate simulations from the Frequency-Severity model.
 
         Parameters:
@@ -314,17 +316,17 @@ class FreqSevSims(ProteusStochasticVariable):
         """
         return self._reduce_over_events(np.maximum.at)
 
-    def deep_copy(self) -> "FreqSevSims":
+    def deep_copy(self) -> FreqSevSims:
         """Creates a deep copy of the FreqSevSims object."""
         return FreqSevSims(self.sim_index, self.values.copy(), self.n_sims)
 
-    def copy(self) -> "FreqSevSims":
+    def copy(self) -> FreqSevSims:
         """Creates a copy of the FreqSevSims object."""
         result = FreqSevSims(self.sim_index, self.values.copy(), self.n_sims)
         result.coupled_variable_group.merge(self.coupled_variable_group)
         return result
 
-    def apply(self, func: ArrayTransform) -> "FreqSevSims":
+    def apply(self, func: ArrayTransform) -> FreqSevSims:
         """Applies a function to the values of the FreqSevSims object."""
         result = FreqSevSims(self.sim_index, func(self.values), self.n_sims)
         result.coupled_variable_group.merge(self.coupled_variable_group)
@@ -353,7 +355,7 @@ class FreqSevSims(ProteusStochasticVariable):
 
     def __array_ufunc__(
         self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any
-    ) -> "FreqSevSims":
+    ) -> FreqSevSims:
         _inputs = tuple(self._extract_array_for_ufunc(x) for x in inputs)
         out = kwargs.get("out", ())
         if out:
@@ -369,7 +371,7 @@ class FreqSevSims(ProteusStochasticVariable):
 
     def __array_function__(
         self, func: Callable[..., t.Any], _: t.Any, args: t.Any, kwargs: t.Any
-    ) -> t.Union[np.number[t.Any], "FreqSevSims"]:
+    ) -> np.number[t.Any] | FreqSevSims:
         """Handle numpy array functions for FreqSevSims objects.
 
         Args:
@@ -429,7 +431,7 @@ class FreqSevSims(ProteusStochasticVariable):
         """
         return isinstance(other, FreqSevSims) and self.sim_index is other.sim_index
 
-    def upsample(self, n_sims: int) -> "FreqSevSims":
+    def upsample(self, n_sims: int) -> FreqSevSims:
         """Upsamples the FreqSevSims object to the given number of simulations.
 
         Args:
