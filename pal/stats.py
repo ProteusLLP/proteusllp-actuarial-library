@@ -7,16 +7,20 @@ and statistical analysis of frequency-severity simulation results.
 from __future__ import annotations
 
 import math
+import typing
 
 import numpy.typing as npt
 
 from ._maths import xp as np
-from .frequency_severity import FreqSevSims
 from .types import Numeric
 
 percentiles = np.array([1, 2, 5, 10, 20, 50, 70, 80, 90, 95, 99, 99.5, 99.8, 99.9])
 
 NumberOrList = Numeric | list[Numeric]
+
+
+if typing.TYPE_CHECKING:
+    from .frequency_severity import FreqSevSims
 
 
 def tvar(values: npt.ArrayLike, p: NumberOrList) -> NumberOrList:
