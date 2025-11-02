@@ -1,14 +1,22 @@
 # Base stage - Python + system dependencies
 FROM python:3.13-slim AS base
 
+# Dependencies stage - install all packages
+FROM base AS deps
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
-    && rm -rf /var/lib/apt/lists/*
+    nodejs \
+    npm \
+    locales \
+    && rm -rf /var/lib/apt/lists/* \
+    && sed -i '/en_GB.UTF-8/s/^# //g' /etc/locale.gen \
+    && locale-gen
 
-# Dependencies stage - install all packages
-FROM base AS deps
+# Install pyright globally for type checking
+RUN npm install -g pyright
 
 # Install uv and PDM for fast package management
 RUN pip install uv pdm
@@ -22,12 +30,11 @@ COPY pyproject.toml pdm.lock* ./
 # Install only main dependencies using PDM with uv backend
 RUN pdm install --no-self
 
-# Development stage
+# DEVELOPMENT STAGE ===========================
 FROM deps AS dev
 
 # Install development tools
 RUN apt-get update && apt-get install -y \
-    git \
     curl \
     sudo \
     && rm -rf /var/lib/apt/lists/*
@@ -40,6 +47,7 @@ RUN useradd -m -s /bin/bash vscode && \
 # Install dev dependencies (test + dev groups)
 RUN pdm install -dG test -dG dev --no-self
 
+
 # Switch to non-root user
 USER vscode
 
@@ -49,7 +57,7 @@ WORKDIR /workspace
 # Expose Jupyter port
 EXPOSE 8888
 
-# CI stage
+# CI STAGE ===========================
 FROM deps AS ci
 
 # Set working directory

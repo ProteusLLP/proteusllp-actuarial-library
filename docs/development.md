@@ -171,6 +171,65 @@ Tests are organized in the `tests/` directory:
 - Each test function starts with `test_`
 - Use `pytest.ini` for configuration
 
+## Static Analysis and Type Checking
+
+### Type Checking with Pyright/Pylance
+
+This project uses **Pyright** for static type checking instead of mypy. In VS Code, this is accessed through **Pylance**, which uses Pyright as its underlying type checker.
+
+**Why Pyright over mypy:**
+- **Performance**: Pyright handles large scientific computing dependencies (numpy, scipy, pandas) much faster than mypy
+- **Reliability**: mypy was experiencing crashes and hangs when analyzing scipy-stubs, causing CI failures
+- **Better scientific library support**: Pyright is more robust with complex type hierarchies found in scientific packages
+- **Modern TypeScript engine**: Faster incremental analysis and better error reporting
+
+**Configuration:**
+- Type checking settings are in [`pyrightconfig.json`](../pyrightconfig.json)
+- VS Code uses Pylance (which includes Pyright) via the `ms-python.vscode-pylance` extension
+- **Important**: Pylance automatically uses `pyrightconfig.json` for configuration - no additional VS Code settings needed
+- Both VS Code and CLI use the same Pyright engine and configuration file, ensuring consistent results
+
+**Running type checks:**
+```bash
+# Via Makefile
+make typecheck
+
+# Or directly
+pyright pal
+```
+
+**Key insight**: PDM uses `__pypackages__/3.13/lib` instead of traditional virtual environments. When you run `pdm run python`, it automatically adds this path to `sys.path`. Pyright needs `extraPaths` configured to find these packages and their type stubs (numpy, scipy, etc.).
+
+## Development Commands (Makefile)
+
+**Important**: All Makefile commands must be run from inside the devcontainer. The Makefile assumes access to the PDM-managed Python environment and dependencies.
+
+### Quick Reference
+
+```bash
+# Inside the devcontainer terminal:
+make help          # Show all available commands
+make lint          # Run ruff linting
+make format        # Run ruff formatting  
+make typecheck     # Run pyright type checking
+make test          # Run pytest with coverage
+make build         # Build the package
+```
+
+### From Outside the Container
+
+If you need to run commands from outside the devcontainer, use the Docker exec approach documented in [CLAUDE.md](../CLAUDE.md):
+
+```bash
+# Example: Run linting from host machine
+docker exec pal-devcontainer make lint
+
+# Example: Run tests from host machine  
+docker exec pal-devcontainer make test
+```
+
+**Recommendation**: Use the devcontainer's integrated terminal in VS Code for the best development experience.
+
 ## Container Architecture
 
 The project uses a multi-stage Dockerfile:

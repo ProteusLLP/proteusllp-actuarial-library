@@ -1,6 +1,11 @@
+"""Tests for stochastic variable coupling and reordering.
+
+Tests covering copula-based coupling mechanisms and simulation reordering
+for dependency modeling between stochastic variables.
+"""
+
 from pal import copulas
 from pal.variables import StochasticScalar
-import pytest  # noqa
 
 
 def test_copula_reordering():

@@ -48,6 +48,28 @@ jobs:
           name: proteus-ci-image
           path: proteus-ci.tar
 
+  static-analysis:
+    runs-on: ubuntu-latest
+    needs: docker-build
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: proteus-ci-image
+          
+      - name: Load Docker image
+        run: docker load < proteus-ci.tar
+        
+      # Install dev dependencies for static analysis tools
+      - name: Install dev dependencies
+        run: docker run --rm proteus-ci pdm install -dG dev --no-self
+        
+      - name: Run static analysis
+        run: docker run --rm proteus-ci make static-analysis
+
   test:
     runs-on: ubuntu-latest
     needs: docker-build
