@@ -70,8 +70,24 @@ autodoc_default_options = {
     "member-order": "bysource",
     "special-members": "__init__",
     "undoc-members": True,
-    "exclude-members": "__weakref__",
+    "show-inheritance": True,
+    "exclude-members": "__weakref__,__dict__,__module__",
+    "inherited-members": True,
 }
+
+# Additional autodoc settings
+autodoc_typehints = "description"
+autodoc_typehints_description_target = "documented"
+autodoc_class_signature = "mixed"
+
+# Mock imports for dependencies that aren't installed during docs build
+autodoc_mock_imports = [
+    "cupy",
+    "cupyx",
+    "cupyx.scipy",
+    "cupyx.scipy.stats",
+    "cupyx.scipy.special",
+]
 
 # Napoleon settings for Google/NumPy style docstrings
 napoleon_google_docstring = True
@@ -86,7 +102,8 @@ intersphinx_mapping = {
 }
 
 # Autosummary settings
-autosummary_generate = False  # Disabled to avoid import errors during build
+autosummary_generate = True  # Enable autosummary generation
+autosummary_imported_members = True
 
 # Master document (for older Sphinx/RTD compatibility)
 master_doc = "index"

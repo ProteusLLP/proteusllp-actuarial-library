@@ -5,6 +5,8 @@ PAL's custom types (StochasticScalar, etc.) with explicit type information
 for type checkers. Import as 'pnp' to mimic numpy usage patterns.
 """
 
+from __future__ import annotations
+
 # standard library
 import typing as t
 
@@ -38,7 +40,7 @@ def exp(x: t.Any) -> t.Any:
 
 # Reducing functions - these aggregate to scalars
 @t.overload
-def sum(x: "StochasticScalar") -> float: ...
+def sum(x: StochasticScalar) -> float: ...
 
 
 @t.overload
@@ -51,15 +53,15 @@ def sum(x: t.Any) -> t.Any:
 
 
 @t.overload
-def mean(x: "StochasticScalar") -> float: ...
+def mean(x: StochasticScalar) -> float: ...
 
 
 @t.overload
-def mean(x: "FreqSevSims") -> float: ...
+def mean(x: FreqSevSims) -> float: ...
 
 
 @t.overload
-def mean[T](x: "ProteusVariable[T]") -> "ProteusVariable[T]": ...
+def mean[T](x: ProteusVariable[T]) -> ProteusVariable[T]: ...
 
 
 @t.overload
@@ -77,7 +79,7 @@ def mean(x: t.Any) -> t.Any:
 
 
 @t.overload
-def std(x: "StochasticScalar") -> float: ...
+def std(x: StochasticScalar) -> float: ...
 
 
 @t.overload
@@ -90,7 +92,7 @@ def std(x: t.Any) -> t.Any:
 
 
 @t.overload
-def var(x: "StochasticScalar") -> float: ...
+def var(x: StochasticScalar) -> float: ...
 
 
 @t.overload
@@ -103,11 +105,11 @@ def var(x: t.Any) -> t.Any:
 
 
 @t.overload
-def percentile(x: "StochasticScalar", q: float) -> float: ...
+def percentile(x: StochasticScalar, q: float) -> float: ...
 
 
 @t.overload
-def percentile(x: "StochasticScalar", q: t.Sequence[float]) -> t.Any: ...
+def percentile(x: StochasticScalar, q: t.Sequence[float]) -> t.Any: ...
 
 
 @t.overload
@@ -120,7 +122,7 @@ def percentile(x: t.Any, q: t.Any) -> t.Any:
 
 
 @t.overload
-def min(x: "StochasticScalar") -> int: ...
+def min(x: StochasticScalar) -> int: ...
 
 
 @t.overload
@@ -133,7 +135,7 @@ def min(x: t.Any) -> t.Any:
 
 
 @t.overload
-def max(x: "StochasticScalar") -> int: ...
+def max(x: StochasticScalar) -> int: ...
 
 
 @t.overload
@@ -147,20 +149,20 @@ def max(x: t.Any) -> t.Any:
 
 @t.overload
 def where(
-    condition: t.Any, x: "StochasticScalar", y: "StochasticScalar"
-) -> "StochasticScalar": ...
+    condition: t.Any, x: StochasticScalar, y: StochasticScalar
+) -> StochasticScalar: ...
 
 
 @t.overload
 def where(
-    condition: t.Any, x: "StochasticScalar", y: float | int
-) -> "StochasticScalar": ...
+    condition: t.Any, x: StochasticScalar, y: float | int
+) -> StochasticScalar: ...
 
 
 @t.overload
 def where(
-    condition: t.Any, x: float | int, y: "StochasticScalar"
-) -> "StochasticScalar": ...
+    condition: t.Any, x: float | int, y: StochasticScalar
+) -> StochasticScalar: ...
 
 
 @t.overload
@@ -180,15 +182,15 @@ def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any:
 
 # Additional functions for contracts.py and other modules
 @t.overload
-def minimum(x: "StochasticScalar", y: "StochasticScalar") -> "StochasticScalar": ...
+def minimum(x: StochasticScalar, y: StochasticScalar) -> StochasticScalar: ...
 
 
 @t.overload
-def minimum(x: "StochasticScalar", y: float | int) -> "StochasticScalar": ...
+def minimum(x: StochasticScalar, y: float | int) -> StochasticScalar: ...
 
 
 @t.overload
-def minimum(x: float | int, y: "StochasticScalar") -> "StochasticScalar": ...
+def minimum(x: float | int, y: StochasticScalar) -> StochasticScalar: ...
 
 
 @t.overload
@@ -201,15 +203,15 @@ def minimum(x: t.Any, y: t.Any) -> t.Any:
 
 
 @t.overload
-def maximum(x: "StochasticScalar", y: "StochasticScalar") -> "StochasticScalar": ...
+def maximum(x: StochasticScalar, y: StochasticScalar) -> StochasticScalar: ...
 
 
 @t.overload
-def maximum(x: "StochasticScalar", y: float | int) -> "StochasticScalar": ...
+def maximum(x: StochasticScalar, y: float | int) -> StochasticScalar: ...
 
 
 @t.overload
-def maximum(x: float | int, y: "StochasticScalar") -> "StochasticScalar": ...
+def maximum(x: float | int, y: StochasticScalar) -> StochasticScalar: ...
 
 
 @t.overload
@@ -222,7 +224,7 @@ def maximum(x: t.Any, y: t.Any) -> t.Any:
 
 
 @t.overload
-def cumsum(x: "StochasticScalar") -> "StochasticScalar": ...
+def cumsum(x: StochasticScalar) -> StochasticScalar: ...
 
 
 @t.overload
@@ -235,7 +237,7 @@ def cumsum(x: t.Any) -> t.Any:
 
 
 @t.overload
-def floor(x: "StochasticScalar") -> "StochasticScalar": ...
+def floor(x: StochasticScalar) -> StochasticScalar: ...
 
 
 @t.overload
@@ -248,11 +250,11 @@ def floor(x: t.Any) -> t.Any:
 
 
 @t.overload
-def all(x: "StochasticScalar") -> bool: ...
+def all(x: StochasticScalar) -> bool: ...
 
 
 @t.overload
-def all(x: "ProteusVariable[t.Any]") -> bool: ...
+def all(x: ProteusVariable[t.Any]) -> bool: ...
 
 
 @t.overload

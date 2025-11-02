@@ -31,50 +31,17 @@ dependencies = [
 
 [project.optional-dependencies]
 gpu = ["cupy-cuda12x"]
+docs = [
+    "sphinx>=8.2.3",
+    "sphinx-rtd-theme>=3.0.2",
+    "myst-parser>=4.0.1",
+    "sphinx-autodoc-typehints>=3.5.2",
+]
 
 [project.urls]
 Homepage = "https://github.com/ProteusLLP/proteus-actuarial-library"
 Repository = "https://github.com/ProteusLLP/proteus-actuarial-library"
 Issues = "https://github.com/ProteusLLP/proteus-actuarial-library/issues"
-
-[tool.pdm]
-package-dir = "pal"
-includes = [
-    "README.md",
-    "LICENSE",
-    "examples/*.py",
-    "data/**/*.csv",
-    "docs/**/*.md"
-]
-
-[tool.pdm.version]
-source = "scm"
-
-# Configure PDM to always use virtual environments (not PEP 582)
-# plays nicely with vscode's pytest extension and prevents issues with
-# conflicting deps in __pypackages__ directories.
-[tool.pdm.python]
-use_venv = true
-
-[tool.pdm.dev-dependencies]
-test = [
-    "pytest>=8.0",
-    "pytest-cov>=4.0",
-    "pytest-xdist>=3.0",
-]
-dev = [
-    "jupyter>=1.0",
-    "jupyterlab>=4.0",
-    "ruff>=0.8.0",
-    "bandit>=1.7.0",
-    "vulture>=2.11",
-]
-docs = [
-    "sphinx>=7.0",
-    "sphinx-rtd-theme>=2.0",
-    "myst-parser>=2.0",
-    "sphinx-autodoc-typehints>=1.24",
-]
 
 [build-system]
 requires = ["pdm-backend"]
@@ -120,3 +87,37 @@ skips = ["B101"]  # Skip assert_used test - asserts are normal in tests
 paths = ["pal"]
 min_confidence = 80
 exclude = ["__pypackages__/"]
+[tool.pdm]
+package-dir = "pal"
+includes = [
+    "README.md",
+    "LICENSE",
+    "examples/*.py",
+    "data/**/*.csv",
+    "docs/**/*.md"
+]
+
+[tool.pdm.version]
+source = "scm"
+
+# Configure PDM to always use virtual environments (not PEP 582)
+# plays nicely with vscode's pytest extension and prevents issues with
+# conflicting deps in __pypackages__ directories.
+[tool.pdm.python]
+use_venv = true
+
+[tool.pdm.dev-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "pytest-xdist>=3.0",
+]
+dev = [
+    "jupyter>=1.0",
+    "jupyterlab>=4.0",
+    "ruff>=0.8.0",
+    "bandit>=1.7.0",
+    "vulture>=2.11",
+]
+
+
