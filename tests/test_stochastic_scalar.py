@@ -349,3 +349,18 @@ def test_max_single_value():
     y = np.max(x)
     assert y == 42
     assert isinstance(y, NumericProtocol)
+
+
+def test_any_all():
+    """Test the any() and all() methods of a stochastic scalar."""
+    x = StochasticScalar([False, True, True, True])
+    assert x.any() is True
+    assert x.all() is False
+
+    y = StochasticScalar([True, True, True])
+    assert y.any() is True
+    assert y.all() is True
+
+    z = StochasticScalar([False, False, False])
+    assert z.any() is False
+    assert z.all() is False
