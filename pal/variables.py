@@ -632,6 +632,10 @@ class ProteusVariable[T]:
             },
         )
 
+    def sum(self) -> T:
+        """Return the sum across the outer dimension."""
+        return sum(self)  # type: ignore[arg-type]
+
     @classmethod
     def from_csv(
         cls,
@@ -779,13 +783,13 @@ class ProteusVariable[T]:
         if correlation_type.lower() in ["spearman", "kendall"]:
             # rank the variables first
             for i, value in enumerate(values):
-                values[i] = scipy.stats.rankdata(value)
+                values[i] = scipy.stats.rankdata(value)  # type: ignore[assignment]
 
         if correlation_type == "kendall":
             for i, value1 in enumerate(values):
                 for j, value2 in enumerate(values):
                     result[i][j] = float(
-                        scipy.stats.kendalltau(value1, value2).statistic
+                        scipy.stats.kendalltau(value1, value2).statistic  # type: ignore[arg-type]
                     )
         else:
             result = np.corrcoef(values).tolist()

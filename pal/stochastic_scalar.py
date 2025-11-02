@@ -13,6 +13,8 @@ import typing as t
 import numpy.typing as npt
 import plotly.graph_objects as go  # type: ignore
 
+from pal import stats  # type: ignore
+
 from ._maths import xp as np
 from .couplings import CouplingGroup, ProteusStochasticVariable
 from .types import Numeric, NumericLike, ScipyNumeric
@@ -202,6 +204,17 @@ class StochasticScalar(ProteusStochasticVariable):
     def tolist(self) -> list[Numeric]:
         """Convert the values to a Python list."""
         return t.cast(list[Numeric], self.values.tolist())
+
+    def tvar(self, percentile: stats.NumberOrList) -> stats.NumberOrList:
+        """Calculate the Tail Value at Risk (TVaR) at a given percentile.
+
+        Args:
+            percentile: The percentile level (between 0 and 100) to calculate TVaR.
+
+        Returns:
+            The TVaR value as a float.
+        """
+        return stats.tvar(self.values, percentile)
 
     def upsample(self, n_sims: int) -> t.Self:
         """Increase the number of simulations in the variable."""

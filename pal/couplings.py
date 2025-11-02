@@ -142,6 +142,12 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
         """Right power operation returning instance of same type."""
         return super().__rpow__(other)  # type: ignore[return-value]
 
+    def __bool__(self) -> bool:
+        """Prevent ambiguous truth value evaluation."""
+        raise TypeError(
+            f"Ambiguous truth value for {self.__class__.__name__}. Use .any() or .all()."  # noqa: E501
+        )
+
     def __array_function__(
         self,
         func: t.Any,
@@ -199,6 +205,22 @@ class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
             A new numpy array with the specified dtype.
         """
         return self.values.astype(dtype)
+
+    def any(self) -> bool:
+        """Check if any value in the variable is True (non-zero).
+
+        Returns:
+            True if any value is non-zero, False otherwise.
+        """
+        return bool(np.any(self.values))
+
+    def all(self) -> bool:
+        """Check if all values in the variable are True (non-zero).
+
+        Returns:
+            True if all values are non-zero, False otherwise.
+        """
+        return bool(np.all(self.values))
 
     # ===================
     # PRIVATE METHODS
