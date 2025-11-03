@@ -53,7 +53,7 @@ class CouplingGroup:
         return
 
 
-class ProteusStochasticVariable(ABC, NDArrayOperatorsMixin):
+class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
     """A class to represent a stochastic variable in a simulation."""
 
     n_sims: int | None = None
