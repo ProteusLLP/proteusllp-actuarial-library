@@ -42,6 +42,8 @@ docs = [
 Homepage = "https://github.com/ProteusLLP/proteusllp-actuarial-library"
 Repository = "https://github.com/ProteusLLP/proteusllp-actuarial-library"
 Issues = "https://github.com/ProteusLLP/proteusllp-actuarial-library/issues"
+Documentation = "https://proteusllp-actuarial-library.readthedocs.io/"
+
 
 [build-system]
 requires = ["pdm-backend"]
