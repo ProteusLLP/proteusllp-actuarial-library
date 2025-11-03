@@ -1,8 +1,14 @@
-from pal import XoL, FreqSevSims
+"""Tests for excess of loss (XoL) reinsurance layer functionality.
+
+Tests covering XoL layer application including limits, excesses, franchise
+deductibles, aggregate limits, reinstatement premiums, and complex layering.
+"""
+
 import numpy as np
+from pal import FreqSevSims, XoL
 
 
-def test_XoL_no_agg():
+def test_xol_no_agg():
     layer = XoL(
         "Layer 1",
         limit=500000,
@@ -17,7 +23,7 @@ def test_XoL_no_agg():
     assert result.reinstatement_premium is None
 
 
-def test_XoL_franchise():
+def test_xol_franchise():
     layer = XoL(
         "Layer 1",
         limit=500000,
@@ -33,7 +39,7 @@ def test_XoL_franchise():
     assert result.reinstatement_premium is None
 
 
-def test_XoL_reinstatements():
+def test_xol_reinstatements():
     layer = XoL(
         "Layer 1",
         limit=500000,
@@ -47,10 +53,11 @@ def test_XoL_reinstatements():
     )
     result = layer.apply(claims)
     assert result.recoveries.values.tolist() == [0, 500000, 250000, 0]
+    assert result.reinstatement_premium is not None
     assert result.reinstatement_premium.tolist() == [1000]
 
 
-def test_XoL_multiple_reinstatements():
+def test_xol_multiple_reinstatements():
     layer = XoL(
         "Layer 1",
         limit=500000,
@@ -64,10 +71,11 @@ def test_XoL_multiple_reinstatements():
     )
     result = layer.apply(claims)
     assert result.recoveries.values.tolist() == [0, 350000, 250000, 0]
-    assert np.allclose(result.reinstatement_premium.tolist(), [1200])
+    assert result.reinstatement_premium is not None
+    assert np.allclose(result.reinstatement_premium, np.array([1200]))
 
 
-def test_XoL_aggregate_limit():
+def test_xol_aggregate_limit():
     layer = XoL(
         "Layer 1",
         limit=500000,
@@ -87,10 +95,11 @@ def test_XoL_aggregate_limit():
         250000 * (1000000 / 1250000),
         500000 * (1000000 / 1250000),
     ]
-    assert np.allclose(result.reinstatement_premium.tolist(), [1000])
+    assert result.reinstatement_premium is not None
+    assert np.allclose(result.reinstatement_premium, np.array([1000]))
 
 
-def test_XoL_aggregate_deductible():
+def test_xol_aggregate_deductible():
     layer = XoL(
         "Layer 1",
         limit=500000,
@@ -111,4 +120,5 @@ def test_XoL_aggregate_deductible():
         250000 * (350000 / 600000),
         0,
     ]
+    assert result.reinstatement_premium is not None
     assert np.allclose(result.reinstatement_premium.values.tolist(), [700])

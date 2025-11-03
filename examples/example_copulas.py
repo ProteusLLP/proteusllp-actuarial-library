@@ -1,8 +1,12 @@
-from pal import config, distributions
-from pal.frequency_severity import FrequencySeverityModel
-from pal import copulas
-from pal.variables import ProteusVariable
+"""Copula Example.
+
+This notebook demonstrates the use of copulas in the Proteus Actuarial Library
+to model dependencies between different lines of business in insurance."""
+
 import plotly.graph_objects as go  # type: ignore
+from pal import config, copulas, distributions
+from pal.frequency_severity import FrequencySeverityModel
+from pal.variables import ProteusVariable
 
 config.n_sims = 100000
 
@@ -27,11 +31,11 @@ attritional_losses_by_lob = ProteusVariable(
     },
 )
 
-large_losses_with_LAE = individual_large_losses_by_lob * 1.05
+large_losses_with_lae = individual_large_losses_by_lob * 1.05
 
 # create the aggregate losses by class
 aggregate_large_losses_by_class = ProteusVariable(
-    "class", {name: large_losses_with_LAE[name].aggregate() for name in lobs}
+    "class", {name: large_losses_with_lae[name].aggregate() for name in lobs}
 )
 # correlate the attritional and large losses. Use a pairwise copula to do this
 for lob in lobs:
@@ -52,9 +56,7 @@ correlation_matrix = [
 copulas.StudentsTCopula(correlation_matrix, 5, "linear").apply(total_losses_by_lob)
 # apply stochastic inflation
 stochastic_inflation = distributions.Normal(0.05, 0.02).generate()
-inflated_total_losses_by_lob: ProteusVariable = total_losses_by_lob * (
-    1 + stochastic_inflation
-)
+inflated_total_losses_by_lob = total_losses_by_lob * (1 + stochastic_inflation)
 
 # create the total losses
 total_inflated_losses = inflated_total_losses_by_lob.sum()
@@ -69,10 +71,10 @@ fig = go.Figure(
         y=inflated_total_losses_by_lob["Property"].ranks.values,
         mode="markers",
     ),
-    layout=dict(
-        xaxis=dict(title="Motor - Rank"),
-        yaxis=dict(title="Property - Rank"),
-        title="Scatter plot of Motor and Property losses",
-    ),
+    layout={
+        "xaxis_title": "Motor - Rank",
+        "yaxis_title": "Property - Rank",
+        "title": "Scatter plot of Motor and Property losses",
+    },
 )
-fig.show()
+fig.show()  # type: ignore[misc]

@@ -1,0 +1,31 @@
+# Dependabot configuration for PDM-managed Python project
+# Updates pyproject.toml with patch and minor versions, separate workflow handles pdm.lock
+
+version: 2
+updates:
+  # Python dependencies - patch and minor updates only
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    # Only patch and minor updates to avoid breaking changes
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    
+  # GitHub Actions updates
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday" 
+      time: "09:00"
+    commit-message:
+      prefix: "ci"
+      include: "scope"

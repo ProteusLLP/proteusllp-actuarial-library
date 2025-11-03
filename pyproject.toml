@@ -1,32 +1,126 @@
-[build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "proteus-actuarial-library"
-version = "0.0.10"
-authors = [
-  { name="James Norman", email="james.norman@proteusllp.com" },
-]
+# Package name is namespaced with ProteusLLP organization for PyPI publishing
+name = "proteusllp-actuarial-library"
+dynamic = ["version"]
 description = "Proteus Actuarial Library: A package for building and running stochastic actuarial models in Python."
-readme = "README.md"
-requires-python = ">=3.11"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: Other/Proprietary License",
-    "Operating System :: OS Independent",
+authors = [
+    {name = "James Norman", email = "james.norman@proteusllp.com"}
 ]
-license = {text = "MIT License with Commons Clause"}
-keywords=["actuarial", "insurance","capital"]
+maintainers = [
+    {name = "James Norman", email = "james.norman@proteusllp.com"}
+]
+readme = "README.md"
+license = {text = "MIT License"}
+keywords = ["actuarial", "insurance", "capital"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+]
+requires-python = ">=3.13"
 dependencies = [
-  "numpy",
-  "scipy",
-  "plotly",
+    "numpy>=2.2",
+    "scipy>=1.15",
+    "plotly>=6.0",
+    "pandas>=2.2",
+    "pandas-stubs>=2.3.0.250703",
+    "scipy-stubs>=1.16.0.2",
 ]
 
 [project.optional-dependencies]
 gpu = ["cupy-cuda12x"]
+docs = [
+    "sphinx>=8.2.3",
+    "sphinx-rtd-theme>=3.0.2",
+    "myst-parser>=4.0.1",
+    "sphinx-autodoc-typehints>=3.5.2",
+]
 
 [project.urls]
-Homepage = "https://github.com/pythactuary/python-capital-model"
-Issues = "https://github.com/pythactuary/python-capital-model/issues"
+Homepage = "https://github.com/ProteusLLP/proteusllp-actuarial-library"
+Repository = "https://github.com/ProteusLLP/proteusllp-actuarial-library"
+Issues = "https://github.com/ProteusLLP/proteusllp-actuarial-library/issues"
+Documentation = "https://proteusllp-actuarial-library.readthedocs.io/"
+
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+# Static analysis tool configurations
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+src = ["pal"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "D",   # pydocstyle (docstring linting)
+    "N",   # pep8-naming
+    "S",   # bandit (security)
+]
+ignore = [
+    "D105", # Missing docstring in magic method
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "D103"] # Allow assert and skip test function docstrings
+"examples/*" = ["D"]       # Skip docstrings in examples
+"pal/__init__.py" = ["F403"] # Allow star imports in package init
+
+
+[tool.bandit]
+exclude_dirs = ["tests", "__pypackages__"]  # Tests contain patterns that trigger false positives
+skips = ["B101"]  # Skip assert_used test - asserts are normal in tests
+
+[tool.vulture]
+paths = ["pal"]
+min_confidence = 80
+exclude = ["__pypackages__/"]
+[tool.pdm]
+package-dir = "pal"
+includes = [
+    "README.md",
+    "LICENSE",
+    "examples/*.py",
+    "data/**/*.csv",
+    "docs/**/*.md"
+]
+
+[tool.pdm.version]
+source = "scm"
+
+# Configure PDM to always use virtual environments (not PEP 582)
+# plays nicely with vscode's pytest extension and prevents issues with
+# conflicting deps in __pypackages__ directories.
+[tool.pdm.python]
+use_venv = true
+
+[tool.pdm.dev-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "pytest-xdist>=3.0",
+]
+dev = [
+    "jupyter>=1.0",
+    "jupyterlab>=4.0",
+    "ruff>=0.8.0",
+    "bandit>=1.7.0",
+    "vulture>=2.11",
+    "pyright>=1.1.350",
+]
+
+
