@@ -1,9 +1,12 @@
 # Proteus Actuarial Library
 
+[![Documentation Status](https://readthedocs.org/projects/proteusllp-actuarial-library/badge/?version=latest)](https://proteusllp-actuarial-library.readthedocs.io/en/latest/?badge=latest)
+
+
 An actuarial stochastic modeling library in python.
 
 **Note**
-This library is still in development!
+This library is still in beta!
 
 📚 **[Development Guide](docs/development.md)** - Get started with development setup and testing
 
@@ -46,13 +49,16 @@ pip install proteus-actuarial-library[gpu]
 
 ## Documentation
 
+**[Read the full documentation on Read the Docs](https://proteusllp-actuarial-library.readthedocs.io/)**
+
+
 - [Usage Guide](docs/usage.md) - Comprehensive examples and API documentation
 - [Development Guide](docs/development.md) - Setting up the development environment and running tests
 - [Examples](examples/) - Example scripts showing how to use the library
 
 ## Project Status
 
-PAL is currently a proof of concept. There are a limited number of supported distributions and reinsurance contracts. We are working on:
+PAL is currently in early release preview (beta). There are a limited number of supported distributions and reinsurance contracts. We are working on:
 
 * Adding more distributions and loss generation types
 * Making it easier to work with multi-dimensional variables
@@ -67,5 +73,5 @@ Please log issues on our github [page](https://github.com/ProteusLLP/proteusllp-
 
 ## Contributing
 
-You are welcome to contribute pull requests
+You are welcome to contribute pull requests. Please see the [Contributer License Agreement](./CLA.md)
 

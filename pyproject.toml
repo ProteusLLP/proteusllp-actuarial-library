@@ -10,12 +10,12 @@ maintainers = [
     {name = "James Norman", email = "james.norman@proteusllp.com"}
 ]
 readme = "README.md"
-license = {text = "MIT License with Commons Clause"}
+license = {text = "MIT License"}
 keywords = ["actuarial", "insurance", "capital"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Financial and Insurance Industry",
-    "License :: Other/Proprietary License",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
 ]
@@ -39,9 +39,11 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ProteusLLP/proteus-actuarial-library"
-Repository = "https://github.com/ProteusLLP/proteus-actuarial-library"
-Issues = "https://github.com/ProteusLLP/proteus-actuarial-library/issues"
+Homepage = "https://github.com/ProteusLLP/proteusllp-actuarial-library"
+Repository = "https://github.com/ProteusLLP/proteusllp-actuarial-library"
+Issues = "https://github.com/ProteusLLP/proteusllp-actuarial-library/issues"
+Documentation = "https://proteusllp-actuarial-library.readthedocs.io/"
+
 
 [build-system]
 requires = ["pdm-backend"]
