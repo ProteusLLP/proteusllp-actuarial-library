@@ -1,12 +1,12 @@
 {
-  "include": ["pal", "tests", "examples/*.ipynb"],
-  "exclude": ["**/node_modules/**", "**/.venv/**", "examples/*.py"],
+  "include": ["pal", "tests", "examples"],
+  "exclude": ["**/node_modules/**", "**/.venv/**", "**/__pycache__/**", "**/build/**", "**/dist/**"],
   "strict": ["pal"],
   "typeCheckingMode": "strict",
   "reportMissingImports": true,
   "reportMissingTypeStubs": false,
   "pythonVersion": "3.13",
   "pythonPlatform": "Linux",
-  "pythonPath": "/usr/local/bin/python3.13",
-  "extraPaths": ["__pypackages__/3.13/lib"]
+  "venvPath": ".",
+  "venv": ".venv"
 }

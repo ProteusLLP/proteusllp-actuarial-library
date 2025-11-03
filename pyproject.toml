@@ -118,6 +118,7 @@ dev = [
     "ruff>=0.8.0",
     "bandit>=1.7.0",
     "vulture>=2.11",
+    "pyright>=1.1.350",
 ]
 
 

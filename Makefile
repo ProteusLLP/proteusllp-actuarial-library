@@ -37,7 +37,7 @@ format-check:
 
 .PHONY: typecheck
 typecheck:
-	pyright
+	pdm run pyright
 
 .PHONY: security
 security:
