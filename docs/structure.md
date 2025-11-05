@@ -6,35 +6,44 @@
 **Critical Rule**: Protocol definitions in `types.py` must NEVER import from concrete implementation modules (like `stochastic_scalar.py`, `variables.py`, etc.).
 
 **Why**: This prevents circular dependencies and maintains clean architecture where:
-- Protocols define interfaces (abstractions)  
+- Protocols define interfaces (abstractions)
 - Implementations depend on protocols (not vice versa)
 - Type system remains independent of specific implementations
 
 **Example**:
 ```python
+import typing as t
+
 # CORRECT: types.py defines protocol without importing implementations
 class VectorLikeProtocol(t.Protocol):
     def __add__(self, other) -> t.Self: ...
 
-# INCORRECT: types.py importing implementation  
-from .stochastic_scalar import StochasticScalar  # ❌ NEVER DO THIS
+# INCORRECT: types.py importing implementation
+from pal.stochastic_scalar import StochasticScalar  # ❌ NEVER DO THIS
 def generate() -> StochasticScalar: ...  # ❌ Protocol depends on implementation
 
 # CORRECT: Protocol-based return type
+from pal.types import VectorLike
 def generate() -> VectorLike: ...  # ✅ Depends only on abstraction
 ```
 
 ### Protocols Are for Structural Typing, Not Inheritance
 **Critical Rule**: Protocols in `types.py` are designed for structural subtyping and type hints ONLY. Classes should NOT inherit from protocols.
 
-**Why**: 
+**Why**:
 - Protocols define "shape" contracts for static type checking
 - Inheritance creates runtime dependencies and coupling
 - Structural typing allows flexibility - any object with the right methods satisfies the protocol
 - Cleaner separation between type system and implementation hierarchy
 
 **Pattern**:
+
+<!--pytest-codeblocks:cont-->
+
 ```python
+from typing import Self
+from numpy.typing import NDArray
+from pal.types import VectorLike
 # CORRECT: Structural typing - no inheritance
 class StochasticScalar:  # ← Does NOT inherit from VectorLikeProtocol
     def __add__(self, other) -> Self: ...  # ← But conforms to the protocol
@@ -56,28 +65,35 @@ class StochasticScalar(VectorLikeProtocol):  # ❌ Don't inherit protocols
 ArithmeticProtocol
 ├── __add__, __sub__, __mul__, etc. (return t.Self)
 │
-├── NumericProtocol (scalar semantics)  
+├── NumericProtocol (scalar semantics)
 │   ├── inherits ArithmeticProtocol
 │   └── __lt__, __eq__ return bool
 │
 └── VectorLikeProtocol (vector semantics)
-    ├── inherits ArithmeticProtocol  
+    ├── inherits ArithmeticProtocol
     ├── __lt__, __eq__ return t.Self (element-wise)
     ├── __array__, __len__ (numpy compatibility)
     └── __array_ufunc__ (numpy integration)
 
 ProteusLike[T] (Generic Protocol)
 ├── inherits VectorLikeProtocol
-├── inherits SequenceLike[T] 
+├── inherits SequenceLike[T]
 ├── T: ScalarOrVector (bounded type parameter)
 └── defines: n_sims, values, mean(), upsample()
 ```
 
 ### Type Aliases
+
+<!--pytest-codeblocks:cont-->
+
 ```python
+import numpy as np
+from typing import Any
+from pal.types import NumericProtocol, VectorLike
+
 Numeric = float | int | np.number[Any]
 NumericLike = Numeric | NumericProtocol  # Scalars
-VectorLike = VectorLikeProtocol           # Vectors  
+VectorLike = VectorLikeProtocol           # Vectors
 ScalarOrVector = NumericLike | VectorLike # Either
 ```
 
@@ -87,7 +103,7 @@ ProteusVariable[T: ScalarOrVector] (generic, homogeneous container)
 ├── conforms to ProteusLike[T] protocol
 └── values: Mapping[str, T] (all same type)
 
-ProteusStochasticVariable (base class)  
+ProteusStochasticVariable (base class)
 ├── conforms to VectorLikeProtocol
 ├── provides __array__, __len__ for numpy
 └── concrete implementations:
@@ -105,7 +121,7 @@ Layer 0: Foundation
 ├── config.py
 └── types.py (protocols only, no imports from other pal modules)
 
-Layer 1: Base Classes  
+Layer 1: Base Classes
 ├── couplings.py (depends on: types)
 └── stochastic_scalar.py (depends on: couplings, types)
 
@@ -117,7 +133,7 @@ Layer 3: Containers & Analysis
 ├── variables.py (depends on: couplings, frequency_severity, stochastic_scalar, types)
 └── stats.py (depends on: frequency_severity, types)
 
-Layer 4: Applications  
+Layer 4: Applications
 ├── contracts.py (depends on: frequency_severity, variables)
 └── copulas.py (depends on: variables, stochastic_scalar, types)
 ```
