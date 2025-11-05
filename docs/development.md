@@ -35,7 +35,7 @@ This project uses PDM dependency groups defined in `pyproject.toml`:
 - **Optional dependencies**:
   - `gpu`: CUDA support with cupy-cuda12x
 - **Development dependencies**:
-  - `test`: Testing tools (pytest, pytest-cov, pytest-xdist)
+  - `test`: Testing tools (pytest, pytest-cov, pytest-xdist, pytest-codeblocks)
   - `dev`: Development tools (jupyter, jupyterlab)
 
 **Important**: The devcontainer automatically installs ALL dependency groups (core, optional, and dev groups) to provide a complete development environment. This means you have access to all testing, development, and GPU dependencies without manual installation.
@@ -157,6 +157,9 @@ pytest --cov=pal
 
 # Run tests in parallel (faster)
 pytest -n auto
+
+# Run tests with codeblocks (for doc tests)
+pytest --codeblocks
 ```
 
 ### From VS Code Test Explorer

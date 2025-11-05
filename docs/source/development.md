@@ -156,6 +156,9 @@ pytest --cov=pal
 
 # Run tests in parallel (faster)
 pytest -n auto
+
+# Run tests with codeblocks (for doc tests)
+pytest --codeblocks
 ```
 
 ### From VS Code Test Explorer
