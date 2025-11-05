@@ -23,7 +23,7 @@ Statistical distributions are available in the distributions module:
 from pal import distributions
 
 # Create gamma distribution
-gamma_var = distributions.Gamma(alpha=2.5, beta=2).generate()
+gamma_var = distributions.Gamma(alpha=2.5, theta=2).generate()
 
 # Create log-normal distribution
 lognormal_var = distributions.LogNormal(mu=1, sigma=0.5).generate()
@@ -37,7 +37,7 @@ Variables can be grouped into containers with the `ProteusVariable` class:
 from pal import ProteusVariable, distributions
 
 # Create individual variables
-motor_losses = distributions.Gamma(alpha=2.5, beta=2).generate()
+motor_losses = distributions.Gamma(alpha=2.5, theta=2).generate()
 property_losses = distributions.LogNormal(mu=1, sigma=0.5).generate()
 
 # Group into container
@@ -57,11 +57,11 @@ Statistical dependencies between PAL variables can be modeled using copulas:
 from pal import copulas, distributions
 
 # Create independent variables
-var1 = distributions.Gamma(alpha=2.5, beta=2).generate()
+var1 = distributions.Gamma(alpha=2.5, theta=2).generate()
 var2 = distributions.LogNormal(mu=1, sigma=0.5).generate()
 
 # Apply copula to create dependency
-copulas.GumbelCopula(alpha=1.2, n=2).apply([var1, var2])
+copulas.GumbelCopula(theta=1.2, n=2).apply([var1, var2])
 ```
 
 ### Variable Coupling
@@ -69,8 +69,9 @@ copulas.GumbelCopula(alpha=1.2, n=2).apply([var1, var2])
 PAL automatically tracks variables that have been used in formulas together (coupled variables):
 
 ```python
+from pal import distributions
 # These variables become coupled
-var1 = distributions.Gamma(alpha=2.5, beta=2).generate()
+var1 = distributions.Gamma(alpha=2.5, theta=2).generate()
 var2 = distributions.LogNormal(mu=1, sigma=0.5).generate()
 var3 = var1 + var2  # var1, var2, and var3 are now coupled
 
@@ -84,13 +85,13 @@ var3 = var1 + var2  # var1, var2, and var3 are now coupled
 Configure the global number of simulations:
 
 ```python
-from pal import config
+from pal import config, set_random_seed
 
 # Change simulation count (default is 100,000)
 config.n_sims = 1000000
 
 # Set random seed for reproducibility
-config.set_random_seed(123456)
+set_random_seed(123456)
 ```
 
 PAL uses the `default_rng` class from `numpy.random`, which can also be configured via `config.rng`.
@@ -198,6 +199,7 @@ PAL provides rich type annotations using protocols for better type safety in you
 ### Using Protocol Types in Function Signatures
 
 ```python
+from pal import StochasticScalar
 from pal.types import ProteusLike, VectorLike, DistributionLike
 
 # Accept any ProteusLike container with StochasticScalar values
@@ -234,6 +236,8 @@ In PAL's protocol system:
 
 **Example**:
 ```python
+from pal.types import VectorLike
+
 # This class automatically satisfies VectorLike protocol
 class MyCustomVariable:
     def __add__(self, other): return self
