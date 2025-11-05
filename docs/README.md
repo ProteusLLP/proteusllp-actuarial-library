@@ -5,7 +5,7 @@ This directory contains the documentation for the Proteus Actuarial Library.
 ## Hosted Documentation
 
 The documentation is hosted on Read the Docs:
-https://proteusllp-actuarial-library-private.readthedocs.io/
+https://proteusllp-actuarial-library.readthedocs.io/
 
 ## Building Documentation Locally
 
