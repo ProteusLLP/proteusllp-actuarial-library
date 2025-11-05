@@ -1,3 +1,4 @@
+<!--pytest-codeblocks:skipfile-->
 # Development Guide
 
 This project uses PDM for dependency management, uv for fast installs, and Docker devcontainers for development.
@@ -30,7 +31,7 @@ This project uses PDM for dependency management, uv for fast installs, and Docke
 This project uses PDM dependency groups defined in `pyproject.toml`:
 
 - **Core dependencies**: Required runtime dependencies (numpy, scipy, plotly, pandas)
-- **Optional dependencies**: 
+- **Optional dependencies**:
   - `gpu`: CUDA support with cupy-cuda12x
 - **Development dependencies**:
   - `test`: Testing tools (pytest, pytest-cov, pytest-xdist)
@@ -49,7 +50,7 @@ pdm add "new-package>=1.0"
 # Add optional dependencies (like GPU)
 pdm add -G gpu "cupy-cuda12x"
 
-# Add development/test dependencies  
+# Add development/test dependencies
 pdm add -dG test "pytest-mock"
 
 # Remove dependencies
@@ -78,7 +79,7 @@ pdm install -G gpu
 
 ### Creating a release:
 1. **Tag the release**: `git tag v1.0.0`
-2. **Push the tag**: `git push origin v1.0.0`  
+2. **Push the tag**: `git push origin v1.0.0`
 3. **Create GitHub Release** from the tag → triggers automatic PyPI publishing
 
 ### Check current version:
@@ -107,7 +108,7 @@ git push origin v0.0.1a1
 Use a PEP-440-compliant version format. This project uses PDM for Python package versioning, which follows PEP 440. Use these valid version formats:
 
 - `v0.0.1a1` (alpha)
-- `v0.0.1b1` (beta) 
+- `v0.0.1b1` (beta)
 - `v0.0.1rc1` (release candidate)
 - `v0.0.1.dev1` (development)
 - `v0.0.1.post1` (post-release)
@@ -202,7 +203,7 @@ Make sure you rebuilt the container after adding dependencies with `pdm add`. VS
 
 ## See Also
 
-- [Usage Guide](usage.md) - Comprehensive examples and API documentation  
+- [Usage Guide](usage.md) - Comprehensive examples and API documentation
 - [Examples](https://github.com/ProteusLLP/proteus-actuarial-library/tree/main/examples) - Example scripts showing library usage
 - [Main README](https://github.com/ProteusLLP/proteus-actuarial-library) - Project overview and installation
 

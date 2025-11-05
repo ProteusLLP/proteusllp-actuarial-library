@@ -22,12 +22,14 @@ This project uses Docker for consistent development environments.
 
 The container name is configured in `.devcontainer/devcontainer.json` as `pal-devcontainer`:
 
+<!--pytest.mark.skip-->
+
 ```bash
 # All development commands (run inside container):
 # Lint code
 docker exec pal-devcontainer make lint
 
-# Auto-fix lint issues  
+# Auto-fix lint issues
 docker exec pal-devcontainer make lint-fix
 
 # Run tests
@@ -41,20 +43,24 @@ docker exec pal-devcontainer make typecheck
 
 **IMPORTANT**: This project uses PDM for dependency management. Always use `pdm run` to execute Python commands to ensure you're using the correct virtual environment:
 
+<!--pytest.mark.skip-->
+
 ```bash
 # Run Python scripts (CORRECT)
 docker exec pal-devcontainer pdm run python script.py
 
-# Run examples (CORRECT) 
+# Run examples (CORRECT)
 docker exec pal-devcontainer pdm run python examples/example_catastrophes.py
 
 # Wrong - uses system Python (INCORRECT)
 docker exec pal-devcontainer python script.py
 ```
 
+<!--pytest.mark.skip-->
+
 ### Finding Your Container
 ```bash
-# List running containers 
+# List running containers
 docker ps
 
 # Filter by the devcontainer name
@@ -63,7 +69,7 @@ docker ps --filter name=pal-devcontainer
 
 ## Code Style
 
-**IMPORTANT**: 
+**IMPORTANT**:
 - Do not add cruft comments like "# mean() removed - use numpy.mean() instead". When removing code, just remove it cleanly without leaving placeholder comments.
 - **No nested imports** - Always import modules at the top of the file, not inside functions. Nested imports hide import errors and delay them until runtime instead of catching them at load time.
 
@@ -78,14 +84,14 @@ docker ps --filter name=pal-devcontainer
 
 ### Linting Workflow
 1. Run: `docker exec pal-devcontainer make lint`
-2. For auto-fixable errors: `docker exec pal-devcontainer make lint-fix`  
+2. For auto-fixable errors: `docker exec pal-devcontainer make lint-fix`
 3. Manually fix remaining errors following [STYLE_GUIDE.md](./STYLE_GUIDE.md)
 4. **All lint errors must be fixed** (no warnings allowed in CI)
 
 ## Project Structure
 
 - `pal/` - Main library code
-- `tests/` - Test suite  
+- `tests/` - Test suite
 - `examples/` - Usage examples
 - `pyproject.toml` - Project configuration including ruff lint rules
 - `STYLE_GUIDE.md` - **All coding standards and examples**

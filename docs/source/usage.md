@@ -99,17 +99,21 @@ PAL uses the `default_rng` class from `numpy.random`, which can also be configur
 
 For CUDA-compatible GPUs, install GPU dependencies:
 
+<!--pytest.mark.skip-->
+
 ```bash
 pdm install -G gpu
 ```
 
 Enable GPU mode by setting the environment variable:
 
+<!--pytest.mark.skip-->
+
 ```bash
 # Linux
 export PAL_USE_GPU=1
 
-# Windows  
+# Windows
 set PAL_USE_GPU=1
 ```
 

@@ -39,6 +39,8 @@ total = losses + expenses
 
 ## Installation
 
+<!--pytest.mark.skip-->
+
 ```bash
 # Basic installation
 pip install proteus-actuarial-library
@@ -74,4 +76,3 @@ Please log issues on our github [page](https://github.com/ProteusLLP/proteusllp-
 ## Contributing
 
 You are welcome to contribute pull requests. Please see the [Contributer License Agreement](./CLA.md)
-

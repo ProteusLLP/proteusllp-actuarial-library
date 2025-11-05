@@ -103,17 +103,21 @@ PAL supports several environment variables for configuration:
 
 For CUDA-compatible GPUs, install GPU dependencies:
 
+<!--pytest.mark.skip-->
+
 ```bash
 pdm install -G gpu
 ```
 
 Enable GPU mode:
 
+<!--pytest.mark.skip-->
+
 ```bash
 # Linux/macOS
 export PAL_USE_GPU=1
 
-# Windows  
+# Windows
 set PAL_USE_GPU=1
 ```
 
@@ -122,6 +126,8 @@ Set to any other value to revert to CPU mode.
 #### Plotting Control
 
 When running in headless/CLI environments (without display), suppress plot output:
+
+<!--pytest.mark.skip-->
 
 ```bash
 # Linux/macOS
