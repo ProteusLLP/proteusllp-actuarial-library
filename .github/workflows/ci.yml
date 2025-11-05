@@ -10,7 +10,7 @@
 # Jobs:
 # - docker-build: Builds CI image once and shares it across jobs
 # - test: Runs pytest with coverage using the shared CI Docker image
-# - build: Builds Python package with PDM (release only)  
+# - build: Builds Python package with PDM (release only)
 # - pypi-publish: Publishes to PyPI using trusted publishing (release only)
 #
 # To release: Create a GitHub Release, which triggers automatic PyPI publishing.
@@ -35,13 +35,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      
+
       - name: Build CI Docker image
         run: docker build --target ci -t proteus-ci .
-        
+
       - name: Save Docker image
         run: docker save proteus-ci > proteus-ci.tar
-        
+
       - name: Upload Docker image
         uses: actions/upload-artifact@v5
         with:
@@ -51,48 +51,48 @@ jobs:
   static-analysis:
     runs-on: ubuntu-latest
     needs: docker-build
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Download Docker image
         uses: actions/download-artifact@v4
         with:
           name: proteus-ci-image
-          
+
       - name: Load Docker image
         run: docker load < proteus-ci.tar
-        
+
       # Install dev dependencies for static analysis tools
       - name: Install dev dependencies
         run: docker run --rm proteus-ci pdm install -dG dev --no-self
-        
+
       - name: Run static analysis
         run: docker run --rm proteus-ci make static-analysis
 
   test:
     runs-on: ubuntu-latest
     needs: docker-build
-    
+
     steps:
       - uses: actions/checkout@v5
-      
+
       - name: Download Docker image
         uses: actions/download-artifact@v6
         with:
           name: proteus-ci-image
-          
+
       - name: Load Docker image
         run: docker load < proteus-ci.tar
-        
+
       - name: Run tests
         run: |
           # Create coverage directory and mount it to container to persist coverage reports
           # Maps host coverage/ to container's /app/coverage so reports survive container exit
           mkdir -p coverage
           docker run --rm -v "$(pwd)/coverage:/app/coverage" proteus-ci \
-            pdm run pytest -v --cov=pal --cov-report=xml:coverage/coverage.xml
-            
+            pdm run pytest -v --cov=pal --cov-report=xml:coverage/coverage.xml --codeblocks
+
       # Validate example scripts can compile without running them
       # This checks syntax and import resolution without starting Flask servers
       # or other services that would complicate CI testing
@@ -100,7 +100,7 @@ jobs:
         run: |
           docker run --rm proteus-ci \
             pdm run python -m compileall examples/ -f
-            
+
       - name: Upload coverage reports
         uses: actions/upload-artifact@v5
         with:
@@ -114,15 +114,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-      
+
       - name: Download Docker image
         uses: actions/download-artifact@v6
         with:
           name: proteus-ci-image
-          
+
       - name: Load Docker image
         run: docker load < proteus-ci.tar
-        
+
       - name: Build package
         # Create dist directory and mount it to container to persist build artifacts
         # Maps host dist/ to container's /app/dist so files survive container exit
