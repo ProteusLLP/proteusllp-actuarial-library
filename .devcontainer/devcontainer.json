@@ -4,7 +4,12 @@
     "dockerfile": "../Dockerfile",
     "target": "dev"
   },
-  "runArgs": ["--name", "pal-devcontainer"],
+  "runArgs": [
+    "--name",
+    "pal-devcontainer",
+    "--gpus",
+    "all" // Enable GPU access
+  ],
   "mounts": [
     // Mount source so that mods persist after the container dies
     "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",

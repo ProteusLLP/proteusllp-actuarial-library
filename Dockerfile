@@ -1,19 +1,28 @@
-# Base stage - Python + system dependencies
-FROM python:3.13-slim AS base
+# Use Python 3.13-slim-bookworm as the base image
+FROM python:3.13-slim-bookworm AS base
 
-# Dependencies stage - install all packages
-FROM base AS deps
+# Set non-interactive mode to avoid prompts during build
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install build tools and wget
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
     nodejs \
     npm \
     locales \
+    wget \
+    gnupg \
     && rm -rf /var/lib/apt/lists/* \
     && sed -i '/en_GB.UTF-8/s/^# //g' /etc/locale.gen \
     && locale-gen
+
+# Add NVIDIA package repositories and install CUDA runtime
+RUN wget https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb \
+    && dpkg -i cuda-keyring_1.1-1_all.deb \
+    && apt-get update \
+    && apt-get install -y cuda-cudart-12-3 cuda-nvrtc-12-3 cuda-nvcc-12-3 cuda-cudart-dev-12-3 \
+    && rm -rf /var/lib/apt/lists/* cuda-keyring_1.1-1_all.deb
 
 # Install pyright globally for type checking
 RUN npm install -g pyright
@@ -31,7 +40,7 @@ COPY pyproject.toml pdm.lock* ./
 RUN pdm install --no-self
 
 # DEVELOPMENT STAGE ===========================
-FROM deps AS dev
+FROM base AS dev
 
 # Install development tools
 RUN apt-get update && apt-get install -y \
@@ -47,7 +56,6 @@ RUN useradd -m -s /bin/bash vscode && \
 # Install dev dependencies (test + dev groups)
 RUN pdm install -dG test -dG dev --no-self
 
-
 # Switch to non-root user
 USER vscode
 
@@ -58,7 +66,7 @@ WORKDIR /workspace
 EXPOSE 8888
 
 # CI STAGE ===========================
-FROM deps AS ci
+FROM base AS ci
 
 # Set working directory
 WORKDIR /app
