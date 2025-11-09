@@ -17,12 +17,22 @@ RUN apt-get update && apt-get install -y \
     && sed -i '/en_GB.UTF-8/s/^# //g' /etc/locale.gen \
     && locale-gen
 
-# Add NVIDIA package repositories and install CUDA runtime
+# Add NVIDIA package repositories and install CUDA toolkit
+# Using CUDA 12.4 which is more widely available and compatible with driver 580.x
+# Installing cuda-toolkit-12-4 instead of cuda-runtime-12-4 to get development headers
+# required for CuPy to compile CUDA kernels at runtime
 RUN wget https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb \
     && dpkg -i cuda-keyring_1.1-1_all.deb \
     && apt-get update \
-    && apt-get install -y cuda-cudart-12-3 cuda-nvrtc-12-3 cuda-nvcc-12-3 cuda-cudart-dev-12-3 \
+    && apt-get install -y cuda-toolkit-12-4 \
     && rm -rf /var/lib/apt/lists/* cuda-keyring_1.1-1_all.deb
+
+# Set CUDA environment variables for compilation
+ENV CUDA_HOME=/usr/local/cuda-12.4
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+ENV CUDACXX=${CUDA_HOME}/bin/nvcc
+
 
 # Install pyright globally for type checking
 RUN npm install -g pyright
