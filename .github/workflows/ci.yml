@@ -53,7 +53,7 @@ jobs:
     needs: docker-build
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download Docker image
         uses: actions/download-artifact@v4
