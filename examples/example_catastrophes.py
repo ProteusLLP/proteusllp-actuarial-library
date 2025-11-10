@@ -1,7 +1,8 @@
 import math
 
+import numpy as np
 import pandas as pd  # type: ignore
-from pal import config, distributions, np
+from pal import config, distributions
 from pal.variables import FreqSevSims, ProteusVariable
 
 n_sims = 100_000

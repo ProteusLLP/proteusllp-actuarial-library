@@ -643,7 +643,7 @@ class ProteusVariable[T]:
         dim_name: str,
         values_column: str,
         simulation_column: str = "Simulation",
-    ) -> ProteusVariable[T]:
+    ) -> ProteusVariable[StochasticScalar]:
         """Import a ProteusVariable from a CSV file.
 
         This method currently has significant limitations and will be replaced
@@ -690,7 +690,7 @@ class ProteusVariable[T]:
         )
         result.n_sims = max(count)
 
-        return result
+        return result  # type: ignore
 
     @classmethod
     def from_dict(
@@ -888,10 +888,6 @@ class ProteusVariable[T]:
 
         if isinstance(x, StochasticScalar) or isinstance(x, FreqSevSims):
             # Handle StochasticScalar and FreqSevSims types
-            if x.n_sims is None:
-                # If n_sims is None, return the value directly
-                return x
-
             if x.n_sims <= 1:
                 # If n_sims is 1 or None, return the value directly
                 return x

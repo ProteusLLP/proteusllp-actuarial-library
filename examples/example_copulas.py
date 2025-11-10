@@ -61,14 +61,14 @@ inflated_total_losses_by_lob = total_losses_by_lob * (1 + stochastic_inflation)
 # create the total losses
 total_inflated_losses = inflated_total_losses_by_lob.sum()
 
-print(total_inflated_losses.tvar(99))
+print("TVAR:", total_inflated_losses.tvar(99))
 
 total_inflated_losses.show_cdf()
 
 fig = go.Figure(
     go.Scattergl(
-        x=inflated_total_losses_by_lob["Motor"].ranks.values,
-        y=inflated_total_losses_by_lob["Property"].ranks.values,
+        x=inflated_total_losses_by_lob["Motor"].ranks.values.tolist(),
+        y=inflated_total_losses_by_lob["Property"].ranks.values.tolist(),
         mode="markers",
     ),
     layout={
