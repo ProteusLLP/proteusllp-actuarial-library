@@ -1,19 +1,10 @@
 """Configuration utilities for the PAL library.
 
 Provides configuration management for random seeding, simulation parameters,
-logging configuration, and global library settings.
+and global library settings.
 """
 
-import logging
-import logging.config
-import os
-
 from pal.types import Config
-
-logging.config.fileConfig(
-    os.path.join(os.path.dirname(__file__), "..", "logging.ini"),
-    disable_existing_loggers=False,
-)
 
 config = Config()  # config is assumed to be a singleton
 

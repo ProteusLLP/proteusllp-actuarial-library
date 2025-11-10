@@ -1,3 +1,4 @@
+<!--pytest-codeblocks:skipfile-->
 # Proteus Actuarial Library Style Guide
 
 This document outlines the coding standards and style guidelines for the Proteus Actuarial Library.
@@ -52,11 +53,11 @@ result = some_function()  # type: ignore
 # Good
 def calculate_premium(base_amount: float, rate: float) -> float:
     """Calculate insurance premium based on base amount and rate.
-    
+
     Args:
         base_amount: The base insurance amount
         rate: The premium rate as a decimal
-        
+
     Returns:
         The calculated premium amount
     """
@@ -65,11 +66,11 @@ def calculate_premium(base_amount: float, rate: float) -> float:
 # Bad - type information duplicated in docstring
 def calculate_premium(base_amount: float, rate: float) -> float:
     """Calculate insurance premium based on base amount and rate.
-    
+
     Args:
         base_amount (float): The base insurance amount
         rate (float): The premium rate as a decimal
-        
+
     Returns:
         float: The calculated premium amount
     """
@@ -112,17 +113,17 @@ for item in reversed(items):
 ```python
 def process_claims(claims: list[Claim], policy: Policy) -> ClaimResult:
     """Process a batch of insurance claims against a policy.
-    
+
     Validates each claim against policy terms and calculates settlements.
     Claims that fail validation are marked as rejected.
-    
+
     Args:
         claims: List of claims to process
         policy: The insurance policy to validate against
-        
+
     Returns:
         Processing results including settlements and rejections
-        
+
     Raises:
         PolicyExpiredError: If the policy has expired
         InvalidClaimError: If any claim is malformed
@@ -134,10 +135,10 @@ def process_claims(claims: list[Claim], policy: Policy) -> ClaimResult:
 ```python
 class ActuarialModel:
     """Base class for stochastic actuarial modeling.
-    
+
     Provides common functionality for Monte Carlo simulations,
     risk calculations, and statistical analysis of insurance portfolios.
-    
+
     Attributes:
         simulation_count: Number of Monte Carlo iterations
         random_seed: Seed for reproducible random number generation
@@ -149,7 +150,7 @@ class ActuarialModel:
 ```python
 def test_premium_calculation_with_zero_rate():
     """Test that premium calculation returns zero when rate is zero."""
-    
+
 def test_policy_validation_rejects_expired_policies():
     """Test that policy validation properly rejects expired policies."""
 ```
