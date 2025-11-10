@@ -11,36 +11,11 @@ Proteus Actuarial Library.
 
 """
 
-import typing as t
-
 import numpy as np
 from pal import ProteusVariable, StochasticScalar, config, distributions
 from pal import maths as pnp
 
 config.n_sims = 100_000
-
-# ---------------------------------------------------------------------
-# Helper: standard cumulative and mask logic
-# ---------------------------------------------------------------------
-
-
-def cumulative_triangle(tri: np.ndarray) -> np.ndarray:
-    """Row-wise cumulative sums (NaNs treated as zero)."""
-    return np.cumsum(np.nan_to_num(tri), axis=1)
-
-
-def observed_mask(tri: np.ndarray) -> np.ndarray:
-    """Upper-left triangle mask for observed cells."""
-    n = tri.shape[0]
-    mask = np.ones_like(tri, dtype=bool)
-    mask[np.tril_indices(n, -1)] = False
-    mask[:, -1::-1] = mask
-    return mask
-
-
-# ---------------------------------------------------------------------
-# Core model class
-# ---------------------------------------------------------------------
 
 
 class ODPModel:
@@ -60,7 +35,7 @@ class ODPModel:
     def __init__(self, incremental_triangle: np.ndarray):
         self.triangle = np.array(incremental_triangle, dtype=float)
         self.n = self.triangle.shape[0]
-        self.obs_mask = observed_mask(self.triangle)
+        self.obs_mask: np.ndarray = observed_mask(self.triangle)
         self.triangle[~self.obs_mask] = np.nan
         self.cumtri = cumulative_triangle(self.triangle)
 
@@ -69,6 +44,11 @@ class ODPModel:
     # ---------------------------------------------------------
 
     def estimate_phi(self):
+        """Estimate the dispersion parameter φ from the observed triangle.
+
+        Returns:
+            float: Estimated dispersion φ̂
+        """
         n = self.n
         cumtri = self.cumtri
 
@@ -103,12 +83,10 @@ class ODPModel:
     def build_posterior(self):
         n, phi = self.n, self.phi
         cumtri = self.cumtri
-        d_i = (
-            np.nansum(self.triangle, axis=1) / phi
-        ).tolist()  # the scaled origin period totals
+        d_i = np.nansum(self.triangle, axis=1) / phi  # the scaled origin period totals
         c_j = (
             np.nansum(self.triangle, axis=0) / phi
-        ).tolist()  # the scaled development period totals
+        )  # the scaled development period totals
         d_ij = cumtri / phi
         # column sums of d_ij not including the diagonal
         sum_dij = [np.sum(d_ij[: n - j, j - 1]) for j in range(1, n)]
@@ -124,7 +102,7 @@ class ODPModel:
                     a_j + float(c_j[j]), b_j + float(sum_dij[j - 1])
                 ).generate()
             )
-        psi = ProteusVariable("dp", {str(dp): psi_vars[dp] for dp in range(n)})
+        psi = ProteusVariable("dp", {str(dp + 1): psi_vars[dp] for dp in range(n)})
 
         # β_j recursively from ψ
         betas = [StochasticScalar([])] * n
@@ -140,33 +118,36 @@ class ODPModel:
         self.mu = ProteusVariable(
             dim_name="op",
             values={
-                str(i): phi
+                str(i + 1): phi
                 * np.maximum(1 / (cumulative_payment_pattern[n - i - 1]), 0)
                 * distributions.Gamma(
-                    d_i[i],
+                    float(d_i[i]),
                     1,
                 ).generate()
                 for i in range(n)
             },
         )
-        self.betas = ProteusVariable("dp", {str(dp): betas[dp] for dp in range(n)})
+        self.betas = ProteusVariable("dp", {str(dp + 1): betas[dp] for dp in range(n)})
 
     # ---------------------------------------------------------
     # Step 3: simulate predictive distribution
     # ---------------------------------------------------------
     def simulate_reserves(self):
+        """Simulate the predictive distribution of future claims.
+
+        Returns:
+            StochasticScalar: Total future claims payments
+        """
         self.estimate_phi()
         self.build_posterior()
         n, phi = self.n, self.phi
         total = StochasticScalar(np.zeros_like(self.mu[0].values))
         total_by_origin: ProteusVariable[StochasticScalar] = ProteusVariable("op", {})
 
-        for i in range(n):
+        for i in range(2, n + 1):
             total_by_origin.values[str(i)] = 0.0  # type: ignore[assignment]
-            for j in range(n):
-                if self.obs_mask[i, j]:
-                    continue
-                mean_ij = self.mu[i] * self.betas[j]
+            for j in range(n - i + 2, n + 1):
+                mean_ij = self.mu[str(i)] * self.betas[str(j)]
                 lam = mean_ij / phi
                 x_ij = distributions.Gamma(
                     lam, 1
@@ -184,8 +165,10 @@ class ODPModel:
 
     def describe(
         self,
-        percentiles: t.Sequence[float] = (0.5, 1, 2.5, 5, 10, 50, 90, 95, 99, 99.5),
+        percentiles: list[float] | None = None,
     ):
+        if percentiles is None:
+            percentiles = [0.5, 1, 2.5, 5, 10, 50, 90, 95, 99, 99.5]
         x = self.total_future_claims
         mean, sd = pnp.mean(x), np.sqrt(pnp.var(x))
         cv = sd / mean
@@ -201,47 +184,53 @@ class ODPModel:
 
 
 # ---------------------------------------------------------------------
-# Example usage (with global PAL context)
+# Helper: standard cumulative and mask logic
+# ---------------------------------------------------------------------
+
+
+def cumulative_triangle(tri: np.ndarray) -> np.ndarray:
+    """Row-wise cumulative sums (NaNs treated as zero)."""
+    return np.cumsum(np.nan_to_num(tri), axis=1)
+
+
+def observed_mask(tri: np.ndarray) -> np.ndarray:
+    """Upper-left triangle mask for observed cells."""
+    n = tri.shape[0]
+    mask = np.ones_like(tri, dtype=bool)
+    mask[np.tril_indices(n, -1)] = False
+    mask[:, -1::-1] = mask
+    return mask
+
+
+# ---------------------------------------------------------------------
+# Example usage
 # ---------------------------------------------------------------------
 
 if __name__ == "__main__":
-    taylor_ashe_triangle = np.array(
-        [
-            [
-                357848,
-                766940,
-                610542,
-                482940,
-                527326,
-                574398,
-                146342,
-                139950,
-                227229,
-                67948,
-            ],
-            [
-                352118,
-                884021,
-                933894,
-                1183289,
-                445745,
-                320996,
-                527804,
-                266172,
-                425046,
-                0,
-            ],
-            [290507, 1001799, 926219, 1016654, 750816, 146923, 495992, 280405, 0, 0],
-            [310608, 1108250, 776189, 1562400, 272482, 352053, 206286, 0, 0, 0],
-            [443160, 693190, 991983, 769488, 504851, 470639, 0, 0, 0, 0],
-            [396132, 937085, 847498, 805037, 705960, 0, 0, 0, 0, 0],
-            [440832, 847631, 1131398, 1063269, 0, 0, 0, 0, 0, 0],
-            [359480, 1061648, 1443370, 0, 0, 0, 0, 0, 0, 0],
-            [376686, 986608, 0, 0, 0, 0, 0, 0, 0, 0],
-            [344014, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        ],
-        dtype=float,
-    )
-    model = ODPModel(taylor_ashe_triangle)
+    import pandas as pd
+    import plotly.graph_objects as go
+
+    triangle = pd.read_csv(  # type: ignore
+        "data/reserve_risk/claims_triangle.csv", index_col=0
+    ).to_numpy()
+
+    model = ODPModel(triangle)
     model.simulate_reserves()
     model.describe()
+    total_future_claims_by_origin = model.total_future_claims_by_origin
+
+    fig = go.Figure()
+    for i in range(2, model.n + 1):
+        fig.add_trace(  # type: ignore
+            go.Scatter(
+                x=np.sort(total_future_claims_by_origin[str(i)]),
+                y=np.linspace(0, 1, config.n_sims),
+                name=f"Origin Period {i}",
+            )
+        )
+        fig.update_layout(  # type: ignore
+            title="Predictive CDFs of Future Claims by Origin Period",
+            xaxis_title="Future Claims Payments",
+            yaxis_title="Cumulative Probability",
+        )
+    fig.show()  # type: ignore[attr-defined]
