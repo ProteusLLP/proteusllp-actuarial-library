@@ -103,10 +103,12 @@ class ODPModel:
     def build_posterior(self):
         n, phi = self.n, self.phi
         cumtri = self.cumtri
-        d_i = np.nansum(self.triangle, axis=1) / phi  # the scaled origin period totals
+        d_i = (
+            np.nansum(self.triangle, axis=1) / phi
+        ).tolist()  # the scaled origin period totals
         c_j = (
             np.nansum(self.triangle, axis=0) / phi
-        )  # the scaled development period totals
+        ).tolist()  # the scaled development period totals
         d_ij = cumtri / phi
         # column sums of d_ij not including the diagonal
         sum_dij = [np.sum(d_ij[: n - j, j - 1]) for j in range(1, n)]
@@ -118,7 +120,9 @@ class ODPModel:
         for j in range(1, n):
             a_j, b_j = 0.0, 1.0
             psi_vars.append(
-                distributions.Beta(a_j + c_j[j], b_j + sum_dij[j - 1]).generate()
+                distributions.Beta(
+                    a_j + float(c_j[j]), b_j + float(sum_dij[j - 1])
+                ).generate()
             )
         psi = ProteusVariable("dp", {str(dp): psi_vars[dp] for dp in range(n)})
 
@@ -129,10 +133,7 @@ class ODPModel:
         for j in range(n - 2, -1, -1):
             betas[j] = psi[j] * (1 - future_sum_beta)
             future_sum_beta = future_sum_beta + betas[j]
-        self.betas = ProteusVariable("dp", {str(dp): betas[dp] for dp in range(n)})
-        cumulative_payment_pattern = np.cumsum(
-            [self.betas[str(j)] for j in range(n)], axis=0
-        )
+        cumulative_payment_pattern = pnp.cumsum(betas)
 
         # μ_i ~ φGamma(D_i, 1/(Σ β_j))
         # These are the origin period means
@@ -148,6 +149,7 @@ class ODPModel:
                 for i in range(n)
             },
         )
+        self.betas = ProteusVariable("dp", {str(dp): betas[dp] for dp in range(n)})
 
     # ---------------------------------------------------------
     # Step 3: simulate predictive distribution
