@@ -239,5 +239,3 @@ if __name__ == "__main__":
         )
     print("Displaying predictive CDF plot...")
     fig.show()
-
-    # Also save a backup HTML file
