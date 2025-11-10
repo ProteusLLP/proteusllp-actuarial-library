@@ -10,7 +10,9 @@ from __future__ import annotations
 import typing as t
 from dataclasses import dataclass
 
-from ._maths import xp as np
+import numpy as np
+
+from ._maths import xp
 from .frequency_severity import FreqSevSims
 from .variables import StochasticScalar
 
@@ -155,15 +157,15 @@ class XoL:
         aggregate_deductible = self.aggregate_deductible
         aggregate_recoveries_pre_agg = individual_recoveries_pre_aggregate.aggregate()
 
-        aggregate_recoveries = np.minimum(
+        aggregate_recoveries: StochasticScalar = np.minimum(
             np.maximum(aggregate_recoveries_pre_agg - aggregate_deductible, 0),
             aggregate_limit,
-        )
+        )  # type: ignore[assignment]
         non_zero_recoveries = aggregate_recoveries != 0
-        ratio = np.ones(np.shape(aggregate_recoveries_pre_agg))
+        ratio = StochasticScalar(xp.ones(claims.n_sims))
         np.putmask(
-            ratio,
-            non_zero_recoveries,
+            ratio.values,
+            non_zero_recoveries.values.astype(bool),
             np.divide(
                 aggregate_recoveries[non_zero_recoveries],
                 aggregate_recoveries_pre_agg[non_zero_recoveries],
@@ -179,23 +181,21 @@ class XoL:
             cumulative_reinstatement_cost = np.cumsum(self.reinstatement_premium_cost)
             limits_used = aggregate_recoveries / self.limit
             reinstatements_used = np.minimum(limits_used, self.num_reinstatements)
-            reinstatements_used_full = StochasticScalar(
-                np.floor(reinstatements_used).astype(int)
-            )
+            reinstatements_used_full = StochasticScalar(np.floor(reinstatements_used))
             reinstatements_used_fraction = (
                 reinstatements_used - reinstatements_used_full
             )
             reinstatement_number = np.maximum(reinstatements_used_full - 1, 0)
-            reinstatement_premium_proportion = self.reinstatement_premium_cost[
-                reinstatement_number
-            ] * reinstatements_used_fraction + np.where(
+            reinstatement_premium_proportion = StochasticScalar(  # type: ignore[assignment]
+                self.reinstatement_premium_cost
+            )[reinstatement_number] * reinstatements_used_fraction + np.where(
                 reinstatements_used_full > 0,
-                cumulative_reinstatement_cost[reinstatement_number],
+                StochasticScalar(cumulative_reinstatement_cost)[reinstatement_number],  # type: ignore[assignment]
                 0,
             )
             reinstatement_premium = reinstatement_premium_proportion * self.premium
             results.reinstatement_premium = StochasticScalar(reinstatement_premium)
-        self.calc_summary(claims, StochasticScalar(aggregate_recoveries))
+        self.calc_summary(claims, aggregate_recoveries)
         return results
 
     def calc_summary(
@@ -205,9 +205,9 @@ class XoL:
 
         The results are stored in the summary attribute of the layer.
 
-        The summary includes the mean and standard deviation of the recoveries,
-        the probability of attachment, the probability of vertical exhaustion and
-        the probability of horizontal exhaustion.
+        The summary includes the mean and standard deviation of the recoveries, the
+        probability of attachment, the probability of vertical exhaustion and the
+        probability of horizontal exhaustion.
 
         Args:
             gross_losses (FreqSevSims): Object representing the gross losses.
@@ -217,30 +217,24 @@ class XoL:
             None
 
         """
-        mean = np.mean(aggregate_recoveries)
-        sd = np.std(aggregate_recoveries)
-        count = np.sum(aggregate_recoveries > 0)
-        vertical_exhaust = np.maximum(gross_losses - self.limit + self.excess, 0)
-        # numpy operations preserve FreqSevSims type through __array_function__
-        if not isinstance(vertical_exhaust, FreqSevSims):
-            msg = "Expected FreqSevSims but got different type"
-            raise TypeError(msg)
+        mean = aggregate_recoveries.mean()
+        sd = aggregate_recoveries.std()
+        count = (aggregate_recoveries > 0).sum()
+        vertical_exhaust: FreqSevSims = np.maximum(
+            gross_losses - self.limit + self.excess, 0
+        )  # type: ignore[assignment]
         aggregate_vertical_exhaust = vertical_exhaust.aggregate()
 
-        v_count = np.sum(aggregate_vertical_exhaust > 0)
-        h_count = np.sum(aggregate_recoveries >= self.aggregate_limit)
+        v_count = (aggregate_vertical_exhaust > 0).sum()
+        h_count = (aggregate_recoveries >= self.aggregate_limit).sum()
 
         self.summary = {
-            "mean": float(mean),
-            "std": float(sd),
-            "prob_attach": (
-                float(count) / aggregate_recoveries.n_sims
-                if aggregate_recoveries.n_sims
-                else float("nan")
-            ),
-            "prob_vert_exhaust": float(v_count) / len(gross_losses.values),
+            "mean": mean,
+            "std": sd,
+            "prob_attach": count / aggregate_recoveries.n_sims,
+            "prob_vert_exhaust": v_count / len(gross_losses.values),
             "prob_horizonal_exhaust": (
-                float(h_count) / (aggregate_recoveries.n_sims or 1)
+                h_count / aggregate_recoveries.n_sims
                 if self.aggregate_limit != np.inf
                 else 0.0
             ),
@@ -340,9 +334,7 @@ class XoLTower:
             ContractResults: The results of applying the XoL Tower to the claims.
         """
         recoveries = claims.copy() * 0
-        reinstatement_premium = StochasticScalar(
-            np.zeros(claims.n_sims) if claims.n_sims is not None else np.zeros(1)
-        )
+        reinstatement_premium = StochasticScalar(xp.zeros(claims.n_sims))
         for layer in self.layers:
             layer_results = layer.apply(claims)
             recoveries += layer_results.recoveries

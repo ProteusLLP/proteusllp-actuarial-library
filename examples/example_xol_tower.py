@@ -1,6 +1,7 @@
 """Example of generating losses through an XoL Tower."""
 
-from pal import XoLTower, config, distributions, np
+import numpy as np
+from pal import XoLTower, config, distributions
 from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
 
 config.n_sims = 100_000
