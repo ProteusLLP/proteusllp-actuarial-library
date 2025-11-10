@@ -173,7 +173,7 @@ class FreqSevSims(ProteusStochasticVariable):
     def __init__(
         self,
         sim_index: np.ndarray | list[int],
-        values: np.ndarray | list[int],
+        values: np.ndarray | list[float | int],
         n_sims: int,
     ):
         """Create a new FreqSevSims object out the list of simulation indices.

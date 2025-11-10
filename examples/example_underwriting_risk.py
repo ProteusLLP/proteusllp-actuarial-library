@@ -1,4 +1,4 @@
-"""An example underwriting risk model with multiple lines of business and reinsurance."""
+"""An example underwriting risk model with multiple lines of business."""
 
 import time
 
