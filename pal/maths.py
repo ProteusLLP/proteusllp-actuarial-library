@@ -228,12 +228,23 @@ def cumsum(x: StochasticScalar) -> StochasticScalar: ...
 
 
 @t.overload
+def cumsum(x: list[StochasticScalar]) -> npt.NDArray[t.Any]: ...
+
+
+@t.overload
 def cumsum(x: t.Any) -> t.Any: ...
 
 
 def cumsum(x: t.Any) -> t.Any:
-    """Cumulative sum that preserves PAL types."""
-    return xp.cumsum(x)
+    """Cumulative sum that preserves PAL types.
+
+    When given a list of StochasticScalar objects, stacks their values
+    into a 2D array and computes cumsum along axis 0.
+    """
+    # Handle list of StochasticScalar objects
+    if isinstance(x, list) and len(x) > 0 and hasattr(x[0], "values"):  # type: ignore[attr-defined]
+        return xp.cumsum(xp.stack([item.values for item in x], axis=0), axis=0)  # type: ignore[reportUnknownVariableType]
+    return xp.cumsum(x)  # type: ignore[reportUnknownVariableType]
 
 
 @t.overload

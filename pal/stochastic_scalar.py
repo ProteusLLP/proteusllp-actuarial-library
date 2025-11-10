@@ -156,6 +156,19 @@ class StochasticScalar(ProteusStochasticVariable):
         result = getattr(ufunc, method)(*_inputs, **kwargs)
         return self._wrap_result_with_coupling(result, inputs)
 
+    def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:
+        """Convert the StochasticScalar to a numpy array.
+
+        Args:
+            dtype: The desired data type of the output array.
+
+        Returns:
+            A numpy array representation of the StochasticScalar values.
+        """
+        if dtype:
+            return self.values.astype(dtype)
+        return self.values
+
     def __getitem__(self, index: ScipyNumeric | StochasticScalar) -> StochasticScalar:
         # FIXME: Type signature inconsistent with SequenceLike protocol and runtime
         # - SequenceLike expects __getitem__(int) -> T_co (should return float)
