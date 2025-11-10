@@ -223,7 +223,7 @@ class StochasticScalar(ProteusStochasticVariable):
         return float(xp.sum(self.values))
 
     def std(self) -> float:
-        """Return the standard deviation of the variable across the simulation dimension."""
+        """Return the standard deviation across the simulation dimension."""
         return float(xp.std(self.values))
 
     def percentile(self, p: NumberOrList) -> NumberOrList:
