@@ -1,5 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
-
+# type: ignore
 """
 Over-Dispersed Poisson (ODP) Bayesian Posterior Predictive Model
 ================================================================
@@ -40,6 +39,12 @@ class ODPModel:
         self.obs_mask: np.ndarray = observed_mask(self.triangle)
         self.triangle[~self.obs_mask] = np.nan
         self.cumtri = cumulative_triangle(self.triangle)
+        self.origin_periods = [str(i) for i in range(1, self.n + 1)]
+        self.dev_periods = [str(j) for j in range(1, self.n + 1)]
+        self.future_dev_periods = {
+            str(op): [str(j) for j in range(self.n - op + 2, self.n + 1)]
+            for op in range(1, self.n + 1)
+        }
 
     # ---------------------------------------------------------
     # Step 1: estimate dispersion φ̂
@@ -134,7 +139,7 @@ class ODPModel:
     # ---------------------------------------------------------
     # Step 3: simulate predictive distribution
     # ---------------------------------------------------------
-    def simulate_reserves(self):
+    def simulate_reserves(self) -> StochasticScalar:
         """Simulate the predictive distribution of future claims.
 
         Returns:
@@ -142,19 +147,16 @@ class ODPModel:
         """
         self.estimate_phi()
         self.build_posterior()
-        n, phi = self.n, self.phi
-        total = StochasticScalar(np.zeros_like(self.mu[0].values))
+        phi = self.phi
         total_by_origin: ProteusVariable[StochasticScalar] = ProteusVariable("op", {})
 
-        for i in range(2, n + 1):
-            total_by_origin.values[str(i)] = 0.0  # type: ignore[assignment]
-            for j in range(n - i + 2, n + 1):
-                mean_ij = self.mu[str(i)] * self.betas[str(j)]
-                lam = mean_ij / phi
-                x_ij = distributions.Gamma(
-                    lam, 1
-                ).generate()  # use a Gamma distribution as the forecasting distribution
-                total_by_origin.values[str(i)] = total_by_origin[str(i)] + phi * x_ij  # type: ignore[assignment]
+        for op in self.origin_periods:
+            total_by_origin[op] = 0.0
+            for dp in self.future_dev_periods[op]:
+                x_ij = distributions.Poisson(
+                    self.mu[op] * self.betas[dp] / phi
+                ).generate()  # could also use a Gamma as the forecasting distribution
+                total_by_origin[op] = total_by_origin[op] + phi * x_ij
 
         total = total_by_origin.sum()
         self.total_future_claims = total
@@ -212,7 +214,7 @@ if __name__ == "__main__":
     import pandas as pd
     import plotly.graph_objects as go
 
-    triangle = pd.read_csv(  # type: ignore
+    triangle = pd.read_csv(
         "data/reserve_risk/claims_triangle.csv", index_col=0
     ).to_numpy()
 
@@ -230,10 +232,10 @@ if __name__ == "__main__":
                 name=f"Origin Period {i}",
             )
         )
-        fig.update_layout(  # type: ignore
+        fig.update_layout(
             title="Predictive CDFs of Future Claims by Origin Period",
             xaxis_title="Future Claims Payments",
             yaxis_title="Cumulative Probability",
         )
-    print("Plotting predictive CDFs by origin period...")
-    fig.show()  # type: ignore[attr-defined]
+    print("Displaying predictive CDF plot...")
+    fig.show()
