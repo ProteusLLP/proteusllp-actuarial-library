@@ -174,14 +174,14 @@ class ODPModel:
         if percentiles is None:
             percentiles = [0.5, 1, 2.5, 5, 10, 50, 90, 95, 99, 99.5]
         x = self.total_future_claims
-        mean, sd = pnp.mean(x), np.sqrt(pnp.var(x))
+        mean, sd = x.mean(), x.std()
         cv = sd / mean
         print("\nBayesian ODP predictive reserve distribution:")
         print(f"Dispersion φ̂ = {self.phi:,.2f}")
         print(f"Mean  = {mean:,.0f}")
         print(f"SD    = {sd:,.0f}")
         print(f"CV    = {100 * cv:.1f}%")
-        claims_percentiles = pnp.percentile(x, percentiles)
+        claims_percentiles: list[float] = x.percentile(percentiles)  # type: ignore
         for p, v in zip(percentiles, claims_percentiles, strict=False):
             print(f"{p:>5.1f}th = {v:,.0f}")
         return {"mean": mean, "sd": sd, "cv": cv}
@@ -224,11 +224,11 @@ if __name__ == "__main__":
     total_future_claims_by_origin = model.total_future_claims_by_origin
 
     fig = go.Figure()
-    for i in model.origin_periods[1:]:
+    for i in range(2, model.n + 1):
         fig.add_trace(
             go.Scatter(
-                x=np.sort(total_future_claims_by_origin[i].tolist())[::100],
-                y=np.linspace(0, 1, config.n_sims // 100),
+                x=np.sort(total_future_claims_by_origin[str(i)].tolist()),  # type: ignore
+                y=np.linspace(0, 1, config.n_sims),
                 name=f"Origin Period {i}",
             )
         )
