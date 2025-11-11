@@ -153,9 +153,9 @@ class ODPModel:
         for op in self.origin_periods:
             total_by_origin[op] = 0.0
             for dp in self.future_dev_periods[op]:
-                x_ij = distributions.Gamma(
-                    self.mu[op] * self.betas[dp] / phi, 1
-                ).generate()  # use a Gamma distribution as the forecasting distribution
+                x_ij = distributions.Poisson(
+                    self.mu[op] * self.betas[dp] / phi
+                ).generate()  # could also use a Gamma as the forecasting distribution
                 total_by_origin[op] = total_by_origin[op] + phi * x_ij
 
         total = total_by_origin.sum()
@@ -227,8 +227,8 @@ if __name__ == "__main__":
     for i in model.origin_periods[1:]:
         fig.add_trace(
             go.Scatter(
-                x=np.sort(total_future_claims_by_origin[i].tolist()),
-                y=np.linspace(0, 1, config.n_sims),
+                x=np.sort(total_future_claims_by_origin[i].tolist())[::100],
+                y=np.linspace(0, 1, config.n_sims // 100),
                 name=f"Origin Period {i}",
             )
         )
