@@ -14,6 +14,7 @@ from abc import ABC, abstractmethod
 # Third-party imports
 import numpy.typing as npt
 import scipy.stats.distributions as distributions  # type: ignore [import-untyped]
+from scipy.special import gamma
 
 from . import ProteusVariable, StochasticScalar
 from ._maths import special
@@ -565,6 +566,148 @@ class MM1Copula(Copula):
             {
                 f"{type(self).__name__}_{i}": StochasticScalar(sample)
                 for i, sample in enumerate(uniform_samples)
+            },
+        )
+        for val in result:
+            # All values are StochasticScalar from the generic type annotation
+            first_scalar = result[0]
+            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
+        return result
+
+
+class GalambosCopula(Copula):
+    """A class to represent a Galambos copula.
+
+    The Galambos copula is an example of a multivariate extreme value copula,
+    which is particularly suited for modeling upper tail dependence between
+    random variables.
+
+    Its dependence structure is characterized by a single parameter, theta>0,
+    which controls the strength of the upper tail dependence.
+
+    The tail dependence coefficient between any pair of variables in the
+    Galambos copula is given by 2^(-1/theta),
+
+    References:
+        Galambos, János. The Asymptotic Theory of Extreme Order Statistics. New York:
+        John Wiley & Sons, 1978.
+    """
+
+    def __init__(self, theta: float, d: int) -> None:
+        """Initialize a Galambos copula.
+
+        Args:
+            theta: Copula parameter (must be > 0).
+            d: Number of variables.
+        """
+        if theta <= 0:
+            raise ValueError("Theta must be in the range (0, inf)")
+        self.theta = theta
+        self.d = d
+        """Compute c_theta for the Galambos copula in dimension d.
+        S^{-1}(t) = c_theta * t^{-theta}.
+        """
+        num = gamma(d) * gamma(1.0 / theta)
+        den = gamma(d + 1.0 / theta) * theta
+        self.c_theta = (num / den) ** (-theta)
+
+    def _generate_unnormalised(
+        self, n_sims: int, rng: np.random.Generator
+    ) -> npt.NDArray[np.floating]:
+        """Vectorised simulation from the d-dimensional Galambos copula.
+
+        Exact algorithm based on the max stable / reciprocal Archimedean
+        representation in Mai (2018).
+
+        Mai, Jan-Frederik. “Exact Simulation of Reciprocal Archimedean Copulas.”
+        Statistical Probability Letters (2018). arXiv preprint arXiv:1802.09996
+
+
+        Args:
+            n_sims: Number of samples.
+            rng : np.random.Generator, optional
+            Random generator.
+
+        Returns:
+        u : ndarray, shape (d, n)
+            Samples on (0, 1)^d with Galambos copula.
+        """
+        d = self.d
+        # Independence shortcut if needed
+        if self.theta < 1e-4:
+            return rng.uniform(0, 1, size=(self.d, n_sims))
+
+        inv_theta = 1.0 / self.theta
+        c_th = self.c_theta
+
+        # Y holds the max stable representation for all samples
+        y = np.zeros((self.d, n_sims))
+
+        # Each row has its own Poisson process time T and radius R
+        # First jump times T ~ Exp(1)
+        t = rng.exponential(scale=1.0, size=n_sims)
+        r = c_th * (t ** (-self.theta))
+
+        # Loop over series terms, updating all active samples together
+        while True:
+            # For each sample, check whether the current radius still matters
+            y_min = y.min(axis=0)
+            active = r > y_min
+
+            if not np.any(active):
+                break  # all series truncated
+
+            m = active.sum()
+
+            # Directions on simplex for active samples: iid exponentials
+            e = rng.exponential(scale=1.0, size=(d, m))
+            e_sum = e.sum(axis=0, keepdims=True)
+
+            # Candidate contribution for Y on active rows
+            val = r[active] * e / e_sum
+
+            # Update Y on active rows with elementwise max
+            y_active = y[:, active]
+            np.maximum(y_active, val, out=y_active)
+            y[:, active] = y_active
+
+            # Advance the Poisson times and radii for active rows only
+            t[active] += rng.exponential(scale=1.0, size=m)
+            r[active] = c_th * (t[active] ** (-self.theta))
+
+        # Map max stable representation to uniforms:
+        # U_i = exp( - Y_i^{-1/theta} )
+        u = np.exp(-(y ** (-inv_theta)))
+        return u
+
+    def generate(
+        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate samples from the Galambos copula.
+
+        Exact algorithm based on the max stable / reciprocal Archimedean
+        representation in Mai (2018).
+
+        Mai, Jan-Frederik. “Exact Simulation of Reciprocal Archimedean Copulas.”
+        Statistical Probability Letters (2018). arXiv preprint arXiv:1802.09996
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+
+        Returns:
+            ProteusVariable with StochasticScalar values representing samples from the
+            Galambos copula.
+        """
+        if n_sims is None:
+            n_sims = config.n_sims
+        if rng is None:
+            rng = config.rng
+        u = self._generate_unnormalised(n_sims, rng)
+        result = ProteusVariable[StochasticScalar](
+            "dim1",
+            {
+                f"{type(self).__name__}_{i}": StochasticScalar(sample)
+                for i, sample in enumerate(u)
             },
         )
         for val in result:
