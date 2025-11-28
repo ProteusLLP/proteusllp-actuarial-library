@@ -10,7 +10,7 @@ import pytest
 import scipy
 import scipy.special
 import scipy.stats  # ignore:import-untyped
-from pal import copulas, distributions
+from pal import config, copulas, distributions
 from pal.variables import ProteusVariable, StochasticScalar
 
 
@@ -117,10 +117,17 @@ def test_clayton_copula_apply(alpha: float):
 
 @pytest.mark.parametrize("theta", [1.001, 1.25, 2.2, 5])
 def test_gumbel_copula(theta: float):
-    samples = copulas.GumbelCopula(theta, 2).generate(100000)
+    samples = copulas.GumbelCopula(theta, 2).generate(1000000)
     # calculate the Kendall's tau value
     k = scipy.stats.kendalltau(samples[0].values, samples[1].values).statistic
     assert np.isclose(k, 1 - 1 / theta, atol=1e-2)
+    # test the tail dependence
+    expected_tail_dependence = 2 - 2 ** (1 / theta)
+    threshold = 0.995
+    u_exceed = (samples[0] > threshold).mean()
+    both_exceed = ((samples[0] > threshold) * (samples[1] > threshold)).mean()
+    estimated_tail_dependence = both_exceed / u_exceed
+    assert np.isclose(estimated_tail_dependence, expected_tail_dependence, atol=1e-2)
     # test the margins
     copula_margins(samples)
 
@@ -175,4 +182,44 @@ def test_frank_copula(theta: float):
         atol=1e-2,
     )
     # test the margins
+    copula_margins(samples)
+
+
+@pytest.mark.parametrize("theta", [1.01, 1.25, 2])
+@pytest.mark.parametrize(
+    "delta_matrix",
+    [[[1, None], [2.2, 1]], [[None, None, None], [1.2, None, None], [1.5, 2.5, None]]],
+)
+def test_mm1_copula(delta_matrix: list[list[float]], theta: float):
+    config.rng = np.random.default_rng(12345678)
+
+    samples = copulas.MM1Copula(delta_matrix=delta_matrix, theta=theta).generate(
+        1_000_000
+    )
+    # calculate the tail dependency coefficient of each bivariate margin
+    threshold = 0.99
+    upper_tail_coefficient = [
+        [((u > threshold) * (v > threshold)).mean() / (1 - threshold) for u in samples]
+        for v in samples
+    ]
+
+    def mm1_tail_coeff(delta_ij: float, theta: float, d: int):
+        """Calculate the upper tail dependence coefficient for MM1 copula."""
+        return 2 - (
+            ((2 ** (1 / delta_ij)) / (d - 1) + 2 * (d - 2) / (d - 1)) ** (1 / theta)
+        )
+
+    expected_tail_coefficients = [
+        [mm1_tail_coeff(delta_matrix[i][j], theta, len(delta_matrix)) for j in range(i)]
+        for i in range(0, len(delta_matrix))
+    ]
+    for i in range(1, len(delta_matrix)):
+        for j in range(i):
+            if i != j:
+                assert np.isclose(
+                    upper_tail_coefficient[i][j],
+                    expected_tail_coefficients[i][j],
+                    atol=5e-2,
+                )
+
     copula_margins(samples)
