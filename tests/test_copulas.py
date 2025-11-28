@@ -185,6 +185,29 @@ def test_frank_copula(theta: float):
     copula_margins(samples)
 
 
+@pytest.mark.parametrize("theta", [0.00001, 0.1, 0.5, 2, 4])
+def test_galambos_copula(theta: float):
+    config.rng = np.random.default_rng(42)
+    samples = copulas.GalambosCopula(theta, 2).generate(100000)
+    # test the tail dependence
+    expected_tail_dependence = 2 ** (-1 / theta)
+    threshold = 0.995
+    u_exceed = (samples[0] > threshold).mean()
+    both_exceed = ((samples[0] > threshold) * (samples[1] > threshold)).mean()
+    estimated_tail_dependence = both_exceed / u_exceed
+    assert np.isclose(estimated_tail_dependence, expected_tail_dependence, atol=4e-2)
+
+    # calculate the Blomqvist's beta value
+    beta = 4 * ((samples[0] <= 0.5) * (samples[1] <= 0.5)).mean() - 1
+    assert np.isclose(
+        beta,
+        2 ** (2 ** (-1 / theta)) - 1,
+        atol=1e-2,
+    )
+    # test the margins
+    copula_margins(samples)
+
+
 @pytest.mark.parametrize("theta", [1.01, 1.25, 2])
 @pytest.mark.parametrize(
     "delta_matrix",
