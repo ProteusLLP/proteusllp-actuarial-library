@@ -469,6 +469,111 @@ class JoeCopula(ArchimedeanCopula):
         return _sibuya_gen(1 / self.theta, n_sims, rng)
 
 
+class MM1Copula(Copula):
+    """A multivariate max-mixture copula, denoted MM1 by Joe.
+
+    The MM1 copula is a multivariate copula which allows for different tail dependence
+    structures between each pair of dimensions. It can be regarded as an extension of
+    the Gumbel copula to more flexible dependence.
+
+    The simulation approach uses the max-mixture representation of the MM1 copula,
+    detailed in Joe (2015, Chapter 6).
+
+    References:
+        Joe, H. (1997). Multivariate Models and Dependence Concepts. Chapman and Hall.
+        Joe, H. (2015). Dependence Modeling with Copulas. Chapman and Hall.
+    """
+
+    delta_matrix: list[list[float]]
+    """The matrix of pairwise parameters of the underlying Gumbel copulas"""
+    theta: float
+    """The theta parameter of the overall mixing variable"""
+
+    def __init__(self, delta_matrix: list[list[float]], theta: float):
+        """Initialise the MM1 Copula.
+
+        Args:
+            delta_matrix: A matrix of coefficients controling the tail dependence
+                between each pair of dimensions. Must be >= 1. Note that only
+                the lower diagonal of this matrix is used.
+            theta: Mixing parameter. Controls the overall dependence level.
+                Must be greater than one.
+        """
+        self.n = len(delta_matrix)
+        for i in range(1, self.n):
+            if len(delta_matrix[i]) != self.n:
+                raise ValueError("delta_matrix must be square")
+            if max(delta_matrix[i][:i]) < 1:
+                raise ValueError("delta_matrix must be less than or equal to 1")
+        self.delta_matrix = delta_matrix
+        self.theta = theta
+
+    def _generate_unnormalised(
+        self, n_sims: int, rng: np.random.Generator
+    ) -> npt.NDArray[np.floating]:
+        n = self.n
+        theta = self.theta
+        delta_matrix = self.delta_matrix
+        max_u = np.zeros((n, n_sims))
+        mixing_variable = levy_stable(
+            alpha=1 / theta, beta=1.0, size=n_sims, rng=rng
+        ) * (np.cos(np.pi / (2 * theta)) ** theta)
+        # generate the pairwise Gumbel copulas
+        for j in range(n):
+            for i in range(j + 1, n):
+                uv = GumbelCopula(delta_matrix[i][j], 2).generate(n_sims, rng)
+                u = uv[0].values
+                v = uv[1].values
+                max_u[i] = np.maximum(max_u[i], u)
+                max_u[j] = np.maximum(max_u[j], v)
+        v = max_u ** ((n - 1) / mixing_variable)
+        return v
+
+    def generate(
+        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate samples from a multivariate max-mixture copula, denoted MM1 by Joe.
+
+        The MM1 copula is a multivariate copula which allows for different tail
+        dependence structures between each pair of dimensions. It can be regarded as an
+        extension of the Gumbel copula to more general tail dependence.
+
+        The simulation approach uses the max-mixture representation of the MM1 copula,
+        detailed in Joe (2015, Chapter 6).
+
+        References:
+        Joe, H. (1997). Multivariate Models and Dependence Concepts. Chapman and Hall.
+        Joe, H. (2015). Dependence Modeling with Copulas. Chapman and Hall.
+
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+
+        Returns:
+            ProteusVariable containing VectorLike values (typically StochasticScalar)
+                with uniform marginal distributions on [0,1] and the copula's
+                dependency structure.
+        """
+        if n_sims is None:
+            n_sims = config.n_sims
+        if rng is None:
+            rng = config.rng
+        v = self._generate_unnormalised(n_sims, rng)
+        uniform_samples = np.exp(-((-np.log(v)) ** (1 / self.theta)))
+        result = ProteusVariable[StochasticScalar](
+            "dim1",
+            {
+                f"{type(self).__name__}_{i}": StochasticScalar(sample)
+                for i, sample in enumerate(uniform_samples)
+            },
+        )
+        for val in result:
+            # All values are StochasticScalar from the generic type annotation
+            first_scalar = result[0]
+            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
+        return result
+
+
 def _sibuya_gen(
     alpha: float, size: int | tuple[int, ...], rng: np.random.Generator
 ) -> npt.NDArray[np.floating]:
