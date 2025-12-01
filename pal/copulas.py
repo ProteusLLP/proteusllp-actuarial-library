@@ -604,12 +604,6 @@ class GalambosCopula(Copula):
             raise ValueError("Theta must be in the range (0, inf)")
         self.theta = theta
         self.d = d
-        """Compute c_theta for the Galambos copula in dimension d.
-        S^{-1}(t) = c_theta * t^{-theta}.
-        """
-        num = gamma(d) * gamma(1.0 / theta)
-        den = gamma(d + 1.0 / theta) * theta
-        self.c_theta = (num / den) ** (-theta)
 
     def _generate_unnormalised(
         self, n_sims: int, rng: np.random.Generator
@@ -619,6 +613,7 @@ class GalambosCopula(Copula):
         Exact algorithm based on the max stable / reciprocal Archimedean
         representation in Mai (2018).
 
+        References:
         Mai, Jan-Frederik. “Exact Simulation of Reciprocal Archimedean Copulas.”
         Statistical Probability Letters (2018). arXiv preprint arXiv:1802.09996
 
@@ -636,9 +631,14 @@ class GalambosCopula(Copula):
         # Independence shortcut if needed
         if self.theta < 1e-4:
             return rng.uniform(0, 1, size=(self.d, n_sims))
+        num = gamma(d) * gamma(1.0 / self.theta)
+        den = gamma(d + 1.0 / self.theta) * self.theta
+        # Compute c_theta for the Galambos copula in dimension d.
+        # S^{-1}(t) = c_theta * t^{-theta}.
+        c_theta = (num / den) ** (-self.theta)
 
         inv_theta = 1.0 / self.theta
-        c_th = self.c_theta
+        c_th = c_theta
 
         # Y holds the max stable representation for all samples
         y = np.zeros((self.d, n_sims))
@@ -697,6 +697,95 @@ class GalambosCopula(Copula):
         Returns:
             ProteusVariable with StochasticScalar values representing samples from the
             Galambos copula.
+        """
+        if n_sims is None:
+            n_sims = config.n_sims
+        if rng is None:
+            rng = config.rng
+        u = self._generate_unnormalised(n_sims, rng)
+        result = ProteusVariable[StochasticScalar](
+            "dim1",
+            {
+                f"{type(self).__name__}_{i}": StochasticScalar(sample)
+                for i, sample in enumerate(u)
+            },
+        )
+        for val in result:
+            # All values are StochasticScalar from the generic type annotation
+            first_scalar = result[0]
+            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
+        return result
+
+
+class PlackettCopula(Copula):
+    """A class to represent a Plackett copula.
+
+    The Plackett copula is a bivariate copula that can model both positive and
+    negative dependence between two random variables. It is characterized by a
+    single parameter, delta>0, which controls the strength and direction of the
+    dependence.
+
+    References:
+        Plackett, R. L. (1965). A class of bivariate distributions. Journal of the
+        American Statistical Association, 60(310), 516-522.
+    """
+
+    def __init__(self, delta: float) -> None:
+        """Initialize a Plackett copula.
+
+        Args:
+            delta: Copula parameter (must be > 0).
+        """
+        if delta <= 0:
+            raise ValueError("Delta must be in the range (0, inf)")
+        self.delta = delta
+
+    def _generate_unnormalised(
+        self, n_sims: int, rng: np.random.Generator
+    ) -> npt.NDArray[np.floating]:
+        """Generate samples from the Plackett copula.
+
+        Args:
+            n_sims: Number of samples.
+            rng : np.random.Generator, optional
+            Random generator.
+
+        Returns:
+        u : ndarray, shape (2, n)
+            Samples on (0, 1)^2 with Plackett copula.
+        """
+        u = rng.uniform(0, 1, size=(n_sims))
+        w = rng.uniform(0, 1, size=(n_sims))
+        if self.delta == 1:
+            v = w
+            return np.vstack((u, v))
+        a = w * (1 - w)
+        delta = self.delta
+        b = delta + a * (delta - 1) ** 2
+        c = 2 * a * (u * delta**2 + 1 - u) + delta * (1 - 2 * a)
+        d = np.sqrt(delta * (delta + 4 * a * u * (1 - u) * (1 - delta) ** 2))
+        v = (c - (1 - 2 * w) * d) / (2 * b)
+
+        return np.vstack((u, v))
+
+    def generate(
+        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate samples from the Plackett copula.
+
+        This uses the exact simulation algorithm for the Plackett copula from Johnson
+        (1987).
+
+        References:
+        Johnson ME (1987) Multivariate Statistical Simulation. J. Wiley & Sons, New York
+
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+
+        Returns:
+            ProteusVariable with StochasticScalar values representing samples from the
+            Plackett copula.
         """
         if n_sims is None:
             n_sims = config.n_sims
