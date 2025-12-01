@@ -208,6 +208,23 @@ def test_galambos_copula(theta: float):
     copula_margins(samples)
 
 
+@pytest.mark.parametrize("delta", [0.1, 0.5, 2, 5, 10])
+def test_plackett_copula(delta: float):
+    samples = copulas.PlackettCopula(delta).generate(100000)
+    # calculate the Kendall's tau value
+    r = scipy.stats.spearmanr(samples[0].values, samples[1].values).statistic
+    expected_result = (delta + 1) / (delta - 1) - (2 * delta * np.log(delta)) / (
+        (delta - 1) ** 2
+    )
+    assert np.isclose(
+        r,
+        expected_result,
+        atol=1e-2,
+    )
+    # test the margins
+    copula_margins(samples)
+
+
 @pytest.mark.parametrize("theta", [1.01, 1.25, 2])
 @pytest.mark.parametrize(
     "delta_matrix",
