@@ -68,6 +68,70 @@ class Copula(ABC):
         """
         raise NotImplementedError("Subclasses must implement this method.")
 
+    def _transform_to_uniform(
+        self, unnormalised_samples: npt.NDArray[np.floating]
+    ) -> npt.NDArray[np.floating]:
+        """Transform unnormalised samples to uniform [0,1].
+
+        Override this in subclasses that need custom transformations.
+        Default implementation assumes samples are already uniform.
+
+        Args:
+            unnormalised_samples: Array of samples from the underlying distribution.
+
+        Returns:
+            Array of uniform samples on [0,1].
+        """
+        return unnormalised_samples
+
+    def _create_result_from_uniform(
+        self, uniform_samples: npt.NDArray[np.floating]
+    ) -> ProteusVariable[StochasticScalar]:
+        """Create ProteusVariable result from uniform samples with coupled groups.
+
+        Args:
+            uniform_samples: Array of uniform samples on [0,1].
+
+        Returns:
+            ProteusVariable with StochasticScalar values and merged coupling groups.
+        """
+        result = ProteusVariable[StochasticScalar](
+            "dim1",
+            {
+                f"{type(self).__name__}_{i}": StochasticScalar(sample)
+                for i, sample in enumerate(uniform_samples)
+            },
+        )
+        # Merge all variables into the same coupled group
+        first_scalar = result[0]
+        for val in result:
+            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
+        return result
+
+    def _generate_base(
+        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Base implementation of generate with common boilerplate.
+
+        Subclasses can call this from their generate() method to avoid repetition
+        while maintaining individual docstrings.
+
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+
+        Returns:
+            ProteusVariable with StochasticScalar values representing copula samples.
+        """
+        if n_sims is None:
+            n_sims = config.n_sims
+        if rng is None:
+            rng = config.rng
+
+        unnormalised = self._generate_unnormalised(n_sims, rng)
+        uniform_samples = self._transform_to_uniform(unnormalised)
+        return self._create_result_from_uniform(uniform_samples)
+
     def apply(
         self, variables: ProteusVariable[StochasticScalar] | list[StochasticScalar]
     ) -> None:
@@ -155,30 +219,17 @@ class GaussianCopula(EllipticalCopula):
         """
         super().__init__(matrix, matrix_type=matrix_type)
 
+    def _transform_to_uniform(
+        self, unnormalised_samples: npt.NDArray[np.floating]
+    ) -> npt.NDArray[np.floating]:
+        """Transform normal samples to uniform using CDF."""
+        return special.ndtr(unnormalised_samples)
+
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
     ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from the Gaussian copula."""
-        if n_sims is None:
-            n_sims = config.n_sims
-        if rng is None:
-            rng = config.rng
-
-        # Generate samples from a multivariate normal distribution
-        samples = self._generate_unnormalised(n_sims, rng)
-        uniform_samples = special.ndtr(samples)
-        result = ProteusVariable[StochasticScalar](
-            "dim1",
-            {
-                f"{type(self).__name__}_{i}": StochasticScalar(sample)
-                for i, sample in enumerate(uniform_samples)
-            },
-        )
-        for val in result:
-            # All values are StochasticScalar from the generic type annotation
-            first_scalar = result[0]
-            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
-        return result
+        return self._generate_base(n_sims, rng)
 
     def _generate_unnormalised(
         self, n_sims: int, rng: np.random.Generator
@@ -209,23 +260,17 @@ class StudentsTCopula(EllipticalCopula):
             raise ValueError("Degrees of Freedom must be positive")
         self.dof = dof
 
+    def _transform_to_uniform(
+        self, unnormalised_samples: npt.NDArray[np.floating]
+    ) -> npt.NDArray[np.floating]:
+        """Transform t-distributed samples to uniform using CDF."""
+        return distributions.t(self.dof).cdf(unnormalised_samples)
+
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
     ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from the Student's T copula."""
-        if n_sims is None:
-            n_sims = config.n_sims
-        if rng is None:
-            rng = config.rng
-        t_samples = self._generate_unnormalised(n_sims, rng)
-        uniform_samples = distributions.t(self.dof).cdf(t_samples)
-        return ProteusVariable[StochasticScalar](
-            "dim1",
-            {
-                f"{type(self).__name__}_{i}": StochasticScalar(sample)
-                for i, sample in enumerate(uniform_samples)
-            },
-        )
+        return self._generate_base(n_sims, rng)
 
     def _generate_unnormalised(
         self, n_sims: int, rng: np.random.Generator
@@ -259,25 +304,17 @@ class ArchimedeanCopula(Copula, ABC):
         """
         self.n = n
 
+    def _transform_to_uniform(
+        self, unnormalised_samples: npt.NDArray[np.floating]
+    ) -> npt.NDArray[np.floating]:
+        """Transform using inverse generator function."""
+        return self.generator_inv(-unnormalised_samples)
+
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
     ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from the Archimedean copula."""
-        if rng is None:
-            rng = config.rng
-        copula_samples = self.generator_inv(-self._generate_unnormalised(n_sims, rng))
-        result = ProteusVariable[StochasticScalar](
-            "dim1",
-            {
-                f"{type(self).__name__}_{i}": StochasticScalar(sample)
-                for i, sample in enumerate(copula_samples)
-            },
-        )
-        for val in result:
-            # All values are StochasticScalar from the generic type annotation
-            first_scalar: StochasticScalar = result[0]
-            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
-        return result
+        return self._generate_base(n_sims, rng)
 
     def _generate_unnormalised(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
@@ -509,6 +546,12 @@ class MM1Copula(Copula):
         self.delta_matrix = delta_matrix
         self.theta = theta
 
+    def _transform_to_uniform(
+        self, unnormalised_samples: npt.NDArray[np.floating]
+    ) -> npt.NDArray[np.floating]:
+        """Transform max-mixture samples to uniform."""
+        return np.exp(-((-np.log(unnormalised_samples)) ** (1 / self.theta)))
+
     def _generate_unnormalised(
         self, n_sims: int, rng: np.random.Generator
     ) -> npt.NDArray[np.floating]:
@@ -555,24 +598,7 @@ class MM1Copula(Copula):
                 with uniform marginal distributions on [0,1] and the copula's
                 dependency structure.
         """
-        if n_sims is None:
-            n_sims = config.n_sims
-        if rng is None:
-            rng = config.rng
-        v = self._generate_unnormalised(n_sims, rng)
-        uniform_samples = np.exp(-((-np.log(v)) ** (1 / self.theta)))
-        result = ProteusVariable[StochasticScalar](
-            "dim1",
-            {
-                f"{type(self).__name__}_{i}": StochasticScalar(sample)
-                for i, sample in enumerate(uniform_samples)
-            },
-        )
-        for val in result:
-            # All values are StochasticScalar from the generic type annotation
-            first_scalar = result[0]
-            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
-        return result
+        return self._generate_base(n_sims, rng)
 
 
 class GalambosCopula(Copula):
@@ -614,7 +640,7 @@ class GalambosCopula(Copula):
         representation in Mai (2018).
 
         References:
-        Mai, Jan-Frederik. “Exact Simulation of Reciprocal Archimedean Copulas.”
+        Mai, Jan-Frederik. "Exact Simulation of Reciprocal Archimedean Copulas."
         Statistical Probability Letters (2018). arXiv preprint arXiv:1802.09996
 
 
@@ -688,8 +714,9 @@ class GalambosCopula(Copula):
         Exact algorithm based on the max stable / reciprocal Archimedean
         representation in Mai (2018).
 
-        Mai, Jan-Frederik. “Exact Simulation of Reciprocal Archimedean Copulas.”
+        Mai, Jan-Frederik. "Exact Simulation of Reciprocal Archimedean Copulas."
         Statistical Probability Letters (2018). arXiv preprint arXiv:1802.09996
+
         Args:
             n_sims: Number of simulations to generate. Uses config.n_sims if None.
             rng: Random number generator. Uses config.rng if None.
@@ -698,23 +725,7 @@ class GalambosCopula(Copula):
             ProteusVariable with StochasticScalar values representing samples from the
             Galambos copula.
         """
-        if n_sims is None:
-            n_sims = config.n_sims
-        if rng is None:
-            rng = config.rng
-        u = self._generate_unnormalised(n_sims, rng)
-        result = ProteusVariable[StochasticScalar](
-            "dim1",
-            {
-                f"{type(self).__name__}_{i}": StochasticScalar(sample)
-                for i, sample in enumerate(u)
-            },
-        )
-        for val in result:
-            # All values are StochasticScalar from the generic type annotation
-            first_scalar = result[0]
-            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
-        return result
+        return self._generate_base(n_sims, rng)
 
 
 class PlackettCopula(Copula):
@@ -787,23 +798,7 @@ class PlackettCopula(Copula):
             ProteusVariable with StochasticScalar values representing samples from the
             Plackett copula.
         """
-        if n_sims is None:
-            n_sims = config.n_sims
-        if rng is None:
-            rng = config.rng
-        u = self._generate_unnormalised(n_sims, rng)
-        result = ProteusVariable[StochasticScalar](
-            "dim1",
-            {
-                f"{type(self).__name__}_{i}": StochasticScalar(sample)
-                for i, sample in enumerate(u)
-            },
-        )
-        for val in result:
-            # All values are StochasticScalar from the generic type annotation
-            first_scalar = result[0]
-            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
-        return result
+        return self._generate_base(n_sims, rng)
 
 
 def _sibuya_gen(
@@ -825,6 +820,185 @@ def _sibuya_gen(
     e = rng.exponential(1, size=size)
     u = r * e
     return (1 + rng.poisson(u, size=size)).astype(np.float64)
+
+
+class HuslerReissCopula(Copula):
+    """A class to represent a Husler-Reiss copula.
+
+    The Husler-Reiss copula is an example of a multivariate extreme value copula,
+    which is suited for modeling upper tail dependence between
+    random variables and allows for a flexible specification of tail dependency
+    for each bivariate pair of variables.
+
+    Its dependence structure is characterized by a correlation matrix R and variance
+    paramter sigma^2 which controls the strength of the upper tail dependence between
+    each pair of variables.
+
+    The upper tail dependence coefficient between any pair of variables i and j in the
+    Husler-Reiss copula is given by 2 * (1 - Phi( sqrt( sigma^2 * (1 - R_ij) ) / 2 )),
+    where Phi is the standard normal CDF.
+
+    References:
+        Husler, J., & Reiss, R. D. (1989). Maxima of normal random vectors: between
+        independence and complete dependence. Statistics & Probability Letters,
+        7(4), 283-286.
+    """
+
+    def __init__(
+        self,
+        correlation_matrix: npt.NDArray[np.floating] | list[list[float]],
+        sigma2: float,
+    ) -> None:
+        """Initialize a Husler-Reiss copula.
+
+        This implementation parameterises the Hüsler-Reiss copula via the covariance
+        structure of an underlying Gaussian vector W, also known as the Brown-Resnick
+        representation.
+
+        If R is a d x d correlation matrix and σ² > 0, and W ~ N(0, σ² R), the
+        associated Hüsler-Reiss parameters are
+
+            λ_ij² = Var(W_i - W_j) = 2 σ² (1 - R_ij).
+
+        The bivariate upper-tail dependence coefficient is
+
+            χ_ij = 2 (1 - Φ(λ_ij / 2)).
+
+        The parameters (R, σ²) uniquely determines the dependence structure of the
+        copula.
+
+        Args:
+            correlation_matrix: Symmetric correlation matrix R. Must be positive
+                semi-definite.
+            sigma2: The variance of the underlying Gaussian process. Must be >0.
+        """
+        correlation_matrix = np.asarray(correlation_matrix)
+        if (
+            correlation_matrix.ndim != 2
+            or correlation_matrix.shape[0] != correlation_matrix.shape[1]
+        ):
+            raise ValueError("Parameter matrix must be square")
+        if (correlation_matrix.max() > 1.0) or (correlation_matrix.min() < -1.0):
+            raise ValueError("Correlation matrix must have values in [-1, 1]")
+        if sigma2 <= 0:
+            raise ValueError("sigma2 must be positive")
+        self.correlation_matrix = correlation_matrix
+        self.d = correlation_matrix.shape[0]
+        self.sigma2 = sigma2
+        try:
+            self.chol = np.linalg.cholesky(correlation_matrix)
+        except np.linalg.LinAlgError as e:
+            raise ValueError("Correlation matrix is not positive semi-definite") from e
+
+    def _generate_unnormalised(
+        self, n_sims: int, rng: np.random.Generator
+    ) -> npt.NDArray[np.floating]:
+        """Exact simulation from a d-dimensional Hüsler–Reiss copula.
+
+        See Dombry-Engelke-Oesting (2016) Algorithm 2 (spectral measure on L1-sphere).
+
+        Parameters
+        ----------
+        n_sims : int
+            Number of samples to generate.
+        rng : np.random.Generator.
+
+        Returns:
+        -------
+        u : (d,n) ndarray
+            Samples from the Hüsler–Reiss copula.
+        """
+        r = self.correlation_matrix
+        d = r.shape[0]
+
+        # Cholesky for Gaussian simulation
+        chol = self.chol
+        sigma2 = self.sigma2
+        # Precompute sigma^2 (1 - R_ij) appearing in Proposition 4 / Remark 2
+        h = sigma2 * (1.0 - r)  # shape (d, d)
+
+        # Z will hold the unit Fréchet max-stable vector
+        z = np.zeros((n_sims, d), dtype=float)
+
+        # Poisson process in 1/zeta with rate = d (Alg. 2: Exp(N))
+        # So scale = 1 / rate = 1/d
+        zeta_inv = rng.exponential(scale=1.0 / d, size=n_sims)
+        zeta = 1.0 / zeta_inv
+
+        # Track which simulations are still active (have not met stopping criterion)
+        active = np.ones(n_sims, dtype=bool)
+
+        while np.any(active):
+            # Active indices
+            idx = np.where(active)[0]
+            na = idx.size
+
+            # Stopping rule: while zeta > min_j Z_j for each simulation
+            min_z = z[idx].min(axis=1)
+            still_active = zeta[idx] > min_z
+
+            if not np.any(still_active):
+                break
+
+            idx = idx[still_active]
+            na = idx.size
+
+            # 1. Sample anchor indices T ~ Uniform{0,...,d-1}
+            t = rng.integers(low=0, high=d, size=na)
+
+            # 2. Sample Gaussian W ~ N(0, sigma2 * R) for active sims
+            g = rng.standard_normal(size=(na, d))
+            w = np.sqrt(sigma2) * (g @ chol.T)  # shape (na, d)
+
+            # 3. Construct Y according to P_{x_T} (Proposition 4 / Remark 2):
+            #    Y_j = exp( W_j - W_T - H_{j,T} ) with H_{j,T} = sigma2 * (1 - R_{j,T}).
+            w_anchor = w[np.arange(na), t]  # (na,)
+            h_for_t = h[:, t].T  # (na, d), row r: H_{j, T_r}
+
+            logy = w - w_anchor[:, None] - h_for_t
+            y = np.exp(logy)  # shape (na, d)
+
+            # 4. Normalize onto the L1-sphere
+            y_sum = y.sum(axis=1, keepdims=True)
+            y /= y_sum
+
+            # 5. Update max-stable vector Z = max(Z, zeta * Y)
+            contrib = zeta[idx][:, None] * y
+            z[idx] = np.maximum(z[idx], contrib)
+
+            # 6. Next Poisson point: zeta^{-1} += Exp(rate = d)
+            e = rng.exponential(scale=1.0 / d, size=na)
+            zeta_inv[idx] += e
+            zeta[idx] = 1.0 / zeta_inv[idx]
+
+            # Update active mask for next round
+            min_z_new = z[idx].min(axis=1)
+            active[idx] = zeta[idx] > min_z_new
+
+        # Transform to unit uniform margins: U = exp(-1/Z)
+        u = np.exp(-1.0 / z)
+        return u.T
+
+    def generate(
+        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate samples from the Husler-Reiss copula.
+
+        The simulation uses the exact algorithm from Dombry-Engelke-Oesting (2016)
+
+        References:
+        Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
+        processes. Biometrika, 103
+
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+
+        Returns:
+            ProteusVariable with StochasticScalar values representing samples from the
+            Husler-Reiss copula.
+        """
+        return self._generate_base(n_sims, rng)
 
 
 def apply_copula(

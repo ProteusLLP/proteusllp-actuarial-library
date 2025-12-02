@@ -5,6 +5,7 @@ with ProteusVariable for dependency modeling in actuarial applications.
 """
 
 import numpy as np
+import numpy.typing as npt
 import pal.maths as pnp
 import pytest
 import scipy
@@ -211,8 +212,9 @@ def test_galambos_copula(theta: float):
 @pytest.mark.parametrize("delta", [0.1, 0.5, 2, 5, 10])
 def test_plackett_copula(delta: float):
     samples = copulas.PlackettCopula(delta).generate(100000)
-    # calculate the Kendall's tau value
+    # calculate the Spearman's rho value
     r = scipy.stats.spearmanr(samples[0].values, samples[1].values).statistic
+    # Theoretical Spearman's rho for Plackett copula
     expected_result = (delta + 1) / (delta - 1) - (2 * delta * np.log(delta)) / (
         (delta - 1) ** 2
     )
@@ -221,6 +223,42 @@ def test_plackett_copula(delta: float):
         expected_result,
         atol=1e-2,
     )
+    # test the margins
+    copula_margins(samples)
+
+
+@pytest.mark.parametrize("sigma2", [0.1, 0.5, 1.0, 2.0, 5])
+@pytest.mark.parametrize(
+    "corr_mat",
+    ([[1, 0.25], [0.25, 1]], [[1, 0.5, 0.25], [0.5, 1, 0.4], [0.25, 0.4, 1]]),
+)
+def test_huslerreiss_copula(corr_mat: list[list[float]], sigma2: float):
+    d = len(corr_mat)
+    samples = copulas.HuslerReissCopula(np.array(corr_mat), sigma2).generate(100000)
+    # test the tail dependence
+
+    def corr_sigma_to_a(
+        r: list[list[float]], sigma2: float = 1.0
+    ) -> npt.NDArray[np.floating]:
+        _r = np.asarray(r, dtype=float)
+        a2 = sigma2 * (1.0 - _r)
+        np.fill_diagonal(a2, 0.0)
+        a_mat = np.sqrt(np.maximum(a2, 0.0))
+        return a_mat
+
+    expected_tail_dependence: npt.NDArray[np.floating] = 2 * (  # type: ignore[reportUnknownVariableType]
+        1 - scipy.stats.norm.cdf(corr_sigma_to_a(corr_mat, sigma2) / np.sqrt(2))
+    )
+    threshold = 0.99
+    estimated_tail_dependence = [
+        [
+            ((samples[i] > threshold) & (samples[j] > threshold)).mean()
+            / (samples[i] > threshold).mean()
+            for i in range(d)
+        ]
+        for j in range(d)
+    ]
+    assert np.allclose(estimated_tail_dependence, expected_tail_dependence, atol=5e-2)  # type: ignore[reportUnknownVariableType]
     # test the margins
     copula_margins(samples)
 
