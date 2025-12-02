@@ -254,9 +254,9 @@ def test_huslerreiss_copula(corr_mat: list[list[float]], sigma2: float):
         [
             ((samples[i] > threshold) & (samples[j] > threshold)).mean()
             / (samples[i] > threshold).mean()
-            for i in range(d)
+            for j in range(d)
         ]
-        for j in range(d)
+        for i in range(d)
     ]
     assert np.allclose(estimated_tail_dependence, expected_tail_dependence, atol=5e-2)  # type: ignore[reportUnknownVariableType]
     # test the margins
@@ -293,11 +293,10 @@ def test_mm1_copula(delta_matrix: list[list[float]], theta: float):
     ]
     for i in range(1, len(delta_matrix)):
         for j in range(i):
-            if i != j:
-                assert np.isclose(
-                    upper_tail_coefficient[i][j],
-                    expected_tail_coefficients[i][j],
-                    atol=5e-2,
-                )
+            assert np.isclose(
+                upper_tail_coefficient[i][j],
+                expected_tail_coefficients[i][j],
+                atol=5e-2,
+            )
 
     copula_margins(samples)
