@@ -20,6 +20,7 @@ The following copulas are available for modeling dependencies:
 - **JoeCopula**: Joe copula for modeling upper tail dependence
 - **PlackettCopula**: Plackett copula for modeling symmetric dependencies
 - **GalambosCopula**: Galambos copula for modeling upper tail dependence
+- **HuslerReissCopula**: Hüsler-Reiss copula for flexible upper tail dependence structures
 - **MM1Copula**: Mixture of max-id copulas for flexible upper tail dependence structures
 
 Usage Example
