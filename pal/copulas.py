@@ -510,9 +510,17 @@ class JoeCopula(ArchimedeanCopula):
 class MM1Copula(Copula):
     """A multivariate max-mixture copula, denoted MM1 by Joe.
 
-    The MM1 copula is a multivariate copula which allows for different tail dependence
-    structures between each pair of dimensions. It can be regarded as an extension of
-    the Gumbel copula to more flexible dependence.
+    The MM1 copula is a multivariate copula which allows for different upper tail
+    dependence structures between each pair of dimensions. It can be regarded as an
+    extension of the Gumbel copula to more flexible dependence.
+
+    The upper tail dependence coefficient between any pair of variables i and j in the
+    MM1 copula is given by
+
+    2-(((2 ^ (1 / delta_ij)) / (d - 1) + 2 * (d - 2) / (d - 1)) ^ (1 / theta))
+
+    where delta_ij is the pairwise parameter from the delta_matrix, d is the
+    dimension of the copula, and theta is the overall mixing parameter.
 
     The simulation approach uses the max-mixture representation of the MM1 copula,
     detailed in Joe (2015, Chapter 6).
@@ -531,7 +539,7 @@ class MM1Copula(Copula):
         """Initialise the MM1 Copula.
 
         Args:
-            delta_matrix: A matrix of coefficients controling the tail dependence
+            delta_matrix: A matrix of coefficients controlling the tail dependence
                 between each pair of dimensions. Must be >= 1. Note that only
                 the lower diagonal of this matrix is used.
             theta: Mixing parameter. Controls the overall dependence level.
@@ -541,9 +549,11 @@ class MM1Copula(Copula):
         for i in range(1, self.n):
             if len(delta_matrix[i]) != self.n:
                 raise ValueError("delta_matrix must be square")
-            if max(delta_matrix[i][:i]) < 1:
-                raise ValueError("delta_matrix must be less than or equal to 1")
+            if min(delta_matrix[i][:i]) < 1:
+                raise ValueError("delta_matrix must be greater than or equal to 1")
         self.delta_matrix = delta_matrix
+        if theta < 1:
+            raise ValueError("Theta must be in the range [1, inf)")
         self.theta = theta
 
     def _transform_to_uniform(
@@ -823,23 +833,23 @@ def _sibuya_gen(
 
 
 class HuslerReissCopula(Copula):
-    """A class to represent a Husler-Reiss copula.
+    """A class to represent a Hüsler-Reiss copula.
 
-    The Husler-Reiss copula is an example of a multivariate extreme value copula,
+    The Hüsler-Reiss copula is an example of a multivariate extreme value copula,
     which is suited for modeling upper tail dependence between
     random variables and allows for a flexible specification of tail dependency
     for each bivariate pair of variables.
 
     Its dependence structure is characterized by a correlation matrix R and variance
-    paramter sigma^2 which controls the strength of the upper tail dependence between
+    parameter sigma^2 which controls the strength of the upper tail dependence between
     each pair of variables.
 
     The upper tail dependence coefficient between any pair of variables i and j in the
-    Husler-Reiss copula is given by 2 * (1 - Phi( sqrt( sigma^2 * (1 - R_ij) ) / 2 )),
+    Hüsler-Reiss copula is given by 2 * (1 - Phi( sqrt( sigma^2 * (1 - R_ij) ) / 2 )),
     where Phi is the standard normal CDF.
 
     References:
-        Husler, J., & Reiss, R. D. (1989). Maxima of normal random vectors: between
+        Hüsler, J., & Reiss, R. D. (1989). Maxima of normal random vectors: between
         independence and complete dependence. Statistics & Probability Letters,
         7(4), 283-286.
     """
@@ -849,7 +859,7 @@ class HuslerReissCopula(Copula):
         correlation_matrix: npt.NDArray[np.floating] | list[list[float]],
         sigma2: float,
     ) -> None:
-        """Initialize a Husler-Reiss copula.
+        """Initialize a Hüsler-Reiss copula.
 
         This implementation parameterises the Hüsler-Reiss copula via the covariance
         structure of an underlying Gaussian vector W, also known as the Brown-Resnick
@@ -880,15 +890,19 @@ class HuslerReissCopula(Copula):
             raise ValueError("Parameter matrix must be square")
         if (correlation_matrix.max() > 1.0) or (correlation_matrix.min() < -1.0):
             raise ValueError("Correlation matrix must have values in [-1, 1]")
+        if (correlation_matrix.diagonal() != 1.0).any():
+            raise ValueError("Correlation matrix must have 1s on the diagonal")
+        if not np.allclose(correlation_matrix, correlation_matrix.T):
+            raise ValueError("Correlation matrix must be symmetric")
+        try:
+            self.chol = np.linalg.cholesky(correlation_matrix)
+        except np.linalg.LinAlgError as e:
+            raise ValueError("Correlation matrix is not positive semi-definite") from e
         if sigma2 <= 0:
             raise ValueError("sigma2 must be positive")
         self.correlation_matrix = correlation_matrix
         self.d = correlation_matrix.shape[0]
         self.sigma2 = sigma2
-        try:
-            self.chol = np.linalg.cholesky(correlation_matrix)
-        except np.linalg.LinAlgError as e:
-            raise ValueError("Correlation matrix is not positive semi-definite") from e
 
     def _generate_unnormalised(
         self, n_sims: int, rng: np.random.Generator
@@ -931,7 +945,6 @@ class HuslerReissCopula(Copula):
         while np.any(active):
             # Active indices
             idx = np.where(active)[0]
-            na = idx.size
 
             # Stopping rule: while zeta > min_j Z_j for each simulation
             min_z = z[idx].min(axis=1)
@@ -982,13 +995,13 @@ class HuslerReissCopula(Copula):
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
     ) -> ProteusVariable[StochasticScalar]:
-        """Generate samples from the Husler-Reiss copula.
+        """Generate samples from the Hüsler-Reiss copula.
 
         The simulation uses the exact algorithm from Dombry-Engelke-Oesting (2016)
 
         References:
         Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
-        processes. Biometrika, 103
+        processes. Biometrika 103, no. 2 (2016): 303-17.
 
         Args:
             n_sims: Number of simulations to generate. Uses config.n_sims if None.
@@ -996,7 +1009,7 @@ class HuslerReissCopula(Copula):
 
         Returns:
             ProteusVariable with StochasticScalar values representing samples from the
-            Husler-Reiss copula.
+            Hüsler-Reiss copula.
         """
         return self._generate_base(n_sims, rng)
 
