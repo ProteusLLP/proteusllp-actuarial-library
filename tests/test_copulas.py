@@ -227,27 +227,37 @@ def test_plackett_copula(delta: float):
     copula_margins(samples)
 
 
-@pytest.mark.parametrize("sigma2", [0.1, 0.5, 1.0, 2.0, 5])
 @pytest.mark.parametrize(
-    "corr_mat",
-    ([[1, 0.25], [0.25, 1]], [[1, 0.5, 0.25], [0.5, 1, 0.4], [0.25, 0.4, 1]]),
+    ["corr_mat", "sigma"],
+    (
+        ([[1, 0.25], [0.25, 1]], 1),
+        ([[1, 0.25], [0.25, 1]], [1, 0.5]),
+        ([[1, 0.5, 0.25], [0.5, 1, 0.4], [0.25, 0.4, 1]], 1.5),
+        ([[1, -0.5, 0.25], [-0.5, 1, 0.4], [0.25, 0.4, 1]], [1.5, 2.5, 1.0]),
+    ),
 )
-def test_huslerreiss_copula(corr_mat: list[list[float]], sigma2: float):
+def test_huslerreiss_copula(corr_mat: list[list[float]], sigma: float):
     d = len(corr_mat)
-    samples = copulas.HuslerReissCopula(np.array(corr_mat), sigma2).generate(100000)
+    samples = copulas.HuslerReissCopula(np.array(corr_mat), sigma).generate(100000)
     # test the tail dependence
 
     def corr_sigma_to_a(
-        r: list[list[float]], sigma2: float = 1.0
+        r: list[list[float]], sigma: float | list[float] = 1.0
     ) -> npt.NDArray[np.floating]:
         _r = np.asarray(r, dtype=float)
-        a2 = sigma2 * (1.0 - _r)
+        if isinstance(sigma, float | int):
+            sigma = [sigma] * _r.shape[0]
+        _sigma = np.array(sigma, dtype=float)
+        a2 = 0.5 * (
+            _sigma**2 + _sigma[:, None] ** 2 - 2 * np.outer(_sigma, _sigma) * _r
+        )
+        print(a2)
         np.fill_diagonal(a2, 0.0)
         a_mat = np.sqrt(np.maximum(a2, 0.0))
         return a_mat
 
     expected_tail_dependence: npt.NDArray[np.floating] = 2 * (  # type: ignore[reportUnknownVariableType]
-        1 - scipy.stats.norm.cdf(corr_sigma_to_a(corr_mat, sigma2) / np.sqrt(2))
+        1 - scipy.stats.norm.cdf(corr_sigma_to_a(corr_mat, sigma) / np.sqrt(2))
     )
     threshold = 0.99
     estimated_tail_dependence = [

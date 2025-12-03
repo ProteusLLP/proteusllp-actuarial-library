@@ -845,7 +845,10 @@ class HuslerReissCopula(Copula):
     each pair of variables.
 
     The upper tail dependence coefficient between any pair of variables i and j in the
-    Hüsler-Reiss copula is given by 2 * (1 - Phi( sqrt( sigma^2 * (1 - R_ij) ) / 2 )),
+    Hüsler-Reiss copula is given by:
+
+    χ_ij = 2 * (1 - Phi( sqrt( σ_i²+σ_j²  - 2σ_iσ_jR_ij ) / 2 )),
+
     where Phi is the standard normal CDF.
 
     References:
@@ -857,7 +860,7 @@ class HuslerReissCopula(Copula):
     def __init__(
         self,
         correlation_matrix: npt.NDArray[np.floating] | list[list[float]],
-        sigma2: float,
+        sigma: float | list[float],
     ) -> None:
         """Initialize a Hüsler-Reiss copula.
 
@@ -865,22 +868,24 @@ class HuslerReissCopula(Copula):
         structure of an underlying Gaussian vector W, also known as the Brown-Resnick
         representation.
 
-        If R is a d x d correlation matrix and σ² > 0, and W ~ N(0, σ² R), the
+        If R is a d x d correlation matrix and σ_i > 0, and W ~ N(0, σσ^T R), the
         associated Hüsler-Reiss parameters are
 
-            λ_ij² = Var(W_i - W_j) = 2 σ² (1 - R_ij).
+            λ_ij² = Var(W_i - W_j) =  σ_i²+σ_j²  - 2σ_iσ_jR_ij.
 
         The bivariate upper-tail dependence coefficient is
 
             χ_ij = 2 (1 - Φ(λ_ij / 2)).
 
-        The parameters (R, σ²) uniquely determines the dependence structure of the
+        The parameters (R, σ) uniquely determines the dependence structure of the
         copula.
 
         Args:
             correlation_matrix: Symmetric correlation matrix R. Must be positive
                 semi-definite.
-            sigma2: The variance of the underlying Gaussian process. Must be >0.
+            sigma: The standard deviation of the underlying Gaussian process.
+                Must be >0. Can be a float (same for all dimensions) or a list of
+                floats (one for each dimension).
         """
         correlation_matrix = np.asarray(correlation_matrix)
         if (
@@ -898,16 +903,20 @@ class HuslerReissCopula(Copula):
             self.chol = np.linalg.cholesky(correlation_matrix)
         except np.linalg.LinAlgError as e:
             raise ValueError("Correlation matrix is not positive semi-definite") from e
-        if sigma2 <= 0:
-            raise ValueError("sigma2 must be positive")
         self.correlation_matrix = correlation_matrix
         self.d = correlation_matrix.shape[0]
-        self.sigma2 = sigma2
+        if isinstance(sigma, float | int):
+            sigma = [sigma] * self.d
+        if not isinstance(sigma, list):
+            raise TypeError("sigma must be either a float or a list of floats")
+        if min(sigma) <= 0:
+            raise ValueError("sigma must be positive")
+        self.sigma = sigma
 
     def _generate_unnormalised(
         self, n_sims: int, rng: np.random.Generator
     ) -> npt.NDArray[np.floating]:
-        """Exact simulation from a d-dimensional Hüsler–Reiss copula.
+        """Exact simulation from a d-dimensional Hüsler-Reiss copula.
 
         See Dombry-Engelke-Oesting (2016) Algorithm 2 (spectral measure on L1-sphere).
 
@@ -927,9 +936,11 @@ class HuslerReissCopula(Copula):
 
         # Cholesky for Gaussian simulation
         chol = self.chol
-        sigma2 = self.sigma2
-        # Precompute sigma^2 (1 - R_ij) appearing in Proposition 4 / Remark 2
-        h = sigma2 * (1.0 - r)  # shape (d, d)
+        sigma = np.array(self.sigma)
+        # Precompute variogram appearing in Proposition 4 / Remark 2
+        h = 0.5 * (
+            sigma**2 + sigma[:, None] ** 2 - 2 * np.outer(sigma, sigma) * r
+        )  # shape (d, d)
 
         # Z will hold the unit Fréchet max-stable vector
         z = np.zeros((n_sims, d), dtype=float)
@@ -959,12 +970,12 @@ class HuslerReissCopula(Copula):
             # 1. Sample anchor indices T ~ Uniform{0,...,d-1}
             t = rng.integers(low=0, high=d, size=na)
 
-            # 2. Sample Gaussian W ~ N(0, sigma2 * R) for active sims
+            # 2. Sample Gaussian W ~ N(0, sigma^2 * R) for active sims
             g = rng.standard_normal(size=(na, d))
-            w = np.sqrt(sigma2) * (g @ chol.T)  # shape (na, d)
+            w = g @ chol.T * sigma  # shape (na, d)
 
             # 3. Construct Y according to P_{x_T} (Proposition 4 / Remark 2):
-            #    Y_j = exp( W_j - W_T - H_{j,T} ) with H_{j,T} = sigma2 * (1 - R_{j,T}).
+            #  Y_j = exp( W_j - W_T - H_{j,T} ) with H_{j,T} = sigma^2 * (1 - R_{j,T}).
             w_anchor = w[np.arange(na), t]  # (na,)
             h_for_t = h[:, t].T  # (na, d), row r: H_{j, T_r}
 
