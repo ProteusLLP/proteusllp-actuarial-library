@@ -228,38 +228,31 @@ def test_plackett_copula(delta: float):
 
 
 @pytest.mark.parametrize(
-    ["corr_mat", "sigma"],
+    "matrix",
     (
-        ([[1, 0.25], [0.25, 1]], 1),
-        ([[1, 0.25], [0.25, 1]], [1, 0.5]),
-        ([[1, 0.5, 0.25], [0.5, 1, 0.4], [0.25, 0.4, 1]], 1.5),
-        ([[1, -0.5, 0.25], [-0.5, 1, 0.4], [0.25, 0.4, 1]], [1.5, 2.5, 1.0]),
+        [[0, 1.25], [1.25, 0]],
+        [[0, 2.5], [2.5, 0]],
+        [[0, 0.5], [0.5, 0]],
+        [[0, 0.5, 0.25], [0.5, 0, 0.4], [0.25, 0.4, 0]],
+        [[0, 1.5, 1], [1.5, 0, 0.5], [1, 0.5, 0]],
+        [
+            [0, 1.5, 1, np.inf],
+            [1.5, 0, 0.5, np.inf],
+            [1, 0.5, 0, np.inf],
+            [np.inf, np.inf, np.inf, 0],
+        ],
     ),
 )
-def test_huslerreiss_copula(corr_mat: list[list[float]], sigma: float):
-    d = len(corr_mat)
-    samples = copulas.HuslerReissCopula(np.array(corr_mat), sigma).generate(100000)
+def test_huslerreiss_copula(matrix: list[list[float]]):
+    d = len(matrix)
+    config.rng = np.random.default_rng(42)
+    samples = copulas.HuslerReissCopula(np.array(matrix)).generate(100000)
     # test the tail dependence
 
-    def corr_sigma_to_a(
-        r: list[list[float]], sigma: float | list[float] = 1.0
-    ) -> npt.NDArray[np.floating]:
-        _r = np.asarray(r, dtype=float)
-        if isinstance(sigma, float | int):
-            sigma = [sigma] * _r.shape[0]
-        _sigma = np.array(sigma, dtype=float)
-        a2 = 0.5 * (
-            _sigma**2 + _sigma[:, None] ** 2 - 2 * np.outer(_sigma, _sigma) * _r
-        )
-        print(a2)
-        np.fill_diagonal(a2, 0.0)
-        a_mat = np.sqrt(np.maximum(a2, 0.0))
-        return a_mat
-
     expected_tail_dependence: npt.NDArray[np.floating] = 2 * (  # type: ignore[reportUnknownVariableType]
-        1 - scipy.stats.norm.cdf(corr_sigma_to_a(corr_mat, sigma) / np.sqrt(2))
+        1 - scipy.stats.norm.cdf(matrix)
     )
-    threshold = 0.99
+    threshold = 0.995
     estimated_tail_dependence = [
         [
             ((samples[i] > threshold) & (samples[j] > threshold)).mean()
@@ -271,6 +264,34 @@ def test_huslerreiss_copula(corr_mat: list[list[float]], sigma: float):
     assert np.allclose(estimated_tail_dependence, expected_tail_dependence, atol=5e-2)  # type: ignore[reportUnknownVariableType]
     # test the margins
     copula_margins(samples)
+
+
+def test_huslerreiss_copula_parameter_errors():
+    """Test that invalid parameters raise errors."""
+    with pytest.raises(ValueError, match="Parameter matrix must be square"):
+        copulas.HuslerReissCopula(np.array([[0, 1], [1, 0], [0, 1]]))
+    with pytest.raises(ValueError, match="Matrix diagonal must be zero"):
+        copulas.HuslerReissCopula(np.array([[0, 1], [1, 2]]))
+    with pytest.raises(ValueError, match="Matrix must be symmetric"):
+        copulas.HuslerReissCopula(np.array([[0, 1], [2, 0]]))
+
+
+def test_hulerreiss_copula_methods():
+    """Test Husler-Reiss copula methods."""
+    lambda_matrix = np.array([[0, 1.25], [1.25, 0]])
+    tail_dependence_matrix = copulas.HuslerReissCopula(
+        lambda_matrix
+    ).tail_dependence_matrix
+    expected_tail_dependency_matrix = 2 * (1 - scipy.stats.norm.cdf(lambda_matrix))
+    assert np.allclose(tail_dependence_matrix, expected_tail_dependency_matrix)
+    lambda_matrix = copulas.HuslerReissCopula.calculate_lambda_from_tail_dependence(
+        tail_dependence_matrix
+    )
+    assert np.allclose(lambda_matrix, lambda_matrix)
+    copula = copulas.HuslerReissCopula.from_tail_dependence_matrix(
+        tail_dependence_matrix
+    )
+    assert np.allclose(copula.adjusted_lambda_matrix, lambda_matrix)
 
 
 @pytest.mark.parametrize("theta", [1.01, 1.25, 2])

@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 import numpy.typing as npt
 import scipy.stats.distributions as distributions  # type: ignore [import-untyped]
 from scipy.special import gamma
+from scipy.stats import norm
 
 from . import ProteusVariable, StochasticScalar
 from ._maths import special
@@ -840,14 +841,14 @@ class HuslerReissCopula(Copula):
     random variables and allows for a flexible specification of tail dependency
     for each bivariate pair of variables.
 
-    Its dependence structure is characterized by a correlation matrix R and variance
-    parameter sigma^2 which controls the strength of the upper tail dependence between
-    each pair of variables.
+    Its dependence structure is characterized by a matrix Lambda_ij which controls the
+    strength of the upper tail dependence between each pair of variables. Lower values
+    in the matrix correspond to stronger dependence.
 
     The upper tail dependence coefficient between any pair of variables i and j in the
     Hüsler-Reiss copula is given by:
 
-    χ_ij = 2 * (1 - Phi( sqrt( σ_i²+σ_j²  - 2σ_iσ_jR_ij ) / 2 )),
+    χ_ij = 2 * (1 - Phi( λ_ij  )),
 
     where Phi is the standard normal CDF.
 
@@ -857,61 +858,98 @@ class HuslerReissCopula(Copula):
         7(4), 283-286.
     """
 
+    is_adjusted: bool = False
+    """Indicates whether the provided lambda matrix was adjusted to ensure validity."""
+    d: int
+    """The dimension of the copula."""
+    adjusted_lambda_matrix: npt.NDArray[np.floating]
+    """The adjusted lambda matrix after ensuring validity."""
+
     def __init__(
         self,
-        correlation_matrix: npt.NDArray[np.floating] | list[list[float]],
-        sigma: float | list[float],
+        lambda_matrix: npt.NDArray[np.floating] | list[list[float]],
     ) -> None:
         """Initialize a Hüsler-Reiss copula.
 
-        This implementation parameterises the Hüsler-Reiss copula via the covariance
-        structure of an underlying Gaussian vector W, also known as the Brown-Resnick
-        representation.
+        Its dependence structure is characterized by a matrix Lambda_ij which controls
+        the strength of the upper tail dependence between each pair of variables. Lower
+        values in the matrix correspond to stronger dependence.
 
-        If R is a d x d correlation matrix and σ_i > 0, and W ~ N(0, σσ^T R), the
-        associated Hüsler-Reiss parameters are
+        The upper tail dependence coefficient between any pair of variables i and j in
+        the Hüsler-Reiss copula is given by:
 
-            λ_ij² = Var(W_i - W_j) =  σ_i²+σ_j²  - 2σ_iσ_jR_ij.
+        χ_ij = 2 * (1 - Phi( λ_ij  )),
 
-        The bivariate upper-tail dependence coefficient is
+        where Phi is the standard normal CDF.
 
-            χ_ij = 2 (1 - Φ(λ_ij / 2)).
+        The parameters λ_ij must be non-negative, and the matrix must be symmetric.
+        The diagonal elements λ_ij must always be zero. Values of λ_ij are capped
+        at 100 to avoid numerical issues during simulation.
 
-        The parameters (R, σ) uniquely determines the dependence structure of the
-        copula.
+        The matrix λ_ij must satisfy certain conditions to ensure it corresponds
+        to a valid Hüsler-Reiss copula. In particular, the matrix must be conditionally
+        negative definite. That is, its square must correspond to a valid variogram of
+        a random field Z_j:
+
+        λ_ij^2 = 2 * ( Var(Z_i) + Var(Z_j) - 2 * Cov(Z_i, Z_j) )
+
+        This is checked during initialization by attempting to construct a valid
+        covariance matrix for the random process Z_i from the provided λ_ij matrix.
+
+        If the provided matrix does not satisfy these conditions, it is adjusted
+        to the nearest valid matrix by modifying the eigenvalues of the corresponding
+        covariance matrix. The `is_adjusted` attribute will be set to True in this case.
+
+        References:
+            Hüsler, J., & Reiss, R. D. (1989). Maxima of normal random vectors: between
+            independence and complete dependence. Statistics & Probability Letters,
+            7(4), 283-286.
 
         Args:
-            correlation_matrix: Symmetric correlation matrix R. Must be positive
-                semi-definite.
-            sigma: The standard deviation of the underlying Gaussian process.
-                Must be >0. Can be a float (same for all dimensions) or a list of
-                floats (one for each dimension).
+            lambda_matrix: Symmetric matrix λ_ij determining the pairwise dependency
+            between variables.
         """
-        correlation_matrix = np.asarray(correlation_matrix)
-        if (
-            correlation_matrix.ndim != 2
-            or correlation_matrix.shape[0] != correlation_matrix.shape[1]
-        ):
+        lambda_matrix = np.asarray(lambda_matrix)
+        if lambda_matrix.ndim != 2 or lambda_matrix.shape[0] != lambda_matrix.shape[1]:
             raise ValueError("Parameter matrix must be square")
-        if (correlation_matrix.max() > 1.0) or (correlation_matrix.min() < -1.0):
-            raise ValueError("Correlation matrix must have values in [-1, 1]")
-        if (correlation_matrix.diagonal() != 1.0).any():
-            raise ValueError("Correlation matrix must have 1s on the diagonal")
-        if not np.allclose(correlation_matrix, correlation_matrix.T):
-            raise ValueError("Correlation matrix must be symmetric")
+        if lambda_matrix.min() < 0.0:
+            raise ValueError("Matrix values must be non-negative")
+        if not np.allclose(lambda_matrix, lambda_matrix.T):
+            raise ValueError("Matrix must be symmetric")
+        if not np.allclose(np.diag(lambda_matrix), 0.0):
+            raise ValueError("Matrix diagonal must be zero")
+
+        # calculate the covariance matrix from the lambda matrix
+        d = lambda_matrix.shape[0]
+        np.clip(lambda_matrix, a_min=0, a_max=100, out=lambda_matrix)
+        # pivot on the first variable to construct a covariance matrix
+        # consistent with the variogram defined by lambda_matrix squared
+        covariance_matrix = 2 * (
+            lambda_matrix[0] ** 2 + lambda_matrix[:, 0, None] ** 2 - lambda_matrix**2
+        )
+        covariance_sub = covariance_matrix[1:, 1:]
+        vals, vecs = np.linalg.eigh(covariance_sub)
+        if vals.min() < 1e-6:
+            covariance_sub = (
+                vecs @ np.diag(np.clip(vals, a_min=1e-6, a_max=None)) @ vecs.T
+            )
+            self.is_adjusted = True
         try:
-            self.chol = np.linalg.cholesky(correlation_matrix)
+            chol_sub = np.linalg.cholesky(covariance_sub)
+            self._chol = np.zeros((d, d))
+            self._chol[1:, 1:] = chol_sub
         except np.linalg.LinAlgError as e:
-            raise ValueError("Correlation matrix is not positive semi-definite") from e
-        self.correlation_matrix = correlation_matrix
-        self.d = correlation_matrix.shape[0]
-        if isinstance(sigma, float | int):
-            sigma = [sigma] * self.d
-        if not isinstance(sigma, list):
-            raise TypeError("sigma must be either a float or a list of floats")
-        if min(sigma) <= 0:
-            raise ValueError("sigma must be positive")
-        self.sigma = sigma
+            raise ValueError("Could not construct a valid correlation matrix") from e
+        covariance_matrix = self._chol @ self._chol.T
+        self.d = d
+        self.adjusted_lambda_matrix = (
+            np.sqrt(
+                np.diag(covariance_matrix)
+                + np.diag(covariance_matrix)[:, None]
+                - 2 * covariance_matrix
+            )
+            / 2
+        )
 
     def _generate_unnormalised(
         self, n_sims: int, rng: np.random.Generator
@@ -920,27 +958,25 @@ class HuslerReissCopula(Copula):
 
         See Dombry-Engelke-Oesting (2016) Algorithm 2 (spectral measure on L1-sphere).
 
-        Parameters
-        ----------
-        n_sims : int
-            Number of samples to generate.
-        rng : np.random.Generator.
+        References:
+        Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
+        processes. Biometrika 103, no. 2 (2016): 303-17.
+
+        Args:
+            n_sims : int
+                Number of samples to generate.
+            rng : np.random.Generator.
 
         Returns:
-        -------
-        u : (d,n) ndarray
-            Samples from the Hüsler–Reiss copula.
+            u : (d,n) ndarray
+                Samples from the Hüsler–Reiss copula.
         """
-        r = self.correlation_matrix
-        d = r.shape[0]
+        d = self.d
 
         # Cholesky for Gaussian simulation
-        chol = self.chol
-        sigma = np.array(self.sigma)
+        chol = self._chol
         # Precompute variogram appearing in Proposition 4 / Remark 2
-        h = 0.5 * (
-            sigma**2 + sigma[:, None] ** 2 - 2 * np.outer(sigma, sigma) * r
-        )  # shape (d, d)
+        h = 2 * (self.adjusted_lambda_matrix**2)
 
         # Z will hold the unit Fréchet max-stable vector
         z = np.zeros((n_sims, d), dtype=float)
@@ -972,7 +1008,7 @@ class HuslerReissCopula(Copula):
 
             # 2. Sample Gaussian W ~ N(0, sigma^2 * R) for active sims
             g = rng.standard_normal(size=(na, d))
-            w = g @ chol.T * sigma  # shape (na, d)
+            w = g @ chol.T  # shape (na, d)
 
             # 3. Construct Y according to P_{x_T} (Proposition 4 / Remark 2):
             #  Y_j = exp( W_j - W_T - H_{j,T} ) with H_{j,T} = sigma^2 * (1 - R_{j,T}).
@@ -1002,6 +1038,87 @@ class HuslerReissCopula(Copula):
         # Transform to unit uniform margins: U = exp(-1/Z)
         u = np.exp(-1.0 / z)
         return u.T
+
+    @property
+    def tail_dependence_matrix(self) -> npt.NDArray[np.floating]:
+        """Calculate the upper tail dependence matrix for the Hüsler-Reiss copula.
+
+        The upper tail dependence coefficient between any pair of variables i and j in
+        the Hüsler-Reiss copula is given by:
+
+        χ_ij = 2 * (1 - Phi( λ_ij  )),
+
+        where Phi is the standard normal CDF.
+
+        Returns:
+            npt.NDArray[np.floating]: A 2D array representing the upper tail dependence
+            coefficients between each pair of variables.
+        """
+        lambda_matrix = self.adjusted_lambda_matrix
+        tail_dependence_matrix = 2.0 * (1.0 - norm.cdf(lambda_matrix))
+
+        return tail_dependence_matrix
+
+    @staticmethod
+    def calculate_lambda_from_tail_dependence(
+        tail_dependence_matrix: npt.NDArray[np.floating],
+    ) -> npt.NDArray[np.floating]:
+        """Calculate the lambda matrix from a given upper tail dependence matrix.
+
+        The upper tail dependence coefficient between any pair of variables i and j in
+        the Hüsler-Reiss copula is given by:
+
+        χ_ij = 2 * (1 - Phi( λ_ij  )),
+
+        where Phi is the standard normal CDF.
+
+        This method inverts the above relationship to compute the lambda matrix from
+        the provided upper tail dependence coefficients.
+        λ_ij = Phi^(-1)(1 - χ_ij / 2)
+
+        where Phi^(-1) is the inverse standard normal CDF.
+
+        Args:
+            tail_dependence_matrix (npt.NDArray[np.floating]): A 2D array
+                representing the upper tail dependence coefficients between
+                each pair of variables.
+
+        Returns:
+            npt.NDArray[np.floating]: A 2D array representing the lambda matrix
+            corresponding to the given upper tail dependence coefficients.
+        """
+        chi_ij = tail_dependence_matrix
+        lambda_matrix = norm.ppf(1.0 - chi_ij / 2.0)
+
+        return lambda_matrix
+
+    @classmethod
+    def from_tail_dependence_matrix(
+        cls, tail_dependence_matrix: npt.NDArray[np.floating]
+    ) -> HuslerReissCopula:
+        """Create a Hüsler-Reiss copula from a given upper tail dependence matrix.
+
+        The upper tail dependence coefficient between any pair of variables i and j in
+        the Hüsler-Reiss copula is given by:
+
+        χ_ij = 2 * (1 - Phi( λ_ij  )),
+
+        where Phi is the standard normal CDF.
+
+        Args:
+            tail_dependence_matrix (npt.NDArray[np.floating]): A 2D array
+                representing the upper tail dependence coefficients between
+                each pair of variables.
+
+        Returns:
+            HuslerReissCopula: An instance of the Hüsler-Reiss copula initialized
+            with the lambda matrix corresponding to the given upper tail
+            dependence coefficients.
+        """
+        lambda_matrix = cls.calculate_lambda_from_tail_dependence(
+            tail_dependence_matrix
+        )
+        return cls(lambda_matrix)
 
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
