@@ -5,7 +5,7 @@
 groups = ["default", "dev", "docs", "gpu", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:ee485e29605f443010a795bed94b1f75abf5dacd4bda028e813b7935ff4ef5f8"
+content_hash = "sha256:f38dd8caaf95eb5304bfaf6aa02404343b2c6010f892033cd0eb73ef0447888f"
 
 [[metadata.targets]]
 requires_python = ">=3.13"
@@ -714,26 +714,26 @@ files = [
 
 [[package]]
 name = "ipython"
-version = "9.6.0"
+version = "9.7.0"
 requires_python = ">=3.11"
 summary = "IPython: Productive Interactive Computing"
 groups = ["dev"]
 dependencies = [
-    "colorama; sys_platform == \"win32\"",
-    "decorator",
-    "ipython-pygments-lexers",
-    "jedi>=0.16",
-    "matplotlib-inline",
+    "colorama>=0.4.4; sys_platform == \"win32\"",
+    "decorator>=4.3.2",
+    "ipython-pygments-lexers>=1.0.0",
+    "jedi>=0.18.1",
+    "matplotlib-inline>=0.1.5",
     "pexpect>4.3; sys_platform != \"win32\" and sys_platform != \"emscripten\"",
     "prompt-toolkit<3.1.0,>=3.0.41",
-    "pygments>=2.4.0",
-    "stack-data",
+    "pygments>=2.11.0",
+    "stack-data>=0.6.0",
     "traitlets>=5.13.0",
     "typing-extensions>=4.6; python_version < \"3.12\"",
 ]
 files = [
-    {file = "ipython-9.6.0-py3-none-any.whl", hash = "sha256:5f77efafc886d2f023442479b8149e7d86547ad0a979e9da9f045d252f648196"},
-    {file = "ipython-9.6.0.tar.gz", hash = "sha256:5603d6d5d356378be5043e69441a072b50a5b33b4503428c77b04cb8ce7bc731"},
+    {file = "ipython-9.7.0-py3-none-any.whl", hash = "sha256:bce8ac85eb9521adc94e1845b4c03d88365fd6ac2f4908ec4ed1eb1b0a065f9f"},
+    {file = "ipython-9.7.0.tar.gz", hash = "sha256:5f6de88c905a566c6a9d6c400a8fed54a638e1f7543d17aae2551133216b1e4e"},
 ]
 
 [[package]]
@@ -1267,13 +1267,13 @@ files = [
 
 [[package]]
 name = "narwhals"
-version = "2.10.1"
+version = "2.10.2"
 requires_python = ">=3.9"
 summary = "Extremely lightweight compatibility layer between dataframe libraries"
 groups = ["default"]
 files = [
-    {file = "narwhals-2.10.1-py3-none-any.whl", hash = "sha256:eed3d9ec8f821963456fef306c1ad11017995982169fca1f38f71c97d6a97b9b"},
-    {file = "narwhals-2.10.1.tar.gz", hash = "sha256:d6e3a9b1c0904a82984dec58a3d12b3bc08e9d61bbee639e7bb05349e663d036"},
+    {file = "narwhals-2.10.2-py3-none-any.whl", hash = "sha256:059cd5c6751161b97baedcaf17a514c972af6a70f36a89af17de1a0caf519c43"},
+    {file = "narwhals-2.10.2.tar.gz", hash = "sha256:ff738a08bc993cbb792266bec15346c1d85cc68fdfe82a23283c3713f78bd354"},
 ]
 
 [[package]]
@@ -1610,7 +1610,7 @@ files = [
 
 [[package]]
 name = "plotly"
-version = "6.3.1"
+version = "6.4.0"
 requires_python = ">=3.8"
 summary = "An open-source interactive data visualization library for Python"
 groups = ["default"]
@@ -1619,8 +1619,8 @@ dependencies = [
     "packaging",
 ]
 files = [
-    {file = "plotly-6.3.1-py3-none-any.whl", hash = "sha256:8b4420d1dcf2b040f5983eed433f95732ed24930e496d36eb70d211923532e64"},
-    {file = "plotly-6.3.1.tar.gz", hash = "sha256:dd896e3d940e653a7ce0470087e82c2bd903969a55e30d1b01bb389319461bb0"},
+    {file = "plotly-6.4.0-py3-none-any.whl", hash = "sha256:a1062eafbdc657976c2eedd276c90e184ccd6c21282a5e9ee8f20efca9c9a4c5"},
+    {file = "plotly-6.4.0.tar.gz", hash = "sha256:68c6db2ed2180289ef978f087841148b7efda687552276da15a6e9b92107052a"},
 ]
 
 [[package]]
@@ -1764,6 +1764,20 @@ dependencies = [
 files = [
     {file = "pytest-8.4.2-py3-none-any.whl", hash = "sha256:872f880de3fc3a5bdc88a11b39c9710c3497a547cfa9320bc3c5e62fbf272e79"},
     {file = "pytest-8.4.2.tar.gz", hash = "sha256:86c0d0b93306b961d58d62a4db4879f27fe25513d4b969df351abdddb3c30e01"},
+]
+
+[[package]]
+name = "pytest-codeblocks"
+version = "0.17.0"
+requires_python = ">=3.7"
+summary = "Test code blocks in your READMEs"
+groups = ["test"]
+dependencies = [
+    "pytest>=7.0.0",
+]
+files = [
+    {file = "pytest_codeblocks-0.17.0-py3-none-any.whl", hash = "sha256:b2aed8e66c3ce65435630783b391e7c7ae46f80b8220d3fa1bb7c689b36e78ad"},
+    {file = "pytest_codeblocks-0.17.0.tar.gz", hash = "sha256:446e1babd182f54b4f113d567737a22f5405cade144c08a0085b2985247943d5"},
 ]
 
 [[package]]

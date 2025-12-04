@@ -5,7 +5,7 @@ This directory contains the documentation for the Proteus Actuarial Library.
 ## Hosted Documentation
 
 The documentation is hosted on Read the Docs:
-https://proteusllp-actuarial-library-private.readthedocs.io/
+https://proteusllp-actuarial-library.readthedocs.io/
 
 ## Building Documentation Locally
 
@@ -13,11 +13,15 @@ https://proteusllp-actuarial-library-private.readthedocs.io/
 
 Install the documentation dependencies:
 
+<!--pytest.mark.skip-->
+
 ```bash
 pdm install -G docs
 ```
 
 Or with pip:
+
+<!--pytest.mark.skip-->
 
 ```bash
 pip install -e .[docs]
@@ -27,6 +31,8 @@ pip install -e .[docs]
 
 From the `docs` directory:
 
+<!--pytest.mark.skip-->
+
 ```bash
 cd docs
 make html
@@ -35,6 +41,8 @@ make html
 The built documentation will be in `docs/build/html/`. Open `docs/build/html/index.html` in your browser to view.
 
 ### Other Build Formats
+
+<!--pytest.mark.skip-->
 
 ```bash
 make pdf      # Build PDF documentation

@@ -437,6 +437,19 @@ class Beta(DistributionBase):
         alpha, beta, scale, loc = self._params.values()
         return special.betaincinv(alpha, beta, u) * scale + loc  # type: ignore[return-type]
 
+    @t.override
+    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+        alpha, beta, scale, loc = self._param_values
+        return StochasticScalar(
+            rng.beta(
+                t.cast(float | npt.NDArray[np.floating], alpha),
+                t.cast(float | npt.NDArray[np.floating], beta),
+                n_sims,
+            )
+            * t.cast(float | npt.NDArray[np.floating], scale)
+            + t.cast(float | npt.NDArray[np.floating], loc)
+        )
+
 
 class LogLogistic(DistributionBase):
     r"""Log-Logistic Distribution.

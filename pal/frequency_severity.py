@@ -31,6 +31,7 @@ import numpy as np
 import numpy.typing as npt
 
 from . import distributions
+from ._maths import xp
 from .config import config
 from .couplings import ProteusStochasticVariable
 from .stochastic_scalar import (
@@ -81,7 +82,7 @@ def _get_sims_of_events(
     """
     cumulative_n_events = n_events_by_sim.cumsum()
     total_events = cumulative_n_events[-1]
-    event_no = t.cast(npt.NDArray[np.int64], np.arange(total_events))
+    event_no = t.cast(npt.NDArray[np.int64], xp.arange(total_events))
     return cumulative_n_events.searchsorted(event_no + 1)
 
 
@@ -119,7 +120,7 @@ class FrequencySeverityModel:
         if n_sims is None:
             n_sims = config.n_sims
         n_events = self.freq_dist.generate(n_sims, rng)
-        total_events = np.sum(n_events)
+        total_events = n_events.sum()
         sev = self.sev_dist.generate(int(total_events), rng)
         # Convert n_events to integers since _get_sims_of_events expects integer counts
         # but n_events.values comes from distributions which return floating arrays
@@ -166,11 +167,14 @@ class FreqSevSims(ProteusStochasticVariable):
     FreqSevSims(...)
     """
 
+    n_sims: int
+    """Number of simulations."""
+
     def __init__(
         self,
-        sim_index: npt.ArrayLike,
-        values: npt.ArrayLike,
-        n_sims: int | None = None,
+        sim_index: np.ndarray | list[int],
+        values: np.ndarray | list[float | int],
+        n_sims: int,
     ):
         """Create a new FreqSevSims object out the list of simulation indices.
 
@@ -189,9 +193,9 @@ class FreqSevSims(ProteusStochasticVariable):
 
         """
         super().__init__()
-        self.sim_index = np.asarray(sim_index)
-        self.values = np.asarray(values)
-        self.n_sims = n_sims
+        self.sim_index = xp.asarray(sim_index)
+        self.values = xp.asarray(values)
+        self.n_sims = n_sims  # type: ignore
 
         if len(self.sim_index) != len(self.values):
             raise ValueError(
@@ -218,8 +222,8 @@ class FreqSevSims(ProteusStochasticVariable):
         Args:
             new_order: A sequence of integers representing the new order of simulations.
         """
-        reverse_ordering = np.empty(len(new_order), dtype=int)
-        reverse_ordering[new_order] = np.arange(len(new_order), dtype=int)
+        reverse_ordering = xp.empty(len(new_order), dtype=int)
+        reverse_ordering[new_order] = xp.arange(len(new_order), dtype=int)
         self.sim_index = reverse_ordering[self.sim_index]
 
     def __getitem__(self, sim_index: int) -> StochasticScalar:
@@ -233,12 +237,10 @@ class FreqSevSims(ProteusStochasticVariable):
 
     def __len__(self) -> int:
         """Return the number of simulations."""
-        return self.n_sims if self.n_sims is not None else 0
+        return self.n_sims
 
     def __iter__(self) -> t.Iterator[StochasticScalar]:
         """Iterate over the simulations."""
-        if self.n_sims is None:
-            raise ValueError("Cannot iterate. n_sims not specified.")
         for i in range(self.n_sims):
             yield self[i]
 
@@ -257,9 +259,7 @@ class FreqSevSims(ProteusStochasticVariable):
         Raises:
             ValueError: If n_sims is not set
         """
-        if self.n_sims is None:
-            raise ValueError("n_sims must be set before reducing over events.")
-        _result = np.zeros(self.n_sims)
+        _result = xp.zeros(self.n_sims)
         operation(_result, self.sim_index, self.values)
         result = StochasticScalar(_result)
         result.coupled_variable_group.merge(self.coupled_variable_group)
@@ -443,8 +443,6 @@ class FreqSevSims(ProteusStochasticVariable):
         Raises:
             ValueError: If self.n_sims is None
         """
-        if self.n_sims is None:
-            raise ValueError("Cannot upsample: n_sims is None")
         if n_sims == self.n_sims:
             return self.copy()
         sim_index = np.repeat(self.sim_index, n_sims // self.n_sims)
@@ -456,5 +454,5 @@ class FreqSevSims(ProteusStochasticVariable):
             values = np.concatenate(
                 (values, self.values[self.sim_index < n_sims % self.n_sims])
             )
-        sim_index = sim_index + np.arange(len(sim_index)) % n_sims
+        sim_index = sim_index + xp.arange(len(sim_index)) % n_sims
         return FreqSevSims(sim_index, values, n_sims)

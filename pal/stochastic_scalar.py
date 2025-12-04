@@ -10,13 +10,15 @@ from __future__ import annotations
 import os
 import typing as t
 
+import numpy as np
 import numpy.typing as npt
 import plotly.graph_objects as go  # type: ignore
 
 from pal import stats  # type: ignore
 
-from ._maths import xp as np
+from ._maths import xp
 from .couplings import CouplingGroup, ProteusStochasticVariable
+from .stats import NumberOrList
 from .types import Numeric, NumericLike, ScipyNumeric
 
 
@@ -24,6 +26,8 @@ class StochasticScalar(ProteusStochasticVariable):
     """A class to represent a single scalar variable in a simulation."""
 
     coupled_variable_group: CouplingGroup
+    n_sims: int
+    """The number of simulations in the variable."""
 
     # ===================
     # DUNDER METHODS
@@ -46,13 +50,24 @@ class StochasticScalar(ProteusStochasticVariable):
 
         if isinstance(values, list):
             # Type ignore: Generic list type inference limitation
-            self.values = np.array(values)  # type: ignore[misc]
+            self.values = xp.array(values)  # type: ignore[misc]
             self.n_sims = len(values)  # type: ignore[misc]
             return
 
-        if isinstance(values, np.ndarray):
+        if isinstance(values, xp.ndarray):
             if values.ndim == 1:
                 self.values = values
+                # Type ignore: Generic array type inference limitation
+                self.n_sims = len(values)  # type: ignore[misc]
+                return
+            raise ValueError("Values must be a 1D array.")
+
+        if isinstance(values, np.ndarray):
+            if values.ndim == 1:
+                self.values = xp.asarray(
+                    values,
+                    dtype=values.dtype,  # type: ignore
+                )
                 # Type ignore: Generic array type inference limitation
                 self.n_sims = len(values)  # type: ignore[misc]
                 return
@@ -64,10 +79,6 @@ class StochasticScalar(ProteusStochasticVariable):
         )  # type: ignore[misc]
 
     def __hash__(self) -> int:
-        # FIXME: this hash function is not robust - defining a hash implies that this
-        # object is immutable, but it is not. The hash implies that two objects of this
-        # class with the same values are equal, but this is not the case if they are
-        # coupled to different variable groups.
         return id(self)
 
     def __repr__(self) -> str:
@@ -145,6 +156,19 @@ class StochasticScalar(ProteusStochasticVariable):
         result = getattr(ufunc, method)(*_inputs, **kwargs)
         return self._wrap_result_with_coupling(result, inputs)
 
+    def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:
+        """Convert the StochasticScalar to a numpy array.
+
+        Args:
+            dtype: The desired data type of the output array.
+
+        Returns:
+            A numpy array representation of the StochasticScalar values.
+        """
+        if dtype:
+            return self.values.astype(dtype)
+        return self.values
+
     def __getitem__(self, index: ScipyNumeric | StochasticScalar) -> StochasticScalar:
         # FIXME: Type signature inconsistent with SequenceLike protocol and runtime
         # - SequenceLike expects __getitem__(int) -> T_co (should return float)
@@ -159,7 +183,7 @@ class StochasticScalar(ProteusStochasticVariable):
 
         if isinstance(index, type(self)):
             # Check if index contains boolean values for masking
-            if np.issubdtype(index.values.dtype, np.bool_):
+            if xp.issubdtype(index.values.dtype, xp.bool_):
                 # Use boolean indexing directly - no conversion needed
                 # Type ignore: Runtime type checking ensures boolean indexing is valid
                 result = type(self)(self.values[index.values])  # type: ignore[arg-type]
@@ -191,10 +215,8 @@ class StochasticScalar(ProteusStochasticVariable):
     @property
     def ranks(self) -> StochasticScalar:
         """Return the ranks of the variable."""
-        if self.n_sims is None:
-            raise ValueError("Cannot compute ranks for an uninitialized variable.")
-        result = np.empty(self.n_sims, dtype=int)
-        result[np.argsort(self.values)] = np.arange(self.n_sims)
+        result = xp.empty(self.n_sims, dtype=int)
+        result[xp.argsort(self.values)] = xp.arange(self.n_sims)
         return StochasticScalar(result)
 
     # ===================
@@ -205,24 +227,46 @@ class StochasticScalar(ProteusStochasticVariable):
         """Convert the values to a Python list."""
         return t.cast(list[Numeric], self.values.tolist())
 
-    def tvar(self, percentile: stats.NumberOrList) -> stats.NumberOrList:
+    def mean(self) -> float:
+        """Return the mean of the variable across the simulation dimension."""
+        return float(xp.mean(self.values))
+
+    def sum(self) -> float:
+        """Return the sum of the variable across the simulation dimension."""
+        return float(xp.sum(self.values))
+
+    def std(self) -> float:
+        """Return the standard deviation across the simulation dimension."""
+        return float(xp.std(self.values))
+
+    def percentile(self, p: NumberOrList) -> NumberOrList:
+        """Return the percentile of the variable across the simulation dimension.
+
+        Args:
+            p: The percentile level (between 0 and 100).
+
+        Returns:
+            The percentile value.
+
+        """
+        return t.cast(NumberOrList, xp.percentile(self.values, p).tolist())  # type: ignore[misc]
+
+    def tvar(self, p: NumberOrList) -> NumberOrList:
         """Calculate the Tail Value at Risk (TVaR) at a given percentile.
 
         Args:
-            percentile: The percentile level (between 0 and 100) to calculate TVaR.
+            p: The percentile level (between 0 and 100) to calculate TVaR.
 
         Returns:
             The TVaR value as a float.
         """
-        return stats.tvar(self.values, percentile)
+        return stats.tvar(self.values, p)
 
     def upsample(self, n_sims: int) -> t.Self:
         """Increase the number of simulations in the variable."""
-        if self.n_sims is None:
-            raise ValueError("Cannot upsample an uninitialized variable.")
         if n_sims == self.n_sims:
             return self
-        return type(self)(self.values[np.arange(n_sims) % self.n_sims])
+        return type(self)(self.values[xp.arange(n_sims) % self.n_sims])
 
     def show_histogram(self, title: str | None = None) -> None:
         """Show a histogram of the variable.
@@ -245,11 +289,11 @@ class StochasticScalar(ProteusStochasticVariable):
         if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
             return
 
-        if self.n_sims is None:
-            raise ValueError("Cannot compute CDF for an uninitialized variable.")
-
         fig = go.Figure(
-            go.Scatter(x=np.sort(self.values), y=np.arange(self.n_sims) / self.n_sims),
+            go.Scatter(
+                x=xp.sort(self.values).tolist(),
+                y=(xp.arange(self.n_sims) / self.n_sims).tolist(),
+            ),
             layout={"title": title},
         )
         # Type ignore: plotly-stubs has incomplete type information

@@ -133,21 +133,20 @@ class ProteusVariable[T]:
     """
 
     dim_name: str
-    values: t.Mapping[str, T]
+    values: dict[str, T]
     dimensions: list[str]
 
     def __init__(
         self,
         dim_name: str,
-        values: t.Mapping[str, T],
+        values: dict[str, T],
     ):
         """Initialize a ProteusVariable.
 
         Args:
             dim_name: Name of the dimension.
-            values: A mapping (dict-like object) containing variables that must
-                support PAL variable operations. Keys will be sorted alphabetically
-                during initialization to ensure consistent ordering.
+            values: A dict containing variables that must
+                support PAL variable operations.
 
         Raises:
             TypeError: If values is not a mapping type.
@@ -161,7 +160,7 @@ class ProteusVariable[T]:
         self.dimensions = [dim_name]
         self._dimension_set = set(self.dimensions)
         # Ensure that values is a mapping type
-        if not isinstance(values, t.Mapping):  # type: ignore[redundant-expr]
+        if not isinstance(values, dict):  # type: ignore[redundant-expr]
             raise TypeError(
                 f"Expected a mapping (dict-like) for 'values', got "
                 f"{type(values).__name__}"
@@ -169,7 +168,7 @@ class ProteusVariable[T]:
         # check the number of simulations in each variable
         self.n_sims = None
         for value in (
-            self.values.values() if isinstance(self.values, dict) else self.values
+            self.values.values() if isinstance(self.values, dict) else self.values  # type: ignore[reportUnknownMemberType]
         ):
             if isinstance(value, ProteusVariable):
                 if (
@@ -321,7 +320,7 @@ class ProteusVariable[T]:
                             # validation. We need to verify dict structure at runtime
                             # for ufunc recursion
                             vals = item.values  # type: ignore[reportUnknownMemberType]
-                            if not isinstance(vals, dict):
+                            if not isinstance(vals, dict):  # type: ignore[redundant-expr]
                                 raise TypeError(
                                     f"Expected dict values in {type(self).__name__}, "
                                     f"but got {type(vals).__name__}."  # type: ignore[reportArgumentType]  # noqa: E501
@@ -567,6 +566,13 @@ class ProteusVariable[T]:
             return self.values[key]
         raise TypeError(f"Key must be an integer or string, got {type(key).__name__}.")
 
+    def __setitem__(self, key: int | str, value: T) -> None:
+        if isinstance(key, int):
+            dict_key = list(self.values.keys())[key]
+            self.values[dict_key] = value
+        if isinstance(key, str):  # type: ignore[redundant-expr]
+            self.values[key] = value
+
     def count(self, value: T) -> int:
         """Count occurrences of value in the container.
 
@@ -643,7 +649,7 @@ class ProteusVariable[T]:
         dim_name: str,
         values_column: str,
         simulation_column: str = "Simulation",
-    ) -> ProteusVariable[T]:
+    ) -> ProteusVariable[StochasticScalar]:
         """Import a ProteusVariable from a CSV file.
 
         This method currently has significant limitations and will be replaced
@@ -690,7 +696,7 @@ class ProteusVariable[T]:
         )
         result.n_sims = max(count)
 
-        return result
+        return result  # type: ignore
 
     @classmethod
     def from_dict(
@@ -888,10 +894,6 @@ class ProteusVariable[T]:
 
         if isinstance(x, StochasticScalar) or isinstance(x, FreqSevSims):
             # Handle StochasticScalar and FreqSevSims types
-            if x.n_sims is None:
-                # If n_sims is None, return the value directly
-                return x
-
             if x.n_sims <= 1:
                 # If n_sims is 1 or None, return the value directly
                 return x

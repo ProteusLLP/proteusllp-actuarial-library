@@ -59,6 +59,11 @@ class Copula(ABC):
         """Generate samples from the multivariate distribution underlying the copula.
 
         The marginal distribution of the samples will not necessarily be uniform.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator.
+
         """
         raise NotImplementedError("Subclasses must implement this method.")
 
@@ -81,44 +86,18 @@ class Copula(ABC):
             TypeError: If list contains non-StochasticScalar values.
             ValueError: If variables have inconsistent simulation counts.
         """
-        # ProteusVariable may contain mixed types (StochasticScalar, FreqSevSims,
-        # nested ProteusVariables). We silently filter to only StochasticScalar
-        # values since ProteusVariable is often used as a container where only some
-        # elements need correlation (e.g., aggregate losses but not individual event
-        # details). For explicit lists, we enforce strict typing to catch user errors.
-        if isinstance(variables, ProteusVariable):
-            variables_list: list[StochasticScalar] = list(variables)
-        else:
-            variables_list = []
-            for var in variables:
-                if not isinstance(var, StochasticScalar):  # pyright: ignore[reportUnnecessaryIsInstance] - Runtime validation of user-provided list contents
-                    raise TypeError(
-                        f"Expected StochasticScalar, got {type(var).__name__}"
-                    )
-                variables_list.append(var)
-
+        variables_list = list(variables)
         # Generate the copula samples
-        rng_generator = config.rng
         # Check that n_sims is available
         n_sims = variables_list[0].n_sims
-        if n_sims is None:
-            raise ValueError("Cannot apply copula: n_sims is not set on variables")
-
-        copula_samples_pv = ProteusVariable[StochasticScalar](
-            dim_name="dim1",
-            values={
-                f"{type(self).__name__}_{i}": StochasticScalar(sample)
-                for i, sample in enumerate(
-                    self._generate_unnormalised(n_sims=n_sims, rng=rng_generator)
-                )
-            },
-        )
-        copula_samples_list = list(copula_samples_pv)
-
-        if len(variables_list) != len(copula_samples_list):
+        copula_samples = [
+            StochasticScalar(sample)
+            for sample in self._generate_unnormalised(n_sims=n_sims, rng=config.rng)
+        ]
+        if len(variables) != len(copula_samples):
             raise ValueError("Number of variables and copula samples do not match.")
         # Apply the copula to the variables
-        apply_copula(variables_list, copula_samples_list)
+        apply_copula(variables_list, copula_samples)
 
 
 class EllipticalCopula(Copula, ABC):
@@ -204,9 +183,7 @@ class GaussianCopula(EllipticalCopula):
         self, n_sims: int, rng: np.random.Generator
     ) -> npt.NDArray[np.floating]:
         n_vars = self.correlation_matrix.shape[0]
-        normal_samples = rng.multivariate_normal(
-            mean=np.zeros(n_vars), cov=np.eye(n_vars), size=n_sims
-        ).T
+        normal_samples = rng.standard_normal(size=(n_vars, n_sims))
         return self.chol.dot(normal_samples)
 
 
@@ -253,11 +230,7 @@ class StudentsTCopula(EllipticalCopula):
         self, n_sims: int, rng: np.random.Generator
     ) -> npt.NDArray[np.floating]:
         n_vars = self.correlation_matrix.shape[0]
-        normal_samples = self.chol.dot(
-            rng.multivariate_normal(
-                mean=np.zeros(n_vars), cov=np.eye(n_vars), size=n_sims
-            ).T
-        )
+        normal_samples = self.chol.dot(rng.standard_normal(size=(n_vars, n_sims)))
         chi_samples = np.sqrt(rng.gamma(self.dof / 2, 2 / self.dof, size=n_sims))
         return normal_samples / chi_samples[np.newaxis, :]
 
@@ -329,12 +302,7 @@ class ArchimedeanCopula(Copula, ABC):
 
 
 class ClaytonCopula(ArchimedeanCopula):
-    """A class to represent a Clayton copula.
-
-    The Clayton copula is an Archimedean copula with parameter theta >= 0.
-    When theta = 0, the copula reduces to the independence copula.
-    As theta increases, the dependence structure becomes stronger.
-    """
+    """A class to represent a Clayton copula."""
 
     def __init__(self, theta: float, n: int) -> None:
         """Initialize a Clayton copula.
@@ -523,8 +491,8 @@ def _sibuya_gen(
 
 
 def apply_copula(
-    variables: list[StochasticScalar],
-    copula_samples: list[StochasticScalar],
+    variables: ProteusVariable[StochasticScalar] | list[StochasticScalar],
+    copula_samples: ProteusVariable[StochasticScalar] | list[StochasticScalar],
 ) -> None:
     """Apply a reordering from a copula to a list of variables.
 
@@ -534,10 +502,11 @@ def apply_copula(
     """
     if len(variables) != len(copula_samples):
         raise ValueError("Number of variables and copula samples do not match.")
+    variables_list = list(variables)
 
     # Check independence of variables
-    for i, var1 in enumerate(variables):
-        for j, var2 in enumerate(variables[i + 1 :]):
+    for i, var1 in enumerate(variables_list):
+        for j, var2 in enumerate(variables_list[i + 1 :]):
             if var1.coupled_variable_group is var2.coupled_variable_group:
                 raise ValueError(
                     f"Cannot apply copula as the variables at positions {i} and "
