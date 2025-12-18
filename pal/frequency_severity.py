@@ -37,6 +37,7 @@ from .couplings import ProteusStochasticVariable
 from .stochastic_scalar import (
     StochasticScalar,
 )
+from .types import ScipyNumeric
 
 # Type aliases for frequency-severity modeling
 
@@ -214,6 +215,27 @@ class FreqSevSims(ProteusStochasticVariable):
             + str(self.values)
         )
 
+    def _get_unique_sims(self) -> npt.NDArray[np.int64]:
+        """Get the unique simulation indices that have events.
+
+        Returns:
+            Sorted array of simulation indices that have at least one event.
+        """
+        return np.unique(self.sim_index)
+
+    def _get_masks_for_sims(
+        self, sim_indices: npt.NDArray[np.int64]
+    ) -> dict[int, npt.NDArray[np.bool_]]:
+        """Get boolean masks for events belonging to specified simulations.
+
+        Args:
+            sim_indices: Array of simulation indices to get masks for.
+
+        Returns:
+            Dictionary mapping sim_idx -> boolean mask for that sim's events.
+        """
+        return {int(sim_idx): self.sim_index == sim_idx for sim_idx in sim_indices}
+
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
         """Reorder simulations according to the given order.
 
@@ -226,20 +248,129 @@ class FreqSevSims(ProteusStochasticVariable):
         reverse_ordering[new_order] = xp.arange(len(new_order), dtype=int)
         self.sim_index = reverse_ordering[self.sim_index]
 
-    def __getitem__(self, sim_index: int) -> StochasticScalar:
-        """Returns the values of the simulation with the given simulation index."""
-        # get the positions of the given simulation index
-        if isinstance(sim_index, int):  # type: ignore[unecessary-check]
-            ints = np.where(self.sim_index == sim_index)
-            return StochasticScalar(self.values[ints])
-        else:
-            raise NotImplementedError
+    def __getitem__(
+        self, index: ScipyNumeric | StochasticScalar
+    ) -> npt.NDArray[np.floating] | FreqSevSims:
+        """Returns the events from the specified simulation(s).
+
+        Extracts events from one or more simulations. When indexed with a scalar,
+        returns a numpy array of events. When indexed with StochasticScalar,
+        returns a new FreqSevSims with events from the specified simulations and
+        preserves coupling relationships.
+
+        Args:
+            index: Integer/float for single simulation, or StochasticScalar
+                containing simulation indices (numeric or boolean).
+                Negative indices count from the end.
+
+        Returns:
+            NumPy array if indexed with scalar (events from one simulation).
+            FreqSevSims if indexed with StochasticScalar (events from multiple sims).
+
+        Raises:
+            IndexError: If index is out of bounds [0, n_sims).
+            TypeError: If index type is not supported.
+
+        Examples:
+            >>> fs = FreqSevSims([0, 0, 1, 2], [1.0, 2.0, 3.0, 4.0], n_sims=3)
+            >>> fs[0]
+            array([1., 2.])
+            >>> fs[-1]  # Last simulation
+            array([4.])
+            >>> fs[StochasticScalar([0, 2])]  # Multiple simulations
+            FreqSevSims(...)
+        """
+        if isinstance(index, ScipyNumeric):
+            sim_idx = int(index)
+
+            # Handle negative indexing
+            if sim_idx < 0:
+                sim_idx = self.n_sims + sim_idx
+
+            # Validate index is in valid range
+            if sim_idx < 0 or sim_idx >= self.n_sims:
+                raise IndexError(
+                    f"simulation index {int(index)} is out of bounds for "
+                    f"FreqSevSims with {self.n_sims} simulations"
+                )
+
+            # Extract events from specified simulation (may be empty if no events)
+            mask = self.sim_index == sim_idx
+            return self.values[mask]  # type: ignore[return-value]
+
+        if isinstance(index, StochasticScalar):
+            # Check if index contains boolean values for masking
+            if xp.issubdtype(index.values.dtype, xp.bool_):
+                # Validate that index has same n_sims for boolean masking
+                if index.n_sims != self.n_sims:
+                    raise ValueError(
+                        f"Boolean mask n_sims ({index.n_sims}) must match FreqSevSims "
+                        f"n_sims ({self.n_sims}) for masking"
+                    )
+
+                # Use boolean mask to filter simulations
+                # Build array of selected sim indices in order
+                indices_array = np.array(
+                    [
+                        sim_idx
+                        for sim_idx in range(self.n_sims)
+                        if sim_idx < len(index.values) and index.values[sim_idx]
+                    ],
+                    dtype=int,
+                )
+            else:
+                # Extract events from multiple simulations specified by indices
+                # Indices specify both which sims to extract AND their new order
+                indices_array = index.values.astype(int)
+
+                # Validate that all indices are within bounds
+                if np.any(indices_array < 0) or np.any(indices_array >= self.n_sims):
+                    raise IndexError(
+                        f"All indices must be in range [0, {self.n_sims}), "
+                        f"got indices with min={np.min(indices_array)} and "
+                        f"max={np.max(indices_array)}"
+                    )
+
+            # Build new sim_index and values arrays with remapping
+            # Get masks for all unique sims we need (handles duplicates efficiently)
+            mask_dict = self._get_masks_for_sims(np.unique(indices_array))
+
+            # Build both arrays in one pass
+            # For indices=[1,0,1], we process sim 1, then sim 0, then sim 1 again
+            sim_index_parts = []
+            values_parts = []
+            for new_idx, old_idx in enumerate(indices_array):
+                mask = mask_dict[int(old_idx)]
+                if np.any(mask):
+                    event_count = int(np.sum(mask))
+                    sim_index_parts.append(np.full(event_count, new_idx, dtype=int))
+                    values_parts.append(self.values[mask])
+
+            new_sim_index = (
+                np.concatenate(sim_index_parts)
+                if sim_index_parts
+                else np.array([], dtype=int)
+            )
+            new_values = np.concatenate(values_parts) if values_parts else np.array([])
+
+            result = type(self)(
+                sim_index=new_sim_index,
+                values=new_values,
+                n_sims=index.n_sims,
+            )
+            result.coupled_variable_group.merge(index.coupled_variable_group)
+            return result
+
+        raise TypeError(
+            f"Unexpected type {type(index).__name__}. Index must be an integer, "
+            "float, or StochasticScalar."
+        )
 
     def __len__(self) -> int:
         """Return the number of simulations."""
         return self.n_sims
 
-    def __iter__(self) -> t.Iterator[StochasticScalar]:
+    def __iter__(self) -> t.Iterator[npt.NDArray[np.floating]]:
         """Iterate over the simulations."""
         for i in range(self.n_sims):
             yield self[i]
