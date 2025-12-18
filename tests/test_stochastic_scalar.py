@@ -384,7 +384,8 @@ def test_upsample_not_orderly_repetition():
         result.values, [10, 20, 30, 10, 20, 30, 10, 20, 30]
     )
     assert not is_orderly_repetition, (
-        "Upsampling is using orderly repetition pattern - this is the bug we're avoiding"
+        "Upsampling is using orderly repetition pattern - "
+        "this is the bug we're avoiding"
     )
 
     # Verify distribution is still correct (each value appears 3 times)

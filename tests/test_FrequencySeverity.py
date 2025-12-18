@@ -294,7 +294,8 @@ def test_getitem_coupling_preservation():
     indices = StochasticScalar([1, 0])
     result = fs[indices]
 
-    # Check that coupling groups are merged - result and indices should share the same group
+    # Check that coupling groups are merged - result and indices should share
+    # the same group
     assert result.coupled_variable_group is indices.coupled_variable_group
 
 
@@ -307,24 +308,26 @@ def test_getitem_validation():
     # Test boolean mask with mismatched n_sims raises error
     mask = StochasticScalar([True, False])  # n_sims=2, but fs has n_sims=3
     try:
-        result = fs[mask]
-        assert False, "Should have raised ValueError for mismatched boolean mask"
+        fs[mask]
+        raise AssertionError(
+            "Should have raised ValueError for mismatched boolean mask"
+        )
     except ValueError as e:
         assert "Boolean mask n_sims" in str(e) and "must match" in str(e)
 
     # Test numeric indices out of bounds raises error
     indices = StochasticScalar([0, 1, 5])  # 5 is out of bounds for n_sims=3
     try:
-        result = fs[indices]
-        assert False, "Should have raised IndexError for out-of-bounds index"
+        fs[indices]
+        raise AssertionError("Should have raised IndexError for out-of-bounds index")
     except IndexError as e:
         assert "must be in range" in str(e)
 
     # Test negative numeric indices raises error
     indices = StochasticScalar([0, -1, 1])
     try:
-        result = fs[indices]
-        assert False, "Should have raised IndexError for negative index"
+        fs[indices]
+        raise AssertionError("Should have raised IndexError for negative index")
     except IndexError as e:
         assert "must be in range" in str(e)
 
