@@ -50,7 +50,8 @@ def generate_upsample_indices(
         seed: Optional random seed for reproducibility.
 
     Returns:
-        Array of indices with length target_n_sims, containing values in [0, current_n_sims).
+        Array of indices with length target_n_sims, containing values in
+        [0, current_n_sims).
 
     Examples:
         >>> # Downsample: 10 -> 3 (random selection)
