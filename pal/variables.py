@@ -990,17 +990,16 @@ class ProteusVariable[T]:
                 return x
 
             if isinstance(sim_no, StochasticScalar):
-                # Extract all values and return a new StochasticScalar with those
-                # indices
-                indices = sim_no.values.astype(int)
-                return StochasticScalar(x.values[indices])
+                # Use __getitem__ to preserve coupling relationships
+                return x[sim_no]
 
             # Handle the main case: extract value at specific simulation index
             if isinstance(sim_no, int):
-                return x.values[sim_no]
+                return x[sim_no]
 
             if isinstance(sim_no, list):
-                return StochasticScalar(x.values[sim_no])
+                # Use __getitem__ with StochasticScalar to preserve coupling
+                return x[StochasticScalar(sim_no)]
 
             return x
 
