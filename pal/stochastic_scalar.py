@@ -16,7 +16,7 @@ import plotly.graph_objects as go  # type: ignore
 
 from pal import stats  # type: ignore
 
-from ._maths import xp
+from ._maths import generate_upsample_indices, xp
 from .couplings import CouplingGroup, ProteusStochasticVariable
 from .stats import NumberOrList
 from .types import Numeric, NumericLike, ScipyNumeric
@@ -262,11 +262,13 @@ class StochasticScalar(ProteusStochasticVariable):
         """
         return stats.tvar(self.values, p)
 
-    def upsample(self, n_sims: int) -> t.Self:
+    def upsample(self, n_sims: int, seed: int | None = None) -> t.Self:
         """Increase the number of simulations in the variable."""
         if n_sims == self.n_sims:
             return self
-        return type(self)(self.values[xp.arange(n_sims) % self.n_sims])
+        indices = generate_upsample_indices(n_sims, self.n_sims, seed=seed)
+        # Use __getitem__ to preserve coupling
+        return self[type(self)(indices)]
 
     def show_histogram(self, title: str | None = None) -> None:
         """Show a histogram of the variable.

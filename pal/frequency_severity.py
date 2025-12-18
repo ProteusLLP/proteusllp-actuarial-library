@@ -31,7 +31,7 @@ import numpy as np
 import numpy.typing as npt
 
 from . import distributions
-from ._maths import xp
+from ._maths import generate_upsample_indices, xp
 from .config import config
 from .couplings import ProteusStochasticVariable
 from .stochastic_scalar import (
@@ -562,11 +562,12 @@ class FreqSevSims(ProteusStochasticVariable):
         """
         return isinstance(other, FreqSevSims) and self.sim_index is other.sim_index
 
-    def upsample(self, n_sims: int) -> FreqSevSims:
+    def upsample(self, n_sims: int, seed: int | None = None) -> FreqSevSims:
         """Upsamples the FreqSevSims object to the given number of simulations.
 
         Args:
             n_sims: Target number of simulations
+            seed: Optional random seed for reproducibility
 
         Returns:
             New FreqSevSims object with upsampled data
@@ -576,14 +577,5 @@ class FreqSevSims(ProteusStochasticVariable):
         """
         if n_sims == self.n_sims:
             return self.copy()
-        sim_index = np.repeat(self.sim_index, n_sims // self.n_sims)
-        values = np.repeat(self.values, n_sims // self.n_sims)
-        if n_sims % self.n_sims > 0:
-            sim_index = np.concatenate(
-                (sim_index, self.sim_index[self.sim_index < n_sims % self.n_sims])
-            )
-            values = np.concatenate(
-                (values, self.values[self.sim_index < n_sims % self.n_sims])
-            )
-        sim_index = sim_index + xp.arange(len(sim_index)) % n_sims
-        return FreqSevSims(sim_index, values, n_sims)
+        indices = generate_upsample_indices(n_sims, self.n_sims, seed=seed)
+        return self[StochasticScalar(indices)]

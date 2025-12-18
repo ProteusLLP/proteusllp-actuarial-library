@@ -605,9 +605,17 @@ def test_upsample_dict_stochastic_scalar():
     assert isinstance(result.values, dict)
     assert set(result.values.keys()) == {"a", "b"}
 
-    # Verify upsampled values (should cycle through original values)
-    assert pnp.all(result["a"] == StochasticScalar([1, 2, 1, 2]))
-    assert pnp.all(result["b"] == StochasticScalar([3, 4, 3, 4]))
+    # Verify upsampled values - first chunk is ordered, counts are correct
+    assert result["a"].n_sims == 4
+    assert result["b"].n_sims == 4
+    # First 2 values should be ordered [1, 2]
+    assert np.array_equal(result["a"].values[:2], [1, 2])
+    assert np.array_equal(result["b"].values[:2], [3, 4])
+    # Each original value appears exactly twice
+    assert np.sum(result["a"].values == 1) == 2
+    assert np.sum(result["a"].values == 2) == 2
+    assert np.sum(result["b"].values == 3) == 2
+    assert np.sum(result["b"].values == 4) == 2
 
 
 def test_upsample_dict_scalar_values():
@@ -653,9 +661,13 @@ def test_upsample_dict_mixed_types():
     assert set(result.values.keys()) == {"stochastic", "scalar"}
 
     # Verify upsampled stochastic value
-    to_check = result["stochastic"] == StochasticScalar([1, 2, 3, 1, 2, 3])
-    assert isinstance(to_check, StochasticScalar)  # Type guard for type checker
-    assert pnp.all(to_check)
+    assert result["stochastic"].n_sims == 6
+    # First 3 values should be ordered [1, 2, 3]
+    assert np.array_equal(result["stochastic"].values[:3], [1, 2, 3])
+    # Each original value appears exactly twice
+    assert np.sum(result["stochastic"].values == 1) == 2
+    assert np.sum(result["stochastic"].values == 2) == 2
+    assert np.sum(result["stochastic"].values == 3) == 2
     # Scalar value should remain unchanged
     assert result["scalar"] == 42
 
@@ -769,9 +781,13 @@ def test_upsample_large_multiplier():
 
     result = x.upsample(100)
 
-    # Should cycle through original values 50 times
-    expected_values = [1, 2] * 50
-    assert pnp.all(result.values["a"] == StochasticScalar(expected_values))
+    # Should have each original value appear 50 times
+    assert result.values["a"].n_sims == 100
+    # First 2 values should be ordered [1, 2]
+    assert np.array_equal(result.values["a"].values[:2], [1, 2])
+    # Each original value appears exactly 50 times
+    assert np.sum(result.values["a"].values == 1) == 50
+    assert np.sum(result.values["a"].values == 2) == 50
     assert result.n_sims == 100
 
 
@@ -928,18 +944,18 @@ def test_upsample_nested_proteus_variable():
     assert result.values["north"].values["flood"].n_sims == 4
     assert result.values["south"].n_sims == 4
 
-    # Check values are correctly upsampled (cycled)
-    expected_fire = [1, 2, 1, 2]
-    expected_flood = [3, 4, 3, 4]
-    expected_south = [5, 6, 5, 6]
-
-    assert pnp.all(
-        result.values["north"].values["fire"] == StochasticScalar(expected_fire)
-    )
-    assert pnp.all(
-        result.values["north"].values["flood"] == StochasticScalar(expected_flood)
-    )
-    assert pnp.all(result.values["south"] == StochasticScalar(expected_south))
+    # Check values are correctly upsampled
+    # First 2 values should be ordered for each variable
+    assert np.array_equal(result.values["north"].values["fire"].values[:2], [1, 2])
+    assert np.array_equal(result.values["north"].values["flood"].values[:2], [3, 4])
+    assert np.array_equal(result.values["south"].values[:2], [5, 6])
+    # Each original value appears exactly twice
+    assert np.sum(result.values["north"].values["fire"].values == 1) == 2
+    assert np.sum(result.values["north"].values["fire"].values == 2) == 2
+    assert np.sum(result.values["north"].values["flood"].values == 3) == 2
+    assert np.sum(result.values["north"].values["flood"].values == 4) == 2
+    assert np.sum(result.values["south"].values == 5) == 2
+    assert np.sum(result.values["south"].values == 6) == 2
 
 
 def test_upsample_deeply_nested_proteus_variable():
@@ -980,10 +996,18 @@ def test_upsample_deeply_nested_proteus_variable():
     assert result.values["south"].n_sims == 6
 
     # Check deepest level values
-    expected_residential = [1, 2, 1, 2, 1, 2]
-    assert pnp.all(
-        result.values["north"].values["fire"].values["residential"]
-        == StochasticScalar(expected_residential)
+    # First 2 values should be ordered [1, 2]
+    assert np.array_equal(
+        result.values["north"].values["fire"].values["residential"].values[:2], [1, 2]
+    )
+    # Each original value appears exactly 3 times
+    assert (
+        np.sum(result.values["north"].values["fire"].values["residential"].values == 1)
+        == 3
+    )
+    assert (
+        np.sum(result.values["north"].values["fire"].values["residential"].values == 2)
+        == 3
     )
 
 
@@ -1016,14 +1040,20 @@ def test_upsample_nested_with_freqsev():
     assert result.values["north"].values["flood"].n_sims == 6
     assert result.values["south"].n_sims == 6
 
-    # Check FreqSevSims was upsampled correctly (duplicates each value)
-    # New behavior using __getitem__: extracts [0,1,2,0,1,2] and remaps to [0,1,2,3,4,5]
+    # Check FreqSevSims was upsampled correctly
+    # sim_index should be [0,1,2,3,4,5] (remapped)
     expected_sim_index = [0, 1, 2, 3, 4, 5]
-    expected_values = [10.0, 20.0, 30.0, 10.0, 20.0, 30.0]
     assert np.array_equal(
         result.values["north"].values["fire"].sim_index, expected_sim_index
     )
-    assert np.array_equal(result.values["north"].values["fire"].values, expected_values)
+    # First 3 events should be ordered [10.0, 20.0, 30.0]
+    assert np.array_equal(
+        result.values["north"].values["fire"].values[:3], [10.0, 20.0, 30.0]
+    )
+    # Each original value appears exactly twice
+    assert np.sum(result.values["north"].values["fire"].values == 10.0) == 2
+    assert np.sum(result.values["north"].values["fire"].values == 20.0) == 2
+    assert np.sum(result.values["north"].values["fire"].values == 30.0) == 2
 
 
 def test_upsample_preserves_coupling():
@@ -1031,11 +1061,11 @@ def test_upsample_preserves_coupling():
     # Create coupled variables
     ss1 = StochasticScalar([10, 20, 30])
     ss2 = StochasticScalar([100, 200, 300])
-    
+
     # Couple them together
     ss1.coupled_variable_group.merge(ss2.coupled_variable_group)
     assert ss1.coupled_variable_group is ss2.coupled_variable_group
-    
+
     # Create ProteusVariable with coupled values
     pv = ProteusVariable(
         dim_name="factors",
@@ -1044,18 +1074,30 @@ def test_upsample_preserves_coupling():
             "factor2": ss2,
         },
     )
-    
+
     # Upsample
     result = pv.upsample(6)
-    
+
     # Check that coupling is preserved
     result_ss1 = result.values["factor1"]
     result_ss2 = result.values["factor2"]
     assert result_ss1.coupled_variable_group is result_ss2.coupled_variable_group
-    
+
     # Check values are correctly upsampled with same pattern
-    assert np.array_equal(result_ss1.values, [10, 20, 30, 10, 20, 30])
-    assert np.array_equal(result_ss2.values, [100, 200, 300, 100, 200, 300])
+    # First 3 values should be ordered
+    assert np.array_equal(result_ss1.values[:3], [10, 20, 30])
+    assert np.array_equal(result_ss2.values[:3], [100, 200, 300])
+    # Each value appears exactly twice
+    assert np.sum(result_ss1.values == 10) == 2
+    assert np.sum(result_ss1.values == 20) == 2
+    assert np.sum(result_ss1.values == 30) == 2
+    assert np.sum(result_ss2.values == 100) == 2
+    assert np.sum(result_ss2.values == 200) == 2
+    assert np.sum(result_ss2.values == 300) == 2
+    # Verify they use the same indices (coupling preserved means same permutation)
+    # The ratio between corresponding elements should be constant (100/10 = 10)
+    ratios = result_ss2.values / result_ss1.values
+    assert np.allclose(ratios, 10.0)
 
 
 def test_upsample_independent_coupling_groups():
@@ -1063,10 +1105,10 @@ def test_upsample_independent_coupling_groups():
     # Create two independent coupling groups (same n_sims so they can be in same PV)
     ss1 = StochasticScalar([10, 20, 30])  # Group 1
     ss2 = StochasticScalar([100, 200, 300])  # Group 2
-    
+
     # Verify they're independent
     assert ss1.coupled_variable_group is not ss2.coupled_variable_group
-    
+
     # Create ProteusVariable
     pv = ProteusVariable(
         dim_name="factors",
@@ -1075,15 +1117,60 @@ def test_upsample_independent_coupling_groups():
             "factor2": ss2,
         },
     )
-    
+
     # Upsample
     result = pv.upsample(6)
-    
+
     # Check they remain independent (different coupling groups)
     result_ss1 = result.values["factor1"]
     result_ss2 = result.values["factor2"]
     assert result_ss1.coupled_variable_group is not result_ss2.coupled_variable_group
-    
-    # Both should use same upsampling pattern since they have same n_sims
-    assert np.array_equal(result_ss1.values, [10, 20, 30, 10, 20, 30])
-    assert np.array_equal(result_ss2.values, [100, 200, 300, 100, 200, 300])
+
+    # Both have first chunk ordered but may differ in random chunks
+    assert np.array_equal(result_ss1.values[:3], [10, 20, 30])
+    assert np.array_equal(result_ss2.values[:3], [100, 200, 300])
+    # Each value appears exactly twice
+    assert np.sum(result_ss1.values == 10) == 2
+    assert np.sum(result_ss1.values == 20) == 2
+    assert np.sum(result_ss1.values == 30) == 2
+    assert np.sum(result_ss2.values == 100) == 2
+    assert np.sum(result_ss2.values == 200) == 2
+    assert np.sum(result_ss2.values == 300) == 2
+
+
+def test_upsample_coupling_with_large_multiplier():
+    """Verify coupled variables maintain relationship with large upsample.
+
+    The old orderly pattern [0,1,2,0,1,2] could cause issues where coupled
+    variables would get out of sync. This test verifies the new approach
+    handles large upsampling correctly.
+    """
+    # Create coupled variables with a 10:1 relationship
+    ss1 = StochasticScalar([10, 20, 30])
+    ss2 = StochasticScalar([100, 200, 300])
+
+    ss1.coupled_variable_group.merge(ss2.coupled_variable_group)
+
+    # Upsample through ProteusVariable (which handles coupling correctly)
+    pv = ProteusVariable(
+        dim_name="test",
+        values={"factor1": ss1, "factor2": ss2},
+    )
+    result = pv.upsample(30)
+
+    # Coupling should be preserved
+    result1 = result.values["factor1"]
+    result2 = result.values["factor2"]
+    assert result1.coupled_variable_group is result2.coupled_variable_group
+
+    # The relationship should be maintained at EVERY index
+    # This would fail with orderly patterns if implementation was buggy
+    ratios = result2.values / result1.values
+    assert np.allclose(ratios, 10.0), (
+        f"Coupling broken: ratios should all be 10.0 but got {ratios}"
+    )
+
+    # Verify distribution is correct
+    assert np.sum(result1.values == 10) == 10
+    assert np.sum(result1.values == 20) == 10
+    assert np.sum(result1.values == 30) == 10

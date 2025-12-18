@@ -60,7 +60,6 @@ import scipy.stats
 
 # local imports
 from . import maths as pnp
-from ._maths import xp
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
@@ -627,6 +626,7 @@ class ProteusVariable[T]:
         self,
         n_sims: int,
         group_indices: dict[int, StochasticScalar] | None = None,
+        seed: int | None = None,
     ) -> ProteusVariable[T]:
         """Upsample the variable to the specified number of simulations.
 
@@ -639,6 +639,7 @@ class ProteusVariable[T]:
             n_sims: Target number of simulations.
             group_indices: Internal parameter for tracking coupling groups across
                           nested structures. Should not be provided by external callers.
+            seed: Optional random seed for reproducibility.
 
         Returns:
             A new ProteusVariable with all values upsampled to n_sims.
@@ -657,15 +658,17 @@ class ProteusVariable[T]:
 
                 # Get or create the shared index for this coupling group
                 if group_id not in group_indices:
-                    indices = xp.arange(n_sims) % value.n_sims
+                    from ._maths import generate_upsample_indices
+
+                    indices = generate_upsample_indices(n_sims, value.n_sims, seed=seed)
                     group_indices[group_id] = StochasticScalar(indices)
 
                 # Use __getitem__ with the coupling group's shared index
                 new_values[key] = value[group_indices[group_id]]
 
             elif isinstance(value, ProteusVariable):
-                # Recursively upsample, passing the group_indices dict
-                new_values[key] = value.upsample(n_sims, group_indices)
+                # Recursively upsample, passing the group_indices dict and seed
+                new_values[key] = value.upsample(n_sims, group_indices, seed=seed)
             else:
                 new_values[key] = value
 

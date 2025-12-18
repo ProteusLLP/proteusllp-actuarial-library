@@ -364,3 +364,30 @@ def test_any_all():
     z = StochasticScalar([False, False, False])
     assert z.any() is False
     assert z.all() is False
+
+
+def test_upsample_not_orderly_repetition():
+    """Verify upsampling doesn't repeat indices in the same order for every chunk.
+
+    Old problematic behavior: [0,1,2,0,1,2,0,1,2] - simple modulo pattern
+    This test just verifies we DON'T get that orderly repetition.
+    """
+    ss = StochasticScalar([10, 20, 30])
+    result = ss.upsample(9)  # 3 full chunks
+
+    # We should NOT get the orderly pattern [10,20,30,10,20,30,10,20,30]
+    # First chunk is deterministically [10, 20, 30]
+    assert np.array_equal(result.values[:3], [10, 20, 30])
+
+    # Check it's not the problematic orderly repetition across all chunks
+    is_orderly_repetition = np.array_equal(
+        result.values, [10, 20, 30, 10, 20, 30, 10, 20, 30]
+    )
+    assert not is_orderly_repetition, (
+        "Upsampling is using orderly repetition pattern - this is the bug we're avoiding"
+    )
+
+    # Verify distribution is still correct (each value appears 3 times)
+    assert np.sum(result.values == 10) == 3
+    assert np.sum(result.values == 20) == 3
+    assert np.sum(result.values == 30) == 3
