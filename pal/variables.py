@@ -623,7 +623,18 @@ class ProteusVariable[T]:
         )
 
     def upsample(self, n_sims: int) -> ProteusVariable[T]:
-        """Upsample the variable to the specified number of simulations."""
+        """Upsample the variable to the specified number of simulations.
+
+        Recursively upsamples all nested ProteusVariable structures and
+        ProteusStochasticVariable values to ensure consistent n_sims across
+        all levels of nesting.
+
+        Args:
+            n_sims: Target number of simulations.
+
+        Returns:
+            A new ProteusVariable with all values upsampled to n_sims.
+        """
         if self.n_sims == n_sims:
             return self
         return ProteusVariable(
@@ -631,7 +642,7 @@ class ProteusVariable[T]:
             values={
                 key: (
                     value.upsample(n_sims)
-                    if isinstance(value, ProteusStochasticVariable)
+                    if isinstance(value, (ProteusStochasticVariable, ProteusVariable))
                     else value
                 )
                 for key, value in self.values.items()

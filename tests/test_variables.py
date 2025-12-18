@@ -899,3 +899,127 @@ def test_validate_freqsev_consistency_single():
     assert msg == ""
     assert sim_idx is not None
     assert np.array_equal(sim_idx, np.array([0, 1, 2]))
+
+
+def test_upsample_nested_proteus_variable():
+    """Test upsample with nested ProteusVariable structures."""
+    inner = ProteusVariable(
+        dim_name="perils",
+        values={
+            "fire": StochasticScalar([1, 2]),
+            "flood": StochasticScalar([3, 4]),
+        },
+    )
+
+    outer = ProteusVariable(
+        dim_name="regions",
+        values={
+            "north": inner,
+            "south": StochasticScalar([5, 6]),
+        },
+    )
+
+    result = outer.upsample(4)
+
+    # All levels should have consistent n_sims
+    assert result.n_sims == 4
+    assert result.values["north"].n_sims == 4
+    assert result.values["north"].values["fire"].n_sims == 4
+    assert result.values["north"].values["flood"].n_sims == 4
+    assert result.values["south"].n_sims == 4
+
+    # Check values are correctly upsampled (cycled)
+    expected_fire = [1, 2, 1, 2]
+    expected_flood = [3, 4, 3, 4]
+    expected_south = [5, 6, 5, 6]
+
+    assert pnp.all(
+        result.values["north"].values["fire"] == StochasticScalar(expected_fire)
+    )
+    assert pnp.all(
+        result.values["north"].values["flood"] == StochasticScalar(expected_flood)
+    )
+    assert pnp.all(result.values["south"] == StochasticScalar(expected_south))
+
+
+def test_upsample_deeply_nested_proteus_variable():
+    """Test upsample with deeply nested ProteusVariable structures (3 levels)."""
+    innermost = ProteusVariable(
+        dim_name="sub_perils",
+        values={
+            "residential": StochasticScalar([1, 2]),
+            "commercial": StochasticScalar([3, 4]),
+        },
+    )
+
+    middle = ProteusVariable(
+        dim_name="perils",
+        values={
+            "fire": innermost,
+            "flood": StochasticScalar([5, 6]),
+        },
+    )
+
+    outer = ProteusVariable(
+        dim_name="regions",
+        values={
+            "north": middle,
+            "south": StochasticScalar([7, 8]),
+        },
+    )
+
+    result = outer.upsample(6)
+
+    # All levels should have consistent n_sims
+    assert result.n_sims == 6
+    assert result.values["north"].n_sims == 6
+    assert result.values["north"].values["fire"].n_sims == 6
+    assert result.values["north"].values["fire"].values["residential"].n_sims == 6
+    assert result.values["north"].values["fire"].values["commercial"].n_sims == 6
+    assert result.values["north"].values["flood"].n_sims == 6
+    assert result.values["south"].n_sims == 6
+
+    # Check deepest level values
+    expected_residential = [1, 2, 1, 2, 1, 2]
+    assert pnp.all(
+        result.values["north"].values["fire"].values["residential"]
+        == StochasticScalar(expected_residential)
+    )
+
+
+def test_upsample_nested_with_freqsev():
+    """Test upsample with nested ProteusVariable containing FreqSevSims."""
+    freq_sev = FreqSevSims([0, 1, 2], [10.0, 20.0, 30.0], 3)
+
+    inner = ProteusVariable(
+        dim_name="perils",
+        values={
+            "fire": freq_sev,
+            "flood": StochasticScalar([100, 200, 300]),
+        },
+    )
+
+    outer = ProteusVariable(
+        dim_name="regions",
+        values={
+            "north": inner,
+            "south": StochasticScalar([5, 6, 7]),
+        },
+    )
+
+    result = outer.upsample(6)
+
+    # All levels should have consistent n_sims
+    assert result.n_sims == 6
+    assert result.values["north"].n_sims == 6
+    assert result.values["north"].values["fire"].n_sims == 6
+    assert result.values["north"].values["flood"].n_sims == 6
+    assert result.values["south"].n_sims == 6
+
+    # Check FreqSevSims was upsampled correctly (duplicates each value)
+    expected_sim_index = [0, 1, 3, 4, 6, 7]
+    expected_values = [10.0, 10.0, 20.0, 20.0, 30.0, 30.0]
+    assert np.array_equal(
+        result.values["north"].values["fire"].sim_index, expected_sim_index
+    )
+    assert np.array_equal(result.values["north"].values["fire"].values, expected_values)
