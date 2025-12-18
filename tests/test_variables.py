@@ -875,7 +875,7 @@ def test_validate_freqsev_consistency_nested_mismatch():
 
 def test_validate_freqsev_consistency_empty():
     """Test validation passes with empty ProteusVariable."""
-    var = ProteusVariable(dim_name="empty", values={})
+    var = ProteusVariable[int](dim_name="empty", values={})
 
     is_valid, msg, sim_idx = var.validate_freqsev_consistency()
 
