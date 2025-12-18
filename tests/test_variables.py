@@ -1017,9 +1017,73 @@ def test_upsample_nested_with_freqsev():
     assert result.values["south"].n_sims == 6
 
     # Check FreqSevSims was upsampled correctly (duplicates each value)
-    expected_sim_index = [0, 1, 3, 4, 6, 7]
-    expected_values = [10.0, 10.0, 20.0, 20.0, 30.0, 30.0]
+    # New behavior using __getitem__: extracts [0,1,2,0,1,2] and remaps to [0,1,2,3,4,5]
+    expected_sim_index = [0, 1, 2, 3, 4, 5]
+    expected_values = [10.0, 20.0, 30.0, 10.0, 20.0, 30.0]
     assert np.array_equal(
         result.values["north"].values["fire"].sim_index, expected_sim_index
     )
     assert np.array_equal(result.values["north"].values["fire"].values, expected_values)
+
+
+def test_upsample_preserves_coupling():
+    """Test that upsampling preserves coupling relationships."""
+    # Create coupled variables
+    ss1 = StochasticScalar([10, 20, 30])
+    ss2 = StochasticScalar([100, 200, 300])
+    
+    # Couple them together
+    ss1.coupled_variable_group.merge(ss2.coupled_variable_group)
+    assert ss1.coupled_variable_group is ss2.coupled_variable_group
+    
+    # Create ProteusVariable with coupled values
+    pv = ProteusVariable(
+        dim_name="factors",
+        values={
+            "factor1": ss1,
+            "factor2": ss2,
+        },
+    )
+    
+    # Upsample
+    result = pv.upsample(6)
+    
+    # Check that coupling is preserved
+    result_ss1 = result.values["factor1"]
+    result_ss2 = result.values["factor2"]
+    assert result_ss1.coupled_variable_group is result_ss2.coupled_variable_group
+    
+    # Check values are correctly upsampled with same pattern
+    assert np.array_equal(result_ss1.values, [10, 20, 30, 10, 20, 30])
+    assert np.array_equal(result_ss2.values, [100, 200, 300, 100, 200, 300])
+
+
+def test_upsample_independent_coupling_groups():
+    """Test that independent coupling groups remain independent after upsampling."""
+    # Create two independent coupling groups (same n_sims so they can be in same PV)
+    ss1 = StochasticScalar([10, 20, 30])  # Group 1
+    ss2 = StochasticScalar([100, 200, 300])  # Group 2
+    
+    # Verify they're independent
+    assert ss1.coupled_variable_group is not ss2.coupled_variable_group
+    
+    # Create ProteusVariable
+    pv = ProteusVariable(
+        dim_name="factors",
+        values={
+            "factor1": ss1,
+            "factor2": ss2,
+        },
+    )
+    
+    # Upsample
+    result = pv.upsample(6)
+    
+    # Check they remain independent (different coupling groups)
+    result_ss1 = result.values["factor1"]
+    result_ss2 = result.values["factor2"]
+    assert result_ss1.coupled_variable_group is not result_ss2.coupled_variable_group
+    
+    # Both should use same upsampling pattern since they have same n_sims
+    assert np.array_equal(result_ss1.values, [10, 20, 30, 10, 20, 30])
+    assert np.array_equal(result_ss2.values, [100, 200, 300, 100, 200, 300])

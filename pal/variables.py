@@ -60,6 +60,7 @@ import scipy.stats
 
 # local imports
 from . import maths as pnp
+from ._maths import xp
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
@@ -622,32 +623,53 @@ class ProteusVariable[T]:
             },
         )
 
-    def upsample(self, n_sims: int) -> ProteusVariable[T]:
+    def upsample(
+        self,
+        n_sims: int,
+        group_indices: dict[int, StochasticScalar] | None = None,
+    ) -> ProteusVariable[T]:
         """Upsample the variable to the specified number of simulations.
 
         Recursively upsamples all nested ProteusVariable structures and
         ProteusStochasticVariable values to ensure consistent n_sims across
-        all levels of nesting.
+        all levels of nesting. Preserves coupling relationships by using
+        shared indices for variables in the same coupling group.
 
         Args:
             n_sims: Target number of simulations.
+            group_indices: Internal parameter for tracking coupling groups across
+                          nested structures. Should not be provided by external callers.
 
         Returns:
             A new ProteusVariable with all values upsampled to n_sims.
         """
         if self.n_sims == n_sims:
             return self
-        return ProteusVariable(
-            dim_name=self.dim_name,
-            values={
-                key: (
-                    value.upsample(n_sims)
-                    if isinstance(value, (ProteusStochasticVariable, ProteusVariable))
-                    else value
-                )
-                for key, value in self.values.items()
-            },
-        )
+
+        # Initialize group_indices dict on first call
+        if group_indices is None:
+            group_indices = {}
+
+        new_values = {}
+        for key, value in self.values.items():
+            if isinstance(value, ProteusStochasticVariable):
+                group_id = id(value.coupled_variable_group)
+
+                # Get or create the shared index for this coupling group
+                if group_id not in group_indices:
+                    indices = xp.arange(n_sims) % value.n_sims
+                    group_indices[group_id] = StochasticScalar(indices)
+
+                # Use __getitem__ with the coupling group's shared index
+                new_values[key] = value[group_indices[group_id]]
+
+            elif isinstance(value, ProteusVariable):
+                # Recursively upsample, passing the group_indices dict
+                new_values[key] = value.upsample(n_sims, group_indices)
+            else:
+                new_values[key] = value
+
+        return ProteusVariable(dim_name=self.dim_name, values=new_values)
 
     def sum(self) -> T:
         """Return the sum across the outer dimension."""
