@@ -645,7 +645,7 @@ class ProteusVariable[T]:
     def validate_freqsev_consistency(
         self, _is_nested: bool = False
     ) -> tuple[bool, str, npt.NDArray[t.Any] | None]:
-        """Validate that all FreqSevSims in this ProteusVariable have consistent sim_index.
+        """Validate that all FreqSevSims have consistent sim_index.
 
         When a ProteusVariable contains multiple FreqSevSims objects, operations like
         sum() or aggregation require that all FreqSevSims have identical simulation
@@ -674,7 +674,9 @@ class ProteusVariable[T]:
         Example:
             >>> freq_sev_1 = FreqSevSims([0, 1, 2], [10, 20, 30], 3)
             >>> freq_sev_2 = FreqSevSims([0, 1, 2], [15, 25, 35], 3)
-            >>> var = ProteusVariable("losses", {"fire": freq_sev_1, "flood": freq_sev_2})
+            >>> var = ProteusVariable(
+            ...     "losses", {"fire": freq_sev_1, "flood": freq_sev_2}
+            ... )
             >>> is_valid, msg, sim_idx = var.validate_freqsev_consistency()
             >>> if is_valid:
             ...     total = var.sum()  # Safe to sum
@@ -710,7 +712,8 @@ class ProteusVariable[T]:
                     level = "Immediate" if not _is_nested else "Nested"
                     return (
                         False,
-                        f"{level} value for key {key} is {type(value).__name__}, not FreqSevSims",
+                        f"{level} value for key {key} is "
+                        f"{type(value).__name__}, not FreqSevSims",
                         None,
                     )
 

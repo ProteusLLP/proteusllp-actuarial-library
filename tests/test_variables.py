@@ -828,7 +828,7 @@ def test_validate_freqsev_consistency_invalid_type_immediate():
 
 
 def test_validate_freqsev_consistency_nested_valid():
-    """Test validation passes with nested ProteusVariable containing matching FreqSevSims."""
+    """Test validation passes with nested matching FreqSevSims."""
     freq_sev_1 = FreqSevSims([0, 1, 2], [10.0, 20.0, 30.0], 3)
     freq_sev_2 = FreqSevSims([0, 1, 2], [15.0, 25.0, 35.0], 3)
     freq_sev_3 = FreqSevSims([0, 1, 2], [5.0, 10.0, 15.0], 3)
