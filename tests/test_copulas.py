@@ -5,12 +5,13 @@ with ProteusVariable for dependency modeling in actuarial applications.
 """
 
 import numpy as np
+import numpy.typing as npt
 import pal.maths as pnp
 import pytest
 import scipy
 import scipy.special
 import scipy.stats  # ignore:import-untyped
-from pal import copulas, distributions
+from pal import config, copulas, distributions
 from pal.variables import ProteusVariable, StochasticScalar
 
 
@@ -117,10 +118,17 @@ def test_clayton_copula_apply(alpha: float):
 
 @pytest.mark.parametrize("theta", [1.001, 1.25, 2.2, 5])
 def test_gumbel_copula(theta: float):
-    samples = copulas.GumbelCopula(theta, 2).generate(100000)
+    samples = copulas.GumbelCopula(theta, 2).generate(1000000)
     # calculate the Kendall's tau value
     k = scipy.stats.kendalltau(samples[0].values, samples[1].values).statistic
     assert np.isclose(k, 1 - 1 / theta, atol=1e-2)
+    # test the tail dependence
+    expected_tail_dependence = 2 - 2 ** (1 / theta)
+    threshold = 0.995
+    u_exceed = (samples[0] > threshold).mean()
+    both_exceed = ((samples[0] > threshold) * (samples[1] > threshold)).mean()
+    estimated_tail_dependence = both_exceed / u_exceed
+    assert np.isclose(estimated_tail_dependence, expected_tail_dependence, atol=1e-2)
     # test the margins
     copula_margins(samples)
 
@@ -175,4 +183,151 @@ def test_frank_copula(theta: float):
         atol=1e-2,
     )
     # test the margins
+    copula_margins(samples)
+
+
+@pytest.mark.parametrize("theta", [0.00001, 0.1, 0.5, 2, 4])
+def test_galambos_copula(theta: float):
+    config.rng = np.random.default_rng(42)
+    samples = copulas.GalambosCopula(theta, 2).generate(100000)
+    # test the tail dependence
+    expected_tail_dependence = 2 ** (-1 / theta)
+    threshold = 0.995
+    u_exceed = (samples[0] > threshold).mean()
+    both_exceed = ((samples[0] > threshold) * (samples[1] > threshold)).mean()
+    estimated_tail_dependence = both_exceed / u_exceed
+    assert np.isclose(estimated_tail_dependence, expected_tail_dependence, atol=4e-2)
+
+    # calculate the Blomqvist's beta value
+    beta = 4 * ((samples[0] <= 0.5) * (samples[1] <= 0.5)).mean() - 1
+    assert np.isclose(
+        beta,
+        2 ** (2 ** (-1 / theta)) - 1,
+        atol=1e-2,
+    )
+    # test the margins
+    copula_margins(samples)
+
+
+@pytest.mark.parametrize("delta", [0.1, 0.5, 2, 5, 10])
+def test_plackett_copula(delta: float):
+    samples = copulas.PlackettCopula(delta).generate(100000)
+    # calculate the Spearman's rho value
+    r = scipy.stats.spearmanr(samples[0].values, samples[1].values).statistic
+    # Theoretical Spearman's rho for Plackett copula
+    expected_result = (delta + 1) / (delta - 1) - (2 * delta * np.log(delta)) / (
+        (delta - 1) ** 2
+    )
+    assert np.isclose(
+        r,
+        expected_result,
+        atol=1e-2,
+    )
+    # test the margins
+    copula_margins(samples)
+
+
+@pytest.mark.parametrize(
+    "matrix",
+    (
+        [[0, 1.25], [1.25, 0]],
+        [[0, 2.5], [2.5, 0]],
+        [[0, 0.5], [0.5, 0]],
+        [[0, 0.5, 0.25], [0.5, 0, 0.4], [0.25, 0.4, 0]],
+        [[0, 1.5, 1], [1.5, 0, 0.5], [1, 0.5, 0]],
+        [
+            [0, 1.5, 1, np.inf],
+            [1.5, 0, 0.5, np.inf],
+            [1, 0.5, 0, np.inf],
+            [np.inf, np.inf, np.inf, 0],
+        ],
+    ),
+)
+def test_huslerreiss_copula(matrix: list[list[float]]):
+    d = len(matrix)
+    config.rng = np.random.default_rng(42)
+    samples = copulas.HuslerReissCopula(np.array(matrix)).generate(100000)
+    # test the tail dependence
+
+    expected_tail_dependence: npt.NDArray[np.floating] = 2 * (  # type: ignore[reportUnknownVariableType]
+        1 - scipy.stats.norm.cdf(matrix)
+    )
+    threshold = 0.995
+    estimated_tail_dependence = [
+        [
+            ((samples[i] > threshold) & (samples[j] > threshold)).mean()
+            / (samples[i] > threshold).mean()
+            for j in range(d)
+        ]
+        for i in range(d)
+    ]
+    assert np.allclose(estimated_tail_dependence, expected_tail_dependence, atol=5e-2)  # type: ignore[reportUnknownVariableType]
+    # test the margins
+    copula_margins(samples)
+
+
+def test_huslerreiss_copula_parameter_errors():
+    """Test that invalid parameters raise errors."""
+    with pytest.raises(ValueError, match="Parameter matrix must be square"):
+        copulas.HuslerReissCopula(np.array([[0, 1], [1, 0], [0, 1]]))
+    with pytest.raises(ValueError, match="Matrix diagonal must be zero"):
+        copulas.HuslerReissCopula(np.array([[0, 1], [1, 2]]))
+    with pytest.raises(ValueError, match="Matrix must be symmetric"):
+        copulas.HuslerReissCopula(np.array([[0, 1], [2, 0]]))
+
+
+def test_hulerreiss_copula_methods():
+    """Test Husler-Reiss copula methods."""
+    lambda_matrix = np.array([[0, 1.25], [1.25, 0]])
+    tail_dependence_matrix = copulas.HuslerReissCopula(
+        lambda_matrix
+    ).tail_dependence_matrix
+    expected_tail_dependency_matrix = 2 * (1 - scipy.stats.norm.cdf(lambda_matrix))
+    assert np.allclose(tail_dependence_matrix, expected_tail_dependency_matrix)
+    lambda_matrix = copulas.HuslerReissCopula.calculate_lambda_from_tail_dependence(
+        tail_dependence_matrix
+    )
+    assert np.allclose(lambda_matrix, lambda_matrix)
+    copula = copulas.HuslerReissCopula.from_tail_dependence_matrix(
+        tail_dependence_matrix
+    )
+    assert np.allclose(copula.adjusted_lambda_matrix, lambda_matrix)
+
+
+@pytest.mark.parametrize("theta", [1.01, 1.25, 2])
+@pytest.mark.parametrize(
+    "delta_matrix",
+    [[[1, None], [2.2, 1]], [[None, None, None], [1.2, None, None], [1.5, 2.5, None]]],
+)
+def test_mm1_copula(delta_matrix: list[list[float]], theta: float):
+    config.rng = np.random.default_rng(12345678)
+
+    samples = copulas.MM1Copula(delta_matrix=delta_matrix, theta=theta).generate(
+        1_000_000
+    )
+    # calculate the tail dependency coefficient of each bivariate margin
+    threshold = 0.99
+    upper_tail_coefficient = [
+        [((u > threshold) * (v > threshold)).mean() / (1 - threshold) for u in samples]
+        for v in samples
+    ]
+
+    def mm1_tail_coeff(delta_ij: float, theta: float, d: int):
+        """Calculate the upper tail dependence coefficient for MM1 copula."""
+        return 2 - (
+            ((2 ** (1 / delta_ij)) / (d - 1) + 2 * (d - 2) / (d - 1)) ** (1 / theta)
+        )
+
+    expected_tail_coefficients = [
+        [mm1_tail_coeff(delta_matrix[i][j], theta, len(delta_matrix)) for j in range(i)]
+        for i in range(0, len(delta_matrix))
+    ]
+    for i in range(1, len(delta_matrix)):
+        for j in range(i):
+            assert np.isclose(
+                upper_tail_coefficient[i][j],
+                expected_tail_coefficients[i][j],
+                atol=5e-2,
+            )
+
     copula_margins(samples)

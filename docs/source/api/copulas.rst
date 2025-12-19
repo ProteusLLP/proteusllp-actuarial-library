@@ -17,6 +17,11 @@ The following copulas are available for modeling dependencies:
 - **GumbelCopula**: Gumbel copula for modeling upper tail dependence
 - **ClaytonCopula**: Clayton copula for modeling lower tail dependence
 - **FrankCopula**: Frank copula for symmetric dependence
+- **JoeCopula**: Joe copula for modeling upper tail dependence
+- **PlackettCopula**: Plackett copula for modeling symmetric dependencies
+- **GalambosCopula**: Galambos copula for modeling upper tail dependence
+- **HuslerReissCopula**: Hüsler-Reiss copula for flexible upper tail dependence structures
+- **MM1Copula**: Mixture of max-id copulas for flexible upper tail dependence structures
 
 Usage Example
 -------------
@@ -26,8 +31,8 @@ Usage Example
    from pal import distributions, copulas
 
    # Create independent variables
-   var1 = distributions.Gamma(alpha=2.5, beta=2).generate()
+   var1 = distributions.Gamma(alpha=2.5, theta=2).generate()
    var2 = distributions.LogNormal(mu=1, sigma=0.5).generate()
 
    # Apply Gumbel copula to create dependency
-   copulas.GumbelCopula(alpha=1.2, n=2).apply([var1, var2])
+   copulas.GumbelCopula(theta=1.2, n=2).apply([var1, var2])
