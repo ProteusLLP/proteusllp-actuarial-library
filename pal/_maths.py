@@ -32,6 +32,7 @@ __all__ = [
     "xp",
     "special",
     "generate_upsample_indices",
+    "generate_cyclic_indices",
 ]
 
 
@@ -93,3 +94,30 @@ def generate_upsample_indices(
 
     indices: xp.ndarray = xp.concatenate(chunks) if chunks else xp.array([], dtype=int)  # type: ignore[attr-defined,name-defined]
     return indices
+
+
+def generate_cyclic_indices(target_n_sims: int, current_n_sims: int) -> xp.ndarray:  # type: ignore[name-defined]
+    """Generate indices for cyclic upsampling/downsampling.
+
+    Creates deterministic indices by cycling through the current simulations.
+    This is faster than random resampling but can introduce spurious correlations
+    between independent coupling groups.
+
+    Args:
+        target_n_sims: The target number of simulations.
+        current_n_sims: The current number of simulations.
+
+    Returns:
+        Array of indices with length target_n_sims, containing values in
+        [0, current_n_sims) in cyclic order.
+
+    Examples:
+        >>> # Upsample: 3 -> 7 (cyclic repetition)
+        >>> indices = generate_cyclic_indices(7, 3)
+        >>> # Returns [0, 1, 2, 0, 1, 2, 0]
+
+        >>> # Downsample: 10 -> 4 (first 4 in cycle)
+        >>> indices = generate_cyclic_indices(4, 10)
+        >>> # Returns [0, 1, 2, 3]
+    """
+    return xp.arange(target_n_sims) % current_n_sims  # type: ignore[attr-defined,name-defined]

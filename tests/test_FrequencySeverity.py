@@ -387,3 +387,66 @@ def test_get_masks_for_sims():
     # Check mask for sim 2
     assert 2 in masks
     assert np.array_equal(masks[2], [False, False, False, False, False, True, True])
+
+
+def test_upsample_cyclic_method():
+    """Test cyclic upsampling for FreqSevSims."""
+    sim_index = np.array([0, 0, 1, 1, 2])
+    values = np.array([10.0, 20.0, 30.0, 40.0, 50.0])
+    n_sims = 3
+    fs = FreqSevSims(sim_index, values, n_sims)
+
+    # Upsample to 6 (2 full cycles)
+    result = fs.upsample(6, method="cyclic")
+
+    # Expected sim_index: [0,0,1,1,2,3,3,4,4,5]
+    expected_sim_index = np.array([0, 0, 1, 1, 2, 3, 3, 4, 4, 5])
+    # Expected values: [10,20,30,40,50,10,20,30,40,50]
+    expected_values = np.array(
+        [10.0, 20.0, 30.0, 40.0, 50.0, 10.0, 20.0, 30.0, 40.0, 50.0]
+    )
+
+    assert np.array_equal(result.sim_index, expected_sim_index)
+    assert np.array_equal(result.values, expected_values)
+    assert result.n_sims == 6
+
+
+def test_upsample_cyclic_with_remainder():
+    """Test cyclic upsampling with non-exact multiple for FreqSevSims."""
+    sim_index = np.array([0, 0, 1, 1, 2])
+    values = np.array([10.0, 20.0, 30.0, 40.0, 50.0])
+    n_sims = 3
+    fs = FreqSevSims(sim_index, values, n_sims)
+
+    # Upsample to 7 (2 full cycles + 1 remainder)
+    result = fs.upsample(7, method="cyclic")
+
+    # Expected: 2 full cycles + first sim (0) from remainder
+    # sim_index: [0,0,1,1,2,3,3,4,4,5,6,6]
+    expected_sim_index = np.array([0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6])
+    # values: [10,20,30,40,50,10,20,30,40,50,10,20]
+    expected_values = np.array(
+        [10.0, 20.0, 30.0, 40.0, 50.0, 10.0, 20.0, 30.0, 40.0, 50.0, 10.0, 20.0]
+    )
+
+    assert np.array_equal(result.sim_index, expected_sim_index)
+    assert np.array_equal(result.values, expected_values)
+    assert result.n_sims == 7
+
+
+def test_upsample_cyclic_downsampling():
+    """Test cyclic method works for downsampling FreqSevSims."""
+    sim_index = np.array([0, 0, 1, 1, 2, 3])
+    values = np.array([10.0, 20.0, 30.0, 40.0, 50.0, 60.0])
+    n_sims = 4
+    fs = FreqSevSims(sim_index, values, n_sims)
+
+    result = fs.upsample(2, method="cyclic")
+
+    # Expected: only sims 0 and 1
+    expected_sim_index = np.array([0, 0, 1, 1])
+    expected_values = np.array([10.0, 20.0, 30.0, 40.0])
+
+    assert np.array_equal(result.sim_index, expected_sim_index)
+    assert np.array_equal(result.values, expected_values)
+    assert result.n_sims == 2

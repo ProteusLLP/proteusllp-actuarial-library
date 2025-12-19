@@ -1194,3 +1194,112 @@ def test_upsample_coupling_with_large_multiplier():
     assert np.sum(result1.values == 10) == 10
     assert np.sum(result1.values == 20) == 10
     assert np.sum(result1.values == 30) == 10
+
+
+def test_upsample_cyclic_method():
+    """Test cyclic upsampling for ProteusVariable."""
+    ss1 = StochasticScalar([10, 20, 30])
+    ss2 = StochasticScalar([100, 200, 300])
+
+    pv = ProteusVariable(
+        dim_name="test",
+        values={"factor1": ss1, "factor2": ss2},
+    )
+
+    result = pv.upsample(9, method="cyclic")
+
+    # Cyclic should produce orderly repetition
+    expected1 = np.array([10, 20, 30, 10, 20, 30, 10, 20, 30])
+    expected2 = np.array([100, 200, 300, 100, 200, 300, 100, 200, 300])
+
+    assert np.array_equal(result.values["factor1"].values, expected1)
+    assert np.array_equal(result.values["factor2"].values, expected2)
+
+
+def test_upsample_cyclic_does_not_preserve_coupling():
+    """Test that cyclic method does not preserve coupling groups."""
+    ss1 = StochasticScalar([10, 20, 30])
+    ss2 = StochasticScalar([100, 200, 300])
+
+    # Couple them
+    ss1.coupled_variable_group.merge(ss2.coupled_variable_group)
+
+    pv = ProteusVariable(
+        dim_name="test",
+        values={"factor1": ss1, "factor2": ss2},
+    )
+
+    result = pv.upsample(9, method="cyclic")
+
+    # Coupling should NOT be preserved with cyclic method
+    result1 = result.values["factor1"]
+    result2 = result.values["factor2"]
+    assert result1.coupled_variable_group is not result2.coupled_variable_group
+
+
+def test_upsample_cyclic_nested_proteus_variable():
+    """Test cyclic upsampling with nested ProteusVariable structures."""
+    inner_ss = StochasticScalar([1, 2, 3])
+    inner_pv = ProteusVariable(dim_name="inner", values={"a": inner_ss})
+
+    outer_ss = StochasticScalar([10, 20, 30])
+    outer_pv = ProteusVariable(
+        dim_name="outer",
+        values={"nested": inner_pv, "scalar": outer_ss},
+    )
+
+    result = outer_pv.upsample(9, method="cyclic")
+
+    # Check outer scalar
+    expected_outer = np.array([10, 20, 30, 10, 20, 30, 10, 20, 30])
+    outer_scalar_result = result.values["scalar"]
+    assert isinstance(outer_scalar_result, StochasticScalar)
+    assert np.array_equal(outer_scalar_result.values, expected_outer)
+
+    # Check nested scalar
+    nested_result = result.values["nested"]
+    assert isinstance(nested_result, ProteusVariable)
+    expected_inner = np.array([1, 2, 3, 1, 2, 3, 1, 2, 3])
+    inner_scalar_result = nested_result.values["a"]
+    assert isinstance(inner_scalar_result, StochasticScalar)
+    assert np.array_equal(inner_scalar_result.values, expected_inner)
+
+
+def test_upsample_cyclic_with_freqsev():
+    """Test cyclic upsampling with FreqSevSims values."""
+    from pal.frequency_severity import FreqSevSims
+
+    fs = FreqSevSims([0, 0, 1, 2], [10.0, 20.0, 30.0, 40.0], n_sims=3)
+    ss = StochasticScalar([100, 200, 300])
+
+    pv = ProteusVariable(
+        dim_name="test",
+        values={"freqsev": fs, "scalar": ss},
+    )
+
+    result = pv.upsample(6, method="cyclic")
+
+    # Check scalar
+    expected_scalar = np.array([100, 200, 300, 100, 200, 300])
+    assert np.array_equal(result.values["scalar"].values, expected_scalar)
+
+    # Check FreqSevSims was upsampled correctly
+    result_fs = result.values["freqsev"]
+    assert isinstance(result_fs, FreqSevSims)
+    assert result_fs.n_sims == 6
+
+    # Events from sim 0 should appear in sims 0 and 3
+    assert np.sum(result_fs.sim_index == 0) == 2  # Two events
+    assert np.sum(result_fs.sim_index == 3) == 2  # Repeated
+
+
+def test_upsample_invalid_method():
+    """Test that invalid method raises ValueError."""
+    pv = ProteusVariable(
+        dim_name="test",
+        values={"a": StochasticScalar([1, 2, 3])},
+    )
+    with pytest.raises(
+        ValueError, match="Invalid method.*Must be 'random' or 'cyclic'"
+    ):
+        pv.upsample(9, method="invalid")

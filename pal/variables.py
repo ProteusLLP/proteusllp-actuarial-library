@@ -627,59 +627,87 @@ class ProteusVariable[T]:
         n_sims: int,
         group_indices: dict[int, StochasticScalar] | None = None,
         seed: int | None = None,
+        method: str = "random",
     ) -> ProteusVariable[T]:
         """Upsample the variable to the specified number of simulations.
 
         Recursively upsamples all nested ProteusVariable structures and
         ProteusStochasticVariable values to ensure consistent n_sims across
-        all levels of nesting. Preserves coupling relationships by using
-        shared indices for variables in the same coupling group.
+        all levels of nesting.
 
         Args:
             n_sims: Target number of simulations.
             group_indices: Internal parameter for tracking coupling groups across
                           nested structures. Should not be provided by external callers.
-            seed: Optional random seed for reproducibility.
+            seed: Random seed for reproducibility (only used with method="random").
+            method: Upsampling method to use:
+                - "random" (default): Random resampling that preserves coupling groups
+                  and independence between different coupling groups. First chunk is
+                  ordered, remaining chunks are random permutations.
+                - "cyclic": Deterministic cycling through existing simulations. Faster
+                  and deterministic. Does not preserve coupling groups. When used across
+                  multiple variables, induces synchronized resampling (all variables
+                  cycle together).
 
         Returns:
             A new ProteusVariable with all values upsampled to n_sims.
+
+        Raises:
+            ValueError: If invalid method specified.
         """
         if self.n_sims == n_sims:
             return self
 
-        # Initialize group_indices dict on first call
-        if group_indices is None:
-            group_indices = {}
+        if method == "cyclic":
+            # For cyclic method, don't track coupling groups
+            new_values = {}
+            for key, value in self.values.items():
+                if isinstance(value, (ProteusStochasticVariable, ProteusVariable)):
+                    new_values[key] = value.upsample(n_sims, seed=seed, method="cyclic")  # type: ignore[assignment]
+                else:
+                    new_values[key] = value
+            return ProteusVariable(dim_name=self.dim_name, values=new_values)  # type: ignore[arg-type]
+        elif method == "random":
+            # For random method, preserve coupling groups
+            # Initialize group_indices dict on first call
+            if group_indices is None:
+                group_indices = {}
 
-        new_values = {}
-        for key, value in self.values.items():
-            if isinstance(value, ProteusStochasticVariable):
-                group_id = id(value.coupled_variable_group)
+            new_values = {}
+            for key, value in self.values.items():
+                if isinstance(value, ProteusStochasticVariable):
+                    group_id = id(value.coupled_variable_group)
 
-                # Get or create the shared index for this coupling group
-                if group_id not in group_indices:
-                    from ._maths import generate_upsample_indices
+                    # Get or create the shared index for this coupling group
+                    if group_id not in group_indices:
+                        from ._maths import generate_upsample_indices
 
-                    current_n_sims = value.n_sims
-                    if current_n_sims is None:
-                        raise ValueError(
-                            f"Variable {key} has None n_sims, cannot upsample"
+                        current_n_sims = value.n_sims
+                        if current_n_sims is None:
+                            raise ValueError(
+                                f"Variable {key} has None n_sims, cannot upsample"
+                            )
+                        indices = generate_upsample_indices(
+                            n_sims, current_n_sims, seed=seed
                         )
-                    indices = generate_upsample_indices(
-                        n_sims, current_n_sims, seed=seed
-                    )
-                    group_indices[group_id] = StochasticScalar(indices)
+                        group_indices[group_id] = StochasticScalar(indices)
 
-                # Use __getitem__ with the coupling group's shared index
-                new_values[key] = value[group_indices[group_id]]  # type: ignore[index]
+                    # Use __getitem__ with the coupling group's shared index
+                    new_values[key] = value[group_indices[group_id]]  # type: ignore[index]
 
-            elif isinstance(value, ProteusVariable):
-                # Recursively upsample, passing the group_indices dict and seed
-                new_values[key] = value.upsample(n_sims, group_indices, seed=seed)  # type: ignore[assignment]
-            else:
-                new_values[key] = value
+                elif isinstance(value, ProteusVariable):
+                    # Recursively upsample, passing the group_indices dict and seed
+                    new_values[key] = value.upsample(
+                        n_sims, group_indices, seed=seed, method="random"
+                    )  # type: ignore[assignment]
+                else:
+                    new_values[key] = value
 
-        return ProteusVariable(dim_name=self.dim_name, values=new_values)  # type: ignore[arg-type]
+            return ProteusVariable(dim_name=self.dim_name, values=new_values)  # type: ignore[arg-type]
+        else:
+            raise ValueError(
+                f"Invalid method '{method}'. Must be 'random' or 'cyclic'."
+            )
 
     def sum(self) -> T:
         """Return the sum across the outer dimension."""

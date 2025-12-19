@@ -262,14 +262,44 @@ class StochasticScalar(ProteusStochasticVariable):
         """
         return stats.tvar(self.values, p)
 
-    def upsample(self, n_sims: int, seed: int | None = None) -> t.Self:
-        """Increase the number of simulations in the variable."""
+    def upsample(
+        self, n_sims: int, seed: int | None = None, method: str = "random"
+    ) -> t.Self:
+        """Increase or decrease the number of simulations in the variable.
+
+        Args:
+            n_sims: Target number of simulations.
+            seed: Random seed for reproducibility (only used with method="random").
+            method: Upsampling method to use:
+                - "random" (default): Random resampling that preserves coupling groups
+                  and independence between different coupling groups. First chunk is
+                  ordered, remaining chunks are random permutations.
+                - "cyclic": Deterministic cycling through existing simulations. Faster
+                  and deterministic. Creates a new instance without preserving coupling
+                  groups. When used across multiple variables, induces synchronized
+                  resampling (all variables cycle together).
+
+        Returns:
+            New StochasticScalar with target number of simulations.
+        """
         if n_sims == self.n_sims:
             return self
-        indices = generate_upsample_indices(n_sims, self.n_sims, seed=seed)
-        # Use __getitem__ to preserve coupling
-        result = self[type(self)(indices)]
-        return t.cast(t.Self, result)
+
+        if method == "cyclic":
+            from ._maths import generate_cyclic_indices
+
+            indices = generate_cyclic_indices(n_sims, self.n_sims)
+            # Create new instance without preserving coupling
+            return type(self)(self.values[indices])
+        elif method == "random":
+            indices = generate_upsample_indices(n_sims, self.n_sims, seed=seed)
+            # Use __getitem__ to preserve coupling
+            result = self[type(self)(indices)]
+            return t.cast(t.Self, result)
+        else:
+            raise ValueError(
+                f"Invalid method '{method}'. Must be 'random' or 'cyclic'."
+            )
 
     def show_histogram(self, title: str | None = None) -> None:
         """Show a histogram of the variable.

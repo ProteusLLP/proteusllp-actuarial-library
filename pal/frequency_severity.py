@@ -567,21 +567,76 @@ class FreqSevSims(ProteusStochasticVariable):
         """
         return isinstance(other, FreqSevSims) and self.sim_index is other.sim_index
 
-    def upsample(self, n_sims: int, seed: int | None = None) -> FreqSevSims:
+    def upsample(
+        self, n_sims: int, seed: int | None = None, method: str = "random"
+    ) -> FreqSevSims:
         """Upsamples the FreqSevSims object to the given number of simulations.
 
         Args:
-            n_sims: Target number of simulations
-            seed: Optional random seed for reproducibility
+            n_sims: Target number of simulations.
+            seed: Random seed for reproducibility (only used with method="random").
+            method: Upsampling method to use:
+                - "random" (default): Random resampling that preserves coupling groups
+                  and independence between different coupling groups. First chunk is
+                  ordered, remaining chunks are random permutations.
+                - "cyclic": Deterministic cycling through existing simulations. Faster
+                  and deterministic. Creates a new instance without preserving coupling
+                  groups. When used across multiple variables, induces synchronized
+                  resampling (all variables cycle together).
 
         Returns:
-            New FreqSevSims object with upsampled data
+            New FreqSevSims object with upsampled data.
 
         Raises:
-            ValueError: If self.n_sims is None
+            ValueError: If self.n_sims is None or invalid method specified.
         """
         if n_sims == self.n_sims:
             return self.copy()
-        indices = generate_upsample_indices(n_sims, self.n_sims, seed=seed)
-        result = self[StochasticScalar(indices)]
-        return t.cast(FreqSevSims, result)
+
+        if method == "cyclic":
+            # Determine how many full cycles and remainder
+            n_full_cycles = n_sims // self.n_sims
+            remainder = n_sims % self.n_sims
+
+            sim_index_parts: list[npt.NDArray[np.int_]] = []
+            values_parts: list[npt.NDArray[np.floating[t.Any]]] = []
+
+            # For each full cycle, replicate sim_index and values with offset
+            for cycle in range(n_full_cycles):
+                offset = cycle * self.n_sims
+                sim_index_parts.append(self.sim_index + offset)
+                values_parts.append(self.values)
+
+            # Handle remainder
+            if remainder > 0:
+                # Mask for simulations 0 to remainder-1
+                mask = self.sim_index < remainder
+                offset = n_full_cycles * self.n_sims
+                sim_index_parts.append(self.sim_index[mask] + offset)
+                values_parts.append(self.values[mask])
+
+            new_sim_index: npt.NDArray[np.int_] = (
+                np.concatenate(sim_index_parts)
+                if sim_index_parts
+                else np.array([], dtype=int)
+            )
+            new_values: npt.NDArray[np.floating[t.Any]] = (
+                np.concatenate(values_parts)
+                if values_parts
+                else np.array([], dtype=np.float64)
+            )
+
+            # Create new instance without preserving coupling
+            return type(self)(
+                sim_index=new_sim_index,
+                values=new_values,
+                n_sims=n_sims,
+            )
+        elif method == "random":
+            indices = generate_upsample_indices(n_sims, self.n_sims, seed=seed)
+            result = self[StochasticScalar(indices)]
+            return t.cast(FreqSevSims, result)
+        else:
+            raise ValueError(
+                f"Invalid method '{method}'. Must be 'random' or 'cyclic'."
+            )

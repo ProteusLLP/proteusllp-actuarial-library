@@ -392,3 +392,47 @@ def test_upsample_not_orderly_repetition():
     assert np.sum(result.values == 10) == 3
     assert np.sum(result.values == 20) == 3
     assert np.sum(result.values == 30) == 3
+
+
+def test_upsample_cyclic_method():
+    """Test cyclic upsampling produces deterministic orderly repetition."""
+    ss = StochasticScalar([10, 20, 30])
+    result = ss.upsample(9, method="cyclic")
+
+    # Cyclic should produce orderly repetition [10,20,30,10,20,30,10,20,30]
+    expected = np.array([10, 20, 30, 10, 20, 30, 10, 20, 30])
+    assert np.array_equal(result.values, expected)
+
+    # Verify it doesn't preserve coupling groups
+    assert result.coupled_variable_group is not ss.coupled_variable_group
+
+
+def test_upsample_cyclic_with_remainder():
+    """Test cyclic upsampling with non-exact multiple."""
+    ss = StochasticScalar([10, 20, 30])
+    result = ss.upsample(7, method="cyclic")  # 2 full cycles + 1 remainder
+
+    # Expected: [10,20,30,10,20,30,10]
+    expected = np.array([10, 20, 30, 10, 20, 30, 10])
+    assert np.array_equal(result.values, expected)
+    assert result.n_sims == 7
+
+
+def test_upsample_cyclic_downsampling():
+    """Test cyclic method works for downsampling too."""
+    ss = StochasticScalar([10, 20, 30, 40, 50])
+    result = ss.upsample(3, method="cyclic")
+
+    # Expected: [10,20,30]
+    expected = np.array([10, 20, 30])
+    assert np.array_equal(result.values, expected)
+    assert result.n_sims == 3
+
+
+def test_upsample_invalid_method():
+    """Test that invalid method raises ValueError."""
+    ss = StochasticScalar([10, 20, 30])
+    with pytest.raises(
+        ValueError, match="Invalid method.*Must be 'random' or 'cyclic'"
+    ):
+        ss.upsample(9, method="invalid")
