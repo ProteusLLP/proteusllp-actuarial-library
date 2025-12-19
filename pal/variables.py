@@ -662,8 +662,12 @@ class ProteusVariable[T]:
 
                     current_n_sims = value.n_sims
                     if current_n_sims is None:
-                        raise ValueError(f"Variable {key} has None n_sims, cannot upsample")
-                    indices = generate_upsample_indices(n_sims, current_n_sims, seed=seed)
+                        raise ValueError(
+                            f"Variable {key} has None n_sims, cannot upsample"
+                        )
+                    indices = generate_upsample_indices(
+                        n_sims, current_n_sims, seed=seed
+                    )
                     group_indices[group_id] = StochasticScalar(indices)
 
                 # Use __getitem__ with the coupling group's shared index

@@ -350,7 +350,11 @@ class FreqSevSims(ProteusStochasticVariable):
                 if sim_index_parts
                 else np.array([], dtype=int)
             )
-            new_values: npt.NDArray[np.floating[t.Any]] = np.concatenate(values_parts) if values_parts else np.array([], dtype=np.float64)
+            new_values: npt.NDArray[np.floating[t.Any]] = (
+                np.concatenate(values_parts)
+                if values_parts
+                else np.array([], dtype=np.float64)
+            )
 
             result = type(self)(
                 sim_index=new_sim_index,
