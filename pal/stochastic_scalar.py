@@ -269,8 +269,7 @@ class StochasticScalar(ProteusStochasticVariable):
         indices = generate_upsample_indices(n_sims, self.n_sims, seed=seed)
         # Use __getitem__ to preserve coupling
         result = self[type(self)(indices)]
-        assert isinstance(result, type(self))  # Type narrowing for pyright
-        return result  # type: ignore[return-value]
+        return t.cast(t.Self, result)
 
     def show_histogram(self, title: str | None = None) -> None:
         """Show a histogram of the variable.

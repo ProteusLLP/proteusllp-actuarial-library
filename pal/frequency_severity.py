@@ -298,37 +298,38 @@ class FreqSevSims(ProteusStochasticVariable):
             mask = self.sim_index == sim_idx
             return self.values[mask]  # type: ignore[return-value]
 
-        # Check if index contains boolean values for masking
-        if xp.issubdtype(index.values.dtype, xp.bool_):
-            # Validate that index has same n_sims for boolean masking
-            if index.n_sims != self.n_sims:
-                raise ValueError(
-                    f"Boolean mask n_sims ({index.n_sims}) must match FreqSevSims "
-                    f"n_sims ({self.n_sims}) for masking"
-                )
+        if isinstance(index, StochasticScalar):  # pyright: ignore[reportUnnecessaryIsInstance]
+            # Check if index contains boolean values for masking
+            if xp.issubdtype(index.values.dtype, xp.bool_):
+                # Validate that index has same n_sims for boolean masking
+                if index.n_sims != self.n_sims:
+                    raise ValueError(
+                        f"Boolean mask n_sims ({index.n_sims}) must match FreqSevSims "
+                        f"n_sims ({self.n_sims}) for masking"
+                    )
 
-            # Use boolean mask to filter simulations
-            # Build array of selected sim indices in order
-            indices_array = np.array(
-                [
-                    sim_idx
-                    for sim_idx in range(self.n_sims)
-                    if sim_idx < len(index.values) and index.values[sim_idx]
-                ],
-                dtype=int,
-            )
-        else:
-            # Extract events from multiple simulations specified by indices
-            # Indices specify both which sims to extract AND their new order
-            indices_array = index.values.astype(int)
-
-            # Validate that all indices are within bounds
-            if np.any(indices_array < 0) or np.any(indices_array >= self.n_sims):
-                raise IndexError(
-                    f"All indices must be in range [0, {self.n_sims}), "
-                    f"got indices with min={np.min(indices_array)} and "
-                    f"max={np.max(indices_array)}"
+                # Use boolean mask to filter simulations
+                # Build array of selected sim indices in order
+                indices_array = np.array(
+                    [
+                        sim_idx
+                        for sim_idx in range(self.n_sims)
+                        if sim_idx < len(index.values) and index.values[sim_idx]
+                    ],
+                    dtype=int,
                 )
+            else:
+                # Extract events from multiple simulations specified by indices
+                # Indices specify both which sims to extract AND their new order
+                indices_array = index.values.astype(int)
+
+                # Validate that all indices are within bounds
+                if np.any(indices_array < 0) or np.any(indices_array >= self.n_sims):
+                    raise IndexError(
+                        f"All indices must be in range [0, {self.n_sims}), "
+                        f"got indices with min={np.min(indices_array)} and "
+                        f"max={np.max(indices_array)}"
+                    )
 
             # Build new sim_index and values arrays with remapping
             # Get masks for all unique sims we need (handles duplicates efficiently)
@@ -377,8 +378,7 @@ class FreqSevSims(ProteusStochasticVariable):
         """Iterate over the simulations."""
         for i in range(self.n_sims):
             result = self[i]
-            assert isinstance(result, np.ndarray)  # Type narrowing for pyright
-            yield result
+            yield t.cast(npt.NDArray[np.floating[t.Any]], result)
 
     def _reduce_over_events(self, operation: ReductionOperation) -> StochasticScalar:
         """Apply a reduction operation over events for each simulation.
@@ -584,5 +584,4 @@ class FreqSevSims(ProteusStochasticVariable):
             return self.copy()
         indices = generate_upsample_indices(n_sims, self.n_sims, seed=seed)
         result = self[StochasticScalar(indices)]
-        assert isinstance(result, FreqSevSims)  # Type narrowing for pyright
-        return result
+        return t.cast(FreqSevSims, result)
