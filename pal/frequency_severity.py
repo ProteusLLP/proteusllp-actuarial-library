@@ -298,38 +298,37 @@ class FreqSevSims(ProteusStochasticVariable):
             mask = self.sim_index == sim_idx
             return self.values[mask]  # type: ignore[return-value]
 
-        if isinstance(index, StochasticScalar):
-            # Check if index contains boolean values for masking
-            if xp.issubdtype(index.values.dtype, xp.bool_):
-                # Validate that index has same n_sims for boolean masking
-                if index.n_sims != self.n_sims:
-                    raise ValueError(
-                        f"Boolean mask n_sims ({index.n_sims}) must match FreqSevSims "
-                        f"n_sims ({self.n_sims}) for masking"
-                    )
-
-                # Use boolean mask to filter simulations
-                # Build array of selected sim indices in order
-                indices_array = np.array(
-                    [
-                        sim_idx
-                        for sim_idx in range(self.n_sims)
-                        if sim_idx < len(index.values) and index.values[sim_idx]
-                    ],
-                    dtype=int,
+        # Check if index contains boolean values for masking
+        if xp.issubdtype(index.values.dtype, xp.bool_):
+            # Validate that index has same n_sims for boolean masking
+            if index.n_sims != self.n_sims:
+                raise ValueError(
+                    f"Boolean mask n_sims ({index.n_sims}) must match FreqSevSims "
+                    f"n_sims ({self.n_sims}) for masking"
                 )
-            else:
-                # Extract events from multiple simulations specified by indices
-                # Indices specify both which sims to extract AND their new order
-                indices_array = index.values.astype(int)
 
-                # Validate that all indices are within bounds
-                if np.any(indices_array < 0) or np.any(indices_array >= self.n_sims):
-                    raise IndexError(
-                        f"All indices must be in range [0, {self.n_sims}), "
-                        f"got indices with min={np.min(indices_array)} and "
-                        f"max={np.max(indices_array)}"
-                    )
+            # Use boolean mask to filter simulations
+            # Build array of selected sim indices in order
+            indices_array = np.array(
+                [
+                    sim_idx
+                    for sim_idx in range(self.n_sims)
+                    if sim_idx < len(index.values) and index.values[sim_idx]
+                ],
+                dtype=int,
+            )
+        else:
+            # Extract events from multiple simulations specified by indices
+            # Indices specify both which sims to extract AND their new order
+            indices_array = index.values.astype(int)
+
+            # Validate that all indices are within bounds
+            if np.any(indices_array < 0) or np.any(indices_array >= self.n_sims):
+                raise IndexError(
+                    f"All indices must be in range [0, {self.n_sims}), "
+                    f"got indices with min={np.min(indices_array)} and "
+                    f"max={np.max(indices_array)}"
+                )
 
             # Build new sim_index and values arrays with remapping
             # Get masks for all unique sims we need (handles duplicates efficiently)
@@ -337,8 +336,8 @@ class FreqSevSims(ProteusStochasticVariable):
 
             # Build both arrays in one pass
             # For indices=[1,0,1], we process sim 1, then sim 0, then sim 1 again
-            sim_index_parts = []
-            values_parts = []
+            sim_index_parts: list[npt.NDArray[np.int_]] = []
+            values_parts: list[npt.NDArray[np.floating[t.Any]]] = []
             for new_idx, old_idx in enumerate(indices_array):
                 mask = mask_dict[int(old_idx)]
                 if np.any(mask):
@@ -346,12 +345,12 @@ class FreqSevSims(ProteusStochasticVariable):
                     sim_index_parts.append(np.full(event_count, new_idx, dtype=int))
                     values_parts.append(self.values[mask])
 
-            new_sim_index = (
+            new_sim_index: npt.NDArray[np.int_] = (
                 np.concatenate(sim_index_parts)
                 if sim_index_parts
                 else np.array([], dtype=int)
             )
-            new_values = np.concatenate(values_parts) if values_parts else np.array([])
+            new_values: npt.NDArray[np.floating[t.Any]] = np.concatenate(values_parts) if values_parts else np.array([], dtype=np.float64)
 
             result = type(self)(
                 sim_index=new_sim_index,
@@ -370,10 +369,12 @@ class FreqSevSims(ProteusStochasticVariable):
         """Return the number of simulations."""
         return self.n_sims
 
-    def __iter__(self) -> t.Iterator[npt.NDArray[np.floating]]:
+    def __iter__(self) -> t.Iterator[npt.NDArray[np.floating[t.Any]]]:
         """Iterate over the simulations."""
         for i in range(self.n_sims):
-            yield self[i]
+            result = self[i]
+            assert isinstance(result, np.ndarray)  # Type narrowing for pyright
+            yield result
 
     def _reduce_over_events(self, operation: ReductionOperation) -> StochasticScalar:
         """Apply a reduction operation over events for each simulation.
@@ -578,4 +579,6 @@ class FreqSevSims(ProteusStochasticVariable):
         if n_sims == self.n_sims:
             return self.copy()
         indices = generate_upsample_indices(n_sims, self.n_sims, seed=seed)
-        return self[StochasticScalar(indices)]
+        result = self[StochasticScalar(indices)]
+        assert isinstance(result, FreqSevSims)  # Type narrowing for pyright
+        return result

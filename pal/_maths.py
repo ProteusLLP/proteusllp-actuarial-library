@@ -75,7 +75,7 @@ def generate_upsample_indices(
     random_full_chunks = full_chunks - 1 if has_ordered_chunk else 0
 
     # Build indices array efficiently
-    chunks = []
+    chunks: list[xp.ndarray] = []  # type: ignore[name-defined]
 
     # 1. Add ordered chunk if needed
     if has_ordered_chunk:
@@ -91,5 +91,5 @@ def generate_upsample_indices(
             xp.random.choice(current_n_sims, size=remainder, replace=False)  # type: ignore[attr-defined]
         )
 
-    indices = xp.concatenate(chunks) if chunks else xp.array([], dtype=int)  # type: ignore[attr-defined]
+    indices: xp.ndarray = xp.concatenate(chunks) if chunks else xp.array([], dtype=int)  # type: ignore[attr-defined,name-defined]
     return indices

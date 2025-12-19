@@ -661,15 +661,19 @@ def test_upsample_dict_mixed_types():
     assert set(result.values.keys()) == {"stochastic", "scalar"}
 
     # Verify upsampled stochastic value
-    assert result["stochastic"].n_sims == 6
+    stochastic_result = result["stochastic"]
+    assert isinstance(stochastic_result, StochasticScalar)  # Type narrowing
+    assert stochastic_result.n_sims == 6
     # First 3 values should be ordered [1, 2, 3]
-    assert np.array_equal(result["stochastic"].values[:3], [1, 2, 3])
+    assert np.array_equal(stochastic_result.values[:3], [1, 2, 3])
     # Each original value appears exactly twice
-    assert np.sum(result["stochastic"].values == 1) == 2
-    assert np.sum(result["stochastic"].values == 2) == 2
-    assert np.sum(result["stochastic"].values == 3) == 2
+    assert np.sum(stochastic_result.values == 1) == 2
+    assert np.sum(stochastic_result.values == 2) == 2
+    assert np.sum(stochastic_result.values == 3) == 2
     # Scalar value should remain unchanged
-    assert result["scalar"] == 42
+    scalar_result = result["scalar"]
+    assert isinstance(scalar_result, (int, float))  # Type narrowing
+    assert scalar_result == 42
 
 
 def test_upsample_dict_freqsev():
@@ -939,23 +943,31 @@ def test_upsample_nested_proteus_variable():
 
     # All levels should have consistent n_sims
     assert result.n_sims == 4
-    assert result.values["north"].n_sims == 4
-    assert result.values["north"].values["fire"].n_sims == 4
-    assert result.values["north"].values["flood"].n_sims == 4
-    assert result.values["south"].n_sims == 4
+    north = result["north"]
+    assert isinstance(north, ProteusVariable)  # Type narrowing
+    assert north.n_sims == 4
+    fire = north["fire"]
+    assert isinstance(fire, StochasticScalar)  # Type narrowing
+    assert fire.n_sims == 4
+    flood = north["flood"]
+    assert isinstance(flood, StochasticScalar)  # Type narrowing
+    assert flood.n_sims == 4
+    south = result["south"]
+    assert isinstance(south, StochasticScalar)  # Type narrowing
+    assert south.n_sims == 4
 
     # Check values are correctly upsampled
     # First 2 values should be ordered for each variable
-    assert np.array_equal(result.values["north"].values["fire"].values[:2], [1, 2])
-    assert np.array_equal(result.values["north"].values["flood"].values[:2], [3, 4])
-    assert np.array_equal(result.values["south"].values[:2], [5, 6])
+    assert np.array_equal(fire.values[:2], [1, 2])
+    assert np.array_equal(flood.values[:2], [3, 4])
+    assert np.array_equal(south.values[:2], [5, 6])
     # Each original value appears exactly twice
-    assert np.sum(result.values["north"].values["fire"].values == 1) == 2
-    assert np.sum(result.values["north"].values["fire"].values == 2) == 2
-    assert np.sum(result.values["north"].values["flood"].values == 3) == 2
-    assert np.sum(result.values["north"].values["flood"].values == 4) == 2
-    assert np.sum(result.values["south"].values == 5) == 2
-    assert np.sum(result.values["south"].values == 6) == 2
+    assert np.sum(fire.values == 1) == 2
+    assert np.sum(fire.values == 2) == 2
+    assert np.sum(flood.values == 3) == 2
+    assert np.sum(flood.values == 4) == 2
+    assert np.sum(south.values == 5) == 2
+    assert np.sum(south.values == 6) == 2
 
 
 def test_upsample_deeply_nested_proteus_variable():
@@ -988,27 +1000,31 @@ def test_upsample_deeply_nested_proteus_variable():
 
     # All levels should have consistent n_sims
     assert result.n_sims == 6
-    assert result.values["north"].n_sims == 6
-    assert result.values["north"].values["fire"].n_sims == 6
-    assert result.values["north"].values["fire"].values["residential"].n_sims == 6
-    assert result.values["north"].values["fire"].values["commercial"].n_sims == 6
-    assert result.values["north"].values["flood"].n_sims == 6
-    assert result.values["south"].n_sims == 6
+    north = result["north"]
+    assert isinstance(north, ProteusVariable)  # Type narrowing
+    assert north.n_sims == 6
+    fire_pv = north["fire"]
+    assert isinstance(fire_pv, ProteusVariable)  # Type narrowing
+    assert fire_pv.n_sims == 6
+    residential = fire_pv["residential"]
+    assert isinstance(residential, StochasticScalar)  # Type narrowing
+    assert residential.n_sims == 6
+    commercial = fire_pv["commercial"]
+    assert isinstance(commercial, StochasticScalar)  # Type narrowing
+    assert commercial.n_sims == 6
+    flood = north["flood"]
+    assert isinstance(flood, StochasticScalar)  # Type narrowing
+    assert flood.n_sims == 6
+    south = result["south"]
+    assert isinstance(south, StochasticScalar)  # Type narrowing
+    assert south.n_sims == 6
 
     # Check deepest level values
     # First 2 values should be ordered [1, 2]
-    assert np.array_equal(
-        result.values["north"].values["fire"].values["residential"].values[:2], [1, 2]
-    )
+    assert np.array_equal(residential.values[:2], [1, 2])
     # Each original value appears exactly 3 times
-    assert (
-        np.sum(result.values["north"].values["fire"].values["residential"].values == 1)
-        == 3
-    )
-    assert (
-        np.sum(result.values["north"].values["fire"].values["residential"].values == 2)
-        == 3
-    )
+    assert np.sum(residential.values == 1) == 3
+    assert np.sum(residential.values == 2) == 3
 
 
 def test_upsample_nested_with_freqsev():
@@ -1035,25 +1051,29 @@ def test_upsample_nested_with_freqsev():
 
     # All levels should have consistent n_sims
     assert result.n_sims == 6
-    assert result.values["north"].n_sims == 6
-    assert result.values["north"].values["fire"].n_sims == 6
-    assert result.values["north"].values["flood"].n_sims == 6
-    assert result.values["south"].n_sims == 6
+    north = result["north"]
+    assert isinstance(north, ProteusVariable)  # Type narrowing
+    assert north.n_sims == 6
+    fire_fs = north["fire"]
+    assert isinstance(fire_fs, FreqSevSims)  # Type narrowing
+    assert fire_fs.n_sims == 6
+    flood_ss = north["flood"]
+    assert isinstance(flood_ss, StochasticScalar)  # Type narrowing
+    assert flood_ss.n_sims == 6
+    south = result["south"]
+    assert isinstance(south, StochasticScalar)  # Type narrowing
+    assert south.n_sims == 6
 
     # Check FreqSevSims was upsampled correctly
     # sim_index should be [0,1,2,3,4,5] (remapped)
     expected_sim_index = [0, 1, 2, 3, 4, 5]
-    assert np.array_equal(
-        result.values["north"].values["fire"].sim_index, expected_sim_index
-    )
+    assert np.array_equal(fire_fs.sim_index, expected_sim_index)
     # First 3 events should be ordered [10.0, 20.0, 30.0]
-    assert np.array_equal(
-        result.values["north"].values["fire"].values[:3], [10.0, 20.0, 30.0]
-    )
+    assert np.array_equal(fire_fs.values[:3], [10.0, 20.0, 30.0])
     # Each original value appears exactly twice
-    assert np.sum(result.values["north"].values["fire"].values == 10.0) == 2
-    assert np.sum(result.values["north"].values["fire"].values == 20.0) == 2
-    assert np.sum(result.values["north"].values["fire"].values == 30.0) == 2
+    assert np.sum(fire_fs.values == 10.0) == 2
+    assert np.sum(fire_fs.values == 20.0) == 2
+    assert np.sum(fire_fs.values == 30.0) == 2
 
 
 def test_upsample_preserves_coupling():

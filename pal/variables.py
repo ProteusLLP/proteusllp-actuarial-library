@@ -660,19 +660,22 @@ class ProteusVariable[T]:
                 if group_id not in group_indices:
                     from ._maths import generate_upsample_indices
 
-                    indices = generate_upsample_indices(n_sims, value.n_sims, seed=seed)
+                    current_n_sims = value.n_sims
+                    if current_n_sims is None:
+                        raise ValueError(f"Variable {key} has None n_sims, cannot upsample")
+                    indices = generate_upsample_indices(n_sims, current_n_sims, seed=seed)
                     group_indices[group_id] = StochasticScalar(indices)
 
                 # Use __getitem__ with the coupling group's shared index
-                new_values[key] = value[group_indices[group_id]]
+                new_values[key] = value[group_indices[group_id]]  # type: ignore[index]
 
             elif isinstance(value, ProteusVariable):
                 # Recursively upsample, passing the group_indices dict and seed
-                new_values[key] = value.upsample(n_sims, group_indices, seed=seed)
+                new_values[key] = value.upsample(n_sims, group_indices, seed=seed)  # type: ignore[assignment]
             else:
                 new_values[key] = value
 
-        return ProteusVariable(dim_name=self.dim_name, values=new_values)
+        return ProteusVariable(dim_name=self.dim_name, values=new_values)  # type: ignore[arg-type]
 
     def sum(self) -> T:
         """Return the sum across the outer dimension."""
@@ -1012,21 +1015,23 @@ class ProteusVariable[T]:
             # Handle StochasticScalar and FreqSevSims types
             if x.n_sims <= 1:
                 # If n_sims is 1 or None, return the value directly
-                return x
+                return x  # type: ignore[return-value]
 
             if isinstance(sim_no, StochasticScalar):
                 # Use __getitem__ to preserve coupling relationships
-                return x[sim_no]
+                return x[sim_no]  # type: ignore[return-value]
 
             # Handle the main case: extract value at specific simulation index
             if isinstance(sim_no, int):
-                return x[sim_no]
+                result = x[sim_no]
+                return result  # type: ignore[return-value]
 
             if isinstance(sim_no, list):
                 # Use __getitem__ with StochasticScalar to preserve coupling
-                return x[StochasticScalar(sim_no)]
+                result = x[StochasticScalar(sim_no)]
+                return result  # type: ignore[return-value]
 
-            return x
+            return x  # type: ignore[return-value]
 
         if isinstance(x, Number):  # type: ignore[uneccesaryIsInstance]
             # If x is a numeric type, return it directly

@@ -265,6 +265,7 @@ def test_getitem_stochastic_scalar_numeric():
     )
     indices = StochasticScalar([1, 0, 1])
     result = fs2[indices]
+    assert isinstance(result, FreqSevSims)  # Type narrowing
     assert np.array_equal(result.sim_index, [0, 0, 0, 1, 1, 2, 2, 2])
     assert np.array_equal(result.values, [3.0, 4.0, 5.0, 1.0, 2.0, 3.0, 4.0, 5.0])
     assert result.n_sims == 3
@@ -279,6 +280,7 @@ def test_getitem_stochastic_scalar_boolean():
     # Test boolean mask: keep sim 0 and sim 2
     mask = StochasticScalar([True, False, True])
     result = fs[mask]
+    assert isinstance(result, FreqSevSims)  # Type narrowing
     assert isinstance(result, FreqSevSims)
     assert np.array_equal(result.sim_index, [0, 0, 1, 1])
     assert np.array_equal(result.values, [1.0, 2.0, 6.0, 7.0])
@@ -293,6 +295,7 @@ def test_getitem_coupling_preservation():
 
     indices = StochasticScalar([1, 0])
     result = fs[indices]
+    assert isinstance(result, FreqSevSims)  # Type narrowing
 
     # Check that coupling groups are merged - result and indices should share
     # the same group
@@ -356,12 +359,12 @@ def test_get_unique_sims():
     values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
     fs = FreqSevSims(sim_index, values, n_sims=3)
 
-    unique_sims = fs._get_unique_sims()
+    unique_sims = fs._get_unique_sims()  # pyright: ignore[reportPrivateUsage]
     assert np.array_equal(unique_sims, [0, 1, 2])
 
     # Test with gaps
     fs_with_gap = FreqSevSims([0, 0, 2], [1.0, 2.0, 3.0], n_sims=3)
-    unique_sims = fs_with_gap._get_unique_sims()
+    unique_sims = fs_with_gap._get_unique_sims()  # pyright: ignore[reportPrivateUsage]
     assert np.array_equal(unique_sims, [0, 2])
 
 
@@ -371,7 +374,7 @@ def test_get_masks_for_sims():
     values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
     fs = FreqSevSims(sim_index, values, n_sims=3)
 
-    masks = fs._get_masks_for_sims(np.array([0, 2]))
+    masks = fs._get_masks_for_sims(np.array([0, 2]))  # pyright: ignore[reportPrivateUsage]
 
     # Should return a dictionary
     assert isinstance(masks, dict)
