@@ -82,7 +82,7 @@ class TestWeakSetCompatibility:
     def test_stochastic_scalar_in_weakset(self):
         """Test that StochasticScalar can be added to WeakSet."""
         x = StochasticScalar([1.0, 2.0, 3.0])
-        ws = weakref.WeakSet()
+        ws: weakref.WeakSet[StochasticScalar] = weakref.WeakSet()
 
         # Should not raise
         ws.add(x)
@@ -100,7 +100,7 @@ class TestWeakSetCompatibility:
             values=np.array([500.0, 700.0, 600.0, 800.0, 550.0]),
             n_sims=5,
         )
-        ws = weakref.WeakSet()
+        ws: weakref.WeakSet[FreqSevSims] = weakref.WeakSet()
 
         # Should not raise
         ws.add(fs)
@@ -115,7 +115,7 @@ class TestWeakSetCompatibility:
         x = StochasticScalar([1.0, 2.0, 3.0])
         y = StochasticScalar([1.0, 2.0, 3.0])  # Same values, different object
 
-        ws = weakref.WeakSet()
+        ws: weakref.WeakSet[StochasticScalar] = weakref.WeakSet()
         ws.add(x)
         ws.add(y)
 
@@ -189,7 +189,7 @@ class TestPydanticCompatibility:
 
         class DataModel(BaseModel):
             model_config = ConfigDict(arbitrary_types_allowed=True)
-            losses: ProteusVariable
+            losses: ProteusVariable[FreqSevSims]
 
         model = DataModel(losses=losses)
 
