@@ -92,12 +92,28 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
         """Less than or equal comparison returning instance of same type."""
         return super().__le__(other)  # type: ignore[return-value]
 
-    def __eq__(self, other: t.Any) -> t.Self:  # type: ignore[override]
-        """Equality comparison returning instance of same type."""
+    def __eq__(self, other: t.Any) -> t.Self | bool:  # type: ignore[override]
+        """Equality comparison returning instance of same type or bool for identity.
+
+        For identity comparison (self is other), returns True to support
+        set membership checks and WeakSet operations. For value comparison,
+        returns element-wise comparison as a stochastic variable.
+        """
+        # Identity check for set membership (needed for WeakSet.add())
+        if self is other:
+            return True
         return super().__eq__(other)  # type: ignore[return-value]
 
-    def __ne__(self, other: t.Any) -> t.Self:  # type: ignore[override]
-        """Not equal comparison returning instance of same type."""
+    def __ne__(self, other: t.Any) -> t.Self | bool:  # type: ignore[override]
+        """Not equal comparison returning instance of same type or bool for identity.
+
+        For identity comparison (self is other), returns False to support
+        set membership checks. For value comparison, returns element-wise
+        comparison as a stochastic variable.
+        """
+        # Identity check for set membership
+        if self is other:
+            return False
         return super().__ne__(other)  # type: ignore[return-value]
 
     # Override NDArrayOperatorsMixin arithmetic operators with proper return
