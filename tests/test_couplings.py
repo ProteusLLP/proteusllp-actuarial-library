@@ -4,11 +4,12 @@ Tests covering copula-based coupling mechanisms and simulation reordering
 for dependency modeling between stochastic variables.
 """
 
+import copy
+
 import numpy as np
 from pal import copulas
 from pal.frequency_severity import FreqSevSims
 from pal.variables import ProteusVariable, StochasticScalar
-from pydantic import BaseModel, ConfigDict
 
 
 def test_copula_reordering():
@@ -89,17 +90,13 @@ def test_freqsevsims_membership_in_coupling_group() -> None:
     assert fs in fs.coupled_variable_group
 
 
-def test_pydantic_deep_copy_with_operations() -> None:
-    """Test that Pydantic deep copy fails when operations are performed after copying.
+def test_deepcopy_with_operations() -> None:
+    """Test that deep copy works when operations are performed after copying.
 
-    This is the real Pydantic failure mode: deep copy creates new CouplingGroups,
-    but when we later try to merge them during operations, WeakSet.add() fails.
+    Deep copy creates new CouplingGroups, and when we later try to merge them
+    during operations, the old WeakSet implementation would fail because
+    WeakSet.add() uses __eq__ which returns arrays for numpy-like objects.
     """
-
-    class SimpleModel(BaseModel):
-        losses: ProteusVariable[FreqSevSims]
-        model_config = ConfigDict(arbitrary_types_allowed=True)
-
     # Create FreqSevSims with shared sim_index (coupled variables)
     sim_index = np.array([1, 2, 2, 3, 4], dtype=int)
     losses: ProteusVariable[FreqSevSims] = ProteusVariable(
@@ -118,17 +115,15 @@ def test_pydantic_deep_copy_with_operations() -> None:
         },
     )
 
-    model = SimpleModel(losses=losses)
-
     # Step 1: Use original (triggers coupling group merge)
-    _ = model.losses["asset1"] * 0.5 + model.losses["asset2"] * 0.5
+    _ = losses["asset1"] * 0.5 + losses["asset2"] * 0.5
 
     # Step 2: Deep copy (creates new CouplingGroups)
-    copied = model.model_copy(deep=True)
+    copied_losses = copy.deepcopy(losses)
 
     # Step 3: Try using copied FreqSevSims
-    # This triggers merge() which calls WeakSet.add() which uses __eq__
+    # This triggers merge() which would call WeakSet.add() and fail
     combined_copy: FreqSevSims = (
-        copied.losses["asset1"] * 0.5 + copied.losses["asset2"] * 0.5
+        copied_losses["asset1"] * 0.5 + copied_losses["asset2"] * 0.5
     )
     assert combined_copy is not None
