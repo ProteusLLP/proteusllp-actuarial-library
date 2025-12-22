@@ -263,13 +263,17 @@ class StochasticScalar(ProteusStochasticVariable):
         return stats.tvar(self.values, p)
 
     def upsample(
-        self, n_sims: int, seed: int | None = None, method: str = "random"
+        self,
+        n_sims: int,
+        rng: np.random.Generator | None = None,
+        method: str = "random",
     ) -> t.Self:
         """Increase or decrease the number of simulations in the variable.
 
         Args:
             n_sims: Target number of simulations.
-            seed: Random seed for reproducibility (only used with method="random").
+            rng: Random number generator. Uses config.rng if None
+                (only used with method="random").
             method: Upsampling method to use:
                 - "random" (default): Random resampling that preserves coupling groups
                   and independence between different coupling groups. First chunk is
@@ -292,7 +296,11 @@ class StochasticScalar(ProteusStochasticVariable):
             # Create new instance without preserving coupling
             return type(self)(self.values[indices])
         elif method == "random":
-            indices = generate_upsample_indices(n_sims, self.n_sims, seed=seed)
+            from . import config
+
+            if rng is None:
+                rng = config.rng
+            indices = generate_upsample_indices(n_sims, self.n_sims, rng=rng)
             # Use __getitem__ to preserve coupling
             result = self[type(self)(indices)]
             return t.cast(t.Self, result)

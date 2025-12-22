@@ -37,7 +37,7 @@ __all__ = [
 
 
 def generate_upsample_indices(
-    target_n_sims: int, current_n_sims: int, seed: int | None = None
+    target_n_sims: int, current_n_sims: int, rng: t.Any
 ) -> xp.ndarray:  # type: ignore[name-defined]
     """Generate indices for upsampling or downsampling simulations.
 
@@ -48,25 +48,22 @@ def generate_upsample_indices(
     Args:
         target_n_sims: The target number of simulations.
         current_n_sims: The current number of simulations.
-        seed: Optional random seed for reproducibility.
+        rng: Random number generator to use.
 
     Returns:
         Array of indices with length target_n_sims, containing values in
         [0, current_n_sims).
 
     Examples:
+        >>> from pal import config
         >>> # Downsample: 10 -> 3 (random selection)
-        >>> indices = generate_upsample_indices(3, 10, seed=42)
+        >>> indices = generate_upsample_indices(3, 10, config.rng)
         >>> # Returns 3 unique indices from [0, 9]
 
         >>> # Upsample: 3 -> 10 (3 full rounds + 1 partial)
-        >>> indices = generate_upsample_indices(10, 3, seed=42)
+        >>> indices = generate_upsample_indices(10, 3, config.rng)
         >>> # Returns 10 indices: 3 permutations of [0,1,2] + 1 random selection
     """
-    # Set random seed if provided
-    if seed is not None:
-        xp.random.seed(seed)  # type: ignore[attr-defined]
-
     # Calculate full chunks and remainder
     full_chunks = target_n_sims // current_n_sims
     remainder = target_n_sims % current_n_sims
@@ -84,12 +81,12 @@ def generate_upsample_indices(
 
     # 2. Add random full chunks
     for _ in range(random_full_chunks):
-        chunks.append(xp.random.permutation(current_n_sims))  # type: ignore[attr-defined]
+        chunks.append(rng.permutation(current_n_sims))  # type: ignore[attr-defined]
 
     # 3. Add remainder (random selection without replacement)
     if remainder > 0:
         chunks.append(
-            xp.random.choice(current_n_sims, size=remainder, replace=False)  # type: ignore[attr-defined]
+            rng.choice(current_n_sims, size=remainder, replace=False)  # type: ignore[attr-defined]
         )
 
     indices: xp.ndarray = xp.concatenate(chunks) if chunks else xp.array([], dtype=int)  # type: ignore[attr-defined,name-defined]

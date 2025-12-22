@@ -568,13 +568,17 @@ class FreqSevSims(ProteusStochasticVariable):
         return isinstance(other, FreqSevSims) and self.sim_index is other.sim_index
 
     def upsample(
-        self, n_sims: int, seed: int | None = None, method: str = "random"
+        self,
+        n_sims: int,
+        rng: np.random.Generator | None = None,
+        method: str = "random",
     ) -> FreqSevSims:
         """Upsamples the FreqSevSims object to the given number of simulations.
 
         Args:
             n_sims: Target number of simulations.
-            seed: Random seed for reproducibility (only used with method="random").
+            rng: Random number generator. Uses config.rng if None
+                (only used with method="random").
             method: Upsampling method to use:
                 - "random" (default): Random resampling that preserves coupling groups
                   and independence between different coupling groups. First chunk is
@@ -633,7 +637,11 @@ class FreqSevSims(ProteusStochasticVariable):
                 n_sims=n_sims,
             )
         elif method == "random":
-            indices = generate_upsample_indices(n_sims, self.n_sims, seed=seed)
+            from . import config
+
+            if rng is None:
+                rng = config.rng
+            indices = generate_upsample_indices(n_sims, self.n_sims, rng=rng)
             result = self[StochasticScalar(indices)]
             return t.cast(FreqSevSims, result)
         else:
