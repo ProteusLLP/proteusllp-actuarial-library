@@ -773,3 +773,129 @@ def test_upsample_large_multiplier():
     expected_values = [1, 2] * 50
     assert pnp.all(result.values["a"] == StochasticScalar(expected_values))
     assert result.n_sims == 100
+
+
+def test_validate_freqsev_consistency_valid():
+    """Test validation passes with matching sim_index."""
+    freq_sev_1 = FreqSevSims([0, 1, 2], [10.0, 20.0, 30.0], 3)
+    freq_sev_2 = FreqSevSims([0, 1, 2], [15.0, 25.0, 35.0], 3)
+
+    var = ProteusVariable(
+        dim_name="losses",
+        values={"fire": freq_sev_1, "flood": freq_sev_2},
+    )
+
+    is_valid, msg, sim_idx = var.validate_freqsev_consistency()
+
+    assert is_valid is True
+    assert msg == ""
+    assert sim_idx is not None
+    assert np.array_equal(sim_idx, np.array([0, 1, 2]))
+
+
+def test_validate_freqsev_consistency_mismatch_immediate():
+    """Test validation fails with mismatched sim_index at immediate level."""
+    freq_sev_1 = FreqSevSims([0, 1, 2], [10.0, 20.0, 30.0], 3)
+    freq_sev_2 = FreqSevSims([0, 0, 1], [15.0, 25.0, 35.0], 3)  # Different sim_index
+
+    var = ProteusVariable(
+        dim_name="losses",
+        values={"fire": freq_sev_1, "flood": freq_sev_2},
+    )
+
+    is_valid, msg, sim_idx = var.validate_freqsev_consistency()
+
+    assert is_valid is False
+    assert "Simulation index mismatch at key flood" in msg
+    assert sim_idx is None
+
+
+def test_validate_freqsev_consistency_invalid_type_immediate():
+    """Test validation fails with non-FreqSevSims at immediate level."""
+    freq_sev_1 = FreqSevSims([0, 1, 2], [10.0, 20.0, 30.0], 3)
+    scalar = StochasticScalar([1.0, 2.0, 3.0])
+
+    var = ProteusVariable(
+        dim_name="losses",
+        values={"fire": freq_sev_1, "other": scalar},
+    )
+
+    is_valid, msg, sim_idx = var.validate_freqsev_consistency()
+
+    assert is_valid is False
+    assert "Immediate value for key other is StochasticScalar" in msg
+    assert sim_idx is None
+
+
+def test_validate_freqsev_consistency_nested_valid():
+    """Test validation passes with nested matching FreqSevSims."""
+    freq_sev_1 = FreqSevSims([0, 1, 2], [10.0, 20.0, 30.0], 3)
+    freq_sev_2 = FreqSevSims([0, 1, 2], [15.0, 25.0, 35.0], 3)
+    freq_sev_3 = FreqSevSims([0, 1, 2], [5.0, 10.0, 15.0], 3)
+
+    nested = ProteusVariable(
+        dim_name="perils",
+        values={"fire": freq_sev_1, "flood": freq_sev_2},
+    )
+
+    var = ProteusVariable(
+        dim_name="regions",
+        values={"north": nested, "south": freq_sev_3},
+    )
+
+    is_valid, msg, sim_idx = var.validate_freqsev_consistency()
+
+    assert is_valid is True
+    assert msg == ""
+    assert sim_idx is not None
+    assert np.array_equal(sim_idx, np.array([0, 1, 2]))
+
+
+def test_validate_freqsev_consistency_nested_mismatch():
+    """Test validation fails with mismatched sim_index in nested ProteusVariable."""
+    freq_sev_1 = FreqSevSims([0, 1, 2], [10.0, 20.0, 30.0], 3)
+    freq_sev_2 = FreqSevSims([0, 0, 1], [15.0, 25.0, 35.0], 3)  # Mismatch in nested
+
+    nested = ProteusVariable(
+        dim_name="perils",
+        values={"fire": freq_sev_1, "flood": freq_sev_2},
+    )
+
+    var = ProteusVariable(
+        dim_name="regions",
+        values={"north": nested},
+    )
+
+    is_valid, msg, sim_idx = var.validate_freqsev_consistency()
+
+    assert is_valid is False
+    assert "Simulation index mismatch at key flood" in msg
+    assert sim_idx is None
+
+
+def test_validate_freqsev_consistency_empty():
+    """Test validation passes with empty ProteusVariable."""
+    var = ProteusVariable[int](dim_name="empty", values={})
+
+    is_valid, msg, sim_idx = var.validate_freqsev_consistency()
+
+    assert is_valid is True
+    assert msg == ""
+    assert sim_idx is None
+
+
+def test_validate_freqsev_consistency_single():
+    """Test validation passes with single FreqSevSims."""
+    freq_sev = FreqSevSims([0, 1, 2], [10.0, 20.0, 30.0], 3)
+
+    var = ProteusVariable(
+        dim_name="losses",
+        values={"fire": freq_sev},
+    )
+
+    is_valid, msg, sim_idx = var.validate_freqsev_consistency()
+
+    assert is_valid is True
+    assert msg == ""
+    assert sim_idx is not None
+    assert np.array_equal(sim_idx, np.array([0, 1, 2]))
