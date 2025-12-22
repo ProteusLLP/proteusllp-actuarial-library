@@ -73,7 +73,7 @@ def test_variable_membership_in_own_coupling_group() -> None:
     x = StochasticScalar([1.0, 2.0, 3.0])
 
     # Should be able to check membership
-    assert x in x.coupled_variable_group.variables
+    assert x in x.coupled_variable_group
 
 
 def test_freqsevsims_membership_in_coupling_group() -> None:
@@ -86,7 +86,7 @@ def test_freqsevsims_membership_in_coupling_group() -> None:
     )
 
     # Should be able to check membership
-    assert fs in fs.coupled_variable_group.variables
+    assert fs in fs.coupled_variable_group
 
 
 def test_pydantic_deep_copy_with_operations() -> None:

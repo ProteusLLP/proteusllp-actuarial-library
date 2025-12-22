@@ -18,9 +18,14 @@ from numpy.lib.mixins import NDArrayOperatorsMixin
 
 
 class CouplingGroup:
-    """A class to represent a group of variables that are coupled together."""
+    """A class to represent a group of variables that are coupled together.
 
-    variables: weakref.WeakSet[ProteusStochasticVariable]
+    Uses WeakValueDictionary instead of WeakSet to avoid calling __eq__ on
+    variables (which returns arrays for numpy-like objects). Keys are id()
+    values for identity-based lookups.
+    """
+
+    _variables_dict: weakref.WeakValueDictionary[int, ProteusStochasticVariable]
 
     def __init__(self, variable: ProteusStochasticVariable):
         """Initialize coupling group with a single variable.
@@ -28,10 +33,8 @@ class CouplingGroup:
         Args:
             variable: The initial variable to add to the group.
         """
-        # Start the group with a single variable, stored as a weak reference.
-        self.variables: weakref.WeakSet[ProteusStochasticVariable] = weakref.WeakSet(
-            [variable]
-        )
+        # Start the group with a single variable, keyed by its id()
+        self._variables_dict = weakref.WeakValueDictionary({id(variable): variable})
 
     @property
     def id(self) -> int:
@@ -47,10 +50,37 @@ class CouplingGroup:
         if self is other:
             return
         # Merge the other group's variables into this one, updating their pointer.
-        for var in list(other.variables):
+        for var in other._variables_dict.values():
             var.coupled_variable_group = self
-            self.variables.add(var)
+            self._variables_dict[id(var)] = var
         return
+
+    def __contains__(self, variable: ProteusStochasticVariable) -> bool:
+        """Check if a variable is in this coupling group.
+
+        Args:
+            variable: The variable to check for membership.
+
+        Returns:
+            True if the variable is in this group, False otherwise.
+        """
+        return id(variable) in self._variables_dict
+
+    def __iter__(self) -> t.Iterator[ProteusStochasticVariable]:
+        """Iterate over variables in this coupling group.
+
+        Returns:
+            Iterator over the variables in this group.
+        """
+        return iter(self._variables_dict.values())
+
+    def __len__(self) -> int:
+        """Get the number of variables in this coupling group.
+
+        Returns:
+            The number of variables in this group.
+        """
+        return len(self._variables_dict)
 
 
 class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
