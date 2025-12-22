@@ -97,12 +97,12 @@ def test_pydantic_deep_copy_with_operations() -> None:
     """
 
     class SimpleModel(BaseModel):
-        losses: ProteusVariable
+        losses: ProteusVariable[FreqSevSims]
         model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # Create FreqSevSims with shared sim_index (coupled variables)
     sim_index = np.array([1, 2, 2, 3, 4], dtype=int)
-    losses = ProteusVariable(
+    losses: ProteusVariable[FreqSevSims] = ProteusVariable(
         "item",
         {
             "asset1": FreqSevSims(
@@ -128,5 +128,7 @@ def test_pydantic_deep_copy_with_operations() -> None:
 
     # Step 3: Try using copied FreqSevSims
     # This triggers merge() which calls WeakSet.add() which uses __eq__
-    combined_copy = copied.losses["asset1"] * 0.5 + copied.losses["asset2"] * 0.5
+    combined_copy: FreqSevSims = (
+        copied.losses["asset1"] * 0.5 + copied.losses["asset2"] * 0.5
+    )
     assert combined_copy is not None
