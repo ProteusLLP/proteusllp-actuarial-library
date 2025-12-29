@@ -642,6 +642,86 @@ class ProteusVariable[T]:
         """Return the sum across the outer dimension."""
         return sum(self)  # type: ignore[arg-type]
 
+    def validate_freqsev_consistency(
+        self, _is_nested: bool = False
+    ) -> tuple[bool, str, npt.NDArray[t.Any] | None]:
+        """Validate that all FreqSevSims have consistent sim_index.
+
+        When a ProteusVariable contains multiple FreqSevSims objects, operations like
+        sum() or aggregation require that all FreqSevSims have identical simulation
+        indices for meaningful results. This method recursively checks for that
+        consistency across nested ProteusVariable structures.
+
+        All leaf values in the ProteusVariable tree must be FreqSevSims with matching
+        simulation indices. Nested ProteusVariable structures are supported and will
+        be recursively validated.
+
+        Use this validation before performing aggregation operations on ProteusVariable
+        instances containing FreqSevSims to ensure the results will be valid.
+
+        Args:
+            _is_nested: Internal parameter for tracking recursion depth.
+                       Do not set manually.
+
+        Returns:
+            A tuple of (is_valid, error_message, sim_index):
+            - is_valid: True if all leaf values are FreqSevSims with matching sim_index,
+                       or if there are 0 FreqSevSims (trivially consistent)
+            - error_message: Empty string if valid, descriptive error message otherwise
+            - sim_index: Representative sim_index array if valid and FreqSevSims found,
+                        None if no FreqSevSims or invalid
+
+        Example:
+            >>> freq_sev_1 = FreqSevSims([0, 1, 2], [10, 20, 30], 3)
+            >>> freq_sev_2 = FreqSevSims([0, 1, 2], [15, 25, 35], 3)
+            >>> var = ProteusVariable(
+            ...     "losses", {"fire": freq_sev_1, "flood": freq_sev_2}
+            ... )
+            >>> is_valid, msg, sim_idx = var.validate_freqsev_consistency()
+            >>> if is_valid:
+            ...     total = var.sum()  # Safe to sum
+        """
+        try:
+            reference_sim_index: npt.NDArray[t.Any] | None = None
+
+            for key, value in self.values.items():
+                if isinstance(value, FreqSevSims):
+                    if reference_sim_index is None:
+                        reference_sim_index = value.sim_index
+                    elif not np.array_equal(value.sim_index, reference_sim_index):
+                        return False, f"Simulation index mismatch at key {key}", None
+                elif isinstance(value, ProteusVariable):
+                    # Recursively validate nested ProteusVariable
+                    is_valid, error, nested_sim_index = (
+                        value.validate_freqsev_consistency(_is_nested=True)
+                    )
+                    if not is_valid:
+                        return False, error, None
+                    # Check consistency with current level's sim_index
+                    if nested_sim_index is not None:
+                        if reference_sim_index is None:
+                            reference_sim_index = nested_sim_index
+                        elif not np.array_equal(nested_sim_index, reference_sim_index):
+                            return (
+                                False,
+                                f"Simulation index mismatch at key {key}",
+                                None,
+                            )
+                else:
+                    # Found a non-FreqSevSims, non-ProteusVariable value
+                    level = "Immediate" if not _is_nested else "Nested"
+                    return (
+                        False,
+                        f"{level} value for key {key} is "
+                        f"{type(value).__name__}, not FreqSevSims",
+                        None,
+                    )
+
+            return True, "", reference_sim_index
+
+        except Exception as e:
+            return False, f"Error validating FreqSevSims consistency: {str(e)}", None
+
     @classmethod
     def from_csv(
         cls,

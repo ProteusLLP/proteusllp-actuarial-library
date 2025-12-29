@@ -34,7 +34,7 @@ jobs:
   docker-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Build CI Docker image
         run: docker build --target ci -t proteus-ci -f Dockerfile.cpu .
@@ -43,7 +43,7 @@ jobs:
         run: docker save proteus-ci > proteus-ci.tar
 
       - name: Upload Docker image
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: proteus-ci-image
           path: proteus-ci.tar
@@ -53,10 +53,10 @@ jobs:
     needs: docker-build
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download Docker image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: proteus-ci-image
 
@@ -75,10 +75,10 @@ jobs:
     needs: docker-build
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Download Docker image
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: proteus-ci-image
 
@@ -102,7 +102,7 @@ jobs:
             pdm run python -m compileall examples/ -f
 
       - name: Upload coverage reports
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-reports
           path: coverage/
@@ -113,10 +113,10 @@ jobs:
     # Always build package to ensure build process works
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Download Docker image
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: proteus-ci-image
 
@@ -132,7 +132,7 @@ jobs:
             pdm build
 
       - name: Upload distributions
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: release-dists
           path: dist/
@@ -152,7 +152,7 @@ jobs:
 
     steps:
       - name: Retrieve release distributions
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: release-dists
           path: dist/

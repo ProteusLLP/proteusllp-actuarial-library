@@ -1,7 +1,16 @@
-# Proteus Actuarial Library
+<div style="display: flex; align-items: center; gap: 15px;">
+  <img src="https://raw.githubusercontent.com/ProteusLLP/proteusllp-actuarial-library/main/PAL.svg" alt="PAL Logo" width="80"/>
+  <div>
+    <h1 style="margin: 0;">Proteus Actuarial Library</h1>
+    <p style="margin: 5px 0 0 0;">
+      <a href="https://proteusllp-actuarial-library.readthedocs.io/en/latest/?badge=latest">
+        <img src="https://readthedocs.org/projects/proteusllp-actuarial-library/badge/?version=latest" alt="Documentation Status"/>
+      </a>
+    </p>
+  </div>
+</div>
 
-[![Documentation Status](https://readthedocs.org/projects/proteusllp-actuarial-library/badge/?version=latest)](https://proteusllp-actuarial-library.readthedocs.io/en/latest/?badge=latest)
-
+<br/>
 
 An actuarial stochastic modeling library in python.
 
