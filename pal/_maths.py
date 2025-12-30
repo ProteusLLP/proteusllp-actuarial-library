@@ -31,4 +31,90 @@ else:
 __all__ = [
     "xp",
     "special",
+    "generate_upsample_indices",
+    "generate_cyclic_indices",
 ]
+
+
+def generate_upsample_indices(
+    target_n_sims: int, current_n_sims: int, rng: t.Any
+) -> xp.ndarray:  # type: ignore[name-defined]
+    """Generate indices for upsampling or downsampling simulations.
+
+    Creates an array of indices that map from current simulations to target simulations.
+    For downsampling (target < current), randomly selects without replacement.
+    For upsampling (target > current), creates random permutations plus a remainder.
+
+    Args:
+        target_n_sims: The target number of simulations.
+        current_n_sims: The current number of simulations.
+        rng: Random number generator to use.
+
+    Returns:
+        Array of indices with length target_n_sims, containing values in
+        [0, current_n_sims).
+
+    Examples:
+        >>> from pal import config
+        >>> # Downsample: 10 -> 3 (random selection)
+        >>> indices = generate_upsample_indices(3, 10, config.rng)
+        >>> # Returns 3 unique indices from [0, 9]
+
+        >>> # Upsample: 3 -> 10 (3 full rounds + 1 partial)
+        >>> indices = generate_upsample_indices(10, 3, config.rng)
+        >>> # Returns 10 indices: 3 permutations of [0,1,2] + 1 random selection
+    """
+    # Calculate full chunks and remainder
+    full_chunks = target_n_sims // current_n_sims
+    remainder = target_n_sims % current_n_sims
+
+    # Determine structure upfront
+    has_ordered_chunk = full_chunks >= 1
+    random_full_chunks = full_chunks - 1 if has_ordered_chunk else 0
+
+    # Build indices array efficiently
+    chunks: list[xp.ndarray] = []  # type: ignore[name-defined]
+
+    # 1. Add ordered chunk if needed
+    if has_ordered_chunk:
+        chunks.append(xp.arange(current_n_sims))  # type: ignore[attr-defined]
+
+    # 2. Add random full chunks
+    for _ in range(random_full_chunks):
+        chunks.append(rng.permutation(current_n_sims))  # type: ignore[attr-defined]
+
+    # 3. Add remainder (random selection without replacement)
+    if remainder > 0:
+        chunks.append(
+            rng.choice(current_n_sims, size=remainder, replace=False)  # type: ignore[attr-defined]
+        )
+
+    indices: xp.ndarray = xp.concatenate(chunks) if chunks else xp.array([], dtype=int)  # type: ignore[attr-defined,name-defined]
+    return indices
+
+
+def generate_cyclic_indices(target_n_sims: int, current_n_sims: int) -> xp.ndarray:  # type: ignore[name-defined]
+    """Generate indices for cyclic upsampling/downsampling.
+
+    Creates deterministic indices by cycling through the current simulations.
+    This is faster than random resampling but can introduce spurious correlations
+    between independent coupling groups.
+
+    Args:
+        target_n_sims: The target number of simulations.
+        current_n_sims: The current number of simulations.
+
+    Returns:
+        Array of indices with length target_n_sims, containing values in
+        [0, current_n_sims) in cyclic order.
+
+    Examples:
+        >>> # Upsample: 3 -> 7 (cyclic repetition)
+        >>> indices = generate_cyclic_indices(7, 3)
+        >>> # Returns [0, 1, 2, 0, 1, 2, 0]
+
+        >>> # Downsample: 10 -> 4 (first 4 in cycle)
+        >>> indices = generate_cyclic_indices(4, 10)
+        >>> # Returns [0, 1, 2, 3]
+    """
+    return xp.arange(target_n_sims) % current_n_sims  # type: ignore[attr-defined,name-defined]

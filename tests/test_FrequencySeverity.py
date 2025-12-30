@@ -216,3 +216,237 @@ def test_maximum():
     fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=n_sims)
     result = np.maximum(fs, 5)
     assert np.array_equal(result, np.array([5, 5, 5, 5, 5, 6, 7, 8, 9]))
+
+
+def test_getitem_scalar_index():
+    """Test scalar indexing returns numpy array of events."""
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2])
+    values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+    fs = FreqSevSims(sim_index, values, n_sims=3)
+
+    # Test positive indexing
+    result = fs[0]
+    assert isinstance(result, np.ndarray)
+    assert np.array_equal(result, np.array([1.0, 2.0]))
+
+    result = fs[1]
+    assert np.array_equal(result, np.array([3.0, 4.0, 5.0]))
+
+    result = fs[2]
+    assert np.array_equal(result, np.array([6.0, 7.0]))
+
+    # Test negative indexing
+    result = fs[-1]
+    assert np.array_equal(result, np.array([6.0, 7.0]))
+
+    # Test empty simulation (if it exists)
+    fs_with_empty = FreqSevSims([0, 0, 2], [1.0, 2.0, 3.0], n_sims=3)
+    result = fs_with_empty[1]
+    assert len(result) == 0
+
+
+def test_getitem_stochastic_scalar_numeric():
+    """Test StochasticScalar indexing with numeric indices."""
+    sim_index = np.array([0, 0, 1, 1, 1])
+    values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    fs = FreqSevSims(sim_index, values, n_sims=2)
+
+    # Test reordering: extract sim 1, then sim 0
+    indices = StochasticScalar([1, 0])
+    result = fs[indices]
+    assert isinstance(result, FreqSevSims)
+    assert np.array_equal(result.sim_index, [0, 0, 0, 1, 1])
+    assert np.array_equal(result.values, [3.0, 4.0, 5.0, 1.0, 2.0])
+    assert result.n_sims == 2
+
+    # Test with duplicates: extract sim 1, sim 0, then sim 1 again
+    fs2 = FreqSevSims(
+        [0, 0, 1, 1, 1, 2, 2], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], n_sims=3
+    )
+    indices = StochasticScalar([1, 0, 1])
+    result = fs2[indices]
+    assert isinstance(result, FreqSevSims)  # Type narrowing
+    assert np.array_equal(result.sim_index, [0, 0, 0, 1, 1, 2, 2, 2])
+    assert np.array_equal(result.values, [3.0, 4.0, 5.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+    assert result.n_sims == 3
+
+
+def test_getitem_stochastic_scalar_boolean():
+    """Test StochasticScalar indexing with boolean mask."""
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2])
+    values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+    fs = FreqSevSims(sim_index, values, n_sims=3)
+
+    # Test boolean mask: keep sim 0 and sim 2
+    mask = StochasticScalar([True, False, True])
+    result = fs[mask]
+    assert isinstance(result, FreqSevSims)  # Type narrowing
+    assert isinstance(result, FreqSevSims)
+    assert np.array_equal(result.sim_index, [0, 0, 1, 1])
+    assert np.array_equal(result.values, [1.0, 2.0, 6.0, 7.0])
+    assert result.n_sims == 3
+
+
+def test_getitem_coupling_preservation():
+    """Test that coupling relationships are preserved during indexing."""
+    sim_index = np.array([0, 0, 1, 1, 1])
+    values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    fs = FreqSevSims(sim_index, values, n_sims=2)
+
+    indices = StochasticScalar([1, 0])
+    result = fs[indices]
+    assert isinstance(result, FreqSevSims)  # Type narrowing
+
+    # Check that coupling groups are merged - result and indices should share
+    # the same group
+    assert result.coupled_variable_group is indices.coupled_variable_group
+
+
+def test_getitem_validation():
+    """Test validation for boolean masks and numeric indices."""
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2])
+    values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+    fs = FreqSevSims(sim_index, values, n_sims=3)
+
+    # Test boolean mask with mismatched n_sims raises error
+    mask = StochasticScalar([True, False])  # n_sims=2, but fs has n_sims=3
+    try:
+        fs[mask]
+        raise AssertionError(
+            "Should have raised ValueError for mismatched boolean mask"
+        )
+    except ValueError as e:
+        assert "Boolean mask n_sims" in str(e) and "must match" in str(e)
+
+    # Test numeric indices out of bounds raises error
+    indices = StochasticScalar([0, 1, 5])  # 5 is out of bounds for n_sims=3
+    try:
+        fs[indices]
+        raise AssertionError("Should have raised IndexError for out-of-bounds index")
+    except IndexError as e:
+        assert "must be in range" in str(e)
+
+    # Test negative numeric indices raises error
+    indices = StochasticScalar([0, -1, 1])
+    try:
+        fs[indices]
+        raise AssertionError("Should have raised IndexError for negative index")
+    except IndexError as e:
+        assert "must be in range" in str(e)
+
+
+def test_iter():
+    """Test iteration over simulations."""
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2])
+    values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+    fs = FreqSevSims(sim_index, values, n_sims=3)
+
+    # Test iteration
+    results = list(fs)
+    assert len(results) == 3
+    assert np.array_equal(results[0], [1.0, 2.0])
+    assert np.array_equal(results[1], [3.0, 4.0, 5.0])
+    assert np.array_equal(results[2], [6.0, 7.0])
+
+    # Each should be a numpy array
+    for result in results:
+        assert isinstance(result, np.ndarray)
+
+
+def test_get_unique_sims():
+    """Test _get_unique_sims helper method."""
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2])
+    values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+    fs = FreqSevSims(sim_index, values, n_sims=3)
+
+    unique_sims = fs._get_unique_sims()  # pyright: ignore[reportPrivateUsage]
+    assert np.array_equal(unique_sims, [0, 1, 2])
+
+    # Test with gaps
+    fs_with_gap = FreqSevSims([0, 0, 2], [1.0, 2.0, 3.0], n_sims=3)
+    unique_sims = fs_with_gap._get_unique_sims()  # pyright: ignore[reportPrivateUsage]
+    assert np.array_equal(unique_sims, [0, 2])
+
+
+def test_get_masks_for_sims():
+    """Test _get_masks_for_sims helper method."""
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2])
+    values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+    fs = FreqSevSims(sim_index, values, n_sims=3)
+
+    masks = fs._get_masks_for_sims(np.array([0, 2]))  # pyright: ignore[reportPrivateUsage]
+
+    # Should return a dictionary
+    assert isinstance(masks, dict)
+    assert len(masks) == 2
+
+    # Check mask for sim 0
+    assert 0 in masks
+    assert np.array_equal(masks[0], [True, True, False, False, False, False, False])
+
+    # Check mask for sim 2
+    assert 2 in masks
+    assert np.array_equal(masks[2], [False, False, False, False, False, True, True])
+
+
+def test_upsample_cyclic_method():
+    """Test cyclic upsampling for FreqSevSims."""
+    sim_index = np.array([0, 0, 1, 1, 2])
+    values = np.array([10.0, 20.0, 30.0, 40.0, 50.0])
+    n_sims = 3
+    fs = FreqSevSims(sim_index, values, n_sims)
+
+    # Upsample to 6 (2 full cycles)
+    result = fs.upsample(6, method="cyclic")
+
+    # Expected sim_index: [0,0,1,1,2,3,3,4,4,5]
+    expected_sim_index = np.array([0, 0, 1, 1, 2, 3, 3, 4, 4, 5])
+    # Expected values: [10,20,30,40,50,10,20,30,40,50]
+    expected_values = np.array(
+        [10.0, 20.0, 30.0, 40.0, 50.0, 10.0, 20.0, 30.0, 40.0, 50.0]
+    )
+
+    assert np.array_equal(result.sim_index, expected_sim_index)
+    assert np.array_equal(result.values, expected_values)
+    assert result.n_sims == 6
+
+
+def test_upsample_cyclic_with_remainder():
+    """Test cyclic upsampling with non-exact multiple for FreqSevSims."""
+    sim_index = np.array([0, 0, 1, 1, 2])
+    values = np.array([10.0, 20.0, 30.0, 40.0, 50.0])
+    n_sims = 3
+    fs = FreqSevSims(sim_index, values, n_sims)
+
+    # Upsample to 7 (2 full cycles + 1 remainder)
+    result = fs.upsample(7, method="cyclic")
+
+    # Expected: 2 full cycles + first sim (0) from remainder
+    # sim_index: [0,0,1,1,2,3,3,4,4,5,6,6]
+    expected_sim_index = np.array([0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6])
+    # values: [10,20,30,40,50,10,20,30,40,50,10,20]
+    expected_values = np.array(
+        [10.0, 20.0, 30.0, 40.0, 50.0, 10.0, 20.0, 30.0, 40.0, 50.0, 10.0, 20.0]
+    )
+
+    assert np.array_equal(result.sim_index, expected_sim_index)
+    assert np.array_equal(result.values, expected_values)
+    assert result.n_sims == 7
+
+
+def test_upsample_cyclic_downsampling():
+    """Test cyclic method works for downsampling FreqSevSims."""
+    sim_index = np.array([0, 0, 1, 1, 2, 3])
+    values = np.array([10.0, 20.0, 30.0, 40.0, 50.0, 60.0])
+    n_sims = 4
+    fs = FreqSevSims(sim_index, values, n_sims)
+
+    result = fs.upsample(2, method="cyclic")
+
+    # Expected: only sims 0 and 1
+    expected_sim_index = np.array([0, 0, 1, 1])
+    expected_values = np.array([10.0, 20.0, 30.0, 40.0])
+
+    assert np.array_equal(result.sim_index, expected_sim_index)
+    assert np.array_equal(result.values, expected_values)
+    assert result.n_sims == 2

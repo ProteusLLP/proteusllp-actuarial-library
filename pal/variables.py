@@ -622,21 +622,117 @@ class ProteusVariable[T]:
             },
         )
 
-    def upsample(self, n_sims: int) -> ProteusVariable[T]:
-        """Upsample the variable to the specified number of simulations."""
+    def upsample(
+        self,
+        n_sims: int,
+        rng: np.random.Generator | None = None,
+        method: str = "random",
+    ) -> ProteusVariable[T]:
+        """Upsample the variable to the specified number of simulations.
+
+        Recursively upsamples all nested ProteusVariable structures and
+        ProteusStochasticVariable values to ensure consistent n_sims across
+        all levels of nesting.
+
+        Args:
+            n_sims: Target number of simulations.
+            rng: Random number generator. Uses config.rng if None
+                (only used with method="random").
+            method: Upsampling method to use:
+                - "random" (default): Random resampling that preserves coupling groups
+                  and independence between different coupling groups. First chunk is
+                  ordered, remaining chunks are random permutations.
+                - "cyclic": Deterministic cycling through existing simulations. Faster
+                  and deterministic. Does not preserve coupling groups. When used across
+                  multiple variables, induces synchronized resampling (all variables
+                  cycle together).
+
+        Returns:
+            A new ProteusVariable with all values upsampled to n_sims.
+
+        Raises:
+            ValueError: If invalid method specified.
+        """
+        from . import config
+
+        if rng is None:
+            rng = config.rng
+        return self._upsample(n_sims, group_indices=None, rng=rng, method=method)
+
+    def _upsample(
+        self,
+        n_sims: int,
+        group_indices: dict[int, StochasticScalar] | None,
+        rng: np.random.Generator,
+        method: str = "random",
+    ) -> ProteusVariable[T]:
+        """Internal upsample implementation with coupling group tracking.
+
+        Args:
+            n_sims: Target number of simulations.
+            group_indices: Dict tracking coupling groups across nested structures.
+            rng: Random number generator to use.
+            method: Upsampling method ("random" or "cyclic").
+
+        Returns:
+            A new ProteusVariable with all values upsampled to n_sims.
+
+        Raises:
+            ValueError: If invalid method specified.
+        """
         if self.n_sims == n_sims:
             return self
-        return ProteusVariable(
-            dim_name=self.dim_name,
-            values={
-                key: (
-                    value.upsample(n_sims)
-                    if isinstance(value, ProteusStochasticVariable)
-                    else value
-                )
-                for key, value in self.values.items()
-            },
-        )
+
+        if method == "cyclic":
+            # For cyclic method, don't track coupling groups
+            new_values = {}
+            for key, value in self.values.items():
+                if isinstance(value, (ProteusStochasticVariable, ProteusVariable)):
+                    new_values[key] = value.upsample(n_sims, rng=rng, method="cyclic")  # type: ignore[assignment]
+                else:
+                    new_values[key] = value
+            return ProteusVariable(dim_name=self.dim_name, values=new_values)  # type: ignore[arg-type]
+        elif method == "random":
+            # For random method, preserve coupling groups
+            # Initialize group_indices dict on first call
+            if group_indices is None:
+                group_indices = {}
+
+            new_values = {}
+            for key, value in self.values.items():
+                if isinstance(value, ProteusStochasticVariable):
+                    group_id = id(value.coupled_variable_group)
+
+                    # Get or create the shared index for this coupling group
+                    if group_id not in group_indices:
+                        from ._maths import generate_upsample_indices
+
+                        current_n_sims = value.n_sims
+                        if current_n_sims is None:
+                            raise ValueError(
+                                f"Variable {key} has None n_sims, cannot upsample"
+                            )
+                        indices = generate_upsample_indices(
+                            n_sims, current_n_sims, rng=rng
+                        )
+                        group_indices[group_id] = StochasticScalar(indices)
+
+                    # Use __getitem__ with the coupling group's shared index
+                    new_values[key] = value[group_indices[group_id]]  # type: ignore[index]
+
+                elif isinstance(value, ProteusVariable):
+                    # Recursively upsample, passing the group_indices dict and rng
+                    new_values[key] = value._upsample(
+                        n_sims, group_indices, rng=rng, method="random"
+                    )  # type: ignore[assignment]
+                else:
+                    new_values[key] = value
+
+            return ProteusVariable(dim_name=self.dim_name, values=new_values)  # type: ignore[arg-type]
+        else:
+            raise ValueError(
+                f"Invalid method '{method}'. Must be 'random' or 'cyclic'."
+            )
 
     def sum(self) -> T:
         """Return the sum across the outer dimension."""
@@ -976,22 +1072,23 @@ class ProteusVariable[T]:
             # Handle StochasticScalar and FreqSevSims types
             if x.n_sims <= 1:
                 # If n_sims is 1 or None, return the value directly
-                return x
+                return x  # type: ignore[return-value]
 
             if isinstance(sim_no, StochasticScalar):
-                # Extract all values and return a new StochasticScalar with those
-                # indices
-                indices = sim_no.values.astype(int)
-                return StochasticScalar(x.values[indices])
+                # Use __getitem__ to preserve coupling relationships
+                return x[sim_no]  # type: ignore[return-value]
 
             # Handle the main case: extract value at specific simulation index
             if isinstance(sim_no, int):
-                return x.values[sim_no]
+                result = x[sim_no]
+                return result  # type: ignore[return-value]
 
             if isinstance(sim_no, list):
-                return StochasticScalar(x.values[sim_no])
+                # Use __getitem__ with StochasticScalar to preserve coupling
+                result = x[StochasticScalar(sim_no)]
+                return result  # type: ignore[return-value]
 
-            return x
+            return x  # type: ignore[return-value]
 
         if isinstance(x, Number):  # type: ignore[uneccesaryIsInstance]
             # If x is a numeric type, return it directly
