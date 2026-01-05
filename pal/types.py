@@ -8,6 +8,7 @@ throughout the library for type safety and consistency.
 from __future__ import annotations
 
 import dataclasses
+import itertools
 import typing as t
 
 # third party
@@ -45,6 +46,8 @@ class Config:
     n_sims: int = 10000
     seed: int = 123456789
     rng: np.random.Generator = np.random.default_rng(seed)
+
+    _uid_counter = itertools.count(1)
 
 
 @t.runtime_checkable

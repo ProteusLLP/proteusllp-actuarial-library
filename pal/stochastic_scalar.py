@@ -78,9 +78,6 @@ class StochasticScalar(ProteusStochasticVariable):
             "Type of values must be a sequence or array. Found " + type(values).__name__
         )  # type: ignore[misc]
 
-    def __hash__(self) -> int:
-        return id(self)
-
     def __repr__(self) -> str:
         try:
             return f"{type(self).__name__}(values={self.values}, n_sims={self.n_sims})"

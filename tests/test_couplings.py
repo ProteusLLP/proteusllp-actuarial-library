@@ -60,3 +60,27 @@ def test_coupled_variable_reordering2():
         == z.coupled_variable_group
         == a.coupled_variable_group
     )
+
+
+def test_coupled_variable_groups():
+    """Test that coupled variables use identity comparison correctly."""
+    x = StochasticScalar([1.0, 2.0, 3.0])
+    y = StochasticScalar([4.0, 5.0, 6.0])
+
+    # Performing an operation should merge coupling groups
+    z = x + y
+
+    # All should be in the same coupling group now
+    assert x.coupled_variable_group is y.coupled_variable_group
+    assert y.coupled_variable_group is z.coupled_variable_group
+
+    # The internal dictionary in the coupling group should contain all three
+    assert len(x.coupled_variable_group) == 3
+
+    assert x in x.coupled_variable_group
+    assert y in x.coupled_variable_group
+    assert z in x.coupled_variable_group
+
+    y2 = StochasticScalar([4.0, 5.0, 6.0])
+    assert y2.coupled_variable_group is not x.coupled_variable_group
+    assert y2 not in x.coupled_variable_group
