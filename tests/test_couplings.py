@@ -84,3 +84,14 @@ def test_coupled_variable_groups():
     y2 = StochasticScalar([4.0, 5.0, 6.0])
     assert y2.coupled_variable_group is not x.coupled_variable_group
     assert y2 not in x.coupled_variable_group
+
+
+def test_variable_membership_in_own_coupling_group() -> None:
+    """Test that a variable can be identified as member of its coupling group.
+
+    Users should be able to check if a variable is in its coupling group.
+    """
+    x = StochasticScalar([1.0, 2.0, 3.0])
+
+    # Should be able to check membership
+    assert x in x.coupled_variable_group

@@ -93,6 +93,19 @@ def test_fs_reordering3():
     assert np.allclose(re_calculated_b.values, b.values, atol=1e-10)
 
 
+def test_freqsevsims_membership_in_coupling_group() -> None:
+    """Test that FreqSevSims can be checked for coupling group membership."""
+    sim_index = np.array([1, 2, 2, 3, 4], dtype=int)
+    fs = FreqSevSims(
+        sim_index=sim_index,
+        values=np.array([500.0, 700.0, 600.0, 800.0, 550.0]),
+        n_sims=5,
+    )
+
+    # Should be able to check membership
+    assert fs in fs.coupled_variable_group
+
+
 def test_coupled_variables():
     """Test that coupled variables use identity comparison correctly."""
     x = FreqSevSims([0, 0, 1, 2, 4], [10, 21, 30, 40, 50], 6)
