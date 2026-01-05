@@ -1182,7 +1182,7 @@ def apply_copula(
             continue
         re_ordering = variable_sort_indices[i, copula_ranks[i]]
         for var2 in var.coupled_variable_group:
-            # FIXME: _reorder_sims is a proteced method but we need to access it here
+            # FIXME: _reorder_sims is a protected method but we need to access it here
             # for copula reordering functionality. Consider making this method public
             # or providing a public interface for reordering simulations across
             # coupled variable groups.
