@@ -203,9 +203,6 @@ class FreqSevSims(ProteusStochasticVariable):
                 f"but values has {len(self.values)} elements"
             )
 
-    def __hash__(self):
-        return id(self)
-
     def __str__(self):
         return (
             "Simulation Index\n"

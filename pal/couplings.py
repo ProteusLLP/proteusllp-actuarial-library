@@ -16,11 +16,11 @@ import numpy as np
 import numpy.typing as npt
 from numpy.lib.mixins import NDArrayOperatorsMixin
 
+from pal.config import Config
+
 
 class CouplingGroup:
     """A class to represent a group of variables that are coupled together."""
-
-    variables: weakref.WeakSet[ProteusStochasticVariable]
 
     def __init__(self, variable: ProteusStochasticVariable):
         """Initialize coupling group with a single variable.
@@ -28,15 +28,27 @@ class CouplingGroup:
         Args:
             variable: The initial variable to add to the group.
         """
-        # Start the group with a single variable, stored as a weak reference.
-        self.variables: weakref.WeakSet[ProteusStochasticVariable] = weakref.WeakSet(
-            [variable]
+        self._refs: weakref.WeakValueDictionary[int, ProteusStochasticVariable] = (
+            weakref.WeakValueDictionary({variable._uid: variable})  # type: ignore[misc]
         )
 
-    @property
-    def id(self) -> int:
-        """Get the unique identifier for this coupling group."""
-        return id(self)
+    def add(self, obj: ProteusStochasticVariable) -> None:
+        """Add a variable to the coupling group."""
+        self._refs[obj._uid] = obj  # type: ignore[misc]
+
+    def discard(self, obj: ProteusStochasticVariable) -> None:
+        """Remove a variable from the coupling group if it exists."""
+        self._refs.pop(obj._uid, None)  # type: ignore[misc]
+
+    def __contains__(self, obj: ProteusStochasticVariable) -> bool:
+        return obj._uid in self._refs  # type: ignore[misc]
+
+    def __len__(self) -> int:
+        return len(self._refs)
+
+    def __iter__(self) -> t.Iterator[ProteusStochasticVariable]:
+        # yield live objects only
+        yield from self._refs.values()
 
     def merge(self, other: CouplingGroup) -> None:
         """Merge another coupling group into this one.
@@ -47,9 +59,9 @@ class CouplingGroup:
         if self is other:
             return
         # Merge the other group's variables into this one, updating their pointer.
-        for var in list(other.variables):
+        for var in list(other):
             var.coupled_variable_group = self
-            self.variables.add(var)
+            self.add(var)
         return
 
 
@@ -58,6 +70,7 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
 
     n_sims: int | None = None
     values: npt.NDArray[np.floating]
+    _uid: int
 
     # ===================
     # DUNDER METHODS
@@ -65,6 +78,7 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
 
     def __init__(self) -> None:
         """Initialize stochastic variable with new coupling group."""
+        self._uid = next(Config._uid_counter)  # type: ignore[misc]
         self.coupled_variable_group = CouplingGroup(self)
 
     def __array__(self, dtype: t.Any = None) -> npt.NDArray[np.floating]:

@@ -5,7 +5,8 @@ stochastic indexing, and integration with numpy operations.
 """
 
 # standard library
-# none
+
+import re
 
 # third party
 import numpy as np
@@ -364,3 +365,30 @@ def test_any_all():
     z = StochasticScalar([False, False, False])
     assert z.any() is False
     assert z.all() is False
+
+
+def test_boolean():
+    """Tests boolean operations on StochasticScalar."""
+    x = StochasticScalar([True, False, True])
+    y = StochasticScalar([False, False, True])
+
+    and_result = x & y
+    assert (and_result == [False, False, True]).all()
+
+    or_result = x | y
+    assert (or_result == [True, False, True]).all()
+
+    not_result = ~x
+    assert (not_result == [False, True, False]).all()
+
+
+def test_bool_fails():
+    """Test that StochasticScalar cannot be converted to bool."""
+    x = StochasticScalar([True])
+    with pytest.raises(
+        TypeError,
+        match=re.escape(
+            "Ambiguous truth value for StochasticScalar. Use .any() or .all()."
+        ),
+    ):
+        bool(x)

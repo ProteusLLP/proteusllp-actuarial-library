@@ -91,3 +91,46 @@ def test_fs_reordering3():
     re_calculated_b = (y * 3).aggregate()
     assert np.allclose(re_calculated_a.values, a.values, atol=1e-10)
     assert np.allclose(re_calculated_b.values, b.values, atol=1e-10)
+
+
+def test_freqsevsims_membership_in_coupling_group() -> None:
+    """Test that FreqSevSims can be checked for coupling group membership."""
+    sim_index = np.array([1, 2, 2, 3, 4], dtype=int)
+    fs = FreqSevSims(
+        sim_index=sim_index,
+        values=np.array([500.0, 700.0, 600.0, 800.0, 550.0]),
+        n_sims=5,
+    )
+
+    # Should be able to check membership
+    assert fs in fs.coupled_variable_group
+
+
+def test_coupled_variables():
+    """Test that coupled variables use identity comparison correctly."""
+    x = FreqSevSims([0, 0, 1, 2, 4], [10, 21, 30, 40, 50], 6)
+    y = FreqSevSims([0, 1, 1, 3, 5], [12, 22, 32, 42, 52], 6)
+
+    # Performing an operation should merge coupling groups
+    z = x + y
+
+    # All should be in the same coupling group now
+    assert x.coupled_variable_group is y.coupled_variable_group
+    assert y.coupled_variable_group is z.coupled_variable_group
+
+    # The internal dictionary in the coupling group should contain all three
+    assert len(x.coupled_variable_group) == 3
+
+    assert x in x.coupled_variable_group
+    assert y in x.coupled_variable_group
+    assert z in x.coupled_variable_group
+
+    z2 = z + x
+    assert x.coupled_variable_group is z2.coupled_variable_group
+    assert len(x.coupled_variable_group) == 4
+
+    y2 = FreqSevSims([0, 1, 1, 3, 5], [12, 22, 32, 42, 52], 6)
+
+    assert y2.coupled_variable_group is not y.coupled_variable_group
+    z3 = x + y2
+    assert z3 in x.coupled_variable_group
