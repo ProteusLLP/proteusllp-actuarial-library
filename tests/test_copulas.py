@@ -313,7 +313,7 @@ def test_hulerreiss_copula_methods():
 def test_extremalt_copula(nu: float, matrix: list[list[float]]):
     config.rng = np.random.default_rng(123456)
     rho = np.array(matrix)
-    samples = copulas.ExtremalTCopula(rho, nu).generate(100000)
+    samples = copulas.ExtremalTCopula(rho, nu).generate(200000)
     # test the tail dependence
     coeff = -np.sqrt((nu + 1) * (1 - rho) / (1 + rho))
     lambda_theo = 2 * scipy.stats.t.cdf(coeff, df=nu + 1)
@@ -366,7 +366,7 @@ def test_extremalt_copula_parameter_errors():
 def test_extremalt_copula_methods():
     """Test the Extremal-t copula from_tail_dependence method."""
     # test that we can recover rho from a given tail dependence matrix
-    rho = np.array([[1, 0.0, 0.5], [0.25, 1, -0.5], [0.5, -0.5, 1]])
+    rho = np.array([[1, 0.0, 0.5], [0.0, 1, -0.5], [0.5, -0.5, 1]])
     nu = 5
     coeff = -np.sqrt((nu + 1) * (1 - rho) / (1 + rho))
     lambda_theo = 2 * scipy.stats.t.cdf(coeff, df=nu + 1)

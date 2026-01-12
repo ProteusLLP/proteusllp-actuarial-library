@@ -23,7 +23,7 @@ The following copulas are available for modeling dependencies:
 - **GalambosCopula**: Galambos copula for modeling upper tail dependence
 - **HuslerReissCopula**: Hüsler-Reiss copula for flexible upper tail dependence structures
 - **MM1Copula**: Mixture of max-id copulas for flexible upper tail dependence 
-- **ExtremalTCopula**: Extremal-t copula, also known as the t-EV copula, for flexible upper tail dependence 
+- **ExtremalTCopula**: Extremal-t copula, also known as the t-EV copula, for flexible upper tail dependence
 
 Usage Example
 -------------

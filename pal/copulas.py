@@ -1173,8 +1173,8 @@ class ExtremalTCopula(Copula):
 
         Args:
             correlation_matrix: Correlation matrix determining the pairwise
-                dependency between variables. Must be symmetric and positive
-                semi-definite.
+                dependency between variables. Must be positive
+                semi-definite. Note that only the lower diagonal of this matrix is used.
             nu: Degrees of freedom parameter (must be > 0).
         """
         if nu <= 0:
@@ -1187,7 +1187,7 @@ class ExtremalTCopula(Copula):
             raise ValueError("Correlation matrix must be square")
         if self.correlation_matrix.min() < -1.0 or self.correlation_matrix.max() > 1.0:
             raise ValueError("Correlation matrix values must be in the range [-1, 1]")
-        if np.all(np.diag(self.correlation_matrix) != 1.0):
+        if not np.allclose(np.diag(self.correlation_matrix), 1.0):
             raise ValueError("Correlation matrix diagonal must be all ones")
         self.nu = nu
         self.d = correlation_matrix.shape[0]
@@ -1197,7 +1197,7 @@ class ExtremalTCopula(Copula):
     ) -> npt.NDArray[np.floating]:
         """Exact simulation of the t-EV copula.
 
-        See Dombry-Engle-Oesting (2018).
+        See Dombry-Engle-Oesting (2016).
 
         References:
         Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
@@ -1240,12 +1240,11 @@ class ExtremalTCopula(Copula):
             conditional_mu.append(rho_j)
             conditional_mask.append(mask)
 
-        samp = np.zeros((d, n_sims))
-        zeta = np.random.exponential(1.0, size=n_sims)
-        chi_sq = np.random.chisquare(df=nu + 1.0, size=(1, n_sims))
+        zeta = rng.exponential(1.0, size=n_sims)
+        chi_sq = rng.chisquare(df=nu + 1.0, size=(1, n_sims))
 
         # Gaussian: Shape (d-1, n)
-        z_sub = np.random.normal(size=(d - 1, n_sims))
+        z_sub = rng.normal(size=(d - 1, n_sims))
         normal_dev_sub = conditional_cholesky[0] @ z_sub
 
         # Scale deviations
