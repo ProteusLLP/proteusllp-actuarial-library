@@ -13,7 +13,8 @@ Available Copulas
 
 The following copulas are available for modeling dependencies:
 
-- **GaussianCopula**: Gaussian (Normal) copula for modeling linear correlations
+- **GaussianCopula**: Gaussian (Normal) copula for modeling symmetric dependencies
+- **StudentsTCopula**: Student's t copula for modeling symmetric dependencies with tail dependence
 - **GumbelCopula**: Gumbel copula for modeling upper tail dependence
 - **ClaytonCopula**: Clayton copula for modeling lower tail dependence
 - **FrankCopula**: Frank copula for symmetric dependence
@@ -21,7 +22,8 @@ The following copulas are available for modeling dependencies:
 - **PlackettCopula**: Plackett copula for modeling symmetric dependencies
 - **GalambosCopula**: Galambos copula for modeling upper tail dependence
 - **HuslerReissCopula**: Hüsler-Reiss copula for flexible upper tail dependence structures
-- **MM1Copula**: Mixture of max-id copulas for flexible upper tail dependence structures
+- **MM1Copula**: Mixture of max-id copulas for flexible upper tail dependence 
+- **ExtremalTCopula**: Extremal-t copula, also known as the t-EV copula, for flexible upper tail dependence 
 
 Usage Example
 -------------

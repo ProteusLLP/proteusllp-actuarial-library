@@ -52,10 +52,10 @@ total = losses + expenses
 
 ```bash
 # Basic installation
-pip install proteus-actuarial-library
+pip install proteusllp-actuarial-library
 
 # With GPU support
-pip install proteus-actuarial-library[gpu]
+pip install proteusllp-actuarial-library[gpu]
 ```
 
 ## Documentation
