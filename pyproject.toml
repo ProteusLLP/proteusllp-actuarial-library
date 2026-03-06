@@ -69,6 +69,7 @@ build-backend = "setuptools.build_meta"
 line-length = 88
 target-version = "py313"
 src = ["pal"]
+exclude = ["pal/_version.py"]
 
 [tool.ruff.lint]
 select = [
