@@ -177,7 +177,7 @@ def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any: ...
 
 def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any:
     """Conditional selection that preserves PAL types."""
-    return xp.where(condition, x, y)
+    return t.cast(t.Any, xp.where(condition, x, y))
 
 
 # Additional functions for contracts.py and other modules

@@ -21,31 +21,31 @@ help:
 # Static analysis targets
 .PHONY: lint
 lint:
-	pdm run ruff check pal tests examples
+	ruff check pal tests examples
 
 .PHONY: lint-fix
 lint-fix:
-	pdm run ruff check --fix pal tests examples
+	ruff check --fix pal tests examples
 
 .PHONY: format
 format:
-	pdm run ruff format pal tests examples
+	ruff format pal tests examples
 
 .PHONY: format-check
 format-check:
-	pdm run ruff format --check pal tests examples
+	ruff format --check pal tests examples
 
 .PHONY: typecheck
 typecheck:
-	pdm run pyright
+	pyright
 
 .PHONY: security
 security:
-	pdm run bandit -r pal
+	bandit -r pal
 
 .PHONY: deadcode
 deadcode:
-	pdm run vulture pal
+	vulture pal
 
 .PHONY: static-analysis
 static-analysis: lint format-check typecheck security deadcode
@@ -55,14 +55,14 @@ static-analysis: lint format-check typecheck security deadcode
 .PHONY: test
 test:
 	mkdir -p coverage
-	pdm run pytest -v --cov=pal --cov-report=xml:coverage/coverage.xml
+	pytest -v --cov=pal --cov-report=xml:coverage/coverage.xml
 
 .PHONY: check-notebooks
 check-notebooks:
 	@echo "Executing notebooks to verify they work..."
 	@for notebook in $(wildcard examples/*.ipynb); do \
 		echo "Executing $$notebook..."; \
-		PAL_SUPPRESS_PLOTS=true pdm run jupyter nbconvert --to notebook --execute \
+		PAL_SUPPRESS_PLOTS=true jupyter nbconvert --to notebook --execute \
 			--ExecutePreprocessor.timeout=300 \
 			--output-dir=/tmp \
 			"$$notebook" || exit 1; \
@@ -78,7 +78,7 @@ check: static-analysis test check-notebooks
 .PHONY: build
 build:
 	mkdir -p dist
-	pdm build
+	python -m build
 
 .PHONY: clean
 clean:

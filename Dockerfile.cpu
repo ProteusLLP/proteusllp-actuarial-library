@@ -20,17 +20,14 @@ RUN apt-get update && apt-get install -y \
 # Install pyright globally for type checking
 RUN npm install -g pyright
 
-# Install uv and PDM for fast package management
-RUN pip install uv pdm
-
 # Set working directory
 WORKDIR /app
 
 # Copy dependency files
-COPY pyproject.toml pdm.lock* ./
+COPY pyproject.toml ./
 
-# Install only main dependencies using PDM with uv backend (no GPU group)
-RUN pdm install --no-self
+# Install the package in editable mode with main dependencies
+RUN pip install -e .
 
 # DEVELOPMENT STAGE ===========================
 FROM base AS dev
@@ -47,7 +44,7 @@ RUN useradd -m -s /bin/bash vscode && \
     echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Install dev dependencies (test + dev groups, but not GPU group)
-RUN pdm install -dG test -dG dev --no-self
+RUN pip install -e ".[test,dev]"
 
 # Switch to non-root user
 USER vscode
@@ -67,5 +64,5 @@ WORKDIR /app
 # Copy source code for CI
 COPY . .
 
-# Install test dependencies and the package itself
-RUN pdm install -dG test
+# Install the package with test dependencies and build tools
+RUN pip install -e ".[test]" && pip install build
