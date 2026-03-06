@@ -1,0 +1,46 @@
+[project]
+name = "proteus-actuarial-library"
+dynamic = ["version"]
+description = "Proteus Actuarial Library: A package for building and running stochastic actuarial models in Python. (Mirror of proteusllp-actuarial-library)"
+authors = [
+    {name = "James Norman", email = "james.norman@proteusllp.com"}
+]
+maintainers = [
+    {name = "James Norman", email = "james.norman@proteusllp.com"}
+]
+readme = "README.md"
+license = {text = "MIT License"}
+keywords = ["actuarial", "insurance", "capital"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+requires-python = ">=3.12"
+dependencies = [
+    "proteusllp-actuarial-library>=0.2.8",
+]
+
+[project.optional-dependencies]
+gpu = ["proteusllp-actuarial-library[gpu]"]
+docs = ["proteusllp-actuarial-library[docs]"]
+
+[project.urls]
+Homepage = "https://github.com/ProteusLLP/proteusllp-actuarial-library"
+Repository = "https://github.com/ProteusLLP/proteusllp-actuarial-library"
+Issues = "https://github.com/ProteusLLP/proteusllp-actuarial-library/issues"
+Documentation = "https://proteusllp-actuarial-library.readthedocs.io/"
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm]
+package-dir = "proteus"
+
+[tool.pdm.version]
+source = "file"
+path = "proteus/__init__.py"
