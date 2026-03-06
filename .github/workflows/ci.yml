@@ -90,7 +90,7 @@ jobs:
         run: pip install pdm
 
       - name: Install dependencies
-        run: pdm install -dG test
+        run: pdm install -dG test --no-lock
 
       - name: Run tests
         run: |

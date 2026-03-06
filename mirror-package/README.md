@@ -23,13 +23,6 @@ This mirror package automatically installs and re-exports all functionality from
 
 ```python
 # Still works with this mirror package
-from proteus import StochasticScalar
-```
-
-However, we recommend updating your imports to use the new package name:
-
-```python
-# Recommended for new code
 from pal import StochasticScalar
 ```
 
