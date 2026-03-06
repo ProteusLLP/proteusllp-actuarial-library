@@ -38,6 +38,20 @@ docs = [
     "myst-parser>=4.0.1",
     "sphinx-autodoc-typehints>=3.5.2",
 ]
+test = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "pytest-xdist>=3.0",
+    "pytest-codeblocks>=0.17.0",
+]
+dev = [
+    "jupyter>=1.0",
+    "jupyterlab>=4.0",
+    "ruff>=0.8.0",
+    "bandit>=1.7.0",
+    "vulture>=2.11",
+    "pyright>=1.1.350",
+]
 
 [project.urls]
 Homepage = "https://github.com/ProteusLLP/proteusllp-actuarial-library"
@@ -47,8 +61,8 @@ Documentation = "https://proteusllp-actuarial-library.readthedocs.io/"
 
 
 [build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
+requires = ["setuptools>=61.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
 
 # Static analysis tool configurations
 [tool.ruff]
@@ -83,44 +97,22 @@ convention = "google"
 
 
 [tool.bandit]
-exclude_dirs = ["tests", "__pypackages__"]  # Tests contain patterns that trigger false positives
+exclude_dirs = ["tests"]
 skips = ["B101"]  # Skip assert_used test - asserts are normal in tests
 
 [tool.vulture]
 paths = ["pal"]
 min_confidence = 80
-exclude = ["__pypackages__/"]
-[tool.pdm]
-package-dir = "pal"
-includes = [
-    "README.md",
-    "LICENSE",
-    "examples/*.py",
-    "data/**/*.csv",
-    "docs/**/*.md"
-]
 
-[tool.pdm.version]
-source = "scm"
+[tool.setuptools]
+packages = ["pal"]
+include-package-data = true
 
-# Configure PDM to always use virtual environments (not PEP 582)
-# plays nicely with vscode's pytest extension and prevents issues with
-# conflicting deps in __pypackages__ directories.
-[tool.pdm.python]
-use_venv = true
+[tool.setuptools.package-data]
+pal = ["py.typed"]
 
-[tool.pdm.dev-dependencies]
-test = [
-    "pytest>=8.0",
-    "pytest-cov>=4.0",
-    "pytest-xdist>=3.0",
-    "pytest-codeblocks>=0.17.0",
-]
-dev = [
-    "jupyter>=1.0",
-    "jupyterlab>=4.0",
-    "ruff>=0.8.0",
-    "bandit>=1.7.0",
-    "vulture>=2.11",
-    "pyright>=1.1.350",
-]
+[tool.setuptools_scm]
+# Automatic versioning from git tags
+# Version will be determined from git tags (e.g., v0.2.8 → 0.2.8)
+version_file = "pal/_version.py"
+fallback_version = "0.0.0+unknown"

@@ -35,12 +35,11 @@ Issues = "https://github.com/ProteusLLP/proteusllp-actuarial-library/issues"
 Documentation = "https://proteusllp-actuarial-library.readthedocs.io/"
 
 [build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
-[tool.pdm]
-package-dir = "proteus"
+[tool.setuptools]
+packages = ["proteus"]
 
-[tool.pdm.version]
-source = "file"
-path = "proteus/__init__.py"
+[tool.setuptools.dynamic]
+version = {attr = "proteus.__version__"}

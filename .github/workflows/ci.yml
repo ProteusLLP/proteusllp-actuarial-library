@@ -1,7 +1,6 @@
 # CI/CD pipeline for Proteus Actuarial Library
 #
-# This workflow runs tests and builds the package using Docker containers
-# to ensure consistency with the development environment.
+# This workflow runs tests and builds the package.
 #
 # Triggers:
 # - Push/PR: Runs tests only for code validation
@@ -11,12 +10,10 @@
 # - docker-build: Builds CI image once and shares it across jobs
 # - static-analysis: Runs linting/type checking using Docker
 # - test: Runs pytest with coverage on Python 3.12 and 3.13 (matrix)
-# - build: Builds Python packages with PDM using Docker
+# - build: Builds Python packages using standard build tool
 # - pypi-publish: Publishes to PyPI using trusted publishing (release only)
 #
 # To release: Create a GitHub Release, which triggers automatic PyPI publishing.
-# The CI Docker image uses PDM + uv for fast dependency installation and
-# includes all dependencies pre-installed from the 'deps' stage.
 
 name: CI
 
@@ -66,7 +63,7 @@ jobs:
 
       # Install dev dependencies for static analysis tools
       - name: Install dev dependencies
-        run: docker run --rm proteus-ci pdm install -dG dev --no-self
+        run: docker run --rm proteus-ci pip install -e ".[dev]"
 
       - name: Run static analysis
         run: docker run --rm proteus-ci make static-analysis
@@ -86,22 +83,19 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install PDM
-        run: pip install pdm
-
       - name: Install dependencies
-        run: pdm install -dG test --no-lock
+        run: pip install -e ".[test]"
 
       - name: Run tests
         run: |
           mkdir -p coverage
-          pdm run pytest -v --cov=pal --cov-report=xml:coverage/coverage-${{ matrix.python-version }}.xml --codeblocks
+          pytest -v --cov=pal --cov-report=xml:coverage/coverage-${{ matrix.python-version }}.xml --codeblocks
 
       # Validate example scripts can compile without running them
       # This checks syntax and import resolution without starting Flask servers
       # or other services that would complicate CI testing
       - name: Check examples compile
-        run: pdm run python -m compileall examples/ -f
+        run: python -m compileall examples/ -f
 
       - name: Upload coverage reports
         uses: actions/upload-artifact@v6
@@ -134,7 +128,7 @@ jobs:
         run: |
           mkdir -p dist
           docker run --rm -v "$(pwd)/dist:/app/dist" proteus-ci \
-            pdm build
+            python -m build --outdir /app/dist
 
       - name: Build mirror package (proteus-actuarial-library)
         # Build the legacy mirror package for backward compatibility
@@ -144,7 +138,7 @@ jobs:
             -v "$(pwd)/mirror-package:/app/mirror-package" \
             -w /app/mirror-package \
             proteus-ci \
-            pdm build
+            python -m build
           # Copy mirror package distributions to main dist directory
           cp mirror-package/dist/* dist/
 
