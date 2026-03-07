@@ -5,6 +5,7 @@ arithmetic operations, and integration with other stochastic types.
 """
 
 import numpy as np
+import pal.maths as pnp
 from pal.frequency_severity import FreqSevSims
 from pal.variables import StochasticScalar
 
@@ -216,3 +217,61 @@ def test_maximum():
     fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=n_sims)
     result = np.maximum(fs, 5)
     assert np.array_equal(result, np.array([5, 5, 5, 5, 5, 6, 7, 8, 9]))
+
+
+def test_safe_divide_freqsevsims():
+    """Test safe_divide with FreqSevSims arguments."""
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
+    values_num = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90])
+    values_denom = np.array([2, 0, 5, 0, 10, 6, 0, 8, 9])
+    n_sims = 3
+    numerator = FreqSevSims(sim_index=sim_index, values=values_num, n_sims=n_sims)
+    denominator = FreqSevSims(sim_index=sim_index, values=values_denom, n_sims=n_sims)
+    default = 99
+    result = pnp.safe_divide(numerator, denominator, default)
+    assert np.array_equal(result, np.array([5, 99, 6, 99, 5, 10, 99, 10, 10]))
+    assert (
+        numerator.coupled_variable_group
+        == denominator.coupled_variable_group
+        == result.coupled_variable_group
+    )
+
+
+def test_safe_divide_freqsevsims_scalar_denominator():
+    """Test safe_divide with FreqSevSims and scalar denominator."""
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
+    values = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90])
+    n_sims = 3
+    numerator = FreqSevSims(sim_index=sim_index, values=values, n_sims=n_sims)
+    denominator = 5
+    default = 99
+    result = pnp.safe_divide(numerator, denominator, default)
+    assert np.array_equal(result, np.array([2, 4, 6, 8, 10, 12, 14, 16, 18]))
+    assert numerator.coupled_variable_group == result.coupled_variable_group
+
+
+def test_safe_divide_freqsevsims_scalar_denominator_zero():
+    """Test safe_divide with FreqSevSims and zero scalar denominator."""
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
+    values = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90])
+    n_sims = 3
+    numerator = FreqSevSims(sim_index=sim_index, values=values, n_sims=n_sims)
+    denominator = 0
+    default = -1
+    result = pnp.safe_divide(numerator, denominator, default)
+    assert np.array_equal(result, np.array([-1, -1, -1, -1, -1, -1, -1, -1, -1]))
+    assert numerator.coupled_variable_group == result.coupled_variable_group
+
+
+def test_safe_divide_freqsevsims_scalar_numerator():
+    """Test safe_divide with scalar numerator and FreqSevSims denominator."""
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
+    values = np.array([2, 0, 5, 0, 10, 6, 0, 8, 9])
+    n_sims = 3
+    numerator = 100
+    denominator = FreqSevSims(sim_index=sim_index, values=values, n_sims=n_sims)
+    default = -999
+    result = pnp.safe_divide(numerator, denominator, default)
+    expected = np.array([50, -999, 20, -999, 10, 100 / 6, -999, 12.5, 100 / 9])
+    assert np.allclose(result.values, expected)
+    assert denominator.coupled_variable_group == result.coupled_variable_group
