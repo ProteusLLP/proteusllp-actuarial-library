@@ -67,7 +67,7 @@ build-backend = "setuptools.build_meta"
 # Static analysis tool configurations
 [tool.ruff]
 line-length = 88
-target-version = "py311"
+target-version = "py312"
 src = ["pal"]
 exclude = ["pal/_version.py"]
 

@@ -5,7 +5,7 @@
   "typeCheckingMode": "strict",
   "reportMissingImports": true,
   "reportMissingTypeStubs": false,
-  "pythonVersion": "3.13",
+  "pythonVersion": "3.12",
   "pythonPlatform": "Linux",
   "venvPath": ".",
   "venv": ".venv"
