@@ -79,7 +79,7 @@ jobs:
         run: python -m compileall examples/ -f
 
       - name: Upload coverage reports
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-reports-${{ matrix.python-version }}
           path: coverage/
@@ -120,7 +120,7 @@ jobs:
         run: ls -lh dist/
 
       - name: Upload distributions
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-dists
           path: dist/
