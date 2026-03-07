@@ -12,6 +12,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+import pal.maths as pnp
+
 from ._maths import xp
 from .frequency_severity import FreqSevSims
 from .variables import StochasticScalar
@@ -161,16 +163,7 @@ class XoL:
             np.maximum(aggregate_recoveries_pre_agg - aggregate_deductible, 0),
             aggregate_limit,
         )  # type: ignore[assignment]
-        non_zero_recoveries = aggregate_recoveries != 0
-        ratio = StochasticScalar(xp.ones(claims.n_sims))
-        np.putmask(
-            ratio.values,
-            non_zero_recoveries.values.astype(bool),
-            np.divide(
-                aggregate_recoveries[non_zero_recoveries],
-                aggregate_recoveries_pre_agg[non_zero_recoveries],
-            ),
-        )
+        ratio = pnp.safe_divide(aggregate_recoveries, aggregate_recoveries_pre_agg, 0)
 
         recoveries = individual_recoveries_pre_aggregate * ratio
         results = ContractResults(recoveries)

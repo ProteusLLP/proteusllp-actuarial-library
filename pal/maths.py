@@ -23,10 +23,11 @@ if t.TYPE_CHECKING:
     from .variables import ProteusVariable
 
 T = t.TypeVar("T")
+T_ProteusVar = t.TypeVar("T_ProteusVar")
 
 
 @t.overload
-def exp[T](x: T) -> T: ...
+def exp(x: T) -> T: ...
 
 
 @t.overload
@@ -61,7 +62,7 @@ def mean(x: FreqSevSims) -> float: ...
 
 
 @t.overload
-def mean[T](x: ProteusVariable[T]) -> ProteusVariable[T]: ...
+def mean(x: ProteusVariable[T_ProteusVar]) -> ProteusVariable[T_ProteusVar]: ...
 
 
 @t.overload
@@ -176,8 +177,170 @@ def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any: ...
 
 
 def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any:
-    """Conditional selection that preserves PAL types."""
-    return xp.where(condition, x, y)
+    """Conditional selection that preserves PAL types.
+
+    For StochasticScalar types, manually wraps the result since np.where
+    doesn't trigger __array_ufunc__. FreqSevSims handles this via
+    __array_function__.
+    """
+    result = xp.where(condition, x, y)
+
+    # If result is already the right type (e.g., FreqSevSims via __array_function__)
+    # just return it
+    if hasattr(result, "coupled_variable_group"):
+        return result
+
+    # Check if any input is a StochasticScalar and wrap the result
+    from .stochastic_scalar import StochasticScalar
+
+    stochastic_inputs = [
+        inp for inp in [condition, x, y] if isinstance(inp, StochasticScalar)
+    ]
+
+    if stochastic_inputs:
+        # Wrap result and merge coupling groups
+        wrapped_result = StochasticScalar(result)
+        for inp in stochastic_inputs:
+            wrapped_result.coupled_variable_group.merge(inp.coupled_variable_group)
+        return wrapped_result
+
+    return result
+
+
+@t.overload
+def safe_divide(
+    numerator: StochasticScalar,
+    denominator: StochasticScalar,
+    default: StochasticScalar,
+) -> StochasticScalar: ...
+
+
+@t.overload
+def safe_divide(
+    numerator: StochasticScalar,
+    denominator: StochasticScalar,
+    default: float | int,
+) -> StochasticScalar: ...
+
+
+@t.overload
+def safe_divide(
+    numerator: StochasticScalar,
+    denominator: float | int,
+    default: StochasticScalar,
+) -> StochasticScalar: ...
+
+
+@t.overload
+def safe_divide(
+    numerator: StochasticScalar,
+    denominator: float | int,
+    default: float | int,
+) -> StochasticScalar: ...
+
+
+@t.overload
+def safe_divide(
+    numerator: float | int,
+    denominator: StochasticScalar,
+    default: StochasticScalar,
+) -> StochasticScalar: ...
+
+
+@t.overload
+def safe_divide(
+    numerator: float | int,
+    denominator: StochasticScalar,
+    default: float | int,
+) -> StochasticScalar: ...
+
+
+@t.overload
+def safe_divide(
+    numerator: FreqSevSims,
+    denominator: FreqSevSims,
+    default: FreqSevSims,
+) -> FreqSevSims: ...
+
+
+@t.overload
+def safe_divide(
+    numerator: FreqSevSims,
+    denominator: FreqSevSims,
+    default: float | int,
+) -> FreqSevSims: ...
+
+
+@t.overload
+def safe_divide(
+    numerator: FreqSevSims,
+    denominator: float | int,
+    default: FreqSevSims,
+) -> FreqSevSims: ...
+
+
+@t.overload
+def safe_divide(
+    numerator: FreqSevSims,
+    denominator: float | int,
+    default: float | int,
+) -> FreqSevSims: ...
+
+
+@t.overload
+def safe_divide(
+    numerator: float | int,
+    denominator: FreqSevSims,
+    default: FreqSevSims,
+) -> FreqSevSims: ...
+
+
+@t.overload
+def safe_divide(
+    numerator: float | int,
+    denominator: FreqSevSims,
+    default: float | int,
+) -> FreqSevSims: ...
+
+
+@t.overload
+def safe_divide(
+    numerator: t.Any,
+    denominator: t.Any,
+    default: t.Any,
+) -> t.Any: ...
+
+
+def safe_divide(
+    numerator: t.Any,
+    denominator: t.Any,
+    default: t.Any,
+) -> t.Any:
+    """Safe division that returns a default value when denominator is zero.
+
+    Computes numerator / denominator, but returns the default value for
+    elements where the denominator is zero. Works with PAL stochastic types
+    (StochasticScalar, FreqSevSims) and numeric types.
+
+    Args:
+        numerator: The numerator value(s).
+        denominator: The denominator value(s).
+        default: The value to return when denominator is zero.
+
+    Returns:
+        The result of the division where denominator is non-zero,
+        otherwise the default value.
+
+    Examples:
+        >>> from pal.stochastic_scalar import StochasticScalar
+        >>> import pal.maths as pnp
+        >>> numerator = StochasticScalar([10, 20, 30])
+        >>> denominator = StochasticScalar([2, 0, 5])
+        >>> result = pnp.safe_divide(numerator, denominator, 0)
+        >>> result.values
+        array([5., 0., 6.])
+    """
+    return where(denominator != 0, numerator / denominator, default)  # pyright: ignore[reportUnknownVariableType]
 
 
 # Additional functions for contracts.py and other modules

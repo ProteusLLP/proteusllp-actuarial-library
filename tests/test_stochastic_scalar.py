@@ -392,3 +392,90 @@ def test_bool_fails():
         ),
     ):
         bool(x)
+
+
+def test_safe_divide_stochastic():
+    """Test safe_divide with StochasticScalar arguments."""
+    numerator = StochasticScalar([10, 20, 30, 40])
+    denominator = StochasticScalar([2, 0, 5, 0])
+    default = 99
+    result = pnp.safe_divide(numerator, denominator, default)
+    assert (result.values == [5, 99, 6, 99]).all()
+    assert (
+        numerator.coupled_variable_group
+        == denominator.coupled_variable_group
+        == result.coupled_variable_group
+    )
+
+
+def test_safe_divide_stochastic_default():
+    """Test safe_divide with StochasticScalar default."""
+    numerator = StochasticScalar([10, 20, 30, 40])
+    denominator = StochasticScalar([2, 0, 5, 0])
+    default = StochasticScalar([100, 200, 300, 400])
+    result = pnp.safe_divide(numerator, denominator, default)
+    assert (result.values == [5, 200, 6, 400]).all()
+    assert (
+        numerator.coupled_variable_group
+        == denominator.coupled_variable_group
+        == default.coupled_variable_group
+        == result.coupled_variable_group
+    )
+
+
+def test_safe_divide_scalar_denominator():
+    """Test safe_divide with scalar denominator."""
+    numerator = StochasticScalar([10, 20, 30])
+    denominator = 5
+    default = 99
+    result = pnp.safe_divide(numerator, denominator, default)
+    assert (result.values == [2, 4, 6]).all()
+    assert numerator.coupled_variable_group == result.coupled_variable_group
+
+
+def test_safe_divide_scalar_denominator_zero():
+    """Test safe_divide with zero scalar denominator."""
+    numerator = StochasticScalar([10, 20, 30])
+    denominator = 0
+    default = 99
+    result = pnp.safe_divide(numerator, denominator, default)
+    assert (result.values == [99, 99, 99]).all()
+    assert numerator.coupled_variable_group == result.coupled_variable_group
+
+
+def test_safe_divide_scalar_numerator():
+    """Test safe_divide with scalar numerator."""
+    numerator = 100
+    denominator = StochasticScalar([2, 0, 5, 10])
+    default = -1
+    result = pnp.safe_divide(numerator, denominator, default)
+    assert (result.values == [50, -1, 20, 10]).all()
+    assert denominator.coupled_variable_group == result.coupled_variable_group
+
+
+def test_safe_divide_all_nonzero():
+    """Test safe_divide when no values are zero."""
+    numerator = StochasticScalar([10, 20, 30])
+    denominator = StochasticScalar([2, 4, 5])
+    default = 999
+    result = pnp.safe_divide(numerator, denominator, default)
+    assert (result.values == [5, 5, 6]).all()
+    assert (
+        numerator.coupled_variable_group
+        == denominator.coupled_variable_group
+        == result.coupled_variable_group
+    )
+
+
+def test_safe_divide_all_zero():
+    """Test safe_divide when all denominators are zero."""
+    numerator = StochasticScalar([10, 20, 30])
+    denominator = StochasticScalar([0, 0, 0])
+    default = 0
+    result = pnp.safe_divide(numerator, denominator, default)
+    assert (result.values == [0, 0, 0]).all()
+    assert (
+        numerator.coupled_variable_group
+        == denominator.coupled_variable_group
+        == result.coupled_variable_group
+    )
