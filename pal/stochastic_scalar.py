@@ -153,6 +153,37 @@ class StochasticScalar(ProteusStochasticVariable):
         result = getattr(ufunc, method)(*_inputs, **kwargs)
         return self._wrap_result_with_coupling(result, inputs)
 
+    def __array_function__(
+        self, func: t.Callable[..., t.Any], _: t.Any, args: t.Any, kwargs: t.Any
+    ) -> np.number[t.Any] | StochasticScalar:
+        """Handle numpy array functions for StochasticScalar objects.
+
+        Args:
+            func: The numpy function being called
+            types: Types involved in the operation
+            args: Arguments passed to the function
+            kwargs: Keyword arguments passed to the function
+
+        Returns:
+            Either a scalar result or new StochasticScalar object
+
+        Raises:
+            NotImplementedError: If the function is not supported
+        """
+        # Extract values from StochasticScalar objects, leave others as-is
+        processed_args = tuple(
+            x.values if isinstance(x, StochasticScalar) else x for x in args
+        )
+        result = func(*processed_args, **kwargs)
+
+        # If result is a scalar, return it directly
+        # Type ignore: Pyright can't infer the exact numpy scalar type
+        if isinstance(result, np.number | np.bool_ | bool) or np.isscalar(result):
+            return result  # type: ignore[misc]
+
+        # Otherwise create a new StochasticScalar object with the result
+        return self._wrap_result_with_coupling(result, args)
+
     def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:
         """Convert the StochasticScalar to a numpy array.
 

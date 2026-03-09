@@ -11,6 +11,7 @@ from __future__ import annotations
 import typing as t
 
 # third party
+import numpy as np
 import numpy.typing as npt
 
 # project
@@ -177,32 +178,8 @@ def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any: ...
 
 
 def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any:
-    """Conditional selection that preserves PAL types.
-
-    For StochasticScalar types, manually wraps the result since np.where
-    doesn't trigger __array_ufunc__. FreqSevSims handles this via
-    __array_function__.
-    """
-    result = xp.where(condition, x, y)
-
-    # If result is already the right type (e.g., FreqSevSims via __array_function__)
-    # just return it
-    if hasattr(result, "coupled_variable_group"):
-        return result
-
-    # Check if any input is a StochasticScalar and wrap the result
-    from .stochastic_scalar import StochasticScalar
-
-    stochastic_inputs = [
-        inp for inp in [condition, x, y] if isinstance(inp, StochasticScalar)
-    ]
-
-    if stochastic_inputs:
-        # Wrap result and merge coupling groups
-        wrapped_result = StochasticScalar(result)
-        for inp in stochastic_inputs:
-            wrapped_result.coupled_variable_group.merge(inp.coupled_variable_group)
-        return wrapped_result
+    """Conditional selection that preserves PAL types."""
+    result = np.where(condition, x, y)
 
     return result
 
