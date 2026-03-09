@@ -23,8 +23,10 @@ RUN npm install -g pyright
 # Set working directory
 WORKDIR /app
 
-# Copy dependency files
+# Copy dependency files and source code needed for installation
 COPY pyproject.toml ./
+COPY pal/ ./pal/
+COPY .git/ ./.git/
 
 # Install the package in editable mode with main dependencies
 RUN pip install -e .
