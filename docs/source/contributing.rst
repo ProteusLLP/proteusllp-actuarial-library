@@ -30,7 +30,7 @@ Code Style
 Reporting Issues
 ----------------
 
-Please report issues on our GitHub `issue tracker <https://github.com/ProteusLLP/proteus-actuarial-library/issues>`_.
+Please report issues on our GitHub `issue tracker <https://github.com/ProteusLLP/proteusllp-actuarial-library/issues>`_.
 
 When reporting issues, please include:
 

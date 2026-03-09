@@ -11,7 +11,7 @@ performance. It can optionally run on a GPU using the cupy package for
 extremely fast performance. It is designed for interoperability with
 numpy and ndarrays.
 
-See: http://github.com/ProteusLLP/proteus-actuarial-library
+See: http://github.com/ProteusLLP/proteusllp-actuarial-library
 """
 
 from .config import *
