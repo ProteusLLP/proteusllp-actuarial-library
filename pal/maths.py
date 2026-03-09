@@ -27,7 +27,7 @@ T_ProteusVar = t.TypeVar("T_ProteusVar")
 
 
 @t.overload
-def exp(x: T) -> T: ...
+def exp[T](x: T) -> T: ...
 
 
 @t.overload
@@ -62,7 +62,7 @@ def mean(x: FreqSevSims) -> float: ...
 
 
 @t.overload
-def mean(x: ProteusVariable[T_ProteusVar]) -> ProteusVariable[T_ProteusVar]: ...
+def mean[T](x: ProteusVariable[T]) -> ProteusVariable[T]: ...
 
 
 @t.overload
