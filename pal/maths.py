@@ -179,7 +179,7 @@ def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any: ...
 
 def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any:
     """Conditional selection that preserves PAL types."""
-    result = np.where(condition, x, y)
+    result = np.where(condition, x, y)  # pyright: ignore[reportUnknownVariableType]
 
     return result
 
