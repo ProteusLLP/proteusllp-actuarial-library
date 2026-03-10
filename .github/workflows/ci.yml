@@ -94,6 +94,8 @@ jobs:
         with:
           # Fetch full git history for version determination
           fetch-depth: 0
+          # For release events, checkout the release tag explicitly
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v6
@@ -118,6 +120,24 @@ jobs:
 
       - name: List built distributions
         run: ls -lh dist/
+
+      - name: Verify version matches release tag
+        if: github.event_name == 'release'
+        run: |
+          # Extract version from release tag (remove 'v' prefix if present)
+          RELEASE_VERSION="${{ github.event.release.tag_name }}"
+          RELEASE_VERSION="${RELEASE_VERSION#v}"
+          echo "Release tag version: $RELEASE_VERSION"
+          
+          # Check if built package matches release version
+          if ! ls dist/*-${RELEASE_VERSION}-*.whl 2>/dev/null; then
+            echo "ERROR: Built package version does not match release tag!"
+            echo "Expected version: $RELEASE_VERSION"
+            echo "Built packages:"
+            ls -1 dist/*.whl
+            exit 1
+          fi
+          echo "✓ Package version matches release tag"
 
       - name: Upload distributions
         uses: actions/upload-artifact@v7
