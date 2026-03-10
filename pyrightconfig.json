@@ -6,7 +6,5 @@
   "reportMissingImports": true,
   "reportMissingTypeStubs": false,
   "pythonVersion": "3.13",
-  "pythonPlatform": "Linux",
-  "venvPath": ".",
-  "venv": ".venv"
+  "pythonPlatform": "Linux"
 }
