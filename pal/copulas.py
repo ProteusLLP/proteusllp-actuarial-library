@@ -13,9 +13,8 @@ from abc import ABC, abstractmethod
 
 # Third-party imports
 import numpy.typing as npt
-import scipy.stats.distributions as distributions  # type: ignore [import-untyped]
+import scipy.stats
 from scipy.special import gamma
-from scipy.stats import norm
 
 from . import ProteusVariable, StochasticScalar
 from ._maths import special
@@ -265,7 +264,7 @@ class StudentsTCopula(EllipticalCopula):
         self, unnormalised_samples: npt.NDArray[np.floating]
     ) -> npt.NDArray[np.floating]:
         """Transform t-distributed samples to uniform using CDF."""
-        return distributions.t(self.dof).cdf(unnormalised_samples)
+        return scipy.stats.distributions.t(self.dof).cdf(unnormalised_samples)
 
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
@@ -1055,7 +1054,7 @@ class HuslerReissCopula(Copula):
             coefficients between each pair of variables.
         """
         lambda_matrix = self.adjusted_lambda_matrix
-        tail_dependence_matrix = 2.0 * (1.0 - norm.cdf(lambda_matrix))
+        tail_dependence_matrix = 2.0 * (1.0 - scipy.stats.norm.cdf(lambda_matrix))
 
         return tail_dependence_matrix
 
@@ -1088,7 +1087,7 @@ class HuslerReissCopula(Copula):
             corresponding to the given upper tail dependence coefficients.
         """
         chi_ij = tail_dependence_matrix
-        lambda_matrix = norm.ppf(1.0 - chi_ij / 2.0)
+        lambda_matrix = scipy.stats.norm.ppf(1.0 - chi_ij / 2.0)
 
         return lambda_matrix
 
@@ -1140,6 +1139,275 @@ class HuslerReissCopula(Copula):
             Hüsler-Reiss copula.
         """
         return self._generate_base(n_sims, rng)
+
+
+class ExtremalTCopula(Copula):
+    """A class to represent an Extremal-t copula.
+
+    The Extremal-t copula, also known as the t-EV copula, is an example of a
+    multivariate extreme value copula, which is suited for modeling upper tail
+    dependence between random variables.
+
+    Its dependence structure is characterized by a correlation matrix and a degrees
+    of freedom parameter nu > 0, which controls the strength of the upper tail
+    dependence.
+
+    The upper tail dependence coefficient between any pair of variables i and j in the
+    Extremal-t copula is given by 2 * t_{nu+1}(-sqrt((nu+1)(1-rho_ij)/(1+rho_ij))),
+    where t_{nu+1} is the CDF of a univariate t-distribution with nu+1 degrees of
+    freedom and rho_ij is the correlation between variables i and j.
+
+    The lower tail dependence coefficient is zero for all pairs of variables.
+
+    References:
+        Nikoloulopoulos, A. K., Joe, H., & Li, H. (2009). Extreme value properties of
+        multivariate t copulas. Extremes, 12(2), 129-148.
+    """
+
+    def __init__(
+        self,
+        correlation_matrix: npt.NDArray[np.floating],
+        nu: float,
+    ) -> None:
+        """Initialize an Extremal-t copula.
+
+        Args:
+            correlation_matrix: Correlation matrix determining the pairwise
+                dependency between variables. Must be positive
+                semi-definite. Note that only the lower diagonal of this matrix is used.
+            nu: Degrees of freedom parameter (must be > 0).
+        """
+        if nu <= 0:
+            raise ValueError("Degrees of freedom nu must be in the range (0, inf)")
+        self.correlation_matrix = np.asarray(correlation_matrix)
+        # validate correlation matrix
+        if self.correlation_matrix.ndim != 2 or (
+            self.correlation_matrix.shape[0] != self.correlation_matrix.shape[1]
+        ):
+            raise ValueError("Correlation matrix must be square")
+        if self.correlation_matrix.min() < -1.0 or self.correlation_matrix.max() > 1.0:
+            raise ValueError("Correlation matrix values must be in the range [-1, 1]")
+        if not np.allclose(np.diag(self.correlation_matrix), 1.0):
+            raise ValueError("Correlation matrix diagonal must be all ones")
+        self.nu = nu
+        self.d = correlation_matrix.shape[0]
+
+    def _generate_unnormalised(
+        self, n_sims: int, rng: np.random.Generator
+    ) -> npt.NDArray[np.floating]:
+        """Exact simulation of the t-EV copula.
+
+        See Dombry-Engle-Oesting (2016).
+
+        References:
+        Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
+        processes. Biometrika 103, no. 2 (2016): 303-17.
+
+        """
+        d = self.correlation_matrix.shape[0]
+
+        conditional_cholesky: list[npt.NDArray[np.floating]] = []
+        conditional_mu: list[npt.NDArray[np.floating]] = []
+        conditional_mask: list[npt.NDArray[np.bool_]] = []
+        rho = self.correlation_matrix
+        nu = self.nu
+
+        for j in range(d):
+            rho_j = rho[:, j]
+
+            # Schur Complement: Sigma_cond = rho - rho_j * rho_j^T
+            sigma_cond_full = rho - np.outer(rho_j, rho_j)
+
+            # Drop j-th row/col to avoid singularity
+            mask = np.ones(d, dtype=bool)
+            mask[j] = False
+
+            sigma_cond_sub = sigma_cond_full[mask][:, mask]
+
+            # Scale by (nu + 1)
+            covar_scaled = sigma_cond_sub / (nu + 1.0)
+
+            try:
+                l_sub = np.linalg.cholesky(covar_scaled)
+            except np.linalg.LinAlgError as e:
+                raise ValueError(
+                    "Could not compute Cholesky decomposition of "
+                    "conditional covariance matrix. "
+                    "Check that the correlation matrix is valid."
+                ) from e
+
+            conditional_cholesky.append(l_sub)
+            conditional_mu.append(rho_j)
+            conditional_mask.append(mask)
+
+        zeta = rng.exponential(1.0, size=n_sims)
+        chi_sq = rng.chisquare(df=nu + 1.0, size=(1, n_sims))
+
+        # Gaussian: Shape (d-1, n)
+        z_sub = rng.normal(size=(d - 1, n_sims))
+        normal_dev_sub = conditional_cholesky[0] @ z_sub
+
+        # Scale deviations
+        scale_factor = np.sqrt((nu + 1.0) / chi_sq)
+        x_sub = normal_dev_sub * scale_factor
+        x = np.zeros((d, n_sims))
+        x[0, :] = 1.0
+
+        # Broadcasting mu (d-1, 1) against x_sub (d-1, n)
+        mu_sub_0 = conditional_mu[0][conditional_mask[0]][:, np.newaxis]
+        x[conditional_mask[0], :] = mu_sub_0 + x_sub
+
+        y = np.maximum(0, x) ** nu
+        samp = y / zeta
+        for j in range(1, d):
+            # Boolean mask for active samples
+            active_mask = np.ones(n_sims, dtype=bool)
+            current_zeta = rng.exponential(1.0, size=n_sims)
+
+            # Unpack parameters for speed
+            l_sub = conditional_cholesky[j]
+            mask_j = conditional_mask[j]
+            # Prepare mu as column vector (d-1, 1)
+            mu_sub = conditional_mu[j][mask_j][:, np.newaxis]
+
+            while True:  # 'active_mask' check is done inside via indices
+                # Find running samples: (1/zeta > samp[j])
+                # Subset active arrays
+                # We work with indices to avoid copying the whole big mask
+                active_idx = np.flatnonzero(active_mask)
+
+                if active_idx.size == 0:
+                    break
+
+                # Check thresholds
+                thresholds = samp[j, active_idx]
+                intensities = 1.0 / current_zeta[active_idx]
+
+                still_running_mask = intensities > thresholds
+
+                # Identify samples to process in this batch
+                process_idx = active_idx[still_running_mask]
+
+                # Samples that stopped are removed from active_mask
+                finished_idx = active_idx[~still_running_mask]
+                active_mask[finished_idx] = False
+
+                n_proc = process_idx.size
+                if n_proc == 0:
+                    break
+
+                # --- Generate Y anchored at j ---
+
+                # 1. Chi-Square & Normal
+                chi_sq_j = rng.chisquare(df=nu + 1.0, size=(1, n_proc))
+                z_sub_j = rng.normal(size=(d - 1, n_proc))
+
+                # 2. Cholesky & Scale
+                normal_dev = l_sub @ z_sub_j
+                scale_j = np.sqrt((nu + 1.0) / chi_sq_j)
+                x_sub_j = normal_dev * scale_j
+
+                # 3. Construct X_j (d, n_proc)
+                x_j = np.zeros((d, n_proc))
+                x_j[j, :] = 1.0
+                x_j[mask_j, :] = mu_sub + x_sub_j
+
+                # 4. Spectral Function Y
+                y_j = np.maximum(0, x_j) ** nu
+
+                # --- Acceptance Check (0...j-1) ---
+
+                # Candidates: Y_j / zeta
+                zeta_proc = current_zeta[process_idx]
+                candidates = y_j / zeta_proc
+
+                # Current values for indices 0 to j-1
+                currents = samp[0:j, process_idx]
+                cand_check = candidates[0:j, :]
+
+                # Violation: any(candidate > current) along dim 0
+                violation = np.any(cand_check >= currents, axis=0)
+
+                accepted_batch_mask = ~violation
+
+                if np.any(accepted_batch_mask):
+                    # Indices in the full array
+                    final_acc_idx = process_idx[accepted_batch_mask]
+
+                    # Accepted values
+                    acc_cand = candidates[:, accepted_batch_mask]
+                    acc_curr = samp[:, final_acc_idx]
+
+                    # Update Maxima (all dimensions 0..d)
+                    samp[:, final_acc_idx] = np.maximum(acc_curr, acc_cand)
+
+                # Increment Poisson Process
+                current_zeta[process_idx] += rng.exponential(1.0, size=n_proc)
+
+        # --- 5. Final Transform ---
+        # Transpose back to (n_samples, d) for standard format
+        # exp(-1/z)
+        return np.exp(-1.0 / samp)
+
+    def generate(
+        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate samples from the Extremal-t copula.
+
+        The simulation uses the exact algorithm from Dombry et al. (2016).
+
+        References:
+        Nikoloulopoulos, A. K., Joe, H., & Li, H. (2009). Extreme value properties of
+        multivariate t copulas. Extremes, 12(2), 129-148.
+        Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
+        processes. Biometrika 103, no. 2 (2016): 303-17.
+
+
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+
+        Returns:
+            ProteusVariable with StochasticScalar values representing samples from the
+            Extremal-t copula.
+        """
+        return self._generate_base(n_sims, rng)
+
+    @classmethod
+    def from_tail_dependence_matrix(
+        cls,
+        tail_dependence_matrix: npt.NDArray[np.floating],
+        nu: float,
+    ) -> ExtremalTCopula:
+        """Create an Extremal-t copula from a given upper tail dependence matrix.
+
+        The upper tail dependence coefficient between any pair of variables i and j in
+        the Extremal-t copula is given by:
+
+        χ_ij = 2 * t_{nu+1}(-sqrt((nu+1)(1-rho_ij)/(1+rho_ij))),
+
+        where t_{nu+1} is the CDF of a univariate t-distribution with nu+1 degrees of
+        freedom and rho_ij is the correlation between variables i and j.
+
+        This method inverts the above relationship to compute the correlation matrix
+        from the provided upper tail dependence coefficients.
+
+        Args:
+            tail_dependence_matrix (npt.NDArray[np.floating]): A 2D array
+                representing the upper tail dependence coefficients between
+                each pair of variables.
+            nu: Degrees of freedom parameter (must be > 0).
+
+        Returns:
+            ExtremalTCopula: An instance of the Extremal-t copula initialized
+            with the correlation matrix corresponding to the given upper tail
+            dependence coefficients.
+        """
+        chi_ij = tail_dependence_matrix
+        inv_t = scipy.stats.t.ppf(1 - chi_ij / 2.0, df=nu + 1.0)
+        rho_matrix = -((inv_t**2) / (nu + 1.0) - 1) / ((inv_t**2) / (nu + 1.0) + 1)
+        np.fill_diagonal(rho_matrix, 1.0)
+        return cls(rho_matrix, nu)
 
 
 def apply_copula(

@@ -56,6 +56,6 @@
             }
         }
     },
-    "postCreateCommand": "pdm install -G gpu",
+    "postCreateCommand": "pip install -e '.[test,dev,gpu]'",
     "remoteUser": "vscode"
 }

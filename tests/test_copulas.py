@@ -4,6 +4,8 @@ Tests covering copula sampling, margin validation, and integration
 with ProteusVariable for dependency modeling in actuarial applications.
 """
 
+import re
+
 import numpy as np
 import numpy.typing as npt
 import pal.maths as pnp
@@ -292,6 +294,85 @@ def test_hulerreiss_copula_methods():
         tail_dependence_matrix
     )
     assert np.allclose(copula.adjusted_lambda_matrix, lambda_matrix)
+
+
+@pytest.mark.parametrize(
+    "matrix",
+    (
+        [[1, 0.5], [0.5, 1]],
+        [[1.0, 0.5, 0.0], [0.5, 1.0, 0.7], [0.0, 0.7, 1.0]],
+        [
+            [1.0, 0.5, 0.0, -0.2],
+            [0.5, 1.0, 0.7, -0.3],
+            [0.0, 0.7, 1.0, -0.4],
+            [-0.2, -0.3, -0.4, 1.0],
+        ],
+    ),
+)
+@pytest.mark.parametrize("nu", [1.5, 5, 10])
+def test_extremalt_copula(nu: float, matrix: list[list[float]]):
+    config.rng = np.random.default_rng(123456)
+    rho = np.array(matrix)
+    samples = copulas.ExtremalTCopula(rho, nu).generate(200000)
+    # test the tail dependence
+    coeff = -np.sqrt((nu + 1) * (1 - rho) / (1 + rho))
+    lambda_theo = 2 * scipy.stats.t.cdf(coeff, df=nu + 1)
+    thresh = 0.995
+    lambda_emp = np.zeros(rho.shape)
+    for i in range(rho.shape[0]):
+        for j in range(rho.shape[0]):
+            both = np.sum((samples[i] > thresh) & (samples[j] > thresh))
+            one = np.sum(samples[j] > thresh)
+            lambda_emp[i, j] = both / one
+    assert np.allclose(lambda_emp, lambda_theo, atol=5e-2)
+    # test the blomqvist's beta
+    beta_emp = np.zeros(rho.shape)
+    for i in range(rho.shape[0]):
+        for j in range(rho.shape[0]):
+            in_square = np.sum((samples[i] <= 0.5) & (samples[j] <= 0.5))
+            beta_emp[i, j] = 4 * in_square / samples.n_sims - 1
+    beta_theo = (2**lambda_theo) - 1
+    assert np.allclose(beta_emp, beta_theo, atol=1e-2)
+    # test the margins
+    copula_margins(samples)
+
+
+def test_extremalt_copula_parameter_errors():
+    """Test that invalid parameters raise errors."""
+    with pytest.raises(ValueError, match="Correlation matrix must be square"):
+        copulas.ExtremalTCopula(np.array([[0, 1], [1, 0], [0, 1]]), 1)
+    with pytest.raises(
+        ValueError, match="Correlation matrix diagonal must be all ones"
+    ):
+        copulas.ExtremalTCopula(np.array([[0, 1], [1, 0]]), 1)
+    with pytest.raises(
+        ValueError,
+        match=re.escape("Correlation matrix values must be in the range [-1, 1]"),
+    ):  # noqa: E501
+        copulas.ExtremalTCopula(
+            np.array([[1, 1.5], [1.5, 1]]),
+            1,
+        )
+    with pytest.raises(
+        ValueError,
+        match=re.escape("Degrees of freedom nu must be in the range (0, inf)"),
+    ):
+        copulas.ExtremalTCopula(
+            np.array([[1]]),
+            -1,
+        )
+
+
+def test_extremalt_copula_methods():
+    """Test the Extremal-t copula from_tail_dependence method."""
+    # test that we can recover rho from a given tail dependence matrix
+    rho = np.array([[1, 0.0, 0.5], [0.0, 1, -0.5], [0.5, -0.5, 1]])
+    nu = 5
+    coeff = -np.sqrt((nu + 1) * (1 - rho) / (1 + rho))
+    lambda_theo = 2 * scipy.stats.t.cdf(coeff, df=nu + 1)
+    copula = copulas.ExtremalTCopula.from_tail_dependence_matrix(lambda_theo, nu)
+    found_rho = copula.correlation_matrix
+    assert np.allclose(found_rho, rho)
 
 
 @pytest.mark.parametrize("theta", [1.01, 1.25, 2])
