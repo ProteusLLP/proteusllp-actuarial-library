@@ -15,7 +15,6 @@ import numpy as np
 import numpy.typing as npt
 
 # project
-from ._maths import xp
 
 # Import concrete types for type checking
 if t.TYPE_CHECKING:
@@ -37,7 +36,7 @@ def exp(x: t.Any) -> t.Any: ...
 
 def exp(x: t.Any) -> t.Any:
     """Exponential function that preserves custom PAL types."""
-    return xp.exp(x)
+    return np.exp(x)
 
 
 # Reducing functions - these aggregate to scalars
@@ -51,7 +50,7 @@ def sum(x: t.Any) -> t.Any: ...
 
 def sum(x: t.Any) -> t.Any:
     """Sum function that works with PAL types."""
-    return xp.sum(x)
+    return np.sum(x)
 
 
 @t.overload
@@ -77,7 +76,7 @@ def mean(x: t.Any) -> t.Any:
     delegates to numpy's mean function which will dispatch to the
     appropriate __array_function__ or __array__ method.
     """
-    return xp.mean(x)  # type: ignore
+    return np.mean(x)  # type: ignore
 
 
 @t.overload
@@ -90,7 +89,7 @@ def std(x: t.Any) -> t.Any: ...
 
 def std(x: t.Any) -> t.Any:
     """Standard deviation function that works with PAL types."""
-    return xp.std(x)
+    return np.std(x)
 
 
 @t.overload
@@ -103,7 +102,7 @@ def var(x: t.Any) -> t.Any: ...
 
 def var(x: t.Any) -> t.Any:
     """Variance function that works with PAL types."""
-    return xp.var(x)
+    return np.var(x)
 
 
 @t.overload
@@ -120,7 +119,7 @@ def percentile(x: t.Any, q: t.Any) -> t.Any: ...
 
 def percentile(x: t.Any, q: t.Any) -> t.Any:
     """Percentile function that works with PAL types."""
-    return xp.percentile(x, q)  # type: ignore
+    return np.percentile(x, q)  # type: ignore
 
 
 @t.overload
@@ -133,7 +132,7 @@ def min(x: t.Any) -> t.Any: ...
 
 def min(x: t.Any) -> t.Any:
     """Min function that works with PAL types."""
-    return xp.min(x)
+    return np.min(x)
 
 
 @t.overload
@@ -146,7 +145,7 @@ def max(x: t.Any) -> t.Any: ...
 
 def max(x: t.Any) -> t.Any:
     """Max function that works with PAL types."""
-    return xp.max(x)
+    return np.max(x)
 
 
 @t.overload
@@ -339,7 +338,7 @@ def minimum(x: t.Any, y: t.Any) -> t.Any: ...
 
 def minimum(x: t.Any, y: t.Any) -> t.Any:
     """Element-wise minimum that preserves PAL types."""
-    return xp.minimum(x, y)
+    return np.minimum(x, y)
 
 
 @t.overload
@@ -360,7 +359,7 @@ def maximum(x: t.Any, y: t.Any) -> t.Any: ...
 
 def maximum(x: t.Any, y: t.Any) -> t.Any:
     """Element-wise maximum that preserves PAL types."""
-    return xp.maximum(x, y)
+    return np.maximum(x, y)
 
 
 @t.overload
@@ -383,8 +382,8 @@ def cumsum(x: t.Any) -> t.Any:
     """
     # Handle list of StochasticScalar objects
     if isinstance(x, list) and len(x) > 0 and hasattr(x[0], "values"):  # type: ignore[attr-defined]
-        return xp.cumsum(xp.stack([item.values for item in x], axis=0), axis=0)  # type: ignore[reportUnknownVariableType]
-    return xp.cumsum(x)  # type: ignore[reportUnknownVariableType]
+        return np.cumsum(np.stack([item.values for item in x], axis=0), axis=0)  # type: ignore[reportUnknownVariableType]
+    return np.cumsum(x)  # type: ignore[reportUnknownVariableType]
 
 
 @t.overload
@@ -397,7 +396,7 @@ def floor(x: t.Any) -> t.Any: ...
 
 def floor(x: t.Any) -> t.Any:
     """Floor function that preserves PAL types."""
-    return xp.floor(x)
+    return np.floor(x)
 
 
 @t.overload
@@ -414,4 +413,4 @@ def all(x: t.Any) -> bool: ...
 
 def all(x: t.Any) -> bool:
     """Check if all elements are True."""
-    return bool(xp.all(x))
+    return bool(np.all(x))
