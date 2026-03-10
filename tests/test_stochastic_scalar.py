@@ -272,6 +272,32 @@ def test_dereference():
     assert y == 1
 
 
+def test_where():
+    x = StochasticScalar([4, 5, 2, 1, 3])
+    condition = StochasticScalar([True, False, True, False, True])
+    y = pnp.where(condition, x, 0)
+    assert (y.values == [4, 0, 2, 0, 3]).all()
+    assert (
+        x.coupled_variable_group
+        == condition.coupled_variable_group
+        == y.coupled_variable_group
+    )
+
+
+def test_where2():
+    x = StochasticScalar([4, 5, 2, 1, 3])
+    condition = StochasticScalar([True, False, True, False, True])
+    replacement = StochasticScalar([3, -1, 5, -1, 10])
+    y = pnp.where(condition, x, replacement)
+    assert (y.values == [4, -1, 2, -1, 3]).all()
+    assert (
+        x.coupled_variable_group
+        == condition.coupled_variable_group
+        == y.coupled_variable_group
+        == replacement.coupled_variable_group
+    )
+
+
 def test_stochastic_dereference():
     x = StochasticScalar([4, 5, 2, 1, 3])
     inds = StochasticScalar([3, 2, 1, 0, 0, 4])
