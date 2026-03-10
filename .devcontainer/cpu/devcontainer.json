@@ -53,6 +53,6 @@
             }
         }
     },
-    "postCreateCommand": "pdm install",
+    "postCreateCommand": "pip install -e '.[test,dev]'",
     "remoteUser": "vscode"
 }
