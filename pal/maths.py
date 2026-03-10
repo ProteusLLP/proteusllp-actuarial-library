@@ -77,7 +77,7 @@ def mean(x: t.Any) -> t.Any:
     delegates to numpy's mean function which will dispatch to the
     appropriate __array_function__ or __array__ method.
     """
-    return xp.mean(x)  # pyright: ignore[reportUnknownVariableType]
+    return xp.mean(x)  # type: ignore
 
 
 @t.overload
@@ -120,7 +120,7 @@ def percentile(x: t.Any, q: t.Any) -> t.Any: ...
 
 def percentile(x: t.Any, q: t.Any) -> t.Any:
     """Percentile function that works with PAL types."""
-    return xp.percentile(x, q)  # pyright: ignore[reportUnknownVariableType]
+    return xp.percentile(x, q)  # type: ignore
 
 
 @t.overload
@@ -179,7 +179,7 @@ def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any: ...
 
 def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any:
     """Conditional selection that preserves PAL types."""
-    result = np.where(condition, x, y)  # pyright: ignore[reportUnknownVariableType]
+    result = np.where(condition, x, y)  # type: ignore
 
     return result
 
@@ -317,7 +317,7 @@ def safe_divide(
         >>> result.values
         array([5., 0., 6.])
     """
-    return where(denominator != 0, numerator / denominator, default)  # pyright: ignore[reportUnknownVariableType]
+    return where(denominator != 0, numerator / denominator, default)  # type: ignore
 
 
 # Additional functions for contracts.py and other modules
