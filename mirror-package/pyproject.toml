@@ -35,11 +35,14 @@ Issues = "https://github.com/ProteusLLP/proteusllp-actuarial-library/issues"
 Documentation = "https://proteusllp-actuarial-library.readthedocs.io/"
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["proteus"]
 
-[tool.setuptools.dynamic]
-version = {attr = "proteus.__version__"}
+[tool.setuptools_scm]
+# Use same version as main package by reading from parent git repo
+root = ".."
+version_file = "proteus/__version__.py"
+fallback_version = "0.0.0+unknown"
