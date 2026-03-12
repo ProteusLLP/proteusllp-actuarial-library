@@ -390,6 +390,7 @@ class FreqSevSims(ProteusStochasticVariable):
             np.minimum,
             np.maximum,
             np.mean,
+            np.round,
         ):
             raise NotImplementedError(f"Function {func.__name__} not supported")
 

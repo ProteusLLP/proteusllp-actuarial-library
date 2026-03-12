@@ -156,6 +156,95 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
         """Right power operation returning instance of same type."""
         return super().__rpow__(other)  # type: ignore[return-value]
 
+    def __floordiv__(self, other: t.Any) -> t.Self:
+        """Floor division operation returning instance of same type."""
+        return super().__floordiv__(other)  # type: ignore[return-value]
+
+    def __rfloordiv__(self, other: t.Any) -> t.Self:
+        """Right floor division operation returning instance of same type."""
+        return super().__rfloordiv__(other)  # type: ignore[return-value]
+
+    def __mod__(self, other: t.Any) -> t.Self:
+        """Modulo operation returning instance of same type."""
+        return super().__mod__(other)  # type: ignore[return-value]
+
+    def __rmod__(self, other: t.Any) -> t.Self:
+        """Right modulo operation returning instance of same type."""
+        return super().__rmod__(other)  # type: ignore[return-value]
+
+    def __divmod__(self, other: t.Any) -> tuple[t.Self, t.Self]:
+        """Combined quotient and remainder returning tuple of same types."""
+        # Extract values from other if it's a stochastic variable
+        other_values = other.values if hasattr(other, "values") else other
+        q_values, r_values = np.divmod(self.values, other_values)
+
+        # Create result objects
+        quotient = type(self)(q_values)
+        remainder = type(self)(r_values)
+
+        # Merge coupling groups
+        quotient.coupled_variable_group.merge(self.coupled_variable_group)
+        remainder.coupled_variable_group.merge(self.coupled_variable_group)
+        if hasattr(other, "coupled_variable_group"):
+            quotient.coupled_variable_group.merge(other.coupled_variable_group)
+            remainder.coupled_variable_group.merge(other.coupled_variable_group)
+
+        return quotient, remainder  # type: ignore[return-value]
+
+    def __rdivmod__(self, other: t.Any) -> tuple[t.Self, t.Self]:
+        """Right combined quotient and remainder returning tuple of same types."""
+        # Extract values from other if it's a stochastic variable
+        other_values = other.values if hasattr(other, "values") else other
+        q_values, r_values = np.divmod(other_values, self.values)
+
+        # Create result objects
+        quotient = type(self)(q_values)
+        remainder = type(self)(r_values)
+
+        # Merge coupling groups
+        quotient.coupled_variable_group.merge(self.coupled_variable_group)
+        remainder.coupled_variable_group.merge(self.coupled_variable_group)
+        if hasattr(other, "coupled_variable_group"):
+            quotient.coupled_variable_group.merge(other.coupled_variable_group)
+            remainder.coupled_variable_group.merge(other.coupled_variable_group)
+
+        return quotient, remainder  # type: ignore[return-value]
+
+    def __pos__(self) -> t.Self:
+        """Unary positive operation returning instance of same type."""
+        # Unary positive is identity - use numpy's positive ufunc
+        return np.positive(self)  # type: ignore[return-value]
+
+    def __abs__(self) -> t.Self:
+        """Absolute value operation returning instance of same type."""
+        # Use numpy ufunc to ensure proper handling through __array_ufunc__
+        return np.abs(self)  # type: ignore[return-value]
+
+    def __round__(self, ndigits: int | None = None) -> t.Self:
+        """Round to specified number of digits returning instance of same type."""
+        # Use numpy function to ensure proper handling through __array_ufunc__
+        if ndigits is None:
+            return np.round(self)  # type: ignore[return-value]
+        return np.round(self, ndigits)  # type: ignore[return-value]
+
+    def __floor__(self) -> t.Self:
+        """Floor operation returning instance of same type."""
+        # Use numpy ufunc to ensure proper handling through __array_ufunc__
+        return np.floor(self)  # type: ignore[return-value]
+
+    def __ceil__(self) -> t.Self:
+        """Ceiling operation returning instance of same type."""
+        # Use numpy ufunc to ensure proper handling through __array_ufunc__
+        return np.ceil(self)  # type: ignore[return-value]
+
+    def __trunc__(self) -> t.Self:
+        """Truncate to integer returning instance of same type."""
+        # Use numpy ufunc to ensure proper handling through __array_ufunc__
+        return np.trunc(self)  # type: ignore[return-value]
+
+    # Explicitly mark as unhashable (mutable type)
+    __hash__ = None  # type: ignore[assignment]
+
     def __bool__(self) -> bool:
         """Prevent ambiguous truth value evaluation."""
         raise TypeError(

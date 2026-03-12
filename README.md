@@ -18,6 +18,12 @@
       <a href="https://pypi.org/project/proteusllp-actuarial-library/">
         <img src="https://img.shields.io/pypi/pyversions/proteusllp-actuarial-library.svg" alt="Python versions"/>
       </a>
+      <a href="https://www.codefactor.io/repository/github/proteusllp/proteusllp-actuarial-library">
+        <img src="https://www.codefactor.io/repository/github/proteusllp/proteusllp-actuarial-library/badge" alt="CodeFactor"/>
+      </a>
+      <a href="https://github.com/astral-sh/ruff">
+        <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"/>
+      </a>
     </p>
   </div>
 </div>
