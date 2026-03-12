@@ -3,8 +3,20 @@
   <div>
     <h1 style="margin: 0;">Proteus Actuarial Library</h1>
     <p style="margin: 5px 0 0 0;">
+      <a href="https://github.com/ProteusLLP/proteusllp-actuarial-library/actions/workflows/ci.yml">
+        <img src="https://github.com/ProteusLLP/proteusllp-actuarial-library/actions/workflows/ci.yml/badge.svg" alt="CI Status"/>
+      </a>
+      <a href="https://codecov.io/gh/ProteusLLP/proteusllp-actuarial-library">
+        <img src="https://codecov.io/gh/ProteusLLP/proteusllp-actuarial-library/branch/main/graph/badge.svg" alt="Coverage Status"/>
+      </a>
       <a href="https://proteusllp-actuarial-library.readthedocs.io/en/latest/?badge=latest">
         <img src="https://readthedocs.org/projects/proteusllp-actuarial-library/badge/?version=latest" alt="Documentation Status"/>
+      </a>
+      <a href="https://pypi.org/project/proteusllp-actuarial-library/">
+        <img src="https://img.shields.io/pypi/v/proteusllp-actuarial-library.svg" alt="PyPI version"/>
+      </a>
+      <a href="https://pypi.org/project/proteusllp-actuarial-library/">
+        <img src="https://img.shields.io/pypi/pyversions/proteusllp-actuarial-library.svg" alt="Python versions"/>
       </a>
     </p>
   </div>
