@@ -259,7 +259,7 @@ def test_coupling_independent_groups():
     assert len(fs2.coupled_variable_group) == 3
 
     # Now merge them
-    result3 = result1 + result2
+    _ = result1 + result2
 
     # All should now be in the same group
     assert fs1.coupled_variable_group is fs2.coupled_variable_group

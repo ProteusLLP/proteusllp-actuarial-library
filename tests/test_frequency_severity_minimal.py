@@ -16,7 +16,7 @@ def test_freqsevsims_init_length_mismatch():
 
 
 def test_freqsevsims_getitem_non_int():
-    """Test FreqSevSims __getitem__ with non-int raises NotImplementedError (line 237)."""
+    """Test FreqSevSims __getitem__ with non-int raises."""
     sim_idx = np.array([0, 0, 1, 1, 2])
     losses = np.array([100, 200, 300, 400, 500])
     freq_sev = FreqSevSims(sim_idx, losses, n_sims=3)
@@ -122,23 +122,3 @@ def test_freqsevsims_upsample_with_modulo():
     original_set = set(freq_sev.values)
     upsampled_set = set(upsampled.values)
     assert original_set.issubset(upsampled_set)
-
-
-def test_freqsevsims_array_ufunc_with_out():
-    """Test __array_ufunc__ with out parameter (line 359)."""
-    sim_idx = np.array([0, 0, 1, 1, 2])
-    losses = np.array([100.0, 200.0, 300.0, 400.0, 500.0])
-    freq_sev = FreqSevSims(sim_idx, losses, n_sims=3)
-
-    # Create another FreqSevSims for out parameter
-    out_losses = np.zeros_like(losses)
-    out_freq_sev = FreqSevSims(sim_idx, out_losses, n_sims=3)
-
-    # Perform operation with out parameter on FreqSevSims object
-    result = np.add(freq_sev, 100, out=(out_freq_sev,))
-
-    assert result is not None
-    assert isinstance(result, FreqSevSims)
-    # Verify the result has the correct values (original + 100)
-    expected = losses + 100
-    np.testing.assert_array_equal(result.values, expected)

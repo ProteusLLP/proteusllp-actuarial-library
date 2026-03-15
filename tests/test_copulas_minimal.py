@@ -16,7 +16,7 @@ def test_gaussian_copula_non_positive_definite():
     # Actually this is positive definite, let me create a truly bad one
     bad_matrix = [[1, 2], [2, 1]]  # This should fail Cholesky decomposition
     with pytest.raises(ValueError, match="positive definite"):
-        copulas.GaussianCopula(bad_matrix)
+        copulas.GaussianCopula(np.array(bad_matrix))
 
 
 def test_gaussian_copula_non_square_matrix():
@@ -188,7 +188,7 @@ def test_gaussian_copula_perfect_negative_correlation():
 
 
 def test_studentst_copula_high_dof():
-    """Test Students-t copula with very high degrees of freedom (approaches Gaussian)."""
+    """Test Students-t copula with very high dof."""
     studentst = copulas.StudentsTCopula([[1, 0.7], [0.7, 1]], dof=1000)
     samples = studentst.generate(10000)
     assert len(samples) == 2

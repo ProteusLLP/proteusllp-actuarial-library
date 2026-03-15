@@ -58,21 +58,25 @@ import plotly.graph_objects as go  # type: ignore
 import plotly.io as pio  # type: ignore
 import scipy.stats
 
-# local imports
 from . import maths as pnp
+
+# local imports
+from ._compat import Self
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
-from .types import ProteusLike, VectorLike
+from .types import VectorLike
 
 pio.templates.default = "none"
+
+T = t.TypeVar("T")
 
 __all__ = [
     "ProteusVariable",
 ]
 
 
-class ProteusVariable[T]:
+class ProteusVariable(t.Generic[T]):
     """A generic, homogeneous container for multivariate variables in simulations.
 
     ProteusVariable is a hierarchical structure that holds multiple variables of
@@ -469,6 +473,12 @@ class ProteusVariable[T]:
             f"{func.__name__}. Only 0D (scalar), 1D, and 2D arrays are supported."
         )
 
+    def __bool__(self) -> bool:
+        raise ValueError(
+            "ProteusVariable does not have a single truth value. Use explicit checks "
+            "on its values instead."
+        )
+
     def __iter__(self) -> t.Iterator[T]:
         """Iterate over the values in the variable."""
         return iter(self.values.values())
@@ -491,71 +501,71 @@ class ProteusVariable[T]:
         return f"ProteusVariable(dim_name={self.dim_name}, values={self.values})"
 
     # Arithmetic operations
-    def __add__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a + b))
+    def __add__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a + b))
 
-    def __radd__(self, other: t.Any) -> t.Self:
+    def __radd__(self, other: t.Any) -> Self:
         return self.__add__(other)
 
-    def __sub__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a - b))
+    def __sub__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a - b))
 
-    def __rsub__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: b - a))
+    def __rsub__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: b - a))
 
-    def __mul__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a * b))
+    def __mul__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a * b))
 
-    def __rmul__(self, other: t.Any) -> t.Self:
+    def __rmul__(self, other: t.Any) -> Self:
         return self.__mul__(other)
 
-    def __truediv__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a / b))
+    def __truediv__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a / b))
 
-    def __rtruediv__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: b / a))
+    def __rtruediv__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: b / a))
 
-    def __pow__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a**b))
+    def __pow__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a**b))
 
-    def __rpow__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: b**a))
+    def __rpow__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: b**a))
 
-    def __neg__(self) -> t.Self:
+    def __neg__(self) -> Self:
         """Return the negation of the variable."""
-        return t.cast(t.Self, self._binary_operation(self, lambda a, _: -a))
+        return t.cast(Self, self._binary_operation(self, lambda a, _: -a))
 
     # Comparison operations
-    def __lt__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a < b))
+    def __lt__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a < b))
 
-    def __rlt__(self, other: t.Any) -> t.Self:
+    def __rlt__(self, other: t.Any) -> Self:
         return self.__ge__(other)
 
-    def __le__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a <= b))
+    def __le__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a <= b))
 
-    def __rle__(self, other: t.Any) -> t.Self:
+    def __rle__(self, other: t.Any) -> Self:
         return self.__gt__(other)
 
-    def __gt__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a > b))
+    def __gt__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a > b))
 
-    def __rgt__(self, other: t.Any) -> t.Self:
+    def __rgt__(self, other: t.Any) -> Self:
         return self.__le__(other)
 
-    def __ge__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a >= b))
+    def __ge__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a >= b))
 
-    def __rge__(self, other: t.Any) -> t.Self:
+    def __rge__(self, other: t.Any) -> Self:
         return self.__lt__(other)
 
     # Equality operations
-    def __eq__(self, other: object) -> t.Self:  # type: ignore[override]
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a == b))
+    def __eq__(self, other: object) -> Self:  # type: ignore[override]
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a == b))
 
-    def __ne__(self, other: object) -> t.Self:  # type: ignore[override]
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a != b))
+    def __ne__(self, other: object) -> Self:  # type: ignore[override]
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a != b))
 
     def __getitem__(self, key: int | str) -> T:
         # FIXME: This assumes that the ordering of the values never changes. At the
@@ -597,8 +607,8 @@ class ProteusVariable[T]:
             raise ValueError(f"{value!r} is not in ProteusVariable") from error
 
     def get_value_at_sim(
-        self, sim_no: int | VectorLike[int]
-    ) -> ProteusVariable[T | VectorLike[T] | ProteusLike[T]]:
+        self, sim_no: int | StochasticScalar
+    ) -> ProteusVariable[T | StochasticScalar]:
         """Get values at specific simulation number(s).
 
         Args:
@@ -782,7 +792,7 @@ class ProteusVariable[T]:
     def from_dict(
         cls,
         data: dict[str, list[float]],
-    ) -> ProteusVariable[T]:
+    ) -> ProteusVariable[StochasticScalar]:
         """Create a ProteusVariable from a dictionary.
 
         This method currently has significant limitations and will be replaced
@@ -811,10 +821,10 @@ class ProteusVariable[T]:
         )
         result.n_sims = max([len(v) for v in data.values()])
 
-        return result
+        return result  # type: ignore
 
     @classmethod
-    def from_series(cls, data: pd.Series) -> ProteusVariable[T]:
+    def from_series(cls, data: pd.Series) -> ProteusVariable[float]:
         """Create a ProteusVariable from a pandas Series.
 
         This method currently has significant limitations and will be replaced
@@ -843,7 +853,7 @@ class ProteusVariable[T]:
         )
         result.n_sims = 1
 
-        return result
+        return result  # type: ignore
 
     def correlation_matrix(
         self, correlation_type: str = "spearman"
@@ -913,7 +923,7 @@ class ProteusVariable[T]:
             return
         fig = go.Figure(layout=go.Layout(title=title))
         for label, value in self.values.items():
-            if not isinstance(value, (ProteusVariable | ProteusStochasticVariable)):
+            if not isinstance(value, (ProteusVariable, ProteusStochasticVariable)):
                 raise TypeError(
                     f"{type(value).__name__} does not support CDF plotting. "
                 )
@@ -963,8 +973,8 @@ class ProteusVariable[T]:
     def _get_value_at_sim_helper(
         self,
         x: T,
-        sim_no: int | VectorLike[int],
-    ) -> T | VectorLike[T] | ProteusLike[T]:
+        sim_no: int | StochasticScalar,
+    ) -> T | StochasticScalar:
         """Helper method to get value at simulation for a single element."""
         if isinstance(x, ProteusVariable):
             # Type ignore: Private helper method with runtime type checks ensures
@@ -985,11 +995,8 @@ class ProteusVariable[T]:
                 return StochasticScalar(x.values[indices])
 
             # Handle the main case: extract value at specific simulation index
-            if isinstance(sim_no, int):
+            if isinstance(sim_no, int):  # type: ignore[redundant-expr]
                 return x.values[sim_no]
-
-            if isinstance(sim_no, list):
-                return StochasticScalar(x.values[sim_no])
 
             return x
 

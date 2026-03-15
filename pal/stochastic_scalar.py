@@ -16,6 +16,7 @@ import plotly.graph_objects as go  # type: ignore
 
 from pal import stats  # type: ignore
 
+from ._compat import Self
 from ._maths import xp
 from .couplings import CouplingGroup, ProteusStochasticVariable
 from .stats import NumberOrList
@@ -178,7 +179,7 @@ class StochasticScalar(ProteusStochasticVariable):
 
         # If result is a scalar, return it directly
         # Type ignore: Pyright can't infer the exact numpy scalar type
-        if isinstance(result, np.number | np.bool_ | bool) or np.isscalar(result):
+        if isinstance(result, (np.number, np.bool_, bool)) or np.isscalar(result):
             return result  # type: ignore[misc]
 
         # Otherwise create a new StochasticScalar object with the result
@@ -290,7 +291,7 @@ class StochasticScalar(ProteusStochasticVariable):
         """
         return stats.tvar(self.values, p)
 
-    def upsample(self, n_sims: int) -> t.Self:
+    def upsample(self, n_sims: int) -> Self:
         """Increase the number of simulations in the variable."""
         if n_sims == self.n_sims:
             return self

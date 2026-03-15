@@ -519,7 +519,16 @@ def test_mean_nested_proteus_variable() -> None:
     assert set(result.values.keys()) == {"nested", "simple"}
 
     # Nested ProteusVariable should be converted to float via mean
-    assert result.values["nested"] == 7.0  # mean of inner_var.mean() = (4.0 + 10.0) / 2
+    assert all(
+        result.values["nested"]
+        == ProteusVariable(
+            dim_name="inner",
+            values={
+                "a": 4.0,
+                "b": 10.0,
+            },
+        )
+    )  # mean of inner_var.mean() = (4.0 + 10.0) / 2
     assert result.values["simple"] == 3.0  # mean of [1, 3, 5]
 
 

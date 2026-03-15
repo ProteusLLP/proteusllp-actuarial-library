@@ -16,7 +16,7 @@ from .types import Numeric
 
 percentiles = np.array([1, 2, 5, 10, 20, 50, 70, 80, 90, 95, 99, 99.5, 99.8, 99.9])
 
-NumberOrList = Numeric | list[Numeric]
+NumberOrList = typing.Union[Numeric, list[Numeric]]
 
 
 if typing.TYPE_CHECKING:

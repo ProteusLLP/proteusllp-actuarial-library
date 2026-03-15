@@ -407,7 +407,7 @@ class FreqSevSims(ProteusStochasticVariable):
 
         # If result is a scalar, return it directly
         # Type ignore: Pyright can't infer the exact numpy scalar type
-        if isinstance(result, np.number | np.bool_ | bool) or np.isscalar(result):
+        if isinstance(result, (np.number, np.bool_, bool)) or np.isscalar(result):
             return result  # type: ignore[misc]
 
         # Otherwise create a new FreqSevSims object with the result

@@ -1,6 +1,7 @@
 """Minimal tests for ProteusVariable to improve coverage."""
 
 import numpy as np
+import pal.maths as pnp
 import pandas as pd
 import pytest
 from pal.variables import ProteusVariable, StochasticScalar
@@ -9,18 +10,19 @@ from pal.variables import ProteusVariable, StochasticScalar
 def test_comparison_lt():
     """Test less than comparison."""
     x = ProteusVariable("dim", {"a": 5, "b": 10})
-    y = ProteusVariable("dim", {"a": 8, "b": 15})
+    y = ProteusVariable("dim", {"a": 8, "b": 10})
     result = x < y
     assert isinstance(result, ProteusVariable)
-    assert result == ProteusVariable("dim", {"a": True, "b": True})
+    assert all(result == ProteusVariable("dim", {"a": True, "b": False}))
 
 
 def test_comparison_le():
     """Test less than or equal."""
     x = ProteusVariable("dim", {"a": 5, "b": 10})
-    y = ProteusVariable("dim", {"a": 5, "b": 15})
+    y = ProteusVariable("dim", {"a": 5, "b": 10})
     result = x <= y
     assert isinstance(result, ProteusVariable)
+    assert all(result == ProteusVariable("dim", {"a": True, "b": True}))
 
 
 def test_comparison_gt():
@@ -29,6 +31,7 @@ def test_comparison_gt():
     y = ProteusVariable("dim", {"a": 3, "b": 15})
     result = x > y
     assert isinstance(result, ProteusVariable)
+    assert all(result == ProteusVariable("dim", {"a": True, "b": False}))
 
 
 def test_comparison_ge():
@@ -45,6 +48,7 @@ def test_comparison_eq():
     y = ProteusVariable("dim", {"a": 5, "b": 15})
     result = x == y
     assert isinstance(result, ProteusVariable)
+    assert all(result == ProteusVariable("dim", {"a": True, "b": False}))
 
 
 def test_comparison_ne():
@@ -53,6 +57,7 @@ def test_comparison_ne():
     y = ProteusVariable("dim", {"a": 5, "b": 15})
     result = x != y
     assert isinstance(result, ProteusVariable)
+    assert all(result == ProteusVariable("dim", {"a": False, "b": True}))
 
 
 def test_comparison_with_scalar():
@@ -60,6 +65,7 @@ def test_comparison_with_scalar():
     x = ProteusVariable("dim", {"a": 5, "b": 10, "c": 15})
     result = x < 12
     assert isinstance(result, ProteusVariable)
+    assert all(result == ProteusVariable("dim", {"a": True, "b": True, "c": False}))
 
 
 def test_setitem():
@@ -141,7 +147,7 @@ def test_from_dict():
 def test_from_series():
     """Test creating from pandas Series."""
     series = pd.Series({"alpha": 1.0, "beta": 2.0, "gamma": 3.0})
-    result = ProteusVariable.from_series(series)
+    result: ProteusVariable[float] = ProteusVariable.from_series(series)
     assert len(result) == 3
 
 
@@ -157,6 +163,7 @@ def test_correlation_matrix():
     corr = x.correlation_matrix()
     # Returns list[list[float]]
     assert isinstance(corr, list)
+    assert np.allclose(corr, [[1.0, 1.0], [1.0, 1.0]])  # Perfect correlation
     assert len(corr) == 2
 
 
@@ -268,7 +275,7 @@ def test_array_protocol_mismatched_lengths():
 
 def test_ufunc_non_proteus_first_container():
     """Test ufunc with non-ProteusVariable first container raises TypeError."""
-    x = ProteusVariable("dim", {"a": 5, "b": 10})
+    _ = ProteusVariable("dim", {"a": 5, "b": 10})
     # Try to trigger ufunc with plain array as first argument
     try:
         # This is hard to trigger directly, skip for now
@@ -429,7 +436,7 @@ def test_validate_freqsev_mismatched_sim_index():
     )  # Different pattern
 
     x = ProteusVariable("dim", {"a": freq_sev1, "b": freq_sev2})
-    is_valid, msg, _ = x.validate_freqsev_consistency()
+    is_valid, _, _ = x.validate_freqsev_consistency()
     # May or may not be valid depending on sim_index matching
     assert isinstance(is_valid, bool)
 
@@ -480,8 +487,10 @@ def test_get_value_at_sim_with_list():
             "b": StochasticScalar([10, 20, 30, 40, 50]),
         },
     )
-    values = x.get_value_at_sim([0, 2, 4])
+    values = x.get_value_at_sim(StochasticScalar([0, 2, 4]))
     assert isinstance(values, ProteusVariable)
+    assert (values["a"] == StochasticScalar([1, 3, 5])).all()
+    assert (values["b"] == StochasticScalar([10, 30, 50])).all()
 
 
 def test_get_value_at_sim_with_stochastic_indices():
@@ -556,14 +565,14 @@ def test_radd():
     x = ProteusVariable("dim", {"a": 5, "b": 10})
     result = 100 + x  # Calls x.__radd__(100)
     assert isinstance(result, ProteusVariable)
+    assert all(result == ProteusVariable("dim", {"a": 105, "b": 110}))
 
 
 def test_rsub():
     """Test reverse subtraction (scalar - ProteusVariable)."""
     x = ProteusVariable("dim", {"a": 5, "b": 10})
     result = 100 - x  # Calls x.__rsub__(100)
-    diff = result - ProteusVariable("dim", {"a": 95, "b": 90})
-    assert result == ProteusVariable("dim", {"a": 95, "b": 90})
+    assert all(result == ProteusVariable("dim", {"a": 95, "b": 90}))
     assert isinstance(result, ProteusVariable)
 
 
@@ -572,6 +581,7 @@ def test_rmul():
     x = ProteusVariable("dim", {"a": 5, "b": 10})
     result = 3 * x  # Calls x.__rmul__(3)
     assert isinstance(result, ProteusVariable)
+    assert all(result == ProteusVariable("dim", {"a": 15, "b": 30}))
 
 
 def test_rtruediv():
@@ -579,6 +589,7 @@ def test_rtruediv():
     x = ProteusVariable("dim", {"a": 2, "b": 4})
     result = 100 / x  # Calls x.__rtruediv__(100)
     assert isinstance(result, ProteusVariable)
+    assert all(result == ProteusVariable("dim", {"a": 50, "b": 25}))
 
 
 # =============================================================================
@@ -639,7 +650,7 @@ def test_numpy_var_with_vector_values():
             "b": StochasticScalar([10, 20, 30, 40, 50]),
         },
     )
-    result = np.var(x)
+    result = pnp.var(x)
     # Should handle reduction and potentially merge coupling groups
     assert result is not None
 

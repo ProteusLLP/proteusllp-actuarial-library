@@ -49,7 +49,8 @@ def test_scalar_rfloordiv_stochastic_scalar():
 
 def test_freqsev_floordiv_scalar():
     """Test floor division of FreqSevSims by scalar."""
-    # sim_index: [0, 0, 1, 1, 2] - sim 0 has 2 events, sim 1 has 2 events, sim 2 has 1 event
+    # sim_index: [0, 0, 1, 1, 2]
+    # sim 0 has 2 events, sim 1 has 2 events, sim 2 has 1
     fs = FreqSevSims(
         sim_index=np.array([0, 0, 1, 1, 2]),
         values=np.array([11, 22, 33, 44, 55]),
@@ -393,7 +394,7 @@ def test_cannot_use_in_set():
     x = StochasticScalar([1, 2, 3])
 
     with pytest.raises(TypeError):
-        {x}
+        _ = {x}  # noqa: B018 # type: ignore[unhashable-type]
 
 
 def test_cannot_use_as_dict_key():
@@ -401,4 +402,4 @@ def test_cannot_use_as_dict_key():
     x = StochasticScalar([1, 2, 3])
 
     with pytest.raises(TypeError):
-        {x: "value"}
+        _ = {x: "value"}  # noqa: B018  # type: ignore[unhashable-type]

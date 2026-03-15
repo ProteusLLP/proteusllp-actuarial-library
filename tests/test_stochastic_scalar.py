@@ -335,7 +335,7 @@ def test_tvar2():
 def test_min():
     """Test the min() method of a stochastic scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
-    y: int = pnp.min(x)
+    y = pnp.min(x)
     assert y == 1
     assert isinstance(y, NumericProtocol)  # Should return scalar
 
@@ -343,7 +343,7 @@ def test_min():
 def test_max():
     """Test the max() method of a stochastic scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
-    y: int = pnp.max(x)
+    y = pnp.max(x)
     assert y == 5
     assert isinstance(y, NumericProtocol)  # Should return scalar
 

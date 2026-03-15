@@ -1,37 +1,18 @@
-"""Type-safe math functions that preserve PAL custom types.
+"""Math functions that preserve PAL custom types.
 
 This module provides wrappers around numpy math functions that preserve
-PAL's custom types (StochasticScalar, etc.) with explicit type information
-for type checkers. Import as 'pnp' to mimic numpy usage patterns.
+PAL's custom types (StochasticScalar, etc.). Import as 'pnp' to mimic
+numpy usage patterns.
+
+Type signatures are in maths.pyi.
 """
 
 from __future__ import annotations
 
-# standard library
 import typing as t
 
 # third party
 import numpy as np
-import numpy.typing as npt
-
-# project
-
-# Import concrete types for type checking
-if t.TYPE_CHECKING:
-    from .frequency_severity import FreqSevSims
-    from .stochastic_scalar import StochasticScalar
-    from .variables import ProteusVariable
-
-T = t.TypeVar("T")
-T_ProteusVar = t.TypeVar("T_ProteusVar")
-
-
-@t.overload
-def exp[T](x: T) -> T: ...
-
-
-@t.overload
-def exp(x: t.Any) -> t.Any: ...
 
 
 def exp(x: t.Any) -> t.Any:
@@ -39,34 +20,9 @@ def exp(x: t.Any) -> t.Any:
     return np.exp(x)
 
 
-# Reducing functions - these aggregate to scalars
-@t.overload
-def sum(x: StochasticScalar) -> float: ...
-
-
-@t.overload
-def sum(x: t.Any) -> t.Any: ...
-
-
 def sum(x: t.Any) -> t.Any:
     """Sum function that works with PAL types."""
     return np.sum(x)
-
-
-@t.overload
-def mean(x: StochasticScalar) -> float: ...
-
-
-@t.overload
-def mean(x: FreqSevSims) -> float: ...
-
-
-@t.overload
-def mean[T](x: ProteusVariable[T]) -> ProteusVariable[T]: ...
-
-
-@t.overload
-def mean(x: t.Any) -> t.Any: ...
 
 
 def mean(x: t.Any) -> t.Any:
@@ -76,15 +32,7 @@ def mean(x: t.Any) -> t.Any:
     delegates to numpy's mean function which will dispatch to the
     appropriate __array_function__ or __array__ method.
     """
-    return np.mean(x)  # type: ignore
-
-
-@t.overload
-def std(x: StochasticScalar) -> float: ...
-
-
-@t.overload
-def std(x: t.Any) -> t.Any: ...
+    return np.mean(x)  # type: ignore[reportUnknownVariableType]
 
 
 def std(x: t.Any) -> t.Any:
@@ -92,42 +40,14 @@ def std(x: t.Any) -> t.Any:
     return np.std(x)
 
 
-@t.overload
-def var(x: StochasticScalar) -> float: ...
-
-
-@t.overload
-def var(x: t.Any) -> t.Any: ...
-
-
 def var(x: t.Any) -> t.Any:
     """Variance function that works with PAL types."""
     return np.var(x)
 
 
-@t.overload
-def percentile(x: StochasticScalar, q: float) -> float: ...
-
-
-@t.overload
-def percentile(x: StochasticScalar, q: t.Sequence[float]) -> t.Any: ...
-
-
-@t.overload
-def percentile(x: t.Any, q: t.Any) -> t.Any: ...
-
-
 def percentile(x: t.Any, q: t.Any) -> t.Any:
     """Percentile function that works with PAL types."""
-    return np.percentile(x, q)  # type: ignore
-
-
-@t.overload
-def min(x: StochasticScalar) -> int: ...
-
-
-@t.overload
-def min(x: t.Any) -> t.Any: ...
+    return np.percentile(x, q)  # type: ignore[reportUnknownVariableType]
 
 
 def min(x: t.Any) -> t.Any:
@@ -135,156 +55,14 @@ def min(x: t.Any) -> t.Any:
     return np.min(x)
 
 
-@t.overload
-def max(x: StochasticScalar) -> int: ...
-
-
-@t.overload
-def max(x: t.Any) -> t.Any: ...
-
-
 def max(x: t.Any) -> t.Any:
     """Max function that works with PAL types."""
     return np.max(x)
 
 
-@t.overload
-def where(
-    condition: t.Any, x: StochasticScalar, y: StochasticScalar
-) -> StochasticScalar: ...
-
-
-@t.overload
-def where(
-    condition: t.Any, x: StochasticScalar, y: float | int
-) -> StochasticScalar: ...
-
-
-@t.overload
-def where(
-    condition: t.Any, x: float | int, y: StochasticScalar
-) -> StochasticScalar: ...
-
-
-@t.overload
-def where(
-    condition: t.Any, x: npt.NDArray[t.Any], y: npt.NDArray[t.Any]
-) -> npt.NDArray[t.Any]: ...
-
-
-@t.overload
-def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any: ...
-
-
 def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any:
     """Conditional selection that preserves PAL types."""
-    result = np.where(condition, x, y)  # type: ignore
-
-    return result  # type: ignore
-
-
-@t.overload
-def safe_divide(
-    numerator: StochasticScalar,
-    denominator: StochasticScalar,
-    default: StochasticScalar,
-) -> StochasticScalar: ...
-
-
-@t.overload
-def safe_divide(
-    numerator: StochasticScalar,
-    denominator: StochasticScalar,
-    default: float | int,
-) -> StochasticScalar: ...
-
-
-@t.overload
-def safe_divide(
-    numerator: StochasticScalar,
-    denominator: float | int,
-    default: StochasticScalar,
-) -> StochasticScalar: ...
-
-
-@t.overload
-def safe_divide(
-    numerator: StochasticScalar,
-    denominator: float | int,
-    default: float | int,
-) -> StochasticScalar: ...
-
-
-@t.overload
-def safe_divide(
-    numerator: float | int,
-    denominator: StochasticScalar,
-    default: StochasticScalar,
-) -> StochasticScalar: ...
-
-
-@t.overload
-def safe_divide(
-    numerator: float | int,
-    denominator: StochasticScalar,
-    default: float | int,
-) -> StochasticScalar: ...
-
-
-@t.overload
-def safe_divide(
-    numerator: FreqSevSims,
-    denominator: FreqSevSims,
-    default: FreqSevSims,
-) -> FreqSevSims: ...
-
-
-@t.overload
-def safe_divide(
-    numerator: FreqSevSims,
-    denominator: FreqSevSims,
-    default: float | int,
-) -> FreqSevSims: ...
-
-
-@t.overload
-def safe_divide(
-    numerator: FreqSevSims,
-    denominator: float | int,
-    default: FreqSevSims,
-) -> FreqSevSims: ...
-
-
-@t.overload
-def safe_divide(
-    numerator: FreqSevSims,
-    denominator: float | int,
-    default: float | int,
-) -> FreqSevSims: ...
-
-
-@t.overload
-def safe_divide(
-    numerator: float | int,
-    denominator: FreqSevSims,
-    default: FreqSevSims,
-) -> FreqSevSims: ...
-
-
-@t.overload
-def safe_divide(
-    numerator: float | int,
-    denominator: FreqSevSims,
-    default: float | int,
-) -> FreqSevSims: ...
-
-
-@t.overload
-def safe_divide(
-    numerator: t.Any,
-    denominator: t.Any,
-    default: t.Any,
-) -> t.Any: ...
+    return np.where(condition, x, y)  # pyright: ignore[reportUnknownVariableType]
 
 
 def safe_divide(
@@ -292,48 +70,30 @@ def safe_divide(
     denominator: t.Any,
     default: t.Any,
 ) -> t.Any:
-    """Safe division that returns a default value when denominator is zero.
+    """Divide numerator by denominator, returning default where denominator is 0.
 
-    Computes numerator / denominator, but returns the default value for
-    elements where the denominator is zero. Works with PAL stochastic types
-    (StochasticScalar, FreqSevSims) and numeric types.
+    Works with PAL types (StochasticScalar, FreqSevSims) and plain
+    numpy arrays/scalars.
 
     Args:
         numerator: The numerator value(s).
         denominator: The denominator value(s).
-        default: The value to return when denominator is zero.
+        default: Value to use where denominator equals zero.
 
     Returns:
-        The result of the division where denominator is non-zero,
-        otherwise the default value.
+        The result of the division, with default substituted
+        where division by zero would occur.
 
     Examples:
         >>> from pal.stochastic_scalar import StochasticScalar
         >>> import pal.maths as pnp
-        >>> numerator = StochasticScalar([10, 20, 30])
-        >>> denominator = StochasticScalar([2, 0, 5])
-        >>> result = pnp.safe_divide(numerator, denominator, 0)
+        >>> x = StochasticScalar([10., 20., 30.])
+        >>> y = StochasticScalar([2., 0., 5.])
+        >>> result = pnp.safe_divide(x, y, 0.0)
         >>> result.values
         array([5., 0., 6.])
     """
-    return where(denominator != 0, numerator / denominator, default)  # type: ignore
-
-
-# Additional functions for contracts.py and other modules
-@t.overload
-def minimum(x: StochasticScalar, y: StochasticScalar) -> StochasticScalar: ...
-
-
-@t.overload
-def minimum(x: StochasticScalar, y: float | int) -> StochasticScalar: ...
-
-
-@t.overload
-def minimum(x: float | int, y: StochasticScalar) -> StochasticScalar: ...
-
-
-@t.overload
-def minimum(x: t.Any, y: t.Any) -> t.Any: ...
+    return where(denominator != 0, numerator / denominator, default)
 
 
 def minimum(x: t.Any, y: t.Any) -> t.Any:
@@ -341,37 +101,9 @@ def minimum(x: t.Any, y: t.Any) -> t.Any:
     return np.minimum(x, y)
 
 
-@t.overload
-def maximum(x: StochasticScalar, y: StochasticScalar) -> StochasticScalar: ...
-
-
-@t.overload
-def maximum(x: StochasticScalar, y: float | int) -> StochasticScalar: ...
-
-
-@t.overload
-def maximum(x: float | int, y: StochasticScalar) -> StochasticScalar: ...
-
-
-@t.overload
-def maximum(x: t.Any, y: t.Any) -> t.Any: ...
-
-
 def maximum(x: t.Any, y: t.Any) -> t.Any:
     """Element-wise maximum that preserves PAL types."""
     return np.maximum(x, y)
-
-
-@t.overload
-def cumsum(x: StochasticScalar) -> StochasticScalar: ...
-
-
-@t.overload
-def cumsum(x: list[StochasticScalar]) -> npt.NDArray[t.Any]: ...
-
-
-@t.overload
-def cumsum(x: t.Any) -> t.Any: ...
 
 
 def cumsum(x: t.Any) -> t.Any:
@@ -380,35 +112,17 @@ def cumsum(x: t.Any) -> t.Any:
     When given a list of StochasticScalar objects, stacks their values
     into a 2D array and computes cumsum along axis 0.
     """
-    # Handle list of StochasticScalar objects
-    if isinstance(x, list) and len(x) > 0 and hasattr(x[0], "values"):  # type: ignore[attr-defined]
-        return np.cumsum(np.stack([item.values for item in x], axis=0), axis=0)  # type: ignore[reportUnknownVariableType]
+    if isinstance(x, list) and len(x) > 0 and hasattr(x[0], "values"):  # type: ignore[reportUnknownMemberType]
+        return np.cumsum(  # type: ignore[reportUnknownVariableType]
+            np.stack([item.values for item in x], axis=0),  # type: ignore[reportUnknownMemberType, reportUnknownVariableType]
+            axis=0,
+        )
     return np.cumsum(x)  # type: ignore[reportUnknownVariableType]
-
-
-@t.overload
-def floor(x: StochasticScalar) -> StochasticScalar: ...
-
-
-@t.overload
-def floor(x: t.Any) -> t.Any: ...
 
 
 def floor(x: t.Any) -> t.Any:
     """Floor function that preserves PAL types."""
     return np.floor(x)
-
-
-@t.overload
-def all(x: StochasticScalar) -> bool: ...
-
-
-@t.overload
-def all(x: ProteusVariable[t.Any]) -> bool: ...
-
-
-@t.overload
-def all(x: t.Any) -> bool: ...
 
 
 def all(x: t.Any) -> bool:
