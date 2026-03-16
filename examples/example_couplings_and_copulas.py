@@ -311,18 +311,14 @@ net_loss = expense_loaded - tax
 
 # All of these are in the same coupling group.
 chain = [gross_loss, expense_loaded, tax, net_loss]
-all_coupled = all(
-    v.coupled_variable_group is base_loss.coupled_variable_group for v in chain
-)
+all_coupled = all(v.coupled_variable_group is base_loss.coupled_variable_group for v in chain)
 group_size = len(base_loss.coupled_variable_group)
 print(f"\nAll coupled? {all_coupled}")
 print(f"Coupling group size: {group_size}")
 
 # Create an independent variable and correlate it with base_loss.
 cat_loss = distributions.LogNormal(mu=16, sigma=1.2).generate()
-cat_independent = (
-    cat_loss.coupled_variable_group is not base_loss.coupled_variable_group
-)
+cat_independent = cat_loss.coupled_variable_group is not base_loss.coupled_variable_group
 print(f"\nCat loss independent? {cat_independent}")
 
 # Apply copula between base_loss and cat_loss.
@@ -340,9 +336,7 @@ print(f"tax/expense ratio (should be 0.21):  {r3}")
 
 # Everyone is now in the same coupling group.
 full_chain = [cat_loss, *chain]
-all_now_coupled = all(
-    v.coupled_variable_group is base_loss.coupled_variable_group for v in full_chain
-)
+all_now_coupled = all(v.coupled_variable_group is base_loss.coupled_variable_group for v in full_chain)
 print(f"\nAll now coupled? {all_now_coupled}")
 
 # ============================================================================

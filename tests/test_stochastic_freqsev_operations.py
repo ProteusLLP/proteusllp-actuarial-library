@@ -321,9 +321,7 @@ def test_freqsev_scalar_single_event_per_sim():
 def test_freqsev_scalar_many_events_one_sim():
     """Test with many events in one simulation."""
     # Sim 0 has 5 events, sim 1 has 0 events, sim 2 has 1 event
-    fs = FreqSevSims(
-        np.array([0, 0, 0, 0, 0, 2]), np.array([1, 2, 3, 4, 5, 10]), n_sims=3
-    )
+    fs = FreqSevSims(np.array([0, 0, 0, 0, 0, 2]), np.array([1, 2, 3, 4, 5, 10]), n_sims=3)
     sc = StochasticScalar([10, 20, 30])
 
     result = fs + sc

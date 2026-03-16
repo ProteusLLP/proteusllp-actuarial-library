@@ -34,9 +34,7 @@ def test_coupled_variable_reordering():
     assert (x.values == [4, 5, 2, 1, 3]).all()
     assert (y.values == [3, 4, 1, 2, 5]).all()
     assert (z.values == [4, 5, 2, 3, 6]).all()
-    assert (
-        x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
-    )
+    assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
 def test_coupled_variable_reordering2():
@@ -54,12 +52,7 @@ def test_coupled_variable_reordering2():
     assert (y.values == [3, 4, 1, 2, 5]).all()
     assert (z.values == [1, 9, 7, 3, 0]).all()
     assert (a.values == [4, 13, 8, 5, 5]).all()
-    assert (
-        x.coupled_variable_group
-        == y.coupled_variable_group
-        == z.coupled_variable_group
-        == a.coupled_variable_group
-    )
+    assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group == a.coupled_variable_group
 
 
 def test_coupled_variable_groups():

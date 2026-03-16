@@ -77,9 +77,7 @@ def test_setitem():
 
 def test_setitem_stochastic():
     """Test setting StochasticScalar values."""
-    x = ProteusVariable(
-        "dim", {"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([4, 5, 6])}
-    )
+    x = ProteusVariable("dim", {"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([4, 5, 6])})
     new_val = StochasticScalar([7, 8, 9])
     x["a"] = new_val
     assert isinstance(x["a"], StochasticScalar)
@@ -431,9 +429,7 @@ def test_validate_freqsev_mismatched_sim_index():
     from pal import FreqSevSims
 
     freq_sev1 = FreqSevSims(np.array([0, 1, 2]), np.array([100, 200, 300]), n_sims=3)
-    freq_sev2 = FreqSevSims(
-        np.array([0, 0, 1]), np.array([10, 20, 30]), n_sims=3
-    )  # Different pattern
+    freq_sev2 = FreqSevSims(np.array([0, 0, 1]), np.array([10, 20, 30]), n_sims=3)  # Different pattern
 
     x = ProteusVariable("dim", {"a": freq_sev1, "b": freq_sev2})
     is_valid, _, _ = x.validate_freqsev_consistency()

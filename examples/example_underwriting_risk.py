@@ -26,23 +26,16 @@ individual_large_losses_by_lob = ProteusVariable(
 # Generate the attritional losses by class
 attritional_losses_by_lob = ProteusVariable(
     "class",
-    values={
-        lob: distributions.Gamma(alpha=i + 1, theta=1000000).generate()
-        for i, lob in enumerate(lobs)
-    },
+    values={lob: distributions.Gamma(alpha=i + 1, theta=1000000).generate() for i, lob in enumerate(lobs)},
 )
 
 losses_with_lae = individual_large_losses_by_lob * 1.05
 
 # create the aggregate losses by class
-aggregate_large_losses_by_class = ProteusVariable(
-    "class", {name: losses_with_lae[name].aggregate() for name in lobs}
-)
+aggregate_large_losses_by_class = ProteusVariable("class", {name: losses_with_lae[name].aggregate() for name in lobs})
 # correlate the attritional and large losses. Use a pairwise copula to do this
 for lob in lobs:
-    copulas.GumbelCopula(theta=1.2, n=2).apply(
-        [aggregate_large_losses_by_class[lob], attritional_losses_by_lob[lob]]
-    )
+    copulas.GumbelCopula(theta=1.2, n=2).apply([aggregate_large_losses_by_class[lob], attritional_losses_by_lob[lob]])
 # calculate the total losses
 total_losses_by_lob = aggregate_large_losses_by_class + attritional_losses_by_lob
 # apply a copula to the total losses by lob
@@ -63,9 +56,7 @@ for lob in lobs:
     )
     result = prog.apply(inflated_large_losses[lob])
     aggregate_recoveries = result.recoveries.aggregate()
-    net_aggregate_large_losses_dict[lob] = (
-        aggregate_large_losses_by_class[lob] - aggregate_recoveries
-    )
+    net_aggregate_large_losses_dict[lob] = aggregate_large_losses_by_class[lob] - aggregate_recoveries
 
 
 net_aggregate_large_losses = ProteusVariable("class", net_aggregate_large_losses_dict)

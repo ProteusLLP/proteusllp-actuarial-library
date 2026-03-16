@@ -15,9 +15,7 @@ def test_xol_no_agg():
         excess=250000,
         premium=1000,
     )
-    claims = FreqSevSims(
-        np.array([0, 0, 0, 0]), np.array([100000, 800000, 500000, 200000]), 1
-    )
+    claims = FreqSevSims(np.array([0, 0, 0, 0]), np.array([100000, 800000, 500000, 200000]), 1)
     result = layer.apply(claims)
     assert result.recoveries.values.tolist() == [0, 500000, 250000, 0]
     assert result.reinstatement_premium is None
@@ -31,9 +29,7 @@ def test_xol_franchise():
         premium=1000,
         franchise=250000,
     )
-    claims = FreqSevSims(
-        np.array([0, 0, 0, 0]), np.array([100000, 800000, 400000, 200000]), 1
-    )
+    claims = FreqSevSims(np.array([0, 0, 0, 0]), np.array([100000, 800000, 400000, 200000]), 1)
     result = layer.apply(claims)
     assert result.recoveries.values.tolist() == [0, 500000, 400000, 0]
     assert result.reinstatement_premium is None
@@ -48,9 +44,7 @@ def test_xol_reinstatements():
         premium=1000,
         reinstatement_cost=[1],
     )
-    claims = FreqSevSims(
-        np.array([0, 0, 0, 0]), np.array([100000, 800000, 500000, 200000]), 1
-    )
+    claims = FreqSevSims(np.array([0, 0, 0, 0]), np.array([100000, 800000, 500000, 200000]), 1)
     result = layer.apply(claims)
     assert result.recoveries.values.tolist() == [0, 500000, 250000, 0]
     assert result.reinstatement_premium is not None
@@ -66,9 +60,7 @@ def test_xol_multiple_reinstatements():
         premium=1000,
         reinstatement_cost=[1, 0.5, 0, 0],
     )
-    claims = FreqSevSims(
-        np.array([0, 0, 0, 0]), np.array([100000, 600000, 500000, 200000]), 1
-    )
+    claims = FreqSevSims(np.array([0, 0, 0, 0]), np.array([100000, 600000, 500000, 200000]), 1)
     result = layer.apply(claims)
     assert result.recoveries.values.tolist() == [0, 350000, 250000, 0]
     assert result.reinstatement_premium is not None
@@ -84,9 +76,7 @@ def test_xol_aggregate_limit():
         premium=1000,
         reinstatement_cost=[1],
     )
-    claims = FreqSevSims(
-        np.array([0, 0, 0, 0]), np.array([100000, 800000, 500000, 1000000]), 1
-    )
+    claims = FreqSevSims(np.array([0, 0, 0, 0]), np.array([100000, 800000, 500000, 1000000]), 1)
     result = layer.apply(claims)
     assert result.recoveries.aggregate().tolist() == [1000000]
     assert result.recoveries.values.tolist() == [
@@ -109,9 +99,7 @@ def test_xol_aggregate_deductible():
         premium=1000,
         reinstatement_cost=[1],
     )
-    claims = FreqSevSims(
-        np.array([0, 0, 0, 0]), np.array([100000, 600000, 500000, 200000]), 1
-    )
+    claims = FreqSevSims(np.array([0, 0, 0, 0]), np.array([100000, 600000, 500000, 200000]), 1)
     result = layer.apply(claims)
     assert result.recoveries.aggregate().tolist() == [350000]
     assert result.recoveries.values.tolist() == [

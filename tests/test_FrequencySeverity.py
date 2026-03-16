@@ -69,17 +69,13 @@ def test_math_operations():
     fs1_divide_fs2 = fs1 / fs2
     assert np.array_equal(fs1_divide_fs2, np.array([1, 1, 1, 1, 1, 1, 1, 1, 1]))
     two_to_power_fs1 = 2**fs1
-    assert np.array_equal(
-        two_to_power_fs1, np.array([2, 4, 8, 16, 32, 64, 128, 256, 512])
-    )
+    assert np.array_equal(two_to_power_fs1, np.array([2, 4, 8, 16, 32, 64, 128, 256, 512]))
     # test with numpy array
     arr = np.array([1, 2, 3])
     fs1_times_arr = fs1 * arr
     assert np.array_equal(fs1_times_arr, np.array([1, 2, 6, 8, 10, 18, 21, 24, 27]))
     fs1_divide_arr = fs1 / arr
-    assert np.array_equal(
-        fs1_divide_arr, np.array([1, 2, 1.5, 2, 2.5, 2, 7 / 3, 8 / 3, 3])
-    )
+    assert np.array_equal(fs1_divide_arr, np.array([1, 2, 1.5, 2, 2.5, 2, 7 / 3, 8 / 3, 3]))
     fs1_plus_arr = fs1 + arr
     assert np.array_equal(fs1_plus_arr, np.array([2, 3, 5, 6, 7, 9, 10, 11, 12]))
     fs1_minus_arr = fs1 - arr
@@ -97,13 +93,9 @@ def test_math_operations():
     fs1_minus_arr = arr - fs1
     assert np.array_equal(fs1_minus_arr, np.array([0, -1, -1, -2, -3, -3, -4, -5, -6]))
     fs1_to_power_arr = fs1**arr
-    assert np.array_equal(
-        fs1_to_power_arr, np.array([1, 2, 9, 16, 25, 216, 343, 512, 729])
-    )
+    assert np.array_equal(fs1_to_power_arr, np.array([1, 2, 9, 16, 25, 216, 343, 512, 729]))
     arr_to_power_fs1 = arr**fs1
-    assert np.array_equal(
-        arr_to_power_fs1, np.array([1, 1, 8, 16, 32, 729, 2187, 6561, 19683])
-    )
+    assert np.array_equal(arr_to_power_fs1, np.array([1, 1, 8, 16, 32, 729, 2187, 6561, 19683]))
 
 
 def test_get_sims():
@@ -121,49 +113,27 @@ def test_stochastic_scalar():
     scalar = StochasticScalar([1, 2, 3])
     result = fs + scalar
     assert np.array_equal(result, np.array([2, 3, 5, 6, 7, 9, 10, 11, 12]))
-    assert (
-        result.coupled_variable_group
-        == fs.coupled_variable_group
-        == scalar.coupled_variable_group
-    )
+    assert result.coupled_variable_group == fs.coupled_variable_group == scalar.coupled_variable_group
     fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
     scalar = StochasticScalar([1, 2, 3])
     result = fs - scalar
-    assert (
-        result.coupled_variable_group
-        == fs.coupled_variable_group
-        == scalar.coupled_variable_group
-    )
+    assert result.coupled_variable_group == fs.coupled_variable_group == scalar.coupled_variable_group
     assert np.array_equal(result, np.array([0, 1, 1, 2, 3, 3, 4, 5, 6]))
     fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
     scalar = StochasticScalar([1, 2, 3])
     result = fs * scalar
-    assert (
-        result.coupled_variable_group
-        == fs.coupled_variable_group
-        == scalar.coupled_variable_group
-    )
+    assert result.coupled_variable_group == fs.coupled_variable_group == scalar.coupled_variable_group
     assert np.array_equal(result, np.array([1, 2, 6, 8, 10, 18, 21, 24, 27]))
     fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
     scalar = StochasticScalar([1, 2, 3])
     result = fs / scalar
-    assert np.array_equal(
-        result, np.array([1, 2, 1.5, 2, 2.5, 2, 2 + 1 / 3, 2 + 2 / 3, 3])
-    )
-    assert (
-        result.coupled_variable_group
-        == fs.coupled_variable_group
-        == scalar.coupled_variable_group
-    )
+    assert np.array_equal(result, np.array([1, 2, 1.5, 2, 2.5, 2, 2 + 1 / 3, 2 + 2 / 3, 3]))
+    assert result.coupled_variable_group == fs.coupled_variable_group == scalar.coupled_variable_group
     fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
     scalar = StochasticScalar([1, 2, 3])
     result = fs**scalar
     assert np.array_equal(result, np.array([1, 2, 9, 16, 25, 216, 343, 512, 729]))
-    assert (
-        result.coupled_variable_group
-        == fs.coupled_variable_group
-        == scalar.coupled_variable_group
-    )
+    assert result.coupled_variable_group == fs.coupled_variable_group == scalar.coupled_variable_group
     fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
     result = fs + 1
     assert np.array_equal(result, np.array([2, 3, 4, 5, 6, 7, 8, 9, 10]))
@@ -176,11 +146,7 @@ def test_stochastic_scalar():
     scalar = StochasticScalar([1, 2, 3])
     result = scalar + fs
     assert np.array_equal(result, np.array([2, 3, 5, 6, 7, 9, 10, 11, 12]))
-    assert (
-        result.coupled_variable_group
-        == fs.coupled_variable_group
-        == scalar.coupled_variable_group
-    )
+    assert result.coupled_variable_group == fs.coupled_variable_group == scalar.coupled_variable_group
 
     # reverse operations
     fs = FreqSevSims(sim_index=sim_index, values=values, n_sims=3)
@@ -230,11 +196,7 @@ def test_safe_divide_freqsevsims():
     default = 99
     result = pnp.safe_divide(numerator, denominator, default)
     assert np.array_equal(result, np.array([5, 99, 6, 99, 5, 10, 99, 10, 10]))
-    assert (
-        numerator.coupled_variable_group
-        == denominator.coupled_variable_group
-        == result.coupled_variable_group
-    )
+    assert numerator.coupled_variable_group == denominator.coupled_variable_group == result.coupled_variable_group
 
 
 def test_safe_divide_freqsevsims_scalar_denominator():

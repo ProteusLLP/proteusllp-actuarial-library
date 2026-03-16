@@ -143,9 +143,7 @@ class SupportsArray(t.Protocol):
     def __array_ufunc__(
         self,
         ufunc: t.Any,
-        method: t.Literal[
-            "__call__", "reduce", "reduceat", "accumulate", "outer", "at"
-        ],
+        method: t.Literal["__call__", "reduce", "reduceat", "accumulate", "outer", "at"],
         *inputs: t.Any,
         **kwargs: t.Any,
     ) -> t.Any:
@@ -381,9 +379,7 @@ class ProteusLike(VectorOperations, SequenceLike[T_value], t.Protocol):
         ...
 
 
-T_distribution = t.TypeVar(
-    "T_distribution", bound="ScipyNumeric | npt.NDArray[np.floating]"
-)
+T_distribution = t.TypeVar("T_distribution", bound="ScipyNumeric | npt.NDArray[np.floating]")
 
 
 class DistributionLike(t.Protocol[T_distribution]):

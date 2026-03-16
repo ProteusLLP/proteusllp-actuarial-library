@@ -54,9 +54,7 @@ class Copula(ABC):
         """
         pass
 
-    def _generate_unnormalised(
-        self, n_sims: int, rng: np.random.Generator
-    ) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Generate samples from the multivariate distribution underlying the copula.
 
         The marginal distribution of the samples will not necessarily be uniform.
@@ -68,9 +66,7 @@ class Copula(ABC):
         """
         raise NotImplementedError("Subclasses must implement this method.")
 
-    def _transform_to_uniform(
-        self, unnormalised_samples: npt.NDArray[np.floating]
-    ) -> npt.NDArray[np.floating]:
+    def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Transform unnormalised samples to uniform [0,1].
 
         Override this in subclasses that need custom transformations.
@@ -97,10 +93,7 @@ class Copula(ABC):
         """
         result = ProteusVariable[StochasticScalar](
             "dim1",
-            {
-                f"{type(self).__name__}_{i}": StochasticScalar(sample)
-                for i, sample in enumerate(uniform_samples)
-            },
+            {f"{type(self).__name__}_{i}": StochasticScalar(sample) for i, sample in enumerate(uniform_samples)},
         )
         # Merge all variables into the same coupled group
         first_scalar = result[0]
@@ -132,9 +125,7 @@ class Copula(ABC):
         uniform_samples = self._transform_to_uniform(unnormalised)
         return self._create_result_from_uniform(uniform_samples)
 
-    def apply(
-        self, variables: ProteusVariable[StochasticScalar] | list[StochasticScalar]
-    ) -> None:
+    def apply(self, variables: ProteusVariable[StochasticScalar] | list[StochasticScalar]) -> None:
         """Apply the copula's correlation structure to existing variables.
 
         This method modifies the input variables in-place to exhibit the
@@ -156,8 +147,7 @@ class Copula(ABC):
         # Check that n_sims is available
         n_sims = variables_list[0].n_sims
         copula_samples = [
-            StochasticScalar(sample)
-            for sample in self._generate_unnormalised(n_sims=n_sims, rng=config.rng)
+            StochasticScalar(sample) for sample in self._generate_unnormalised(n_sims=n_sims, rng=config.rng)
         ]
         if len(variables) != len(copula_samples):
             raise ValueError("Number of variables and copula samples do not match.")
@@ -219,9 +209,7 @@ class GaussianCopula(EllipticalCopula):
         """
         super().__init__(matrix, matrix_type=matrix_type)
 
-    def _transform_to_uniform(
-        self, unnormalised_samples: npt.NDArray[np.floating]
-    ) -> npt.NDArray[np.floating]:
+    def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Transform normal samples to uniform using CDF."""
         return special.ndtr(unnormalised_samples)
 
@@ -231,9 +219,7 @@ class GaussianCopula(EllipticalCopula):
         """Generate samples from the Gaussian copula."""
         return self._generate_base(n_sims, rng)
 
-    def _generate_unnormalised(
-        self, n_sims: int, rng: np.random.Generator
-    ) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         n_vars = self.correlation_matrix.shape[0]
         normal_samples = rng.standard_normal(size=(n_vars, n_sims))
         return self.chol.dot(normal_samples)
@@ -260,9 +246,7 @@ class StudentsTCopula(EllipticalCopula):
             raise ValueError("Degrees of Freedom must be positive")
         self.dof = dof
 
-    def _transform_to_uniform(
-        self, unnormalised_samples: npt.NDArray[np.floating]
-    ) -> npt.NDArray[np.floating]:
+    def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Transform t-distributed samples to uniform using CDF."""
         return scipy.stats.distributions.t(self.dof).cdf(unnormalised_samples)
 
@@ -272,9 +256,7 @@ class StudentsTCopula(EllipticalCopula):
         """Generate samples from the Student's T copula."""
         return self._generate_base(n_sims, rng)
 
-    def _generate_unnormalised(
-        self, n_sims: int, rng: np.random.Generator
-    ) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         n_vars = self.correlation_matrix.shape[0]
         normal_samples = self.chol.dot(rng.standard_normal(size=(n_vars, n_sims)))
         chi_samples = np.sqrt(rng.gamma(self.dof / 2, 2 / self.dof, size=n_sims))
@@ -290,9 +272,7 @@ class ArchimedeanCopula(Copula, ABC):
         pass
 
     @abstractmethod
-    def generate_latent_distribution(
-        self, n_sims: int, rng: np.random.Generator
-    ) -> npt.NDArray[np.floating]:
+    def generate_latent_distribution(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution of the copula."""
         pass
 
@@ -304,9 +284,7 @@ class ArchimedeanCopula(Copula, ABC):
         """
         self.n = n
 
-    def _transform_to_uniform(
-        self, unnormalised_samples: npt.NDArray[np.floating]
-    ) -> npt.NDArray[np.floating]:
+    def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Transform using inverse generator function."""
         return self.generator_inv(-unnormalised_samples)
 
@@ -331,9 +309,7 @@ class ArchimedeanCopula(Copula, ABC):
 
         # Add shape validation
         if not (latent_samples.shape == (n_sims,)):
-            raise AssertionError(
-                f"Expected latent_samples shape ({n_sims},), got {latent_samples.shape}"
-            )
+            raise AssertionError(f"Expected latent_samples shape ({n_sims},), got {latent_samples.shape}")
 
         # Calculate the copula samples
         return np.log(u) / latent_samples[np.newaxis]
@@ -369,9 +345,7 @@ class ClaytonCopula(ArchimedeanCopula):
             return np.exp(-t)
         return (1 + t) ** (-1 / self.theta)
 
-    def generate_latent_distribution(
-        self, n_sims: int, rng: np.random.Generator
-    ) -> npt.NDArray[np.floating]:
+    def generate_latent_distribution(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution.
 
         For Clayton copula, when theta=0, the copula reduces to the independence
@@ -409,22 +383,16 @@ def levy_stable(
     if alpha != 1:
         theta = np.arctan(beta * np.tan(np.pi * alpha / 2)) / alpha
         factor = (1 + beta**2 * np.tan(np.pi * alpha / 2) ** 2) ** (1 / (2 * alpha))
-        part1 = np.sin(alpha * (uniform_samples + theta)) / (
-            np.cos(uniform_samples)
-        ) ** (1 / alpha)
-        part2 = (
-            np.cos(uniform_samples - alpha * (uniform_samples + theta))
-            / exponential_samples
-        ) ** ((1 - alpha) / alpha)
+        part1 = np.sin(alpha * (uniform_samples + theta)) / (np.cos(uniform_samples)) ** (1 / alpha)
+        part2 = (np.cos(uniform_samples - alpha * (uniform_samples + theta)) / exponential_samples) ** (
+            (1 - alpha) / alpha
+        )
         samples = factor * part1 * part2
     else:
         samples = (2 / np.pi) * (
             (np.pi / 2 + beta * uniform_samples) * np.tan(uniform_samples)
             - beta
-            * np.log(
-                (np.pi / 2 * exponential_samples * np.cos(uniform_samples))
-                / (np.pi / 2 + beta * uniform_samples)
-            )
+            * np.log((np.pi / 2 * exponential_samples * np.cos(uniform_samples)) / (np.pi / 2 + beta * uniform_samples))
         )
     return samples
 
@@ -448,13 +416,9 @@ class GumbelCopula(ArchimedeanCopula):
         """Inverse generator function for Gumbel copula."""
         return np.exp(-(t ** (1 / self.theta)))
 
-    def generate_latent_distribution(
-        self, n_sims: int, rng: np.random.Generator
-    ) -> npt.NDArray[np.floating]:
+    def generate_latent_distribution(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution."""
-        return levy_stable(1 / self.theta, 1, n_sims, rng) * (
-            np.cos(np.pi / (2 * self.theta)) ** self.theta
-        )
+        return levy_stable(1 / self.theta, 1, n_sims, rng) * (np.cos(np.pi / (2 * self.theta)) ** self.theta)
 
 
 class FrankCopula(ArchimedeanCopula):
@@ -474,9 +438,7 @@ class FrankCopula(ArchimedeanCopula):
         """Inverse generator function for Frank copula."""
         return -np.log1p(np.exp(-t) * (np.expm1(-self.theta))) / self.theta
 
-    def generate_latent_distribution(
-        self, n_sims: int, rng: np.random.Generator
-    ) -> npt.NDArray[np.floating]:
+    def generate_latent_distribution(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution."""
         return rng.logseries(1 - np.exp(-self.theta), size=n_sims).astype(np.float64)
 
@@ -500,9 +462,7 @@ class JoeCopula(ArchimedeanCopula):
         """Inverse generator function for Joe copula."""
         return 1 - (1 - np.exp(-t)) ** (1 / self.theta)
 
-    def generate_latent_distribution(
-        self, n_sims: int, rng: np.random.Generator
-    ) -> npt.NDArray[np.floating]:
+    def generate_latent_distribution(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution."""
         return _sibuya_gen(1 / self.theta, n_sims, rng)
 
@@ -556,22 +516,18 @@ class MM1Copula(Copula):
             raise ValueError("Theta must be in the range [1, inf)")
         self.theta = theta
 
-    def _transform_to_uniform(
-        self, unnormalised_samples: npt.NDArray[np.floating]
-    ) -> npt.NDArray[np.floating]:
+    def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Transform max-mixture samples to uniform."""
         return np.exp(-((-np.log(unnormalised_samples)) ** (1 / self.theta)))
 
-    def _generate_unnormalised(
-        self, n_sims: int, rng: np.random.Generator
-    ) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         n = self.n
         theta = self.theta
         delta_matrix = self.delta_matrix
         max_u = np.zeros((n, n_sims))
-        mixing_variable = levy_stable(
-            alpha=1 / theta, beta=1.0, size=n_sims, rng=rng
-        ) * (np.cos(np.pi / (2 * theta)) ** theta)
+        mixing_variable = levy_stable(alpha=1 / theta, beta=1.0, size=n_sims, rng=rng) * (
+            np.cos(np.pi / (2 * theta)) ** theta
+        )
         # generate the pairwise Gumbel copulas
         for j in range(n):
             for i in range(j + 1, n):
@@ -641,9 +597,7 @@ class GalambosCopula(Copula):
         self.theta = theta
         self.d = d
 
-    def _generate_unnormalised(
-        self, n_sims: int, rng: np.random.Generator
-    ) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Vectorised simulation from the d-dimensional Galambos copula.
 
         Exact algorithm based on the max stable / reciprocal Archimedean
@@ -761,9 +715,7 @@ class PlackettCopula(Copula):
             raise ValueError("Delta must be in the range (0, inf)")
         self.delta = delta
 
-    def _generate_unnormalised(
-        self, n_sims: int, rng: np.random.Generator
-    ) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Generate samples from the Plackett copula.
 
         Args:
@@ -811,9 +763,7 @@ class PlackettCopula(Copula):
         return self._generate_base(n_sims, rng)
 
 
-def _sibuya_gen(
-    alpha: float, size: int | tuple[int, ...], rng: np.random.Generator
-) -> npt.NDArray[np.floating]:
+def _sibuya_gen(alpha: float, size: int | tuple[int, ...], rng: np.random.Generator) -> npt.NDArray[np.floating]:
     """Generate samples from a Sibuya distribution.
 
     Parameters:
@@ -923,15 +873,11 @@ class HuslerReissCopula(Copula):
         np.clip(lambda_matrix, a_min=0, a_max=100, out=lambda_matrix)
         # pivot on the first variable to construct a covariance matrix
         # consistent with the variogram defined by lambda_matrix squared
-        covariance_matrix = 2 * (
-            lambda_matrix[0] ** 2 + lambda_matrix[:, 0, None] ** 2 - lambda_matrix**2
-        )
+        covariance_matrix = 2 * (lambda_matrix[0] ** 2 + lambda_matrix[:, 0, None] ** 2 - lambda_matrix**2)
         covariance_sub = covariance_matrix[1:, 1:]
         vals, vecs = np.linalg.eigh(covariance_sub)
         if vals.min() < 1e-6:
-            covariance_sub = (
-                vecs @ np.diag(np.clip(vals, a_min=1e-6, a_max=None)) @ vecs.T
-            )
+            covariance_sub = vecs @ np.diag(np.clip(vals, a_min=1e-6, a_max=None)) @ vecs.T
             self.is_adjusted = True
         try:
             chol_sub = np.linalg.cholesky(covariance_sub)
@@ -942,17 +888,10 @@ class HuslerReissCopula(Copula):
         covariance_matrix = self._chol @ self._chol.T
         self.d = d
         self.adjusted_lambda_matrix = (
-            np.sqrt(
-                np.diag(covariance_matrix)
-                + np.diag(covariance_matrix)[:, None]
-                - 2 * covariance_matrix
-            )
-            / 2
+            np.sqrt(np.diag(covariance_matrix) + np.diag(covariance_matrix)[:, None] - 2 * covariance_matrix) / 2
         )
 
-    def _generate_unnormalised(
-        self, n_sims: int, rng: np.random.Generator
-    ) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Exact simulation from a d-dimensional Hüsler-Reiss copula.
 
         See Dombry-Engelke-Oesting (2016) Algorithm 2 (spectral measure on L1-sphere).
@@ -1092,9 +1031,7 @@ class HuslerReissCopula(Copula):
         return lambda_matrix
 
     @classmethod
-    def from_tail_dependence_matrix(
-        cls, tail_dependence_matrix: npt.NDArray[np.floating]
-    ) -> HuslerReissCopula:
+    def from_tail_dependence_matrix(cls, tail_dependence_matrix: npt.NDArray[np.floating]) -> HuslerReissCopula:
         """Create a Hüsler-Reiss copula from a given upper tail dependence matrix.
 
         The upper tail dependence coefficient between any pair of variables i and j in
@@ -1114,9 +1051,7 @@ class HuslerReissCopula(Copula):
             with the lambda matrix corresponding to the given upper tail
             dependence coefficients.
         """
-        lambda_matrix = cls.calculate_lambda_from_tail_dependence(
-            tail_dependence_matrix
-        )
+        lambda_matrix = cls.calculate_lambda_from_tail_dependence(tail_dependence_matrix)
         return cls(lambda_matrix)
 
     def generate(
@@ -1181,9 +1116,7 @@ class ExtremalTCopula(Copula):
             raise ValueError("Degrees of freedom nu must be in the range (0, inf)")
         self.correlation_matrix = np.asarray(correlation_matrix)
         # validate correlation matrix
-        if self.correlation_matrix.ndim != 2 or (
-            self.correlation_matrix.shape[0] != self.correlation_matrix.shape[1]
-        ):
+        if self.correlation_matrix.ndim != 2 or (self.correlation_matrix.shape[0] != self.correlation_matrix.shape[1]):
             raise ValueError("Correlation matrix must be square")
         if self.correlation_matrix.min() < -1.0 or self.correlation_matrix.max() > 1.0:
             raise ValueError("Correlation matrix values must be in the range [-1, 1]")
@@ -1192,9 +1125,7 @@ class ExtremalTCopula(Copula):
         self.nu = nu
         self.d = correlation_matrix.shape[0]
 
-    def _generate_unnormalised(
-        self, n_sims: int, rng: np.random.Generator
-    ) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Exact simulation of the t-EV copula.
 
         See Dombry-Engle-Oesting (2016).
@@ -1429,18 +1360,13 @@ def apply_copula(
         for j, var2 in enumerate(variables_list[i + 1 :]):
             if var1.coupled_variable_group is var2.coupled_variable_group:
                 raise ValueError(
-                    f"Cannot apply copula as the variables at positions {i} and "
-                    f"{j + i + 1} are not independent"
+                    f"Cannot apply copula as the variables at positions {i} and {j + i + 1} are not independent"
                 )
 
     # Get sort indices and ranks
-    copula_sort_indices = np.argsort(
-        np.array([cs.values for cs in copula_samples]), axis=1, kind="stable"
-    )
+    copula_sort_indices = np.argsort(np.array([cs.values for cs in copula_samples]), axis=1, kind="stable")
     copula_ranks = np.argsort(copula_sort_indices, axis=1)
-    variable_sort_indices = np.argsort(
-        np.array([var.values for var in variables]), axis=1
-    )
+    variable_sort_indices = np.argsort(np.array([var.values for var in variables]), axis=1)
     first_variable_rank = np.argsort(variable_sort_indices[0])
     copula_ranks = copula_ranks[:, copula_sort_indices[0, first_variable_rank]]
 

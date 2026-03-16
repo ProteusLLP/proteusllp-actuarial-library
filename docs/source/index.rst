@@ -46,6 +46,17 @@ Installation
    :caption: User Guide
 
    usage
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Tutorials
+
+   tutorials/README
+   tutorials/getting_started
+   tutorials/distributions_guide
+   tutorials/frequency_severity_modelling
+   tutorials/coupling_groups_and_copulas
+   tutorials/xol_reinsurance
    
 .. toctree::
    :maxdepth: 3

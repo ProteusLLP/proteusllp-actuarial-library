@@ -96,9 +96,7 @@ def test_gpd() -> None:
 
     sims = dist.generate(100000000)
     assert np.mean(sims) == pytest.approx(scale / (1 - shape) + threshold, 1e-3)
-    assert np.std(sims) == pytest.approx(
-        scale / (1 - shape) / math.sqrt(1 - 2 * shape), 1e-3
-    )
+    assert np.std(sims) == pytest.approx(scale / (1 - shape) / math.sqrt(1 - 2 * shape), 1e-3)
 
 
 def test_burr() -> None:
@@ -187,13 +185,10 @@ def test_log_logistic() -> None:
     assert dist.invcdf(0.9984025559105432) == pytest.approx(1500000, 1e-8)
 
     sims = dist.generate(100000000)
-    assert np.mean(sims) == pytest.approx(
-        scipy.special.beta(1 - 1 / shape, 1 + 1 / shape) * scale + loc, 1e-3
-    )
+    assert np.mean(sims) == pytest.approx(scipy.special.beta(1 - 1 / shape, 1 + 1 / shape) * scale + loc, 1e-3)
     assert np.std(sims) == pytest.approx(
         math.sqrt(
-            scipy.special.beta(1 - 2 / shape, 1 + 2 / shape)
-            - scipy.special.beta(1 - 1 / shape, 1 + 1 / shape) ** 2
+            scipy.special.beta(1 - 2 / shape, 1 + 2 / shape) - scipy.special.beta(1 - 1 / shape, 1 + 1 / shape) ** 2
         )
         * scale,
         1e-3,
@@ -209,9 +204,9 @@ def test_para_logistic() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert dist.invcdf(
-        dist.cdf(np.array([1234560.1, 2345670, 3456780]))
-    ) == pytest.approx(np.array([1234560.1, 2345670, 3456780]), 1e-8)
+    assert dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))) == pytest.approx(
+        np.array([1234560.1, 2345670, 3456780]), 1e-8
+    )
 
     sims = dist.generate(100000000)
 
@@ -230,9 +225,9 @@ def test_inverse_para_logistic() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert dist.invcdf(
-        dist.cdf(np.array([1234560.1, 2345670, 3456780]))
-    ) == pytest.approx(np.array([1234560.1, 2345670, 3456780]), 1e-8)
+    assert dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))) == pytest.approx(
+        np.array([1234560.1, 2345670, 3456780]), 1e-8
+    )
 
     sims = dist.generate(100000000)
 
@@ -259,16 +254,14 @@ def test_weibull() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert dist.invcdf(
-        dist.cdf(np.array([1234560.1, 2345670, 3456780]))
-    ) == pytest.approx(np.array([1234560.1, 2345670, 3456780]), 1e-8)
+    assert dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))) == pytest.approx(
+        np.array([1234560.1, 2345670, 3456780]), 1e-8
+    )
 
     sims = dist.generate(100000000)
 
     assert np.mean(sims) == pytest.approx(scale * gamma(1 + 1 / shape) + loc, 1e-3)
-    assert np.std(sims) == pytest.approx(
-        scale * np.sqrt(gamma(1 + 2 / shape) - (gamma(1 + 1 / shape)) ** 2), 1e-3
-    )
+    assert np.std(sims) == pytest.approx(scale * np.sqrt(gamma(1 + 2 / shape) - (gamma(1 + 1 / shape)) ** 2), 1e-3)
 
 
 def test_inverse_weibull() -> None:
@@ -280,16 +273,14 @@ def test_inverse_weibull() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert dist.invcdf(
-        dist.cdf(np.array([1234560.1, 2345670, 3456780]))
-    ) == pytest.approx(np.array([1234560.1, 2345670, 3456780]), 1e-8)
+    assert dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))) == pytest.approx(
+        np.array([1234560.1, 2345670, 3456780]), 1e-8
+    )
 
     sims = dist.generate(100000000)
 
     assert np.mean(sims) == pytest.approx(scale * gamma(1 - 1 / shape) + loc, 1e-3)
-    assert np.std(sims) == pytest.approx(
-        scale * np.sqrt(gamma(1 - 2 / shape) - (gamma(1 - 1 / shape)) ** 2), 1e-3
-    )
+    assert np.std(sims) == pytest.approx(scale * np.sqrt(gamma(1 - 2 / shape) - (gamma(1 - 1 / shape)) ** 2), 1e-3)
 
 
 def test_exponential() -> None:
@@ -300,9 +291,9 @@ def test_exponential() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert dist.invcdf(
-        dist.cdf(np.array([1234560.1, 2345670, 3456780]))
-    ) == pytest.approx(np.array([1234560.1, 2345670, 3456780]), 1e-8)
+    assert dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))) == pytest.approx(
+        np.array([1234560.1, 2345670, 3456780]), 1e-8
+    )
 
     sims = dist.generate(100000000)
 
@@ -318,9 +309,9 @@ def test_inverse_exponential() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert dist.invcdf(
-        dist.cdf(np.array([1234560.1, 2345670, 3456780]))
-    ) == pytest.approx(np.array([1234560.1, 2345670, 3456780]), 1e-8)
+    assert dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))) == pytest.approx(
+        np.array([1234560.1, 2345670, 3456780]), 1e-8
+    )
 
 
 def test_gamma() -> None:
@@ -384,14 +375,9 @@ def test_inverse_gamma() -> None:
 
     sims = dist.generate(10000000)
 
-    assert np.allclose(
-        np.mean(sims), scale * gamma(shape - 1) / gamma(shape) + loc, 1e-3
-    )
+    assert np.allclose(np.mean(sims), scale * gamma(shape - 1) / gamma(shape) + loc, 1e-3)
     assert np.allclose(
         np.std(sims),
-        scale
-        * np.sqrt(
-            gamma(shape - 2) / gamma(shape) - (gamma(shape - 1) / gamma(shape)) ** 2
-        ),
+        scale * np.sqrt(gamma(shape - 2) / gamma(shape) - (gamma(shape - 1) / gamma(shape)) ** 2),
         1e-3,
     )

@@ -75,9 +75,7 @@ class StochasticScalar(ProteusStochasticVariable):
             raise ValueError("Values must be a 1D array.")
 
         # Type ignore: Generic ArrayLike type inference limitation
-        raise TypeError(
-            "Type of values must be a sequence or array. Found " + type(values).__name__
-        )  # type: ignore[misc]
+        raise TypeError("Type of values must be a sequence or array. Found " + type(values).__name__)  # type: ignore[misc]
 
     def __repr__(self) -> str:
         try:
@@ -137,9 +135,7 @@ class StochasticScalar(ProteusStochasticVariable):
             keepdims = kwargs.get("keepdims", False)
             axis = kwargs.get("axis", None)
 
-            if keepdims or (
-                axis is not None and hasattr(result, "shape") and result.shape
-            ):
+            if keepdims or (axis is not None and hasattr(result, "shape") and result.shape):
                 return self._wrap_result_with_coupling(result, inputs)
 
             # Standard reduction returns scalar directly
@@ -172,9 +168,7 @@ class StochasticScalar(ProteusStochasticVariable):
             NotImplementedError: If the function is not supported
         """
         # Extract values from StochasticScalar objects, leave others as-is
-        processed_args = tuple(
-            x.values if isinstance(x, StochasticScalar) else x for x in args
-        )
+        processed_args = tuple(x.values if isinstance(x, StochasticScalar) else x for x in args)
         result = func(*processed_args, **kwargs)
 
         # If result is a scalar, return it directly
@@ -225,8 +219,7 @@ class StochasticScalar(ProteusStochasticVariable):
             return result
 
         raise TypeError(
-            f"Unexpected type {type(index).__name__}. Index must be an integer, "
-            "float, or StochasticScalar."
+            f"Unexpected type {type(index).__name__}. Index must be an integer, float, or StochasticScalar."
         )
 
     def __len__(self) -> int:
@@ -338,9 +331,7 @@ class StochasticScalar(ProteusStochasticVariable):
         """Reorder the simulations in the variable."""
         self.values = self.values[new_order]
 
-    def _wrap_result_with_coupling(
-        self, result_array: t.Any, inputs: tuple[t.Any, ...]
-    ) -> StochasticScalar:
+    def _wrap_result_with_coupling(self, result_array: t.Any, inputs: tuple[t.Any, ...]) -> StochasticScalar:
         """Wrap result in StochasticScalar and merge coupling groups.
 
         Args:

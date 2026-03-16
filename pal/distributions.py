@@ -40,7 +40,6 @@ from .stochastic_scalar import StochasticScalar
 from .types import ScipyNumeric
 
 TOLERANCE = 1e-10  # Tolerance for numerical comparisons
-
 # FIXME: Consider replaching with VectorLike from types.py
 NumericOrArray = t.Union[ScipyNumeric, npt.NDArray[t.Any], StochasticScalar]
 ReturnType = NumericOrArray
@@ -78,9 +77,7 @@ class DistributionBase:
         """
         raise NotImplementedError
 
-    def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
-    ) -> StochasticScalar:
+    def generate(self, n_sims: int | None = None, rng: np.random.Generator | None = None) -> StochasticScalar:
         """Generate random samples from the distribution.
 
         Parameters:
@@ -175,9 +172,7 @@ class Poisson(DiscreteDistributionBase):
     @override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
         (mean,) = self._param_values
-        return StochasticScalar(
-            rng.poisson(t.cast(t.Union[float, npt.NDArray[np.floating]], mean), n_sims)
-        )
+        return StochasticScalar(rng.poisson(t.cast(float | npt.NDArray[np.floating], mean), n_sims))
 
 
 class NegBinomial(DiscreteDistributionBase):
@@ -213,8 +208,8 @@ class NegBinomial(DiscreteDistributionBase):
         n, p = self._param_values
         return StochasticScalar(
             rng.negative_binomial(
-                t.cast(t.Union[int, npt.NDArray[np.integer]], n),
-                t.cast(t.Union[float, npt.NDArray[np.floating]], p),
+                t.cast(int | npt.NDArray[np.integer], n),
+                t.cast(float | npt.NDArray[np.floating], p),
                 size=n_sims,
             )
         )
@@ -223,9 +218,7 @@ class NegBinomial(DiscreteDistributionBase):
 class Binomial(DiscreteDistributionBase):
     """Binomial Distribution."""
 
-    def __init__(
-        self, n: int | npt.NDArray[np.integer], p: float | npt.NDArray[np.floating]
-    ) -> None:
+    def __init__(self, n: int | npt.NDArray[np.integer], p: float | npt.NDArray[np.floating]) -> None:
         """Initialize binomial distribution.
 
         Args:
@@ -251,8 +244,8 @@ class Binomial(DiscreteDistributionBase):
         n, p = self._param_values
         return StochasticScalar(
             rng.binomial(
-                t.cast(t.Union[int, npt.NDArray[np.integer]], n),
-                t.cast(t.Union[float, npt.NDArray[np.floating]], p),
+                t.cast(int | npt.NDArray[np.integer], n),
+                t.cast(float | npt.NDArray[np.floating], p),
                 n_sims,
             )
         )
@@ -293,9 +286,7 @@ class HyperGeometric(DiscreteDistributionBase):
     @override
     def invcdf(self, u: NumericOrArray) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        raise NotImplementedError(
-            f"Inverse CDF for {type(self).__name__} is not implemented."
-        )
+        raise NotImplementedError(f"Inverse CDF for {type(self).__name__} is not implemented.")
 
     @override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
@@ -443,12 +434,12 @@ class Beta(DistributionBase):
         alpha, beta, scale, loc = self._param_values
         return StochasticScalar(
             rng.beta(
-                t.cast(t.Union[float, npt.NDArray[np.floating]], alpha),
-                t.cast(t.Union[float, npt.NDArray[np.floating]], beta),
+                t.cast(float | npt.NDArray[np.floating], alpha),
+                t.cast(float | npt.NDArray[np.floating], beta),
                 n_sims,
             )
-            * t.cast(t.Union[float, npt.NDArray[np.floating]], scale)
-            + t.cast(t.Union[float, npt.NDArray[np.floating]], loc)
+            * t.cast(float | npt.NDArray[np.floating], scale)
+            + t.cast(float | npt.NDArray[np.floating], loc)
         )
 
 
@@ -510,7 +501,7 @@ class Normal(DistributionBase):
         """Compute cumulative distribution function."""
         mu, sigma = self._params.values()
         arg = (x - mu) / sigma
-        return special.ndtr(t.cast(t.Union[npt.NDArray[np.floating], float], arg))
+        return special.ndtr(t.cast(npt.NDArray[np.floating] | float, arg))
 
     @override
     def invcdf(self, u: NumericOrArray) -> ReturnType:
@@ -597,8 +588,8 @@ class Gamma(DistributionBase):
         """Compute cumulative distribution function."""
         alpha, theta, loc = self._param_values
         return special.gammainc(
-            t.cast(t.Union[npt.NDArray[np.floating], float], alpha),
-            t.cast(t.Union[npt.NDArray[np.floating], float], (x - loc) / theta),
+            t.cast(npt.NDArray[np.floating] | float, alpha),
+            t.cast(npt.NDArray[np.floating] | float, (x - loc) / theta),
         )  # type: ignore[return-type]
 
     @override
@@ -613,11 +604,11 @@ class Gamma(DistributionBase):
         alpha, theta, loc = self._param_values
         result = StochasticScalar(
             rng.gamma(
-                t.cast(t.Union[float, npt.NDArray[np.floating]], alpha),
-                t.cast(t.Union[float, npt.NDArray[np.floating]], theta),
+                t.cast(float | npt.NDArray[np.floating], alpha),
+                t.cast(float | npt.NDArray[np.floating], theta),
                 size=n_sims,
             )
-            + t.cast(t.Union[float, npt.NDArray[np.floating]], loc)
+            + t.cast(float | npt.NDArray[np.floating], loc)
         )
         return result
 
@@ -1042,9 +1033,7 @@ class DistributionGeneratorBase:
         """Delegate to wrapped distribution."""
         return self.this_distribution.invcdf(u)
 
-    def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator = config.rng
-    ) -> StochasticScalar:
+    def generate(self, n_sims: int | None = None, rng: np.random.Generator = config.rng) -> StochasticScalar:
         """Delegate to wrapped distribution."""
         return self.this_distribution.generate(n_sims, rng)
 
@@ -1052,9 +1041,7 @@ class DistributionGeneratorBase:
 class DiscreteDistributionGenerator(DistributionGeneratorBase):
     """Discrete distribution generator instantiated by name."""
 
-    def __init__(
-        self, distribution_name: str, parameters: list[NumericOrArray]
-    ) -> None:
+    def __init__(self, distribution_name: str, parameters: list[NumericOrArray]) -> None:
         """Initialize discrete distribution by name.
 
         Args:
@@ -1064,8 +1051,7 @@ class DiscreteDistributionGenerator(DistributionGeneratorBase):
         distribution_name = distribution_name.lower()
         if distribution_name not in AVAILABLE_DISCRETE_DISTRIBUTIONS:
             raise ValueError(
-                f"Distribution {distribution_name} must be one of "
-                f"{list(AVAILABLE_DISCRETE_DISTRIBUTIONS.keys())}"
+                f"Distribution {distribution_name} must be one of {list(AVAILABLE_DISCRETE_DISTRIBUTIONS.keys())}"
             )
         distribution_cls = AVAILABLE_DISCRETE_DISTRIBUTIONS[distribution_name]
         super().__init__(distribution_cls(*parameters))
@@ -1074,9 +1060,7 @@ class DiscreteDistributionGenerator(DistributionGeneratorBase):
 class ContinuousDistributionGenerator(DistributionGeneratorBase):
     """Continuous distribution generator instantiated by name."""
 
-    def __init__(
-        self, distribution_name: str, parameters: list[NumericOrArray]
-    ) -> None:
+    def __init__(self, distribution_name: str, parameters: list[NumericOrArray]) -> None:
         """Initialize continuous distribution by name.
 
         Args:
@@ -1086,8 +1070,7 @@ class ContinuousDistributionGenerator(DistributionGeneratorBase):
         distribution_name = distribution_name.lower()
         if distribution_name not in AVAILABLE_CONTINUOUS_DISTRIBUTIONS:
             raise ValueError(
-                f"Distribution {distribution_name} must be one of "
-                f"{list(AVAILABLE_CONTINUOUS_DISTRIBUTIONS.keys())}"
+                f"Distribution {distribution_name} must be one of {list(AVAILABLE_CONTINUOUS_DISTRIBUTIONS.keys())}"
             )
         distribution_cls = AVAILABLE_CONTINUOUS_DISTRIBUTIONS[distribution_name]
         super().__init__(distribution_cls(*parameters))

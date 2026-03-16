@@ -83,11 +83,7 @@ def test_sum_stochastic():
     y = sum(x)
     assert isinstance(y, StochasticScalar)  # Type guard for type checker
     assert pnp.all(y == StochasticScalar([3, 5, 7]))
-    assert (
-        y.coupled_variable_group
-        == x[0].coupled_variable_group
-        == x[1].coupled_variable_group
-    )
+    assert y.coupled_variable_group == x[0].coupled_variable_group == x[1].coupled_variable_group
 
 
 def test_divide():
@@ -350,9 +346,7 @@ def test_get_value_at_sim_stochastic():
     )
     assert pnp.all(
         x.get_value_at_sim(StochasticScalar([0, 2]))
-        == ProteusVariable(
-            "dim1", {"a": StochasticScalar([1, 3]), "b": StochasticScalar([2, 4])}
-        )
+        == ProteusVariable("dim1", {"a": StochasticScalar([1, 3]), "b": StochasticScalar([2, 4])})
     )
 
 
@@ -382,9 +376,7 @@ def test_array_func2():
 
 def test_from_csv():
     # we know the type because we are reading from a file with known contents...
-    x = ProteusVariable[StochasticScalar].from_csv(
-        "tests/data/variable.csv", "class", "value"
-    )
+    x = ProteusVariable[StochasticScalar].from_csv("tests/data/variable.csv", "class", "value")
     expected = ProteusVariable(
         dim_name="class",
         values={

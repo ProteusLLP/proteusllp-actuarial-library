@@ -29,20 +29,20 @@ class CouplingGroup:
         Args:
             variable: The initial variable to add to the group.
         """
-        self._refs: weakref.WeakValueDictionary[int, ProteusStochasticVariable] = (
-            weakref.WeakValueDictionary({variable._uid: variable})  # type: ignore[misc]
+        self._refs: weakref.WeakValueDictionary[int, ProteusStochasticVariable] = weakref.WeakValueDictionary(
+            {variable._uid: variable}  # type: ignore[misc]  # pyright: ignore[reportPrivateUsage]
         )
 
     def add(self, obj: ProteusStochasticVariable) -> None:
         """Add a variable to the coupling group."""
-        self._refs[obj._uid] = obj  # type: ignore[misc]
+        self._refs[obj._uid] = obj  # type: ignore[misc]  # pyright: ignore[reportPrivateUsage]
 
     def discard(self, obj: ProteusStochasticVariable) -> None:
         """Remove a variable from the coupling group if it exists."""
-        self._refs.pop(obj._uid, None)  # type: ignore[misc]
+        self._refs.pop(obj._uid, None)  # type: ignore[misc]  # pyright: ignore[reportPrivateUsage]
 
     def __contains__(self, obj: ProteusStochasticVariable) -> bool:
-        return obj._uid in self._refs  # type: ignore[misc]
+        return obj._uid in self._refs  # type: ignore[misc]  # pyright: ignore[reportPrivateUsage]
 
     def __len__(self) -> int:
         return len(self._refs)
