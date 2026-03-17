@@ -22,6 +22,7 @@ __all__ = [
     "ArithmeticProtocol",
     "Config",
     "DistributionLike",
+    "DistributionParameter",
     "Numeric",
     "NumericLike",
     "NumericProtocol",
@@ -36,6 +37,12 @@ Numeric = t.Union[float, int, np.number]
 # They don't accept complex numbers, _NumericProtocol objects, or general
 # np.number types.
 ScipyNumeric = t.Union[float, int, np.floating, np.integer]
+
+# Type alias for distribution parameters - clean type for documentation
+if t.TYPE_CHECKING:
+    from .stochastic_scalar import StochasticScalar
+
+DistributionParameter = t.Union[int, float, "StochasticScalar"]
 
 T_value = t.TypeVar("T_value")
 T_co = t.TypeVar("T_co", covariant=True)
