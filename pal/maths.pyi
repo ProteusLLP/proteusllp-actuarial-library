@@ -76,12 +76,6 @@ def where(condition: t.Any, x: StochasticScalar, y: float | int) -> StochasticSc
 @t.overload
 def where(condition: t.Any, x: float | int, y: StochasticScalar) -> StochasticScalar: ...
 @t.overload
-def where(
-    condition: t.Any,
-    x: npt.NDArray[t.Any],
-    y: npt.NDArray[t.Any],
-) -> npt.NDArray[t.Any]: ...
-@t.overload
 def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any: ...
 
 # safe_divide

@@ -145,10 +145,24 @@ class DiscreteDistributionBase(DistributionBase, ABC):
 
 
 class Poisson(DiscreteDistributionBase):
-    """Poisson Distribution.
+    r"""Poisson Distribution.
+
+    The probability mass function (PMF) is:
+
+    .. math::
+
+        P(X = k) = \frac{\lambda^k e^{-\lambda}}{k!}, \quad k = 0, 1, 2, \ldots
+
+    where :math:`\lambda > 0` is the mean (and variance) of the distribution.
+
+    The cumulative distribution function is:
+
+    .. math::
+
+        F(k) = e^{-\lambda} \sum_{i=0}^{\lfloor k \rfloor} \frac{\lambda^i}{i!}
 
     Parameters:
-        mean: Mean number of events.
+        mean: Mean number of events :math:`\lambda`.
     """
 
     def __init__(self, mean: NumericOrArray) -> None:
@@ -176,7 +190,19 @@ class Poisson(DiscreteDistributionBase):
 
 
 class NegBinomial(DiscreteDistributionBase):
-    """Negative Binomial Distribution."""
+    r"""Negative Binomial Distribution.
+
+    The probability mass function (PMF) is:
+
+    .. math::
+
+        P(X = k) = \binom{k + r - 1}{k} p^r (1-p)^k, \quad k = 0, 1, 2, \ldots
+
+    where :math:`r > 0` is the number of failures until stop and :math:`0 < p < 1`
+    is the probability of success.
+
+    Often used to model overdispersed count data.
+    """
 
     def __init__(
         self,
@@ -216,7 +242,19 @@ class NegBinomial(DiscreteDistributionBase):
 
 
 class Binomial(DiscreteDistributionBase):
-    """Binomial Distribution."""
+    r"""Binomial Distribution.
+
+    The probability mass function (PMF) is:
+
+    .. math::
+
+        P(X = k) = \binom{n}{k} p^k (1-p)^{n-k}, \quad k = 0, 1, \ldots, n
+
+    where :math:`n` is the number of trials and :math:`0 \leq p \leq 1` is the
+    probability of success on each trial.
+
+    Models the number of successes in a fixed number of independent Bernoulli trials.
+    """
 
     def __init__(self, n: int | npt.NDArray[np.integer], p: float | npt.NDArray[np.floating]) -> None:
         """Initialize binomial distribution.
@@ -252,14 +290,24 @@ class Binomial(DiscreteDistributionBase):
 
 
 class HyperGeometric(DiscreteDistributionBase):
-    """Hypergeometric Distribution.
+    r"""Hypergeometric Distribution.
 
-    Models the number of successes in draws without replacement.
+    The probability mass function (PMF) is:
+
+    .. math::
+
+        P(X = k) = \frac{\binom{K}{k}\binom{N-K}{n-k}}{\binom{N}{n}}
+
+    where :math:`N` is the population size, :math:`K` is the number of success
+    states in the population, :math:`n` is the number of draws, and :math:`k`
+    is the number of observed successes.
+
+    Models the number of successes in draws without replacement from a finite population.
 
     Parameters:
-        ngood: Number of good items.
-        nbad: Number of bad items.
-        population_size: Total population size.
+        ngood: Number of good items :math:`K`.
+        nbad: Number of bad items :math:`N-K`.
+        population_size: Total population size :math:`N`.
     """
 
     def __init__(
@@ -307,9 +355,17 @@ class HyperGeometric(DiscreteDistributionBase):
 class GPD(DistributionBase):
     r"""Generalized Pareto Distribution.
 
-    Defined by:
-        F(x) = 1 - (1 + ξ(x-μ)/σ)^(-1/ξ) for ξ ≠ 0,
-        F(x) = 1 - exp(-(x-μ)/σ) for ξ = 0.
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = \begin{cases}
+        1 - \left(1 + \frac{\xi(x-\mu)}{\sigma}\right)^{-1/\xi} & \text{for } \xi \neq 0 \\
+        1 - \exp\left(-\frac{x-\mu}{\sigma}\right) & \text{for } \xi = 0
+        \end{cases}
+
+    where :math:`\xi` is the shape parameter, :math:`\sigma` is the scale parameter,
+    and :math:`\mu` is the location parameter.
     """
 
     def __init__(
@@ -347,14 +403,20 @@ class GPD(DistributionBase):
 class Burr(DistributionBase):
     r"""Burr Distribution.
 
-    Defined by:
-        F(x) = 1 - [1 + ((x-μ)/σ)^power]^(-shape), x > μ
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = 1 - \left[1 + \left(\frac{x-\mu}{\sigma}\right)^c\right]^{-k}, \quad x > \mu
+
+    where :math:`c` is the power parameter, :math:`k` is the shape parameter,
+    :math:`\sigma` is the scale parameter, and :math:`\mu` is the location parameter.
 
     Parameters:
-        power: The power parameter.
-        shape: The shape parameter.
-        scale: The scale parameter.
-        loc: The location parameter.
+        power: The power parameter :math:`c`.
+        shape: The shape parameter :math:`k`.
+        scale: The scale parameter :math:`\sigma`.
+        loc: The location parameter :math:`\mu`.
     """
 
     def __init__(
@@ -390,14 +452,23 @@ class Burr(DistributionBase):
 class Beta(DistributionBase):
     r"""Beta Distribution.
 
-    Defined by:
-        F(x) = (Γ(α+β) / (Γ(α)Γ(β))) ∫₀^((x-μ)/σ) u^(α-1)(1-u)^(β-1) du
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = I_{(x-\mu)/\sigma}(\alpha, \beta) =
+            \frac{\Gamma(\alpha+\beta)}{\Gamma(\alpha)\Gamma(\beta)}
+            \int_0^{(x-\mu)/\sigma} t^{\alpha-1}(1-t)^{\beta-1} dt
+
+    where :math:`I_x(\alpha, \beta)` is the regularized incomplete beta function,
+    :math:`\Gamma` is the gamma function, :math:`\alpha` and :math:`\beta` are shape parameters,
+    :math:`\sigma` is the scale parameter, and :math:`\mu` is the location parameter.
 
     Parameters:
-        alpha: Alpha parameter.
-        beta: Beta parameter.
-        scale: Scale parameter (default 1.0).
-        loc: Location parameter (default 0.0).
+        alpha: Alpha shape parameter :math:`\alpha > 0`.
+        beta: Beta shape parameter :math:`\beta > 0`.
+        scale: Scale parameter :math:`\sigma` (default 1.0).
+        loc: Location parameter :math:`\mu` (default 0.0).
     """
 
     def __init__(
@@ -446,13 +517,19 @@ class Beta(DistributionBase):
 class LogLogistic(DistributionBase):
     r"""Log-Logistic Distribution.
 
-    Defined by:
-        F(x) = y / (1 + y) where y = ((x-μ)/σ)^shape, x > μ
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = \frac{y}{1 + y}, \quad \text{where } y = \left(\frac{x-\mu}{\sigma}\right)^\alpha, \quad x > \mu
+
+    where :math:`\alpha` is the shape parameter, :math:`\sigma` is the scale parameter,
+    and :math:`\mu` is the location parameter.
 
     Parameters:
-        shape: Shape parameter.
-        scale: Scale parameter.
-        loc: Location parameter (default 0.0).
+        shape: Shape parameter :math:`\alpha`.
+        scale: Scale parameter :math:`\sigma`.
+        loc: Location parameter :math:`\mu` (default 0.0).
     """
 
     def __init__(
@@ -485,7 +562,25 @@ class LogLogistic(DistributionBase):
 
 
 class Normal(DistributionBase):
-    """Normal Distribution."""
+    r"""Normal (Gaussian) Distribution.
+
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = \Phi\left(\frac{x - \mu}{\sigma}\right) =
+            \frac{1}{2}\left[1 + \text{erf}\left(
+            \frac{x - \mu}{\sigma\sqrt{2}}\right)\right]
+
+    where :math:`\Phi` is the standard normal CDF, :math:`\mu` is the mean,
+    and :math:`\sigma > 0` is the standard deviation.
+
+    The probability density function is:
+
+    .. math::
+
+        f(x) = \frac{1}{\sigma\sqrt{2\pi}} \exp\left(-\frac{(x-\mu)^2}{2\sigma^2}\right)
+    """
 
     def __init__(self, mu: NumericOrArray, sigma: NumericOrArray) -> None:
         """Initialize normal distribution.
@@ -511,7 +606,19 @@ class Normal(DistributionBase):
 
 
 class Logistic(DistributionBase):
-    """Logistic Distribution."""
+    r"""Logistic Distribution.
+
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = \frac{1}{1 + e^{-(x-\mu)/\sigma}}
+
+    where :math:`\mu` is the location parameter and :math:`\sigma > 0` is the
+    scale parameter.
+
+    The logistic distribution has heavier tails than the normal distribution.
+    """
 
     def __init__(self, mu: NumericOrArray, sigma: NumericOrArray) -> None:
         """Initialize logistic distribution.
@@ -536,7 +643,21 @@ class Logistic(DistributionBase):
 
 
 class LogNormal(DistributionBase):
-    """Log-Normal Distribution."""
+    r"""Log-Normal Distribution.
+
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = \Phi\left(\frac{\ln(x) - \mu}{\sigma}\right)
+
+    where :math:`\Phi` is the standard normal CDF, :math:`\mu` is the mean of
+    the logarithm of the variable, and :math:`\sigma > 0` is the standard deviation
+    of the logarithm.
+
+    If :math:`Y = \ln(X)` is normally distributed with mean :math:`\mu` and
+    standard deviation :math:`\sigma`, then :math:`X` follows a log-normal distribution.
+    """
 
     def __init__(self, mu: NumericOrArray, sigma: NumericOrArray) -> None:
         """Initialize log-normal distribution.
@@ -564,8 +685,15 @@ class LogNormal(DistributionBase):
 class Gamma(DistributionBase):
     r"""Gamma Distribution.
 
-    Defined by:
-        F(x) = (1/Γ(α)) γ(α, (x-μ)/θ), x > μ
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = \frac{1}{\Gamma(\alpha)} \gamma\left(\alpha, \frac{x-\mu}{\theta}\right), \quad x > \mu
+
+    where :math:`\Gamma(\alpha)` is the gamma function, :math:`\gamma(\alpha, z)` is the
+    lower incomplete gamma function, :math:`\alpha` is the shape parameter,
+    :math:`\theta` is the scale parameter, and :math:`\mu` is the location parameter.
     """
 
     def __init__(
@@ -616,8 +744,17 @@ class Gamma(DistributionBase):
 class InverseGamma(DistributionBase):
     r"""Inverse Gamma Distribution.
 
-    Defined by:
-        F(x) = 1 - (1/Γ(α)) γ(α, θ/(x-μ)), x > μ
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = 1 - \frac{1}{\Gamma(\alpha)} \gamma\left(\alpha,
+            \frac{\theta}{x-\mu}\right), \quad x > \mu
+
+    where :math:`\Gamma(\alpha)` is the gamma function,
+    :math:`\gamma(\alpha, z)` is the lower incomplete gamma function,
+    :math:`\alpha > 0` is the shape parameter, :math:`\theta > 0` is the
+    scale parameter, and :math:`\mu` is the location parameter.
     """
 
     def __init__(
@@ -651,8 +788,17 @@ class InverseGamma(DistributionBase):
 class Pareto(DistributionBase):
     r"""Pareto Distribution.
 
-    Defined by:
-        F(x) = 1 - (x_m / x)^a
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = 1 - \left(\frac{x_m}{x}\right)^\alpha, \quad x \geq x_m
+
+    where :math:`\alpha > 0` is the shape parameter (tail index) and
+    :math:`x_m > 0` is the scale parameter (minimum value).
+
+    The Pareto distribution is a power-law probability distribution often used
+    to model heavy-tailed phenomena in actuarial science and economics.
     """
 
     def __init__(self, shape: NumericOrArray, scale: NumericOrArray) -> None:
@@ -680,13 +826,20 @@ class Pareto(DistributionBase):
 class Paralogistic(DistributionBase):
     r"""ParaLogistic Distribution.
 
-    Defined by:
-        F(x) = 1 - [1 + ((x-μ)/σ)^α]^(-α), x > μ
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = 1 - \left[1 + \left(\frac{x-\mu}{\sigma}\right)^\alpha\right]^{-\alpha},
+            \quad x > \mu
+
+    where :math:`\alpha > 0` is the shape parameter, :math:`\sigma > 0` is the
+    scale parameter, and :math:`\mu` is the location parameter.
 
     Parameters:
-        shape: Shape parameter.
-        scale: Scale parameter.
-        loc: Location parameter (default 0).
+        shape: Shape parameter :math:`\alpha`.
+        scale: Scale parameter :math:`\sigma`.
+        loc: Location parameter :math:`\mu` (default 0).
     """
 
     def __init__(
@@ -719,14 +872,22 @@ class Paralogistic(DistributionBase):
 class InverseBurr(DistributionBase):
     r"""Inverse Burr Distribution.
 
-    Defined by:
-        F(x) = [(( (x-μ)/σ )^τ / (1 + ((x-μ)/σ )^τ)]^α
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = \left[\frac{\left(\frac{x-\mu}{\sigma}\right)^\tau}
+            {1 + \left(\frac{x-\mu}{\sigma}\right)^\tau}\right]^\alpha
+
+    where :math:`\tau > 0` is the power parameter, :math:`\alpha > 0` is the shape
+    parameter, :math:`\sigma > 0` is the scale parameter, and :math:`\mu` is the
+    location parameter.
 
     Parameters:
-        power: Power parameter (τ).
-        shape: Shape parameter (α).
-        scale: Scale parameter (σ).
-        loc: Location parameter (μ).
+        power: Power parameter :math:`\tau`.
+        shape: Shape parameter :math:`\alpha`.
+        scale: Scale parameter :math:`\sigma`.
+        loc: Location parameter :math:`\mu`.
     """
 
     def __init__(
@@ -774,12 +935,16 @@ class InverseBurr(DistributionBase):
 class InverseParalogistic(DistributionBase):
     r"""Inverse ParaLogistic Distribution.
 
-    Represents an Inverse ParaLogistic distribution with given shape and scale
-    parameters.
+    The cumulative distribution function (CDF) is:
 
-    Its CDF is defined as:
+    .. math::
 
-        F(x) = [(( (x-μ)/σ )^α / (1 + ((x-μ)/σ )^α)]^(-α),  x > μ
+        F(x) = \left[\frac{\left(\frac{x-\mu}{\sigma}\right)^\alpha}
+            {1 + \left(\frac{x-\mu}{\sigma}\right)^\alpha}\right]^\alpha,
+            \quad x > \mu
+
+    where :math:`\alpha > 0` is the shape parameter, :math:`\sigma > 0` is the
+    scale parameter, and :math:`\mu` is the location parameter.
     """
 
     def __init__(
@@ -820,8 +985,17 @@ class InverseParalogistic(DistributionBase):
 class Weibull(DistributionBase):
     r"""Weibull Distribution.
 
-    Defined by:
-        F(x) = 1 - exp(-((x-μ)/σ)^α), x > μ
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = 1 - \exp\left[-\left(\frac{x-\mu}{\sigma}\right)^\alpha\right], \quad x > \mu
+
+    where :math:`\alpha > 0` is the shape parameter, :math:`\sigma > 0` is the
+    scale parameter, and :math:`\mu` is the location parameter.
+
+    The Weibull distribution is widely used in reliability engineering and
+    failure analysis.
     """
 
     def __init__(self, shape: float, scale: float, loc: float = 0) -> None:
@@ -851,13 +1025,22 @@ class Weibull(DistributionBase):
 class InverseWeibull(DistributionBase):
     r"""Inverse Weibull Distribution.
 
-    Defined by:
-        F(x) = exp(-((x-μ)/σ)^(-α)), x > μ
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = \exp\left[-\left(\frac{x-\mu}{\sigma}\right)^{-\alpha}\right],
+            \quad x > \mu
+
+    where :math:`\alpha > 0` is the shape parameter, :math:`\sigma > 0` is the
+    scale parameter, and :math:`\mu` is the location parameter.
+
+    Also known as the Fréchet distribution.
 
     Parameters:
-        shape (float): Shape parameter (α).
-        scale (float): Scale parameter (σ).
-        loc (float): Location parameter (μ).
+        shape: Shape parameter :math:`\alpha`.
+        scale: Scale parameter :math:`\sigma`.
+        loc: Location parameter :math:`\mu`.
     """
 
     def __init__(self, shape: float, scale: float, loc: float = 0) -> None:
@@ -883,15 +1066,239 @@ class InverseWeibull(DistributionBase):
         return self._loc + self._scale * (-1 / np.log(u)) ** (1 / self._shape)
 
 
+class GEV(DistributionBase):
+    r"""Generalized Extreme Value Distribution.
+
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = \begin{cases}
+        \exp\left[-\left(1 + \xi\frac{x-\mu}{\sigma}\right)^{-1/\xi}\right]
+            & \text{for } \xi \neq 0 \\
+        \exp\left[-\exp\left(-\frac{x-\mu}{\sigma}\right)\right]
+            & \text{for } \xi = 0
+        \end{cases}
+
+    where :math:`\xi` is the shape parameter, :math:`\sigma > 0` is the scale
+    parameter, and :math:`\mu` is the location parameter.
+
+    The GEV distribution unifies the Gumbel (:math:`\xi = 0`),
+    Fréchet (:math:`\xi > 0`), and Weibull (:math:`\xi < 0`) families.
+    Essential for extreme value analysis in catastrophe modeling.
+
+    Parameters:
+        shape: Shape parameter :math:`\xi`.
+        scale: Scale parameter :math:`\sigma`.
+        loc: Location parameter :math:`\mu` (default 0).
+    """
+
+    def __init__(
+        self,
+        shape: NumericOrArray,
+        scale: NumericOrArray,
+        loc: NumericOrArray = 0.0,
+    ) -> None:
+        """Initialize GEV distribution.
+
+        Args:
+            shape: Shape parameter.
+            scale: Scale parameter.
+            loc: Location parameter.
+        """
+        super().__init__(shape=shape, scale=scale, loc=loc)
+
+    @override
+    def cdf(self, x: NumericOrArray) -> ReturnType:
+        """Compute cumulative distribution function."""
+        shape, scale, loc = self._params.values()
+        z = (x - loc) / scale
+        if abs(shape) <= TOLERANCE:
+            # Gumbel case (ξ = 0)
+            return np.exp(-np.exp(-z))
+        else:
+            # Fréchet (ξ > 0) or Weibull (ξ < 0) case
+            t = 1 + shape * z
+            return np.exp(-np.power(t, -1 / shape))
+
+    @override
+    def invcdf(self, u: NumericOrArray) -> ReturnType:
+        """Compute inverse cumulative distribution function."""
+        shape, scale, loc = self._params.values()
+        if abs(shape) <= TOLERANCE:
+            # Gumbel case (ξ = 0)
+            return loc - scale * np.log(-np.log(u))
+        else:
+            # Fréchet (ξ > 0) or Weibull (ξ < 0) case
+            return loc + scale * (np.power(-np.log(u), -shape) - 1) / shape
+
+
+class StudentsT(DistributionBase):
+    r"""Student's t Distribution.
+
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = \frac{1}{2} + \frac{x\Gamma\left(\frac{\nu+1}{2}\right)}
+            {\sqrt{\pi\nu}\Gamma\left(\frac{\nu}{2}\right)}
+            \,_2F_1\left(\frac{1}{2}, \frac{\nu+1}{2}; \frac{3}{2};
+            -\frac{x^2}{\nu}\right)
+
+    where :math:`\nu > 0` is the degrees of freedom parameter,
+    :math:`\Gamma` is the gamma function, and :math:`_2F_1` is the
+    hypergeometric function.
+
+    For the non-standardized version with location :math:`\mu` and
+    scale :math:`\sigma`, substitute :math:`x \to (x-\mu)/\sigma`.
+
+    The Student's t distribution has heavier tails than the normal distribution,
+    making it useful for modeling extreme events in financial and operational risk.
+
+    Parameters:
+        nu: Degrees of freedom :math:`\nu`.
+        mu: Location parameter :math:`\mu` (default 0).
+        sigma: Scale parameter :math:`\sigma` (default 1).
+    """
+
+    def __init__(
+        self,
+        nu: NumericOrArray,
+        mu: NumericOrArray = 0.0,
+        sigma: NumericOrArray = 1.0,
+    ) -> None:
+        """Initialize Student's t distribution.
+
+        Args:
+            nu: Degrees of freedom.
+            mu: Location parameter.
+            sigma: Scale parameter.
+        """
+        super().__init__(nu=nu, mu=mu, sigma=sigma)
+
+    @override
+    def cdf(self, x: NumericOrArray) -> ReturnType:
+        """Compute cumulative distribution function."""
+        nu, mu, sigma = self._params.values()
+        z = (x - mu) / sigma
+        # Use the relationship between t CDF and incomplete beta function
+        # F(t; ν) = 1/2 + t * Γ((ν+1)/2) / (√(νπ) * Γ(ν/2)) * 2F1(...)
+        # Or equivalently: F(t; ν) = 1 - 1/2 * I_{ν/(ν+t²)}(ν/2, 1/2) for t > 0
+        x_pos = np.abs(z)
+        p = special.betainc(nu / 2, 0.5, nu / (nu + x_pos**2)) / 2
+        result = np.where(z >= 0, 1 - p, p)
+        return result
+
+    @override
+    def invcdf(self, u: NumericOrArray) -> ReturnType:
+        """Compute inverse cumulative distribution function."""
+        nu, mu, sigma = self._param_values
+        # Use special.stdtrit for the inverse t distribution
+        return mu + sigma * special.stdtrit(nu, u)
+
+
+class InverseGaussian(DistributionBase):
+    r"""Inverse Gaussian (Wald) Distribution.
+
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = \Phi\left(\sqrt{\frac{\lambda}{x}}
+            \left(\frac{x}{\mu}-1\right)\right)
+            + \exp\left(\frac{2\lambda}{\mu}\right)
+            \Phi\left(-\sqrt{\frac{\lambda}{x}}
+            \left(\frac{x}{\mu}+1\right)\right)
+
+    where :math:`\Phi` is the standard normal CDF, :math:`\mu > 0` is the mean
+    parameter, and :math:`\lambda > 0` is the shape parameter.
+
+    The inverse Gaussian distribution is widely used in operational risk modeling
+    (Basel II) and for first passage time problems.
+
+    Parameters:
+        mu: Mean parameter :math:`\mu`.
+        lambda_: Shape parameter :math:`\lambda`.
+    """
+
+    def __init__(
+        self,
+        mu: NumericOrArray,
+        lambda_: NumericOrArray,
+    ) -> None:
+        """Initialize inverse Gaussian distribution.
+
+        Args:
+            mu: Mean parameter.
+            lambda_: Shape parameter.
+        """
+        super().__init__(mu=mu, lambda_=lambda_)
+
+    @override
+    def cdf(self, x: NumericOrArray) -> ReturnType:
+        """Compute cumulative distribution function."""
+        mu, lambda_ = self._param_values
+        sqrt_lambda_x = np.sqrt(lambda_ / x)
+        term1 = special.ndtr(sqrt_lambda_x * (x / mu - 1))
+        term2 = np.exp(2 * lambda_ / mu) * special.ndtr(-sqrt_lambda_x * (x / mu + 1))
+        return term1 + term2
+
+    @override
+    def invcdf(self, u: NumericOrArray) -> ReturnType:
+        """Compute inverse cumulative distribution function.
+
+        Uses numerical root finding since there is no closed form.
+        """
+        # For inverse Gaussian, there's no closed-form inverse CDF
+        # We'll need to use numerical methods or approximations
+        # This is a simplified implementation that may need scipy optimize
+        raise NotImplementedError(
+            "Inverse CDF for InverseGaussian requires numerical methods. "
+            "Use the generate() method for sampling instead."
+        )
+
+    @override
+    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+        """Generate samples using the algorithm from Michael, Schucany, and Haas.
+
+        Reference:
+            Michael, J. R., Schucany, W. R. and Haas, R. W. (1976).
+            Generating random variates using transformations with multiple roots.
+            The American Statistician 30, 88-90.
+        """
+        mu, lambda_ = self._param_values
+        mu = t.cast(float | npt.NDArray[np.floating], mu)
+        lambda_ = t.cast(float | npt.NDArray[np.floating], lambda_)
+
+        # Generate chi-squared(1) samples
+        nu = rng.normal(0, 1, n_sims) ** 2
+        y = mu + (mu**2 * nu) / (2 * lambda_) - (mu / (2 * lambda_)) * np.sqrt(4 * mu * lambda_ * nu + mu**2 * nu**2)
+
+        # Random selection step
+        u = rng.uniform(0, 1, n_sims)
+        x = np.where(u <= mu / (mu + y), y, mu**2 / y)
+
+        return StochasticScalar(x)
+
+
 class Exponential(DistributionBase):
     r"""Exponential Distribution.
 
-    Defined by:
-        F(x) = 1 - exp(-((x-μ)/σ)), x > μ
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = 1 - \exp\left(-\frac{x-\mu}{\sigma}\right), \quad x > \mu
+
+    where :math:`\sigma > 0` is the scale parameter (mean) and :math:`\mu` is the
+    location parameter.
+
+    The exponential distribution is memoryless and commonly used to model
+    waiting times.
 
     Parameters:
-        scale: Scale parameter.
-        loc: Location parameter (default 0).
+        scale: Scale parameter :math:`\sigma`.
+        loc: Location parameter :math:`\mu` (default 0).
     """
 
     def __init__(self, scale: NumericOrArray, loc: NumericOrArray = 0.0) -> None:
@@ -951,8 +1358,14 @@ class Uniform(DistributionBase):
 class InverseExponential(DistributionBase):
     r"""Inverse Exponential Distribution.
 
-    Defined by:
-        F(x) = exp(-σ/(x-μ)), x > μ
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        F(x) = \exp\left(-\frac{\sigma}{x-\mu}\right), \quad x > \mu
+
+    where :math:`\sigma > 0` is the scale parameter and :math:`\mu` is the
+    location parameter.
 
     Parameters:
         scale (float): Scale parameter.
@@ -994,13 +1407,16 @@ AVAILABLE_CONTINUOUS_DISTRIBUTIONS: dict[str, t.Any] = {
     "burr": Burr,
     "exponential": Exponential,
     "gamma": Gamma,
+    "gev": GEV,
     "gpd": GPD,
+    "inversegaussian": InverseGaussian,
     "logistic": Logistic,
     "lognormal": LogNormal,
     "loglogistic": LogLogistic,
     "normal": Normal,
     "paralogistic": Paralogistic,
     "pareto": Pareto,
+    "studentst": StudentsT,
     "uniform": Uniform,
     "inverseburr": InverseBurr,
     "inverseexponential": InverseExponential,

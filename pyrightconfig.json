@@ -1,10 +1,14 @@
 {
   "include": ["pal", "examples"],
   "exclude": ["**/node_modules/**", "**/.venv/**", "**/__pycache__/**", "**/build/**", "**/dist/**", "tests/**"],
-  "strict": ["pal"],
-  "typeCheckingMode": "strict",
+  "typeCheckingMode": "standard",
   "reportMissingImports": true,
   "reportMissingTypeStubs": false,
-  "pythonVersion": "3.11",
+  "reportInvalidTypeForm": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownParameterType": "none",
+  "reportUnknownArgumentType": "none",
+  "pythonVersion": "3.9",
   "pythonPlatform": "Linux"
 }

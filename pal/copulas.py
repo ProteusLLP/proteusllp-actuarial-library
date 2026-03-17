@@ -194,7 +194,20 @@ class EllipticalCopula(Copula, ABC):
 
 
 class GaussianCopula(EllipticalCopula):
-    """A class to represent a Gaussian copula."""
+    r"""Gaussian (Normal) Copula.
+
+    The Gaussian copula has the cumulative distribution function:
+
+    .. math::
+
+        C(u_1, \ldots, u_d) = \Phi_R\left(\Phi^{-1}(u_1), \ldots, \Phi^{-1}(u_d)\right)
+
+    where :math:`\Phi` is the standard normal CDF, :math:`\Phi^{-1}` is its inverse,
+    and :math:`\Phi_R` is the multivariate normal CDF with correlation matrix :math:`R`.
+
+    The Gaussian copula is an elliptical copula that models dependence through
+    a multivariate normal distribution.
+    """
 
     def __init__(
         self,
@@ -226,7 +239,21 @@ class GaussianCopula(EllipticalCopula):
 
 
 class StudentsTCopula(EllipticalCopula):
-    """A class to represent a Student's T copula."""
+    r"""Student's T Copula.
+
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        C(u_1, \ldots, u_d) = t_{\nu,R}\left(t_{\nu}^{-1}(u_1), \ldots, t_{\nu}^{-1}(u_d)\right)
+
+    where :math:`t_\nu` is the univariate Student's t CDF with :math:`\nu` degrees of freedom,
+    :math:`t_\nu^{-1}` is its inverse, and :math:`t_{\nu,R}` is the multivariate Student's t
+    CDF with :math:`\nu` degrees of freedom and correlation matrix :math:`R`.
+
+    The Student's t copula exhibits symmetric tail dependence, making it useful for
+    modeling joint extreme events.
+    """
 
     def __init__(
         self,
@@ -316,7 +343,25 @@ class ArchimedeanCopula(Copula, ABC):
 
 
 class ClaytonCopula(ArchimedeanCopula):
-    """A class to represent a Clayton copula."""
+    r"""Clayton Copula.
+
+    The Clayton copula has the cumulative distribution function:
+
+    .. math::
+
+        C(u_1, \ldots, u_d) = \left(\sum_{i=1}^d u_i^{-\theta} - d + 1\right)^{-1/\theta}
+
+    where :math:`\theta \geq 0` is the dependence parameter. The Clayton copula
+    exhibits lower tail dependence and is part of the Archimedean family.
+
+    The generator function is:
+
+    .. math::
+
+        \phi(t) = \frac{1}{\theta}(t^{-\theta} - 1)
+
+    For :math:`\theta = 0`, the copula reduces to the independence copula.
+    """
 
     def __init__(self, theta: float, n: int) -> None:
         """Initialize a Clayton copula.
@@ -398,7 +443,23 @@ def levy_stable(
 
 
 class GumbelCopula(ArchimedeanCopula):
-    """A class to represent a Gumbel copula."""
+    r"""Gumbel Copula.
+
+    The Gumbel copula has the cumulative distribution function:
+
+    .. math::
+
+        C(u_1, \ldots, u_d) = \exp\left[-\left(\sum_{i=1}^d (-\ln u_i)^\theta\right)^{1/\theta}\right]
+
+    where :math:`\theta \geq 1` is the dependence parameter. The Gumbel copula
+    exhibits upper tail dependence and is part of the Archimedean family.
+
+    The generator function is:
+
+    .. math::
+
+        \phi(t) = (-\ln t)^\theta
+    """
 
     def __init__(self, theta: float, n: int) -> None:
         """Initialize a Gumbel copula.
@@ -422,7 +483,25 @@ class GumbelCopula(ArchimedeanCopula):
 
 
 class FrankCopula(ArchimedeanCopula):
-    """A class to represent a Frank copula."""
+    r"""Frank Copula.
+
+    The Frank copula has the cumulative distribution function:
+
+    .. math::
+
+        C(u_1, \ldots, u_d) = -\frac{1}{\theta} \ln\left(1 +
+            \frac{\prod_{i=1}^d (e^{-\theta u_i} - 1)}{(e^{-\theta} - 1)^{d-1}}
+            \right)
+
+    where :math:`\theta \in \mathbb{R} \setminus \{0\}` is the dependence parameter.
+    The Frank copula is symmetric and does not exhibit tail dependence.
+
+    The generator function is:
+
+    .. math::
+
+        \phi(t) = -\ln\left(\frac{e^{-\theta t} - 1}{e^{-\theta} - 1}\right)
+    """
 
     def __init__(self, theta: float, n: int) -> None:
         """Initialize a Frank copula.
@@ -444,7 +523,17 @@ class FrankCopula(ArchimedeanCopula):
 
 
 class JoeCopula(ArchimedeanCopula):
-    """A class to represent a Joe copula."""
+    r"""A class to represent a Joe copula.
+
+    The Joe copula is an Archimedean copula with generator function:
+
+    .. math::
+
+        \psi(t) = 1 - (1 - e^{-t})^{1/\theta}
+
+    where :math:`\theta \geq 1` is the dependence parameter. The copula exhibits
+    upper tail dependence with coefficient :math:`2 - 2^{1/\theta}`.
+    """
 
     def __init__(self, theta: float, n: int) -> None:
         """Initialize a Joe copula.
@@ -468,19 +557,23 @@ class JoeCopula(ArchimedeanCopula):
 
 
 class MM1Copula(Copula):
-    """A multivariate max-mixture copula, denoted MM1 by Joe.
+    r"""A multivariate max-mixture copula, denoted MM1 by Joe.
 
     The MM1 copula is a multivariate copula which allows for different upper tail
     dependence structures between each pair of dimensions. It can be regarded as an
     extension of the Gumbel copula to more flexible dependence.
 
-    The upper tail dependence coefficient between any pair of variables i and j in the
-    MM1 copula is given by
+    The upper tail dependence coefficient between any pair of variables :math:`i`
+    and :math:`j` in the MM1 copula is given by:
 
-    2-(((2 ^ (1 / delta_ij)) / (d - 1) + 2 * (d - 2) / (d - 1)) ^ (1 / theta))
+    .. math::
 
-    where delta_ij is the pairwise parameter from the delta_matrix, d is the
-    dimension of the copula, and theta is the overall mixing parameter.
+        \lambda_{ij} = 2 - \left(\frac{2^{1/\delta_{ij}}}{d-1}
+        + \frac{2(d-2)}{d-1}\right)^{1/\theta}
+
+    where :math:`\delta_{ij}` is the pairwise parameter from the delta_matrix,
+    :math:`d` is the dimension of the copula, and :math:`\theta` is the overall
+    mixing parameter.
 
     The simulation approach uses the max-mixture representation of the MM1 copula,
     detailed in Joe (2015, Chapter 6).
@@ -568,17 +661,23 @@ class MM1Copula(Copula):
 
 
 class GalambosCopula(Copula):
-    """A class to represent a Galambos copula.
+    r"""A class to represent a Galambos copula.
 
     The Galambos copula is an example of a multivariate extreme value copula,
     which is particularly suited for modeling upper tail dependence between
     random variables.
 
-    Its dependence structure is characterized by a single parameter, theta>0,
-    which controls the strength of the upper tail dependence.
+    Its dependence structure is characterized by a single parameter,
+    :math:`\theta > 0`, which controls the strength of the upper tail dependence.
 
-    The tail dependence coefficient between any pair of variables in the
-    Galambos copula is given by 2^(-1/theta),
+    The upper tail dependence coefficient between any pair of variables in the
+    Galambos copula is given by:
+
+    .. math::
+
+        \lambda_U = 2^{-1/\theta}
+
+    where :math:`\theta > 0` is the copula parameter.
 
     References:
         Galambos, János. The Asymptotic Theory of Extreme Order Statistics. New York:
@@ -693,12 +792,21 @@ class GalambosCopula(Copula):
 
 
 class PlackettCopula(Copula):
-    """A class to represent a Plackett copula.
+    r"""A class to represent a Plackett copula.
 
     The Plackett copula is a bivariate copula that can model both positive and
     negative dependence between two random variables. It is characterized by a
-    single parameter, delta>0, which controls the strength and direction of the
-    dependence.
+    single parameter, :math:`\delta > 0`, which controls the strength and
+    direction of the dependence.
+
+    The cumulative distribution function is:
+
+    .. math::
+
+        C(u, v) = \frac{S - \sqrt{S^2 - 4uv\delta(\delta-1)}}{2(\delta-1)}
+
+    where :math:`S = 1 + (u+v)(\delta-1)` and :math:`\delta \neq 1`. When
+    :math:`\delta = 1`, the copula reduces to the independence copula.
 
     References:
         Plackett, R. L. (1965). A class of bivariate distributions. Journal of the
@@ -783,23 +891,26 @@ def _sibuya_gen(alpha: float, size: int | tuple[int, ...], rng: np.random.Genera
 
 
 class HuslerReissCopula(Copula):
-    """A class to represent a Hüsler-Reiss copula.
+    r"""A class to represent a Hüsler-Reiss copula.
 
     The Hüsler-Reiss copula is an example of a multivariate extreme value copula,
     which is suited for modeling upper tail dependence between
     random variables and allows for a flexible specification of tail dependency
     for each bivariate pair of variables.
 
-    Its dependence structure is characterized by a matrix Lambda_ij which controls the
-    strength of the upper tail dependence between each pair of variables. Lower values
-    in the matrix correspond to stronger dependence.
+    Its dependence structure is characterized by a matrix :math:`\Lambda_{ij}`
+    which controls the strength of the upper tail dependence between each pair
+    of variables. Lower values in the matrix correspond to stronger dependence.
 
-    The upper tail dependence coefficient between any pair of variables i and j in the
-    Hüsler-Reiss copula is given by:
+    The upper tail dependence coefficient between any pair of variables
+    :math:`i` and :math:`j` in the Hüsler-Reiss copula is given by:
 
-    χ_ij = 2 * (1 - Phi( λ_ij  )),
+    .. math::
 
-    where Phi is the standard normal CDF.
+        \chi_{ij} = 2\left(1 - \Phi(\lambda_{ij})\right)
+
+    where :math:`\Phi` is the standard normal CDF and :math:`\lambda_{ij}` are
+    the elements of the lambda matrix.
 
     References:
         Hüsler, J., & Reiss, R. D. (1989). Maxima of normal random vectors: between
@@ -858,22 +969,22 @@ class HuslerReissCopula(Copula):
             lambda_matrix: Symmetric matrix λ_ij determining the pairwise dependency
             between variables.
         """
-        lambda_matrix = np.asarray(lambda_matrix)
-        if lambda_matrix.ndim != 2 or lambda_matrix.shape[0] != lambda_matrix.shape[1]:
+        lambda_matrix = t.cast(npt.NDArray[np.floating], np.asarray(lambda_matrix))
+        if lambda_matrix.ndim != 2 or lambda_matrix.shape[0] != lambda_matrix.shape[1]:  # type: ignore[union-attr]
             raise ValueError("Parameter matrix must be square")
-        if lambda_matrix.min() < 0.0:
+        if lambda_matrix.min() < 0.0:  # type: ignore[union-attr]
             raise ValueError("Matrix values must be non-negative")
-        if not np.allclose(lambda_matrix, lambda_matrix.T):
+        if not np.allclose(lambda_matrix, lambda_matrix.T):  # type: ignore[union-attr]
             raise ValueError("Matrix must be symmetric")
-        if not np.allclose(np.diag(lambda_matrix), 0.0):
+        if not np.allclose(np.diag(lambda_matrix), 0.0):  # type: ignore[union-attr]
             raise ValueError("Matrix diagonal must be zero")
 
         # calculate the covariance matrix from the lambda matrix
-        d = lambda_matrix.shape[0]
-        np.clip(lambda_matrix, a_min=0, a_max=100, out=lambda_matrix)
+        d = lambda_matrix.shape[0]  # type: ignore[union-attr]
+        np.clip(lambda_matrix, a_min=0, a_max=100, out=lambda_matrix)  # type: ignore[arg-type]
         # pivot on the first variable to construct a covariance matrix
         # consistent with the variogram defined by lambda_matrix squared
-        covariance_matrix = 2 * (lambda_matrix[0] ** 2 + lambda_matrix[:, 0, None] ** 2 - lambda_matrix**2)
+        covariance_matrix = 2 * (lambda_matrix[0] ** 2 + lambda_matrix[:, 0, None] ** 2 - lambda_matrix**2)  # type: ignore[index,operator]
         covariance_sub = covariance_matrix[1:, 1:]
         vals, vecs = np.linalg.eigh(covariance_sub)
         if vals.min() < 1e-6:
@@ -1077,20 +1188,27 @@ class HuslerReissCopula(Copula):
 
 
 class ExtremalTCopula(Copula):
-    """A class to represent an Extremal-t copula.
+    r"""A class to represent an Extremal-t copula.
 
     The Extremal-t copula, also known as the t-EV copula, is an example of a
     multivariate extreme value copula, which is suited for modeling upper tail
     dependence between random variables.
 
     Its dependence structure is characterized by a correlation matrix and a degrees
-    of freedom parameter nu > 0, which controls the strength of the upper tail
-    dependence.
+    of freedom parameter :math:`\nu > 0`, which controls the strength of the
+    upper tail dependence.
 
-    The upper tail dependence coefficient between any pair of variables i and j in the
-    Extremal-t copula is given by 2 * t_{nu+1}(-sqrt((nu+1)(1-rho_ij)/(1+rho_ij))),
-    where t_{nu+1} is the CDF of a univariate t-distribution with nu+1 degrees of
-    freedom and rho_ij is the correlation between variables i and j.
+    The upper tail dependence coefficient between any pair of variables :math:`i`
+    and :math:`j` in the Extremal-t copula is given by:
+
+    .. math::
+
+        \lambda_{ij} = 2 \, t_{\nu+1}\left(-\sqrt{
+        \frac{(\nu+1)(1-\rho_{ij})}{1+\rho_{ij}}}\right)
+
+    where :math:`t_{\nu+1}` is the CDF of a univariate t-distribution with
+    :math:`\nu+1` degrees of freedom and :math:`\rho_{ij}` is the correlation
+    between variables :math:`i` and :math:`j`.
 
     The lower tail dependence coefficient is zero for all pairs of variables.
 

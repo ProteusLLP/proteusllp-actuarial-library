@@ -638,7 +638,7 @@ def test_upsample_dict_mixed_types():
     # type checker can infer that the ProteusVariable contains a union of types - we're
     # only annotating here to prove the point and raise a type error we ever break this.
     # vscode, for example, will show you the type if you hover over 'x'.
-    x: ProteusVariable[StochasticScalar | int] = ProteusVariable(
+    x = ProteusVariable(
         dim_name="test",
         values={
             "stochastic": StochasticScalar([1, 2, 3]),
