@@ -37,6 +37,9 @@ class Copula(ABC):
     uniform random samples on [0,1].
     """
 
+    dimension: int
+    """The dimension of the copula."""
+
     @abstractmethod
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
@@ -134,15 +137,14 @@ class Copula(ABC):
 
         Args:
             variables: Either a ProteusVariable containing VectorLike values or
-                      a list of VectorLike instances. Only StochasticScalar
-                      values are processed; other types are silently ignored
-                      when passed in a ProteusVariable.
+                      a list of VectorLike instances.
 
         Raises:
             TypeError: If list contains non-StochasticScalar values.
             ValueError: If variables have inconsistent simulation counts.
         """
         variables_list = list(variables)
+        self.dimension = len(variables_list)
         # Generate the copula samples
         # Check that n_sims is available
         n_sims = variables_list[0].n_sims
@@ -158,8 +160,8 @@ class Copula(ABC):
 class EllipticalCopula(Copula, ABC):
     """A base class to represent an elliptical copula."""
 
-    matrix: npt.NDArray[np.floating]
-    chol: npt.NDArray[np.floating]
+    _matrix: npt.NDArray[np.floating]
+    _chol: npt.NDArray[np.floating]
 
     def __init__(
         self,
@@ -183,14 +185,14 @@ class EllipticalCopula(Copula, ABC):
             self.correlation_matrix = _matrix
             # Check that the correlation matrix is positive definite
             try:
-                self.chol = np.linalg.cholesky(self.correlation_matrix)
+                self._chol = np.linalg.cholesky(self.correlation_matrix)
             except np.linalg.LinAlgError as e:
                 raise ValueError("Correlation matrix is not positive definite") from e
         elif matrix_type == "chol":
-            self.chol = _matrix
+            self._chol = _matrix
         else:
             raise ValueError("matrix_type must be 'linear' or 'chol'")
-        self.matrix = _matrix
+        self._matrix = _matrix
 
 
 class GaussianCopula(EllipticalCopula):
@@ -235,7 +237,7 @@ class GaussianCopula(EllipticalCopula):
     def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         n_vars = self.correlation_matrix.shape[0]
         normal_samples = rng.standard_normal(size=(n_vars, n_sims))
-        return self.chol.dot(normal_samples)
+        return self._chol.dot(normal_samples)
 
 
 class StudentsTCopula(EllipticalCopula):
@@ -252,7 +254,12 @@ class StudentsTCopula(EllipticalCopula):
     CDF with :math:`\nu` degrees of freedom and correlation matrix :math:`R`.
 
     The Student's t copula exhibits symmetric tail dependence, making it useful for
-    modeling joint extreme events.
+    modeling joint extreme events. The upper and lower tail dependence coefficients are given by:
+    .. math::
+
+        \lambda_U = \lambda_L = 2t_{\nu+1}\left(-\sqrt{\frac{(\nu+1)(1-\rho)}{1+\rho}}\right)
+
+    where :math:`\nu` is the degrees of freedom and :math:`\rho` is the correlation parameter.
     """
 
     def __init__(
@@ -285,7 +292,7 @@ class StudentsTCopula(EllipticalCopula):
 
     def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         n_vars = self.correlation_matrix.shape[0]
-        normal_samples = self.chol.dot(rng.standard_normal(size=(n_vars, n_sims)))
+        normal_samples = self._chol.dot(rng.standard_normal(size=(n_vars, n_sims)))
         chi_samples = np.sqrt(rng.gamma(self.dof / 2, 2 / self.dof, size=n_sims))
         return normal_samples / chi_samples[np.newaxis, :]
 
@@ -302,14 +309,6 @@ class ArchimedeanCopula(Copula, ABC):
     def generate_latent_distribution(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution of the copula."""
         pass
-
-    def __init__(self, n: int) -> None:
-        """Initialize an Archimedean copula.
-
-        Args:
-            n: Number of variables.
-        """
-        self.n = n
 
     def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Transform using inverse generator function."""
@@ -328,7 +327,9 @@ class ArchimedeanCopula(Copula, ABC):
             n_sims = config.n_sims
         if rng is None:
             rng = config.rng
-        n_vars = self.n
+        if self.dimension is None:
+            raise RuntimeError("Subclasses of ArchimedeanCopula must set self.n to the number of variables")
+        n_vars = self.dimension
         # Generate samples from a uniform distribution
         u = rng.uniform(size=(n_vars, n_sims))
         # Generate samples from the latent distribution
@@ -349,10 +350,18 @@ class ClaytonCopula(ArchimedeanCopula):
 
     .. math::
 
-        C(u_1, \ldots, u_d) = \left(\sum_{i=1}^d u_i^{-\theta} - d + 1\right)^{-1/\theta}
+        C(u_1, \ldots, u_n) = \left(\sum_{i=1}^d u_i^{-\theta} - n + 1\right)^{-1/\theta}
 
     where :math:`\theta \geq 0` is the dependence parameter. The Clayton copula
     exhibits lower tail dependence and is part of the Archimedean family.
+
+    The lower tail dependence coefficient between any pair of variables in the Clayton copula is given by:
+    .. math::
+
+        \lambda_L = 2^{-1/\theta}
+
+    The upper tail dependence coefficient is zero for all :math:`\theta > 0`,
+    and the copula reduces to the independence copula when :math:`\theta = 0`.
 
     The generator function is:
 
@@ -363,18 +372,19 @@ class ClaytonCopula(ArchimedeanCopula):
     For :math:`\theta = 0`, the copula reduces to the independence copula.
     """
 
-    def __init__(self, theta: float, n: int) -> None:
+    def __init__(self, theta: float, dimension: int | None = None) -> None:
         """Initialize a Clayton copula.
 
         Args:
             theta: Copula parameter (must be >= 0). When theta=0, represents
                    the independence copula.
-            n: Number of variables.
+            dimension: Number of variables. (Optional)
         """
         if theta < 0:
             raise ValueError("Theta cannot be negative")
         self.theta = theta
-        self.n = n
+        if dimension is not None:
+            self.dimension = dimension
 
     def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Inverse generator function for Clayton copula.
@@ -452,7 +462,10 @@ class GumbelCopula(ArchimedeanCopula):
         C(u_1, \ldots, u_d) = \exp\left[-\left(\sum_{i=1}^d (-\ln u_i)^\theta\right)^{1/\theta}\right]
 
     where :math:`\theta \geq 1` is the dependence parameter. The Gumbel copula
-    exhibits upper tail dependence and is part of the Archimedean family.
+    exhibits upper tail dependence and is part of the Archimedean family. The
+        upper tail dependence coefficient between any pair of variables in the Gumbel copula is given by:
+    .. math::
+        \lambda_U = 2 - 2^{1/\theta}
 
     The generator function is:
 
@@ -461,17 +474,18 @@ class GumbelCopula(ArchimedeanCopula):
         \phi(t) = (-\ln t)^\theta
     """
 
-    def __init__(self, theta: float, n: int) -> None:
+    def __init__(self, theta: float, dimension: int | None = None) -> None:
         """Initialize a Gumbel copula.
 
         Args:
             theta: Copula parameter (must be >= 1).
-            n: Number of variables.
+            dimension: Number of variables.
         """
         if theta < 1:
             raise ValueError("Theta must be at least 1")
         self.theta = theta
-        self.n = n
+        if dimension is not None:
+            self.dimension = dimension
 
     def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Inverse generator function for Gumbel copula."""
@@ -503,15 +517,16 @@ class FrankCopula(ArchimedeanCopula):
         \phi(t) = -\ln\left(\frac{e^{-\theta t} - 1}{e^{-\theta} - 1}\right)
     """
 
-    def __init__(self, theta: float, n: int) -> None:
+    def __init__(self, theta: float, dimension: int | None = None) -> None:
         """Initialize a Frank copula.
 
         Args:
             theta: Copula parameter.
-            n: Number of variables.
+            dimension: Number of variables. (Optional)
         """
         self.theta = theta
-        self.n = n
+        if dimension is not None:
+            self.dimension = dimension
 
     def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Inverse generator function for Frank copula."""
@@ -525,6 +540,14 @@ class FrankCopula(ArchimedeanCopula):
 class JoeCopula(ArchimedeanCopula):
     r"""A class to represent a Joe copula.
 
+    The Joe copula has the cumulative distribution function:
+
+    .. math::
+
+    C(u_1, \ldots, u_d) = 1 - \left(1-\prod_{i=1}^d (1 - u_i)^{\theta} \right)^{1/\theta}
+
+    where :math:`\theta \geq 1` is the dependence parameter.
+
     The Joe copula is an Archimedean copula with generator function:
 
     .. math::
@@ -535,7 +558,7 @@ class JoeCopula(ArchimedeanCopula):
     upper tail dependence with coefficient :math:`2 - 2^{1/\theta}`.
     """
 
-    def __init__(self, theta: float, n: int) -> None:
+    def __init__(self, theta: float, dimension: int | None) -> None:
         """Initialize a Joe copula.
 
         Args:
@@ -545,7 +568,8 @@ class JoeCopula(ArchimedeanCopula):
         if theta < 1:
             raise ValueError("Theta must be in the range [1, inf)")
         self.theta = theta
-        self.n = n
+        if dimension is not None:
+            self.dimension = dimension
 
     def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Inverse generator function for Joe copula."""
@@ -562,6 +586,21 @@ class MM1Copula(Copula):
     The MM1 copula is a multivariate copula which allows for different upper tail
     dependence structures between each pair of dimensions. It can be regarded as an
     extension of the Gumbel copula to more flexible dependence.
+
+    The cumulative distribution function of the MM1 copula is given by:
+
+    .. math::
+
+    C(u_1, \ldots, u_d) = \exp\left\{
+        -\left[
+            \sum_{i<j}\left\{ \left(\frac{-\ln u_i}{d-1}\right)^{\delta_{ij}}
+                        +\left(\frac{-\ln u_j}{d-1}\right)^{\delta_{ij} }
+                        \right\}^{1/\delta_{ij}}
+        \right]^{1/\theta}
+    \right\}
+
+    for a symmetric matrix:math:`\delta_{ij} \geq 1` and :math:`\theta \geq 1`. The MM1
+    copula reduces to the Gumbel copula when all :math:`\delta_{ij} = 1`.
 
     The upper tail dependence coefficient between any pair of variables :math:`i`
     and :math:`j` in the MM1 copula is given by:
@@ -598,9 +637,9 @@ class MM1Copula(Copula):
             theta: Mixing parameter. Controls the overall dependence level.
                 Must be greater than one.
         """
-        self.n = len(delta_matrix)
-        for i in range(1, self.n):
-            if len(delta_matrix[i]) != self.n:
+        self.dimension = len(delta_matrix)
+        for i in range(1, self.dimension):
+            if len(delta_matrix[i]) != self.dimension:
                 raise ValueError("delta_matrix must be square")
             if min(delta_matrix[i][:i]) < 1:
                 raise ValueError("delta_matrix must be greater than or equal to 1")
@@ -614,7 +653,7 @@ class MM1Copula(Copula):
         return np.exp(-((-np.log(unnormalised_samples)) ** (1 / self.theta)))
 
     def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
-        n = self.n
+        n = self.dimension
         theta = self.theta
         delta_matrix = self.delta_matrix
         max_u = np.zeros((n, n_sims))
@@ -667,6 +706,12 @@ class GalambosCopula(Copula):
     which is particularly suited for modeling upper tail dependence between
     random variables.
 
+    The bivariate cumulative distribution function (CDF) of the Galambos copula is given by:
+
+    .. math::
+
+    C(u, v) = uv\exp\left(-\left[(-\ln u)^{-\theta} + (-\ln v)^{-\theta}\right]^{-1/\theta}\right)
+
     Its dependence structure is characterized by a single parameter,
     :math:`\theta > 0`, which controls the strength of the upper tail dependence.
 
@@ -679,22 +724,31 @@ class GalambosCopula(Copula):
 
     where :math:`\theta > 0` is the copula parameter.
 
+    The multivariate extension to :math:`d` dimensions is a complicated expression
+    given in Joe (1997, Chapter 5), but it can be simulated using the max stable / reciprocal
+    Archimedean representation detailed in Mai (2018).
+
+
     References:
         Galambos, János. The Asymptotic Theory of Extreme Order Statistics. New York:
         John Wiley & Sons, 1978.
+        Joe, H. (1997). Multivariate Models and Dependence Concepts. Chapman and Hall.
+        Mai, Jan-Frederik. "Exact Simulation of Reciprocal Archimedean Copulas."
+        Statistical Probability Letters (2018). arXiv preprint arXiv:1802.09996
     """
 
-    def __init__(self, theta: float, d: int) -> None:
+    def __init__(self, theta: float, dimension: int | None = None) -> None:
         """Initialize a Galambos copula.
 
         Args:
             theta: Copula parameter (must be > 0).
-            d: Number of variables.
+            dimension: Number of variables.
         """
         if theta <= 0:
             raise ValueError("Theta must be in the range (0, inf)")
         self.theta = theta
-        self.d = d
+        if dimension is not None:
+            self.dimension = dimension
 
     def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Vectorised simulation from the d-dimensional Galambos copula.
@@ -716,10 +770,10 @@ class GalambosCopula(Copula):
         u : ndarray, shape (d, n)
             Samples on (0, 1)^d with Galambos copula.
         """
-        d = self.d
+        d = self.dimension
         # Independence shortcut if needed
         if self.theta < 1e-4:
-            return rng.uniform(0, 1, size=(self.d, n_sims))
+            return rng.uniform(0, 1, size=(d, n_sims))
         num = gamma(d) * gamma(1.0 / self.theta)
         den = gamma(d + 1.0 / self.theta) * self.theta
         # Compute c_theta for the Galambos copula in dimension d.
@@ -730,7 +784,7 @@ class GalambosCopula(Copula):
         c_th = c_theta
 
         # Y holds the max stable representation for all samples
-        y = np.zeros((self.d, n_sims))
+        y = np.zeros((d, n_sims))
 
         # Each row has its own Poisson process time T and radius R
         # First jump times T ~ Exp(1)
@@ -799,7 +853,7 @@ class PlackettCopula(Copula):
     single parameter, :math:`\delta > 0`, which controls the strength and
     direction of the dependence.
 
-    The cumulative distribution function is:
+    The bivariate cumulative distribution function is:
 
     .. math::
 
@@ -808,10 +862,14 @@ class PlackettCopula(Copula):
     where :math:`S = 1 + (u+v)(\delta-1)` and :math:`\delta \neq 1`. When
     :math:`\delta = 1`, the copula reduces to the independence copula.
 
+    Currently, only the bivariate case is implemented for the Plackett copula.
+
     References:
         Plackett, R. L. (1965). A class of bivariate distributions. Journal of the
         American Statistical Association, 60(310), 516-522.
     """
+
+    dimension: int = 2
 
     def __init__(self, delta: float) -> None:
         """Initialize a Plackett copula.
@@ -898,7 +956,19 @@ class HuslerReissCopula(Copula):
     random variables and allows for a flexible specification of tail dependency
     for each bivariate pair of variables.
 
-    Its dependence structure is characterized by a matrix :math:`\Lambda_{ij}`
+    The bivariate cumulative distribution function (CDF) of the Hüsler-Reiss copula is given by:
+
+    .. math::
+
+    C(u_i, u_j) = \exp\left[
+        \ln u_i\  \Phi\left(\lambda_{ij} + \frac{1}{2}\lambda_{ij}^{-1}\ln[(-\ln u_i)/(-\ln u_j)]\right)
+          +\ln u_j \ \Phi\left(\lambda_{ij} + \frac{1}{2\lambda_{ij}}\ln[(-\ln u_j)/(-\ln u_i)]\right)
+          \right])
+
+    where :math:`\Phi` is the standard normal CDF and :math:`\lambda_{ij}` is the parameter
+    controlling the dependence between the two variables.
+
+    Its dependence structure is characterized by a matrix :math:`\lambda_{ij}`
     which controls the strength of the upper tail dependence between each pair
     of variables. Lower values in the matrix correspond to stronger dependence.
 
@@ -920,7 +990,7 @@ class HuslerReissCopula(Copula):
 
     is_adjusted: bool = False
     """Indicates whether the provided lambda matrix was adjusted to ensure validity."""
-    d: int
+    dimension: int
     """The dimension of the copula."""
     adjusted_lambda_matrix: npt.NDArray[np.floating]
     """The adjusted lambda matrix after ensuring validity."""
@@ -929,36 +999,44 @@ class HuslerReissCopula(Copula):
         self,
         lambda_matrix: npt.NDArray[np.floating] | list[list[float]],
     ) -> None:
-        """Initialize a Hüsler-Reiss copula.
+        r"""Initialize a Hüsler-Reiss copula.
 
-        Its dependence structure is characterized by a matrix Lambda_ij which controls
-        the strength of the upper tail dependence between each pair of variables. Lower
-        values in the matrix correspond to stronger dependence.
+        Its dependence structure is characterized by a matrix :math:`\Lambda_{ij}`
+        which controls the strength of the upper tail dependence between each pair
+        of variables. Lower values in the matrix correspond to stronger dependence.
 
-        The upper tail dependence coefficient between any pair of variables i and j in
-        the Hüsler-Reiss copula is given by:
+        The upper tail dependence coefficient between any pair of variables
+        :math:`i` and :math:`j` in the Hüsler-Reiss copula is given by:
 
-        χ_ij = 2 * (1 - Phi( λ_ij  )),
+        .. math::
 
-        where Phi is the standard normal CDF.
+            \chi_{ij} = 2\left(1 - \Phi(\lambda_{ij})\right)
 
-        The parameters λ_ij must be non-negative, and the matrix must be symmetric.
-        The diagonal elements λ_ij must always be zero. Values of λ_ij are capped
-        at 100 to avoid numerical issues during simulation.
+        where :math:`\Phi` is the standard normal CDF.
 
-        The matrix λ_ij must satisfy certain conditions to ensure it corresponds
-        to a valid Hüsler-Reiss copula. In particular, the matrix must be conditionally
-        negative definite. That is, its square must correspond to a valid variogram of
-        a random field Z_j:
+        The parameters :math:`\lambda_{ij}` must be non-negative, and the matrix
+        must be symmetric. The diagonal elements :math:`\lambda_{ij}` must always
+        be zero. Values of :math:`\lambda_{ij}` are capped at 100 to avoid
+        numerical issues during simulation.
 
-        λ_ij^2 = 2 * ( Var(Z_i) + Var(Z_j) - 2 * Cov(Z_i, Z_j) )
+        The matrix :math:`\lambda_{ij}` must satisfy certain conditions to ensure
+        it corresponds to a valid Hüsler-Reiss copula. In particular, the matrix
+        must be conditionally negative definite. That is, its square must correspond
+        to a valid variogram of a random field :math:`Z_j`:
+
+        .. math::
+
+            \lambda_{ij}^2 = 2\left(\text{Var}(Z_i) + \text{Var}(Z_j)
+                - 2\text{Cov}(Z_i, Z_j)\right)
 
         This is checked during initialization by attempting to construct a valid
-        covariance matrix for the random process Z_i from the provided λ_ij matrix.
+        covariance matrix for the random process :math:`Z_i` from the provided
+        :math:`\lambda_{ij}` matrix.
 
         If the provided matrix does not satisfy these conditions, it is adjusted
         to the nearest valid matrix by modifying the eigenvalues of the corresponding
-        covariance matrix. The `is_adjusted` attribute will be set to True in this case.
+        covariance matrix. The `is_adjusted` attribute will be set to True in this
+        case.
 
         References:
             Hüsler, J., & Reiss, R. D. (1989). Maxima of normal random vectors: between
@@ -966,8 +1044,8 @@ class HuslerReissCopula(Copula):
             7(4), 283-286.
 
         Args:
-            lambda_matrix: Symmetric matrix λ_ij determining the pairwise dependency
-            between variables.
+            lambda_matrix: Symmetric matrix :math:`\lambda_{ij}` determining the
+                pairwise dependency between variables.
         """
         lambda_matrix = t.cast(npt.NDArray[np.floating], np.asarray(lambda_matrix))
         if lambda_matrix.ndim != 2 or lambda_matrix.shape[0] != lambda_matrix.shape[1]:  # type: ignore[union-attr]
@@ -997,7 +1075,7 @@ class HuslerReissCopula(Copula):
         except np.linalg.LinAlgError as e:
             raise ValueError("Could not construct a valid correlation matrix") from e
         covariance_matrix = self._chol @ self._chol.T
-        self.d = d
+        self.dimension = d
         self.adjusted_lambda_matrix = (
             np.sqrt(np.diag(covariance_matrix) + np.diag(covariance_matrix)[:, None] - 2 * covariance_matrix) / 2
         )
@@ -1020,7 +1098,7 @@ class HuslerReissCopula(Copula):
             u : (d,n) ndarray
                 Samples from the Hüsler–Reiss copula.
         """
-        d = self.d
+        d = self.dimension
 
         # Cholesky for Gaussian simulation
         chol = self._chol
@@ -1194,6 +1272,17 @@ class ExtremalTCopula(Copula):
     multivariate extreme value copula, which is suited for modeling upper tail
     dependence between random variables.
 
+    The bivariate cumulative distribution function (CDF) of the Extremal-t copula is given by:
+    .. math::
+        C(u_i, u_j) = \exp\left(
+        \ln u_i \, t_{\nu+1}\left(
+                        -\sqrt{\frac{(\nu+1)(1-\rho_{ij}^2)}}(-\ln u_i)^{-1/\nu}(-\ln u_j)^{1/\nu}}-\rho_{ij}
+                \right)
+        +\ln u_j \, t_{\nu+1}\left(
+                -\sqrt{\frac{(\nu+1)(1-\rho_{ij}^2)}}(-\ln u_j)^{-1/\nu}(-\ln u_i)^{1/\nu}}-\rho_{ij}
+                \right)
+        \right)
+
     Its dependence structure is characterized by a correlation matrix and a degrees
     of freedom parameter :math:`\nu > 0`, which controls the strength of the
     upper tail dependence.
@@ -1241,7 +1330,7 @@ class ExtremalTCopula(Copula):
         if not np.allclose(np.diag(self.correlation_matrix), 1.0):
             raise ValueError("Correlation matrix diagonal must be all ones")
         self.nu = nu
-        self.d = correlation_matrix.shape[0]
+        self.dimension = correlation_matrix.shape[0]
 
     def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Exact simulation of the t-EV copula.

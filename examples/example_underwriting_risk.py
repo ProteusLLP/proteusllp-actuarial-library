@@ -35,7 +35,7 @@ losses_with_lae = individual_large_losses_by_lob * 1.05
 aggregate_large_losses_by_class = ProteusVariable("class", {name: losses_with_lae[name].aggregate() for name in lobs})
 # correlate the attritional and large losses. Use a pairwise copula to do this
 for lob in lobs:
-    copulas.GumbelCopula(theta=1.2, n=2).apply([aggregate_large_losses_by_class[lob], attritional_losses_by_lob[lob]])
+    copulas.GumbelCopula(theta=1.2).apply([aggregate_large_losses_by_class[lob], attritional_losses_by_lob[lob]])
 # calculate the total losses
 total_losses_by_lob = aggregate_large_losses_by_class + attritional_losses_by_lob
 # apply a copula to the total losses by lob

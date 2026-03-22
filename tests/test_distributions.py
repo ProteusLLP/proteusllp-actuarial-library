@@ -504,7 +504,7 @@ def test_studentst_standard() -> None:
 
     # Test round-trip
     test_points = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
-    assert np.allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-6)
+    assert np.allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-8)
 
     # Test statistical moments
     # Mean: μ for ν > 1
@@ -623,3 +623,45 @@ def test_inversegaussian_cdf_properties() -> None:
     # For inverse Gaussian, CDF(μ) ≈ 0.668 (depends on λ/μ ratio)
     cdf_at_mean = dist.cdf(mu)
     assert 0.5 < cdf_at_mean < 0.8
+
+def test_hypergeometric() -> None:
+    """Test HyperGeometric distribution implementation."""
+    set_random_seed(12345)
+    
+    # Parameters
+    ngood = 50
+    nbad = 60
+    n_draws = 30
+    
+    dist = distributions.HyperGeometric(ngood, nbad, n_draws)
+    
+    # Test generation consistency
+    sims = dist.generate(n_sims=10000)
+    assert sims.n_sims == 10000
+    
+    # Check mean/variance
+    # Theoretical mean: n * (K / N) where n=draws, K=good, N=total
+    population = ngood + nbad
+    expected_mean = n_draws * (ngood / population)
+    
+    # Variance: n * (K/N) * ((N-K)/N) * ((N-n)/(N-1))
+    p = ngood / population
+    expected_var = n_draws * p * (1 - p) * ((population - n_draws) / (population - 1))
+    
+    print(f"HyperMean: {np.mean(sims)}, Expected: {expected_mean}")
+    assert np.mean(sims) == pytest.approx(expected_mean, rel=0.02)
+    assert np.var(sims) == pytest.approx(expected_var, rel=0.05)
+    
+    # Check CDF against Scipy
+    # Scipy hypergeom(M, n, N) -> M=population, n=ngood, N=draws
+    from scipy.stats import hypergeom
+    rv = hypergeom(population, ngood, n_draws)
+    
+    # Check a few points
+    for k in [10, 15, 20]:
+        assert dist.cdf(k) == pytest.approx(rv.cdf(k))
+        # Inverse CDF check
+        p_val = rv.cdf(k)
+        # Verify round trip or direct PPF match
+        assert dist.invcdf(p_val) == pytest.approx(rv.ppf(p_val))
+

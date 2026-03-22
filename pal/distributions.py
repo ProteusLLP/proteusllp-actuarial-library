@@ -306,43 +306,62 @@ class HyperGeometric(DiscreteDistributionBase):
     Parameters:
         ngood: Number of good items :math:`K`.
         nbad: Number of bad items :math:`N-K`.
-        population_size: Total population size :math:`N`.
+        n_draws: Number of items drawn :math:`n`.
     """
 
     def __init__(
         self,
         ngood: int,
         nbad: int,
-        population_size: int,
+        n_draws: int,
     ) -> None:
         """Initialize hypergeometric distribution.
 
         Args:
             ngood: Number of good items.
             nbad: Number of bad items.
-            population_size: Total population size.
+            n_draws: Number of items drawn.
         """
-        # Note: population_size is stored with key 'n'
-        super().__init__(ngood=ngood, nbad=nbad, n=population_size)
+        # Note: n_draws is stored with key 'n'
+        super().__init__(ngood=ngood, nbad=nbad, n=n_draws)
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        raise NotImplementedError(f"CDF for {type(self).__name__} is not implemented.")
+        if np.__name__ == "cupy":
+            raise NotImplementedError("HyperGeometric CDF is not supported on GPU.")
+
+        # Use scipy.stats because scipy.special does not expose hypergeom CDF directly
+        from scipy.stats import hypergeom
+
+        ngood, nbad, n_draws = self._param_values
+        M = ngood + nbad
+        n = ngood
+        N = n_draws
+        return hypergeom.cdf(x, M, n, N)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        raise NotImplementedError(f"Inverse CDF for {type(self).__name__} is not implemented.")
+        if np.__name__ == "cupy":
+            raise NotImplementedError("HyperGeometric inverse CDF is not supported on GPU.")
+
+        from scipy.stats import hypergeom
+
+        ngood, nbad, n_draws = self._param_values
+        M = ngood + nbad
+        n = ngood
+        N = n_draws
+        return hypergeom.ppf(u, M, n, N)
 
     @override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
-        ngood, nbad, population_size = self._param_values
+        ngood, nbad, n_draws = self._param_values
         return StochasticScalar(
             rng.hypergeometric(
                 t.cast(int, ngood),
                 t.cast(int, nbad),
-                t.cast(int, population_size),
+                t.cast(int, n_draws),
                 n_sims,
             )
         )
@@ -1193,9 +1212,20 @@ class StudentsT(DistributionBase):
         """Compute inverse cumulative distribution function."""
         params = tuple(self._param_values)
         nu, mu, sigma = params[0], params[1], params[2]
-        # Use special.stdtrit for the inverse t distribution
-        result = mu + sigma * special.stdtrit(nu, u)
-        return result  # type: ignore[return-value]
+
+        # Use the relationship between t-distribution and Beta distribution
+        # to support GPU execution via betaincinv.
+        # For X ~ t(nu), let Y = 2 * min(u, 1-u).
+        # Then |X| = sqrt(nu * (1 / I^{-1}_Y(nu/2, 1/2) - 1))
+
+        p_tilde = np.minimum(u, 1 - u)
+        y = 2 * p_tilde
+        x_beta = special.betaincinv(nu / 2, 0.5, y)
+        x_sq = nu * (1 / x_beta - 1)
+        x = np.sqrt(x_sq)
+        sign = np.sign(u - 0.5)
+
+        return mu + sigma * sign * x
 
 
 class InverseGaussian(DistributionBase):

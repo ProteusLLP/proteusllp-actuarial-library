@@ -17,6 +17,10 @@ RUN apt-get update && apt-get install -y \
     && sed -i '/en_GB.UTF-8/s/^# //g' /etc/locale.gen \
     && locale-gen
 
+# Set locale environment variables
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+
 # Add NVIDIA package repositories and install CUDA toolkit
 # Using CUDA 12.4 which is more widely available and compatible with driver 580.x
 # Installing cuda-toolkit-12-4 instead of cuda-runtime-12-4 to get development headers
@@ -62,8 +66,8 @@ RUN useradd -m -s /bin/bash vscode && \
     usermod -aG sudo vscode && \
     echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Install dev dependencies (test + dev + gpu groups)
-RUN pip install -e ".[test,dev,gpu]"
+# Install dev dependencies (test + dev + docs + gpu groups)
+RUN pip install -e ".[test,dev,docs,gpu]"
 
 # Switch to non-root user
 USER vscode

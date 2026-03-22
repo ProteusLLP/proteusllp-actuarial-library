@@ -25,7 +25,7 @@ Quick Start
    expenses = distributions.LogNormal(mu=1, sigma=0.5).generate()
 
    # Apply statistical dependencies
-   copulas.GumbelCopula(theta=1.2, n=2).apply([losses, expenses])
+   copulas.GumbelCopula(theta=1.2).apply([losses, expenses])
 
    # Variables are now correlated
    total = losses + expenses

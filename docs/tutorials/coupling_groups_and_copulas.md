@@ -202,7 +202,7 @@ np.corrcoef(x.ranks.values, y.ranks.values)[0, 1]
 set_random_seed(42)
 x = distributions.LogNormal(mu=10, sigma=1.0).generate()
 y = distributions.LogNormal(mu=10, sigma=1.0).generate()
-copulas.GumbelCopula(theta=3.0, n=2).apply([x, y])
+copulas.GumbelCopula(theta=3.0).apply([x, y])
 
 np.corrcoef(x.ranks.values, y.ranks.values)[0, 1]
 # => 0.8465
@@ -219,7 +219,7 @@ joint catastrophic losses.
 set_random_seed(42)
 x = distributions.LogNormal(mu=10, sigma=1.0).generate()
 y = distributions.LogNormal(mu=10, sigma=1.0).generate()
-copulas.ClaytonCopula(theta=4.0, n=2).apply([x, y])
+copulas.ClaytonCopula(theta=4.0).apply([x, y])
 
 np.corrcoef(x.ranks.values, y.ranks.values)[0, 1]
 # => 0.8479
@@ -401,7 +401,7 @@ When a copula is applied to `base_loss` and an independent variable,
 
 ```python
 cat_loss = distributions.LogNormal(mu=16, sigma=1.2).generate()
-copulas.GumbelCopula(theta=1.5, n=2).apply(
+copulas.GumbelCopula(theta=1.5).apply(
     [base_loss, cat_loss]
 )
 
@@ -601,7 +601,7 @@ max_loss = events.occurrence()  # largest single event per sim
 
 cat_loss = distributions.LogNormal(mu=16, sigma=1.2).generate()
 
-copulas.GumbelCopula(theta=2.0, n=2).apply(
+copulas.GumbelCopula(theta=2.0).apply(
     [agg_loss, cat_loss]
 )
 ```

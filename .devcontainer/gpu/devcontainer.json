@@ -18,7 +18,8 @@
         "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
     ],
     "containerEnv": {
-        "PAL_SUPPRESS_PLOTS": "true"
+        "LC_ALL": "C.UTF-8",
+        "LANG": "C.UTF-8"
     },
     "customizations": {
         "vscode": {
@@ -56,6 +57,6 @@
             }
         }
     },
-    "postCreateCommand": "pip install -e '.[test,dev,gpu]'",
+    "postCreateCommand": "pip install -e '.[test,dev,docs,gpu]'",
     "remoteUser": "vscode"
 }

@@ -162,7 +162,7 @@ print(f"Rank correlation: {rank_corr(x_gauss, y_gauss):.4f}")
 set_random_seed(42)
 x_gumbel = distributions.LogNormal(mu=10, sigma=1.0).generate()
 y_gumbel = distributions.LogNormal(mu=10, sigma=1.0).generate()
-copulas.GumbelCopula(theta=3.0, n=2).apply([x_gumbel, y_gumbel])
+copulas.GumbelCopula(theta=3.0).apply([x_gumbel, y_gumbel])
 
 print("\n--- Gumbel copula (theta=3.0) ---")
 print(f"Rank correlation: {rank_corr(x_gumbel, y_gumbel):.4f}")
@@ -172,7 +172,7 @@ print("Gumbel copulas have stronger UPPER tail dependence.")
 set_random_seed(42)
 x_clay = distributions.LogNormal(mu=10, sigma=1.0).generate()
 y_clay = distributions.LogNormal(mu=10, sigma=1.0).generate()
-copulas.ClaytonCopula(theta=4.0, n=2).apply([x_clay, y_clay])
+copulas.ClaytonCopula(theta=4.0).apply([x_clay, y_clay])
 
 print("\n--- Clayton copula (theta=4.0) ---")
 print(f"Rank correlation: {rank_corr(x_clay, y_clay):.4f}")
@@ -322,7 +322,7 @@ cat_independent = cat_loss.coupled_variable_group is not base_loss.coupled_varia
 print(f"\nCat loss independent? {cat_independent}")
 
 # Apply copula between base_loss and cat_loss.
-copulas.GumbelCopula(theta=1.5, n=2).apply([base_loss, cat_loss])
+copulas.GumbelCopula(theta=1.5).apply([base_loss, cat_loss])
 
 # After the copula, ALL variables derived from base_loss were
 # reordered together, preserving their relationships.
