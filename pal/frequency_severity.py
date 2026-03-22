@@ -302,6 +302,36 @@ class FreqSevSims(ProteusStochasticVariable):
         """
         return self._reduce_over_events(np.maximum.at)
 
+    def count(self) -> StochasticScalar:
+        """Counts the number of losses (events) in each simulation.
+
+        Returns the frequency count of how many individual losses occurred
+        within each simulation. This is useful for analyzing frequency
+        distributions and understanding claim counts.
+
+        Example:
+            >>> sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
+            >>> values = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
+            >>> n_sims = 3
+            >>> fs = FreqSevSims(sim_index, values, n_sims)
+            >>> loss_counts: StochasticScalar = fs.count()
+            >>> loss_counts
+            StochasticScalar([2., 3., 4.])
+            >>> # Now you can apply statistical methods
+            >>> loss_counts.mean()
+            3.0
+            >>> loss_counts.quantile(0.5)
+            3.0
+
+        Returns:
+            StochasticScalar: Array containing the number of losses for each
+                simulation. Use this for analyzing frequency distributions.
+        """
+        counts = xp.bincount(self.sim_index, minlength=self.n_sims).astype(float)
+        result = StochasticScalar(counts)
+        result.coupled_variable_group.merge(self.coupled_variable_group)
+        return result
+
     def deep_copy(self) -> FreqSevSims:
         """Creates a deep copy of the FreqSevSims object."""
         return FreqSevSims(self.sim_index, self.values.copy(), self.n_sims)

@@ -349,10 +349,9 @@ class HyperGeometric(DiscreteDistributionBase):
         from scipy.stats import hypergeom
 
         ngood, nbad, n_draws = self._param_values
-        M = ngood + nbad
+        m = ngood + nbad
         n = ngood
-        N = n_draws
-        return hypergeom.ppf(u, M, n, N)
+        return hypergeom.ppf(u, m, n, n_draws)
 
     @override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:

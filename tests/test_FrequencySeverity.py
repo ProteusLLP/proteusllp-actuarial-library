@@ -26,6 +26,80 @@ def test_occurrence():
     assert np.array_equal(fs.occurrence(), np.array([2.0, 5.0, 9.0]))
 
 
+def test_count():
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
+    values = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
+    n_sims = 3
+    fs = FreqSevSims(sim_index, values, n_sims)
+    assert np.array_equal(fs.count(), np.array([2.0, 3.0, 4.0]))
+
+
+def test_count_edge_cases():
+    """Test count() method with various edge cases."""
+    # Test with simulations that have zero losses
+    sim_index = np.array([0, 0, 2, 2, 2])  # Sim 1 has no losses
+    values = np.array([100, 200, 300, 400, 500])
+    n_sims = 3
+    fs = FreqSevSims(sim_index, values, n_sims)
+    counts = fs.count()
+    assert np.array_equal(counts, np.array([2.0, 0.0, 3.0]))
+
+    # Test with single loss per simulation
+    sim_index = np.array([0, 1, 2])
+    values = np.array([100, 200, 300])
+    n_sims = 3
+    fs = FreqSevSims(sim_index, values, n_sims)
+    counts = fs.count()
+    assert np.array_equal(counts, np.array([1.0, 1.0, 1.0]))
+
+    # Test with all losses in one simulation
+    sim_index = np.array([1, 1, 1, 1])
+    values = np.array([100, 200, 300, 400])
+    n_sims = 3
+    fs = FreqSevSims(sim_index, values, n_sims)
+    counts = fs.count()
+    assert np.array_equal(counts, np.array([0.0, 4.0, 0.0]))
+
+
+def test_count_statistics():
+    """Test that count() returns a StochasticScalar with proper statistics."""
+    sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3])
+    values = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
+    n_sims = 4
+    fs = FreqSevSims(sim_index, values, n_sims)
+
+    counts = fs.count()
+
+    # Verify it returns a StochasticScalar
+    assert isinstance(counts, StochasticScalar)
+
+    # Verify counts are correct: [2, 3, 4, 5]
+    assert np.array_equal(counts.values, np.array([2.0, 3.0, 4.0, 5.0]))
+
+    # Test statistics on counts
+    assert counts.mean() == 3.5
+    assert counts.percentile(50) == 3.5  # Median
+    assert counts.percentile([25, 75]) == [2.75, 4.25]
+
+
+def test_count_preserves_coupling():
+    """Test that count() preserves coupling group information."""
+    sim_index = np.array([0, 0, 1, 1, 1])
+    values = np.array([1, 2, 3, 4, 5])
+    n_sims = 2
+    fs = FreqSevSims(sim_index, values, n_sims)
+
+    # Get another variable from fs to establish coupling
+    agg = fs.aggregate()
+
+    # Get counts
+    counts = fs.count()
+
+    # Verify coupling is preserved
+    assert counts.coupled_variable_group == fs.coupled_variable_group
+    assert counts.coupled_variable_group == agg.coupled_variable_group
+
+
 def test_copy():
     sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
     values = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])

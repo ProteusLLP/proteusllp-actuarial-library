@@ -35,8 +35,6 @@ An actuarial stochastic modeling library in python.
 **Note**
 This library is still in beta!
 
-📚 **[Development Guide](docs/development.md)** - Get started with development setup and testing
-
 ## Introduction
 
 The Proteus Actuarial Library (PAL) is a fast, lightweight framework for building simulation-based actuarial and financial models. It handles complex statistical dependencies using copulas while providing simple, intuitive syntax.
@@ -103,3 +101,6 @@ Please log issues on our github [page](https://github.com/ProteusLLP/proteusllp-
 ## Contributing
 
 You are welcome to contribute pull requests. Please see the [Contributer License Agreement](./CLA.md)
+
+📚 **[Development Guide](docs/development.md)** - Get started with development setup and testing
+
