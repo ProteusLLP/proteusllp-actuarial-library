@@ -47,6 +47,7 @@ class FrequencySeverityModel:
 class FreqSevSims(ProteusStochasticVariable):
     n_sims: int  # type: ignore[reportIncompatibleVariableOverride]
     sim_index: npt.NDArray[t.Any]
+    values: npt.NDArray[t.Any]  # Override to ensure proper type resolution
     def __init__(
         self,
         sim_index: np.ndarray | list[int],

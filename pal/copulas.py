@@ -563,7 +563,7 @@ class JoeCopula(ArchimedeanCopula):
 
         Args:
             theta: Copula parameter (must be >= 1).
-            n: Number of variables.
+            dimension: Number of variables.
         """
         if theta < 1:
             raise ValueError("Theta must be in the range [1, inf)")

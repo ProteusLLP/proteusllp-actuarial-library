@@ -70,7 +70,7 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
     """A class to represent a stochastic variable in a simulation."""
 
     n_sims: int | None = None
-    values: npt.NDArray[np.floating]
+    values: npt.NDArray[np.number[t.Any]]
     _uid: int
 
     # ===================
@@ -82,7 +82,7 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
         self._uid = next(Config._uid_counter)  # type: ignore[misc]
         self.coupled_variable_group = CouplingGroup(self)
 
-    def __array__(self, dtype: t.Any = None) -> npt.NDArray[np.floating]:
+    def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:
         """Return the underlying numpy array for compatibility with numpy functions."""
         return self.values if dtype is None else np.asarray(self.values, dtype=dtype)
 

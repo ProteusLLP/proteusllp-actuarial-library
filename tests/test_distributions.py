@@ -12,6 +12,7 @@ import scipy.special
 from pal import distributions
 from pal._maths import xp as np
 from pal.config import set_random_seed
+from pal.stochastic_scalar import StochasticScalar
 from scipy.special import gamma
 
 
@@ -22,8 +23,8 @@ def test_poisson() -> None:
     assert dist.cdf(0) == np.exp(-lamda)
     assert dist.invcdf(0) == 0
     assert np.allclose(
-        dist.invcdf(dist.cdf(np.array([0, 2, 5, 10]))),
-        np.array([0, 2, 5, 10]),
+        dist.invcdf(dist.cdf(StochasticScalar([0, 2, 5, 10]))),
+        StochasticScalar([0, 2, 5, 10]),
         1e-8,
     )
     sims = dist.generate(100000)
@@ -69,8 +70,8 @@ def test_beta() -> None:
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
     assert np.allclose(
-        dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))),
-        np.array([1234560.1, 2345670, 3456780]),
+        dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))),
+        StochasticScalar([1234560.1, 2345670, 3456780]),
         1e-8,
     )
 
@@ -161,8 +162,8 @@ def test_logistic() -> None:
     assert dist.cdf(2.5) == 0.5
     assert dist.invcdf(0.5) == 2.5
     assert np.allclose(
-        dist.invcdf(dist.cdf(np.array([1.1, 2, 3]))),
-        np.array([1.1, 2, 3]),
+        dist.invcdf(dist.cdf(StochasticScalar([1.1, 2, 3]))),
+        StochasticScalar([1.1, 2, 3]),
     )
 
     sims = dist.generate(10000000)
@@ -204,8 +205,8 @@ def test_para_logistic() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))) == pytest.approx(
-        np.array([1234560.1, 2345670, 3456780]), 1e-8
+    assert dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))) == pytest.approx(
+        StochasticScalar([1234560.1, 2345670, 3456780]), 1e-8
     )
 
     sims = dist.generate(100000000)
@@ -225,8 +226,8 @@ def test_inverse_para_logistic() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))) == pytest.approx(
-        np.array([1234560.1, 2345670, 3456780]), 1e-8
+    assert dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))) == pytest.approx(
+        StochasticScalar([1234560.1, 2345670, 3456780]), 1e-8
     )
 
     sims = dist.generate(100000000)
@@ -254,8 +255,8 @@ def test_weibull() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))) == pytest.approx(
-        np.array([1234560.1, 2345670, 3456780]), 1e-8
+    assert dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))) == pytest.approx(
+        StochasticScalar([1234560.1, 2345670, 3456780]), 1e-8
     )
 
     sims = dist.generate(100000000)
@@ -273,8 +274,8 @@ def test_inverse_weibull() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))) == pytest.approx(
-        np.array([1234560.1, 2345670, 3456780]), 1e-8
+    assert dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))) == pytest.approx(
+        StochasticScalar([1234560.1, 2345670, 3456780]), 1e-8
     )
 
     sims = dist.generate(100000000)
@@ -291,8 +292,8 @@ def test_exponential() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))) == pytest.approx(
-        np.array([1234560.1, 2345670, 3456780]), 1e-8
+    assert dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))) == pytest.approx(
+        StochasticScalar([1234560.1, 2345670, 3456780]), 1e-8
     )
 
     sims = dist.generate(100000000)
@@ -309,8 +310,8 @@ def test_inverse_exponential() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))) == pytest.approx(
-        np.array([1234560.1, 2345670, 3456780]), 1e-8
+    assert dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))) == pytest.approx(
+        StochasticScalar([1234560.1, 2345670, 3456780]), 1e-8
     )
 
 
@@ -324,8 +325,8 @@ def test_gamma() -> None:
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
     assert np.allclose(
-        dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))),
-        np.array([1234560.1, 2345670, 3456780]),
+        dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))),
+        StochasticScalar([1234560.1, 2345670, 3456780]),
         1e-8,
     )
 
@@ -344,8 +345,8 @@ def test_log_normal() -> None:
     assert dist.cdf(0) == 0.0
     assert dist.invcdf(0) == 0
     assert np.allclose(
-        dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))),
-        np.array([1234560.1, 2345670, 3456780]),
+        dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))),
+        StochasticScalar([1234560.1, 2345670, 3456780]),
         1e-8,
     )
 
@@ -368,8 +369,8 @@ def test_inverse_gamma() -> None:
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
     assert np.allclose(
-        dist.invcdf(dist.cdf(np.array([1234560.1, 2345670, 3456780]))),
-        np.array([1234560.1, 2345670, 3456780]),
+        dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))),
+        StochasticScalar([1234560.1, 2345670, 3456780]),
         1e-8,
     )
 
@@ -402,8 +403,8 @@ def test_gev_gumbel() -> None:
 
     # Test round-trip
     assert np.allclose(
-        dist.invcdf(dist.cdf(np.array([loc - 50000, loc, loc + 50000, loc + 150000]))),
-        np.array([loc - 50000, loc, loc + 50000, loc + 150000]),
+        dist.invcdf(dist.cdf(StochasticScalar([loc - 50000, loc, loc + 50000, loc + 150000]))),
+        StochasticScalar([loc - 50000, loc, loc + 50000, loc + 150000]),
         1e-6,
     )
 
@@ -438,7 +439,7 @@ def test_gev_frechet() -> None:
     assert dist.invcdf(u) == pytest.approx(expected_x, 1e-6)
 
     # Test round-trip
-    test_points = np.array([loc + 10000, loc + 50000, loc + 100000, loc + 200000])
+    test_points = StochasticScalar([loc + 10000, loc + 50000, loc + 100000, loc + 200000])
     assert np.allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-6)
 
     # Test statistical moments
@@ -472,7 +473,7 @@ def test_gev_weibull() -> None:
     assert dist.invcdf(u) == pytest.approx(expected_x, 1e-6)
 
     # Test round-trip
-    test_points = np.array([loc + 10000, loc + 50000, loc + 100000, loc + 200000])
+    test_points = StochasticScalar([loc + 10000, loc + 50000, loc + 100000, loc + 200000])
     assert np.allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-6)
 
     # Test statistical moments (same formulas as Fréchet when ξ < 0)
@@ -503,7 +504,7 @@ def test_studentst_standard() -> None:
     assert dist.invcdf(0.5) == pytest.approx(0.0, 1e-8)
 
     # Test round-trip
-    test_points = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+    test_points = StochasticScalar([-2.0, -1.0, 0.0, 1.0, 2.0])
     assert np.allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-8)
 
     # Test statistical moments
@@ -532,7 +533,7 @@ def test_studentst_general() -> None:
     assert dist.invcdf(0.5) == pytest.approx(mu, 1e-6)
 
     # Test round-trip
-    test_points = np.array([mu - 200, mu - 100, mu, mu + 100, mu + 200])
+    test_points = StochasticScalar([mu - 200, mu - 100, mu, mu + 100, mu + 200])
     assert np.allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-6)
 
     # Test statistical moments
@@ -585,7 +586,7 @@ def test_inversegaussian() -> None:
     assert 0 < cdf_at_mu < 1
 
     # Test CDF is monotonically increasing
-    x_values = np.array([mu / 2, mu, 2 * mu, 3 * mu])
+    x_values = StochasticScalar([mu / 2, mu, 2 * mu, 3 * mu])
     cdf_values = dist.cdf(x_values)
     assert np.all(np.diff(cdf_values) > 0)
 
@@ -624,39 +625,41 @@ def test_inversegaussian_cdf_properties() -> None:
     cdf_at_mean = dist.cdf(mu)
     assert 0.5 < cdf_at_mean < 0.8
 
+
 def test_hypergeometric() -> None:
     """Test HyperGeometric distribution implementation."""
     set_random_seed(12345)
-    
+
     # Parameters
     ngood = 50
     nbad = 60
     n_draws = 30
-    
+
     dist = distributions.HyperGeometric(ngood, nbad, n_draws)
-    
+
     # Test generation consistency
     sims = dist.generate(n_sims=10000)
     assert sims.n_sims == 10000
-    
+
     # Check mean/variance
     # Theoretical mean: n * (K / N) where n=draws, K=good, N=total
     population = ngood + nbad
     expected_mean = n_draws * (ngood / population)
-    
+
     # Variance: n * (K/N) * ((N-K)/N) * ((N-n)/(N-1))
     p = ngood / population
     expected_var = n_draws * p * (1 - p) * ((population - n_draws) / (population - 1))
-    
+
     print(f"HyperMean: {np.mean(sims)}, Expected: {expected_mean}")
     assert np.mean(sims) == pytest.approx(expected_mean, rel=0.02)
     assert np.var(sims) == pytest.approx(expected_var, rel=0.05)
-    
+
     # Check CDF against Scipy
     # Scipy hypergeom(M, n, N) -> M=population, n=ngood, N=draws
     from scipy.stats import hypergeom
+
     rv = hypergeom(population, ngood, n_draws)
-    
+
     # Check a few points
     for k in [10, 15, 20]:
         assert dist.cdf(k) == pytest.approx(rv.cdf(k))
@@ -664,4 +667,3 @@ def test_hypergeometric() -> None:
         p_val = rv.cdf(k)
         # Verify round trip or direct PPF match
         assert dist.invcdf(p_val) == pytest.approx(rv.ppf(p_val))
-

@@ -8,18 +8,14 @@ It's expected that you construct distributions of distributions ie. a distributi
 be created and passed to another distribution as a parameter.
 
 Note on Type Signatures:
-The cdf and invcdf methods use DistributionParameter type signatures to provide
-maximum flexibility for both scalar and array inputs. This is necessary because
-scipy.special functions support array inputs despite having restrictive type stubs that
-only show scalar
-types. By using this union type, we can leverage scipy's vectorized operations while
-maintaining type safety. For more details on scipy.special array support, see:
-https://docs.scipy.org/doc/scipy-1.16.0/reference/generated/scipy.special.pdtr.html
+Distributions accept and return only primitives (int, float) or StochasticScalar.
+The DistributionParameter type alias is Union[int, float, StochasticScalar].
+Internally, scipy.special functions may operate on arrays extracted from
+StochasticScalar.values, but the public API never exposes raw numpy arrays.
 
 Type Definitions:
-- NumericType: Union[float, int, bool] - Basic numeric scalars
-- DistributionParameter: NumericType | npt.NDArray[t.Any] | StochasticScalar - Union for
-  maximum flexibility
+- DistributionParameter: Union[int, float, StochasticScalar]
+- ReturnType: Union[int, float, StochasticScalar]
 """
 
 # Standard library imports
@@ -27,9 +23,6 @@ from __future__ import annotations
 
 import typing as t
 from abc import ABC
-
-# Third-party imports
-import numpy.typing as npt
 
 # Local imports
 from ._compat import override
@@ -118,14 +111,14 @@ class DistributionBase:
         # Generate uniform random numbers and transform via inverse CDF
         # When n_sims >= 1, rng.uniform(size=n_sims) returns an array,
         # so invcdf also returns an array (SequenceLike) due to overload typing
-        uniform_samples = rng.uniform(size=n_sims)
+        uniform_samples = StochasticScalar(rng.uniform(size=n_sims))
         result = self.invcdf(uniform_samples)
         return StochasticScalar(result)
 
     @property
     def _param_values(
         self,
-    ) -> t.Generator[DistributionParameter, None, None]:
+    ) -> t.Generator[t.Any, None, None]:
         # Yields parameter values; if a parameter is a StochasticScalar, its
         # 'values' are returned - which will be a numpy array otherwise we just yield
         # the parameter value directly.
@@ -185,7 +178,7 @@ class Poisson(DiscreteDistributionBase):
     @override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
         (mean,) = self._param_values
-        return StochasticScalar(rng.poisson(t.cast(float | npt.NDArray[np.floating], mean), n_sims))
+        return StochasticScalar(rng.poisson(mean, n_sims))
 
 
 class NegBinomial(DiscreteDistributionBase):
@@ -231,13 +224,7 @@ class NegBinomial(DiscreteDistributionBase):
     @override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
         n, p = self._param_values
-        return StochasticScalar(
-            rng.negative_binomial(
-                t.cast(int | npt.NDArray[np.integer], n),
-                t.cast(float | npt.NDArray[np.floating], p),
-                size=n_sims,
-            )
-        )
+        return StochasticScalar(rng.negative_binomial(n, p, size=n_sims))
 
 
 class Binomial(DiscreteDistributionBase):
@@ -255,7 +242,7 @@ class Binomial(DiscreteDistributionBase):
     Models the number of successes in a fixed number of independent Bernoulli trials.
     """
 
-    def __init__(self, n: int | npt.NDArray[np.integer], p: float | npt.NDArray[np.floating]) -> None:
+    def __init__(self, n: DistributionParameter, p: DistributionParameter) -> None:
         """Initialize binomial distribution.
 
         Args:
@@ -268,24 +255,18 @@ class Binomial(DiscreteDistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
         n, p = self._param_values
-        return special.bdtr(x, n, p)
+        return special.bdtr(x, n, p)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         n, p = self._param_values
-        return special.bdtri(u, n, p)
+        return special.bdtri(u, n, p)  # type: ignore[return-value]
 
     @override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
         n, p = self._param_values
-        return StochasticScalar(
-            rng.binomial(
-                t.cast(int | npt.NDArray[np.integer], n),
-                t.cast(float | npt.NDArray[np.floating], p),
-                n_sims,
-            )
-        )
+        return StochasticScalar(rng.binomial(n, p, n_sims))
 
 
 class HyperGeometric(DiscreteDistributionBase):
@@ -335,10 +316,10 @@ class HyperGeometric(DiscreteDistributionBase):
         from scipy.stats import hypergeom
 
         ngood, nbad, n_draws = self._param_values
-        M = ngood + nbad
+        m = ngood + nbad
         n = ngood
-        N = n_draws
-        return hypergeom.cdf(x, M, n, N)
+        n_total = n_draws
+        return hypergeom.cdf(x, m, n, n_total)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
@@ -351,7 +332,7 @@ class HyperGeometric(DiscreteDistributionBase):
         ngood, nbad, n_draws = self._param_values
         m = ngood + nbad
         n = ngood
-        return hypergeom.ppf(u, m, n, n_draws)
+        return hypergeom.ppf(u, m, n, n_draws)  # type: ignore[return-value]
 
     @override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
@@ -408,13 +389,13 @@ class GPD(DistributionBase):
             result = 1 - np.exp(-(x - loc) / scale)
         else:
             result = 1 - (1 + shape * (x - loc) / scale) ** (-1 / shape)
-        return result
+        return result  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         shape, scale, loc = self._params.values()
-        return (np.exp(np.log(1 - u) * (-shape)) - 1) * (scale / shape) + loc
+        return (np.exp(np.log(1 - u) * (-shape)) - 1) * (scale / shape) + loc  # type: ignore[return-value]
 
 
 class Burr(DistributionBase):
@@ -520,15 +501,7 @@ class Beta(DistributionBase):
     @override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
         alpha, beta, scale, loc = self._param_values
-        return StochasticScalar(
-            rng.beta(
-                t.cast(float | npt.NDArray[np.floating], alpha),
-                t.cast(float | npt.NDArray[np.floating], beta),
-                n_sims,
-            )
-            * t.cast(float | npt.NDArray[np.floating], scale)
-            + t.cast(float | npt.NDArray[np.floating], loc)
-        )
+        return StochasticScalar(rng.beta(alpha, beta, n_sims) * scale + loc)
 
 
 class LogLogistic(DistributionBase):
@@ -613,7 +586,7 @@ class Normal(DistributionBase):
         """Compute cumulative distribution function."""
         mu, sigma = self._params.values()
         arg = (x - mu) / sigma
-        return special.ndtr(t.cast(npt.NDArray[np.floating] | float, arg))
+        return special.ndtr(arg)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
@@ -732,10 +705,7 @@ class Gamma(DistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
         alpha, theta, loc = self._param_values
-        return special.gammainc(
-            t.cast(npt.NDArray[np.floating] | float, alpha),
-            t.cast(npt.NDArray[np.floating] | float, (x - loc) / theta),
-        )  # type: ignore[return-type]
+        return special.gammainc(alpha, (x - loc) / theta)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
@@ -747,14 +717,7 @@ class Gamma(DistributionBase):
     @override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
         alpha, theta, loc = self._param_values
-        result = StochasticScalar(
-            rng.gamma(
-                t.cast(float | npt.NDArray[np.floating], alpha),
-                t.cast(float | npt.NDArray[np.floating], theta),
-                size=n_sims,
-            )
-            + t.cast(float | npt.NDArray[np.floating], loc)
-        )
+        result = StochasticScalar(rng.gamma(alpha, theta, size=n_sims) + loc)
         return result
 
 
@@ -1030,13 +993,13 @@ class Weibull(DistributionBase):
         """Compute cumulative distribution function."""
         shape, scale, loc = self._params.values()
         y = ((x - loc) / scale) ** shape
-        return -np.expm1(-y)
+        return -np.expm1(-y)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         shape, scale, loc = self._params.values()
-        return loc + scale * (-np.log(1 - u)) ** (1 / shape)
+        return loc + scale * (-np.log(1 - u)) ** (1 / shape)  # type: ignore[return-value]
 
 
 class InverseWeibull(DistributionBase):
@@ -1080,7 +1043,7 @@ class InverseWeibull(DistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        return self._loc + self._scale * (-1 / np.log(u)) ** (1 / self._shape)
+        return self._loc + self._scale * (-1 / np.log(u)) ** (1 / self._shape)  # type: ignore[return-value]
 
 
 class GEV(DistributionBase):
@@ -1132,11 +1095,11 @@ class GEV(DistributionBase):
         z = (x - loc) / scale
         if abs(shape) <= TOLERANCE:
             # Gumbel case (ξ = 0)
-            return np.exp(-np.exp(-z))
+            return np.exp(-np.exp(-z))  # type: ignore[return-value]
         else:
             # Fréchet (ξ > 0) or Weibull (ξ < 0) case
             t = 1 + shape * z
-            return np.exp(-np.power(t, -1 / shape))
+            return np.exp(-np.power(t, -1 / shape))  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
@@ -1144,10 +1107,10 @@ class GEV(DistributionBase):
         shape, scale, loc = self._params.values()
         if abs(shape) <= TOLERANCE:
             # Gumbel case (ξ = 0)
-            return loc - scale * np.log(-np.log(u))
+            return loc - scale * np.log(-np.log(u))  # type: ignore[return-value]
         else:
             # Fréchet (ξ > 0) or Weibull (ξ < 0) case
-            return loc + scale * (np.power(-np.log(u), -shape) - 1) / shape
+            return loc + scale * (np.power(-np.log(u), -shape) - 1) / shape  # type: ignore[return-value]
 
 
 class StudentsT(DistributionBase):
@@ -1297,9 +1260,6 @@ class InverseGaussian(DistributionBase):
             The American Statistician 30, 88-90.
         """
         mu, lambda_ = self._param_values
-        mu = t.cast(float | npt.NDArray[np.floating], mu)
-        lambda_ = t.cast(float | npt.NDArray[np.floating], lambda_)
-
         # Generate chi-squared(1) samples
         nu = rng.normal(0, 1, n_sims) ** 2
         y = mu + (mu**2 * nu) / (2 * lambda_) - (mu / (2 * lambda_)) * np.sqrt(4 * mu * lambda_ * nu + mu**2 * nu**2)
@@ -1344,12 +1304,12 @@ class Exponential(DistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         scale, loc = self._params.values()
         y = (x - loc) / scale
-        return -np.expm1(-y)
+        return -np.expm1(-y)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         scale, loc = self._params.values()
-        return loc + scale * (-np.log(1 - u))
+        return loc + scale * (-np.log(1 - u))  # type: ignore[return-value]
 
 
 class Uniform(DistributionBase):
@@ -1415,12 +1375,12 @@ class InverseExponential(DistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         scale, loc = self._params.values()
         y = scale * np.float_power((x - loc), -1)
-        return np.exp(-y)
+        return np.exp(-y)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         scale, loc = self._params.values()
-        return loc - scale / np.log(u)
+        return loc - scale / np.log(u)  # type: ignore[return-value]
 
 
 # --- Distribution Generator Classes ---

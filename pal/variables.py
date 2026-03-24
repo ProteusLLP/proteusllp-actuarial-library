@@ -943,7 +943,9 @@ class ProteusVariable(t.Generic[T]):
 
             # Handle the main case: extract value at specific simulation index
             if isinstance(sim_no, int):  # type: ignore[redundant-expr]
-                return x.values[sim_no]
+                # Type ignore: numpy array indexing returns element type which is compatible
+                # with T | StochasticScalar in practice but type checker can't infer this
+                return x.values[sim_no]  # type: ignore[return-value]
 
             return x
 

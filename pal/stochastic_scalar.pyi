@@ -16,6 +16,7 @@ from .types import Numeric, NumericLike, ScipyNumeric
 class StochasticScalar(ProteusStochasticVariable):
     coupled_variable_group: CouplingGroup
     n_sims: int  # type: ignore[reportIncompatibleVariableOverride]
+    values: npt.NDArray[t.Any]  # Override to ensure proper type resolution
     def __init__(self, values: npt.ArrayLike) -> None: ...
     def __repr__(self) -> str: ...
 
