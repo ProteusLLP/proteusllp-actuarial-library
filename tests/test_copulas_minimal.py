@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pal import copulas, distributions
+from pal import config, copulas, distributions, set_random_seed
 
 # =============================================================================
 # EllipticalCopula Error Handling (lines 191, 197-202)
@@ -88,8 +88,6 @@ def test_apply_mismatched_variables():
 
 def test_generate_with_none_n_sims():
     """Test generate uses config.n_sims when n_sims=None."""
-    from pal import config
-
     original_n_sims = config.n_sims
     try:
         config.n_sims = 500
@@ -114,53 +112,57 @@ def test_generate_with_none_rng():
 # =============================================================================
 
 
+def check_copula_independence(samples):
+    """Helper function to check if samples are approximately independent."""
+    assert len(samples) == 2
+    assert len(samples[0]) == len(samples[1])
+    # Check that the correlation is close to zero
+    corr = np.corrcoef(samples[0].values, samples[1].values)[0, 1]
+    assert abs(corr) < 0.05
+
+
 def test_clayton_copula_zero_theta():
     """Test Clayton copula with theta=0 (independence)."""
-    clayton = copulas.ClaytonCopula(theta=0.0)
+    clayton = copulas.ClaytonCopula(theta=0.0, dimension=2)
     samples = clayton.generate(1000)
-    # Should generate independent uniforms
-    assert len(samples) == 2
-    assert len(samples[0]) == 1000
+    check_copula_independence(samples)
 
 
 def test_gumbel_copula_theta_one():
     """Test Gumbel copula with theta=1 (independence)."""
-    gumbel = copulas.GumbelCopula(theta=1.0)
+    set_random_seed(42)
+    gumbel = copulas.GumbelCopula(theta=1.0, dimension=2)
     samples = gumbel.generate(1000)
-    assert len(samples) == 2
-    assert len(samples[0]) == 1000
+    check_copula_independence(samples)
 
 
 def test_joe_copula_theta_one():
     """Test Joe copula with theta=1 (independence)."""
-    joe = copulas.JoeCopula(theta=1.0)
+    joe = copulas.JoeCopula(theta=1.0, dimension=2)
     samples = joe.generate(1000)
-    assert len(samples) == 2
-    assert len(samples[0]) == 1000
+    check_copula_independence(samples)
 
 
 def test_frank_copula_small_theta():
     """Test Frank copula with small theta."""
-    frank = copulas.FrankCopula(theta=0.001)
+    frank = copulas.FrankCopula(theta=0.001, dimension=2)
     samples = frank.generate(1000)
-    assert len(samples) == 2
-    assert len(samples[0]) == 1000
+    check_copula_independence(samples)
 
 
 def test_galambos_copula_small_theta():
     """Test Galambos copula with very small theta."""
-    galambos = copulas.GalambosCopula(theta=1e-5)
+    set_random_seed(42)
+    galambos = copulas.GalambosCopula(theta=1e-5, dimension=2)
     samples = galambos.generate(1000)
-    assert len(samples) == 2
-    assert len(samples[0]) == 1000
+    check_copula_independence(samples)
 
 
 def test_plackett_copula_delta_one():
     """Test Plackett copula with delta=1 (independence)."""
     plackett = copulas.PlackettCopula(delta=1.0)
     samples = plackett.generate(1000)
-    assert len(samples) == 2
-    assert len(samples[0]) == 1000
+    check_copula_independence(samples)
 
 
 # =============================================================================
@@ -234,9 +236,9 @@ def test_clayton_copula_negative_theta():
 
 
 def test_archimedean_copula_with_n_parameter():
-    """Test Archimedean copulas properly use n parameter."""
+    """Test Archimedean copulas properly use dimension parameter."""
     # Test with 3 variables
-    clayton = copulas.ClaytonCopula(theta=2.0)
+    clayton = copulas.ClaytonCopula(theta=2.0, dimension=3)
     samples = clayton.generate(500)
     assert len(samples) == 3
     assert all(len(s) == 500 for s in samples)
@@ -244,9 +246,9 @@ def test_archimedean_copula_with_n_parameter():
 
 def test_gumbel_copula_high_theta():
     """Test Gumbel copula with high theta (strong dependence)."""
-    gumbel = copulas.GumbelCopula(theta=10.0)
+    gumbel = copulas.GumbelCopula(theta=10.0, dimension=2)
     samples = gumbel.generate(1000)
     assert len(samples) == 2
     # Should have strong positive dependence
     corr = np.corrcoef(samples[0].values, samples[1].values)[0, 1]
-    assert corr > 0.8
+    assert corr > 0.9

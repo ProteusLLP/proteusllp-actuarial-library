@@ -328,7 +328,7 @@ class ArchimedeanCopula(Copula, ABC):
         if rng is None:
             rng = config.rng
         if self.dimension is None:
-            raise RuntimeError("Subclasses of ArchimedeanCopula must set self.n to the number of variables")
+            raise RuntimeError("Subclasses of ArchimedeanCopula must set self.dimension to the number of variables")
         n_vars = self.dimension
         # Generate samples from a uniform distribution
         u = rng.uniform(size=(n_vars, n_sims))
@@ -493,6 +493,8 @@ class GumbelCopula(ArchimedeanCopula):
 
     def generate_latent_distribution(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution."""
+        if self.theta == 1:
+            return np.ones(n_sims)
         return levy_stable(1 / self.theta, 1, n_sims, rng) * (np.cos(np.pi / (2 * self.theta)) ** self.theta)
 
 

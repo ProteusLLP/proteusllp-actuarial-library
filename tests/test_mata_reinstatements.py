@@ -22,14 +22,12 @@ from pal.frequency_severity import (
 )
 from pal.risk_measures import proportional_hazards_transform
 
-N_SIMS = 100_000
-
 
 @pytest.fixture(scope="module")
 def claims() -> FreqSevSims:
     """Simulate the Poisson-Pareto II compound process from the paper."""
     set_random_seed(42)
-    set_default_n_sims(N_SIMS)
+    set_default_n_sims(100_000)
     # PAL's Pareto is Type I (support [scale, inf)).
     # Pareto II (Lomax) with alpha=3, beta=10 is obtained by shifting.
     model = FrequencySeverityModel(Poisson(10.0), Pareto(shape=3, scale=10))

@@ -80,7 +80,7 @@ def test_count_statistics():
     # Test statistics on counts
     assert counts.mean() == 3.5
     assert counts.percentile(50) == 3.5  # Median
-    assert counts.percentile([25, 75]) == [2.75, 4.25]
+    np.testing.assert_allclose(counts.percentile([25.0, 75.0]), [2.75, 4.25])
 
 
 def test_count_preserves_coupling():
