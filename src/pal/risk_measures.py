@@ -308,10 +308,22 @@ def tvar(
         risk_profile_type: Whether the profile represents losses
             or profits.
     """
+    if not (0 <= percentile <= 100):
+        raise ValueError("percentile must be between 0 and 100")
+
+    n = risk_profile.n_sims
     alpha = percentile / 100
+    start = int(np.ceil(alpha * n))
+    if start >= n:
+        # Degenerate tail: TVaR(100) = max (loss) / min (profit).
+        return svar(risk_profile, 100, 100, risk_profile_type)
+
+    # Choose a cutoff on the helper's u-grid so exactly the worst (n-start)
+    # simulations receive non-zero weight.
+    cutoff = (start - 0.5) / n
     return _spectral_risk_measure(
         risk_profile,
-        lambda u: np.where(u > alpha, 1 / (1 - alpha), 0.0),  # type:ignore
+        lambda u: np.where(u > cutoff, 1.0, 0.0),  # type: ignore
         risk_profile_type,
     )
 
@@ -320,7 +332,7 @@ def var(
     risk_profile: StochasticScalar,
     percentile: float,
 ) -> RiskMeasureResult:
-    r"""Value at Risk with percentile-layer capital allocation.
+    r"""Value at Risk with capital allocation.
 
     VaR is the loss threshold at a given percentile of the
     distribution:
@@ -329,12 +341,14 @@ def var(
 
         \text{VaR}_p(X) = F^{-1}(p/100)
 
-    Note that VaR is not a coherent risk measure and can be non-subadditive, but it is
-    widely used in practice for its simplicity and interpretability.
+    VaR is not a coherent risk measure — it can violate
+    sub-additivity — but it is widely used in practice
+    (e.g. Solvency II) for its simplicity and
+    interpretability.
 
-    Capital allocation for VaR is done using the Euler principle. Note that this uses
-    only a single simulation (the one at the VaR threshold) to allocate capital,
-    which is inherently unstable.
+    VaR is the degenerate case of SVaR where the window
+    collapses to a single point. Capital is allocated
+    entirely to the simulation at the VaR threshold.
 
     Args:
         risk_profile: Stochastic risk profile.
@@ -488,14 +502,19 @@ def svar(
               \\int_\alpha^\beta F^{-1}(u)\\,du
 
     This can be expressed as a spectral risk measure with the
-    step-function risk spectrum:
+    step-function risk spectrum over the half-open interval
+    :math:`(\alpha, \beta]`:
 
     .. math::
 
         w(u) = \begin{cases}
-            \frac{1}{\beta-\alpha} & \text{if } \beta> u > \alpha \\
+            \frac{1}{\beta-\alpha}
+                & \text{if } \alpha < u \leq \beta \\
             0 & \text{otherwise}
         \\end{cases}
+
+    When ``lower == upper`` the interval collapses to a point
+    and the measure reduces to VaR (a single order statistic).
 
     Args:
         risk_profile: StochasticScalar risk profile to weight.
@@ -504,13 +523,47 @@ def svar(
         risk_profile_type: Whether the profile represents losses
             or profits.
     """
-    if not (0 <= lower < upper <= 100):
-        raise ValueError("Invalid percentiles: require 0 <= lower < upper <= 100")
+    if not (0 <= lower <= upper <= 100):
+        raise ValueError("Invalid percentiles: require 0 <= lower <= upper <= 100")
+
+    n = risk_profile.n_sims
+    ranks = risk_profile.ranks
     lower_q = lower / 100
     upper_q = upper / 100
+    if lower == upper:
+        # Degenerate case: VaR at a single percentile
+        target_rank = min(int(lower_q * n), n - 1)
+        if risk_profile_type == "loss":
+            mask = ranks.values == target_rank
+        else:
+            mask = ranks.values == (n - 1 - target_rank)
+        weights_arr = xp.where(mask, float(n), 0.0)
+        weights = StochasticScalar(weights_arr)
+        value = float(xp.mean(risk_profile.values * weights_arr))
+        return RiskMeasureResult(value, weights)
+
+    start = int(np.ceil(lower_q * n))
+    end = int(np.ceil(upper_q * n))
+    if end <= start:
+        # Can occur for small n with a narrow window; fall back to VaR at upper.
+        target_rank = min(int(upper_q * n), n - 1)
+        if risk_profile_type == "loss":
+            mask = ranks.values == target_rank
+        else:
+            mask = ranks.values == (n - 1 - target_rank)
+        weights_arr = xp.where(mask, float(n), 0.0)
+        weights = StochasticScalar(weights_arr)
+        value = float(xp.mean(risk_profile.values * weights_arr))
+        return RiskMeasureResult(value, weights)
+
+    # Choose cutoffs on the helper's u-grid so we select exactly the order
+    # statistics in ranks [start, end). This matches the docstring interval
+    # (lower, upper] on the u-grid.
+    lower_cutoff = (start - 0.5) / n
+    upper_cutoff = (end - 0.5) / n
     return _spectral_risk_measure(
         risk_profile,
-        lambda u: np.where((u > lower_q) & (u < upper_q), 1 / (upper_q - lower_q), 0.0),  # type: ignore
+        lambda u: np.where((u > lower_cutoff) & (u <= upper_cutoff), 1.0, 0.0),  # type: ignore
         risk_profile_type,
     )
 
