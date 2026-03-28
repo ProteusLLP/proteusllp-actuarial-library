@@ -41,7 +41,7 @@ class FrequencySeverityModel:
     def generate(
         self,
         n_sims: int | None = None,
-        rng: np.random.Generator = ...,
+        rng: np.random.Generator | None = ...,
     ) -> FreqSevSims: ...
 
 class FreqSevSims(ProteusStochasticVariable):

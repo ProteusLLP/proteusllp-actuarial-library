@@ -1463,8 +1463,17 @@ class DistributionGeneratorBase:
         """Delegate to wrapped distribution."""
         return self.this_distribution.invcdf(u)
 
-    def generate(self, n_sims: int | None = None, rng: np.random.Generator = config.rng) -> StochasticScalar:
-        """Delegate to wrapped distribution."""
+    def generate(
+        self,
+        n_sims: int | None = None,
+        rng: np.random.Generator | None = None,
+    ) -> StochasticScalar:
+        """Delegate to wrapped distribution.
+
+        Args:
+            n_sims: Number of simulations. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+        """
         return self.this_distribution.generate(n_sims, rng)
 
 
