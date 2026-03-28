@@ -101,20 +101,26 @@ class FrequencySeverityModel:
         self.freq_dist = freq_dist
         self.sev_dist = sev_dist
 
-    def generate(self, n_sims: int | None = None, rng: np.random.Generator = config.rng) -> FreqSevSims:
+    def generate(
+        self,
+        n_sims: int | None = None,
+        rng: np.random.Generator | None = None,
+    ) -> FreqSevSims:
         """Generate simulations from the Frequency-Severity model.
 
         Parameters:
         - n_sims (int): Number of simulations to generate. If None, uses the
             default value from the config.
-        - rng (np.random.Generator): Random number generator. Defaults to the
-            value from the config.
+        - rng (np.random.Generator, optional): Random number generator. Uses
+            config.rng if None.
 
         Returns:
         - FreqSevSims: Object containing the generated simulations.
         """
         if n_sims is None:
             n_sims = config.n_sims
+        if rng is None:
+            rng = config.rng
         n_events = self.freq_dist.generate(n_sims, rng)
         total_events = n_events.sum()
         sev = self.sev_dist.generate(int(total_events), rng)
