@@ -116,7 +116,7 @@ def test_generate_with_none_rng():
 
 def test_clayton_copula_zero_theta():
     """Test Clayton copula with theta=0 (independence)."""
-    clayton = copulas.ClaytonCopula(theta=0.0, n=2)
+    clayton = copulas.ClaytonCopula(theta=0.0)
     samples = clayton.generate(1000)
     # Should generate independent uniforms
     assert len(samples) == 2
@@ -125,7 +125,7 @@ def test_clayton_copula_zero_theta():
 
 def test_gumbel_copula_theta_one():
     """Test Gumbel copula with theta=1 (independence)."""
-    gumbel = copulas.GumbelCopula(theta=1.0, n=2)
+    gumbel = copulas.GumbelCopula(theta=1.0)
     samples = gumbel.generate(1000)
     assert len(samples) == 2
     assert len(samples[0]) == 1000
@@ -133,7 +133,7 @@ def test_gumbel_copula_theta_one():
 
 def test_joe_copula_theta_one():
     """Test Joe copula with theta=1 (independence)."""
-    joe = copulas.JoeCopula(theta=1.0, n=2)
+    joe = copulas.JoeCopula(theta=1.0)
     samples = joe.generate(1000)
     assert len(samples) == 2
     assert len(samples[0]) == 1000
@@ -141,7 +141,7 @@ def test_joe_copula_theta_one():
 
 def test_frank_copula_small_theta():
     """Test Frank copula with small theta."""
-    frank = copulas.FrankCopula(theta=0.001, n=2)
+    frank = copulas.FrankCopula(theta=0.001)
     samples = frank.generate(1000)
     assert len(samples) == 2
     assert len(samples[0]) == 1000
@@ -149,7 +149,7 @@ def test_frank_copula_small_theta():
 
 def test_galambos_copula_small_theta():
     """Test Galambos copula with very small theta."""
-    galambos = copulas.GalambosCopula(theta=1e-5, d=2)
+    galambos = copulas.GalambosCopula(theta=1e-5)
     samples = galambos.generate(1000)
     assert len(samples) == 2
     assert len(samples[0]) == 1000
@@ -230,13 +230,13 @@ def test_gaussian_copula_with_chol_matrix():
 def test_clayton_copula_negative_theta():
     """Test Clayton copula rejects negative theta."""
     with pytest.raises(ValueError, match="Theta cannot be negative"):
-        copulas.ClaytonCopula(theta=-0.5, n=2)
+        copulas.ClaytonCopula(theta=-0.5)
 
 
 def test_archimedean_copula_with_n_parameter():
     """Test Archimedean copulas properly use n parameter."""
     # Test with 3 variables
-    clayton = copulas.ClaytonCopula(theta=2.0, n=3)
+    clayton = copulas.ClaytonCopula(theta=2.0)
     samples = clayton.generate(500)
     assert len(samples) == 3
     assert all(len(s) == 500 for s in samples)
@@ -244,7 +244,7 @@ def test_archimedean_copula_with_n_parameter():
 
 def test_gumbel_copula_high_theta():
     """Test Gumbel copula with high theta (strong dependence)."""
-    gumbel = copulas.GumbelCopula(theta=10.0, n=2)
+    gumbel = copulas.GumbelCopula(theta=10.0)
     samples = gumbel.generate(1000)
     assert len(samples) == 2
     # Should have strong positive dependence

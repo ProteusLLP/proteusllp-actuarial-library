@@ -558,7 +558,7 @@ class JoeCopula(ArchimedeanCopula):
     upper tail dependence with coefficient :math:`2 - 2^{1/\theta}`.
     """
 
-    def __init__(self, theta: float, dimension: int | None) -> None:
+    def __init__(self, theta: float, dimension: int | None = None) -> None:
         """Initialize a Joe copula.
 
         Args:

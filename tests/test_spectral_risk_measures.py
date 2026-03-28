@@ -239,7 +239,7 @@ class TestTVaR:
         """TVaR(99) on 10,000 sims uses the worst 100."""
         profile = StochasticScalar(np.arange(10_000, dtype=float))
         rm = tvar(profile, 99)
-        assert np.count_nonzero(rm.weights.values) == 100
+        assert np.count_nonzero(rm.weights) == 100
 
 
 # --- Dual Power ---
