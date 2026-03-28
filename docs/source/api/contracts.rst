@@ -13,24 +13,28 @@ Available Contract Types
 
 The following reinsurance contract types are supported:
 
-- **QuotaShare**: Proportional reinsurance where the reinsurer pays a fixed percentage
-- **ExcessOfLoss**: Non-proportional reinsurance with attachment point and limit
+- **XoL**: Excess of loss reinsurance layer with attachment point and limit
+- **XoLTower**: A tower of stacked XoL layers
 
 Usage Example
 -------------
 
 .. code-block:: python
 
-   from pal import distributions, contracts
+   from pal import distributions
+   from pal.contracts import XoL
+   from pal.frequency_severity import FrequencySeverityModel
 
-   # Create loss variable
-   losses = distributions.Gamma(alpha=2.5, beta=2).generate()
-
-   # Apply quota share reinsurance (50% cession)
-   ceded, retained = contracts.QuotaShare(cession_rate=0.5).apply(losses)
+   # Generate claims
+   claims = FrequencySeverityModel(
+       freq_dist=distributions.Poisson(mean=5),
+       sev_dist=distributions.LogNormal(mu=10, sigma=1),
+   ).generate()
 
    # Apply excess of loss reinsurance
-   ceded, retained = contracts.ExcessOfLoss(
-       attachment_point=100,
-       limit=1000
-   ).apply(losses)
+   result = XoL(
+       name="5m xs 1m",
+       limit=5_000_000,
+       excess=1_000_000,
+       premium=500_000,
+   ).apply(claims)

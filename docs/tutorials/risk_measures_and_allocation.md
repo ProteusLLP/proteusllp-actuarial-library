@@ -6,17 +6,13 @@ across lines of business using the `pal.risk_measures` module.
 ## What is a Risk Measure?
 
 A risk measure is a function ρ that maps a random loss variable X to a
-real number ρ(X), representing the capital needed to make the risk
-acceptable. The simplest example is the expected value E[X], but this
-ignores variability. More useful measures account for the tail of the
-distribution - the rare but severe scenarios that drive solvency
-requirements.
+real number ρ(X). The simplest example is the expected value E[X]. More useful measures account for various notions of risk, for example the rare but severe scenarios that drive insolvency events.
 
 One of the most commonly used risk measures is **Value at Risk** (VaR). VaR at level α is the α-quantile of the loss
 distribution: the loss exceeded with probability 1 − α. VaR is
-intuitive and widely used (for example, in Solvency II), but it has a serious
-flaw: it ignores what happens *beyond* the quantile. Two portfolios
-can have the same VaR but very different tail behaviour.
+intuitive and widely used (for example, in Solvency II), but it has a number of serious
+flaws: Firstly, it ignores what happens *beyond* the quantile. Two portfolios
+can have the same VaR but very different tail behaviour. Secondly, VaR is not a **coherent** risk measure.
 
 ### Coherent Risk Measures
 
@@ -32,6 +28,8 @@ a "coherent" risk measure should satisfy:
    exposure doubles the capital.
 4. **Translation invariance** — ρ(X + c) = ρ(X) + c for constant c.
    Adding a certain loss increases capital by the same amount.
+
+VaR does not satisfy the sub-additivity requirement, so is not a coherent risk measure.
 
 TVaR (Tail Value at Risk, also known as Expected Shortfall) is the simplest coherent alternative to
 VaR. Other risk measures include distortion risk measures. All distortion risk measures with a concave distortion function
@@ -152,7 +150,7 @@ regulation:
 <!--pytest-codeblocks:cont-->
 
 ```python
-rm_tvar = tvar(total, alpha=0.99)
+rm_tvar = tvar(total, percentile=99)
 print(f"TVaR 99%:  {rm_tvar.value:,.0f}")
 ```
 
@@ -576,14 +574,15 @@ the market charges more per unit of risk for remote layers.
 
 | Function | Type | Key Parameter |
 |----------|------|---------------|
-| `tvar` | Spectral | α — confidence level |
-| `proportional_hazards_transform` | Spectral | α — survival distortion power |
-| `wang_transform` | Spectral | α — normal CDF shift |
-| `dual_power_transform` | Spectral | β — CDF distortion power |
-| `exponential_transform` | Spectral | γ — exponential risk aversion |
-| `svar` | Spectral | lower, upper — percentile window |
-| `standard_deviation_principle` | Euler | k — std deviation loading |
-| `percentile_layer` | Layer-based | capital — amount to allocate |
+| `tvar` | Coherent  | percentile — confidence level (0-100) |
+| `var` | Not Coherent | percentile — confidence level (0-100) |
+| `proportional_hazards_transform` | Coherent | α — survival distortion power |
+| `wang_transform` | Coherent | α — normal CDF shift |
+| `dual_power_transform` | Coherent | β — CDF distortion power |
+| `exponential_transform` | Coherent | γ — exponential risk aversion |
+| `svar` | Not Coherent | lower, upper — percentile window |
+| `standard_deviation_principle` | Not Coherent | k — std deviation loading |
+| `percentile_layer` | Not Coherent | capital — amount to allocate |
 
 All functions return a `RiskMeasureResult`. Use `.value` for the
 risk measure and `.allocate()` for capital allocation.
