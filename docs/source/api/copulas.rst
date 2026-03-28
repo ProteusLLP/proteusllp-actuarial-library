@@ -37,4 +37,4 @@ Usage Example
    var2 = distributions.LogNormal(mu=1, sigma=0.5).generate()
 
    # Apply Gumbel copula to create dependency
-   copulas.GumbelCopula(theta=1.2, n=2).apply([var1, var2])
+   copulas.GumbelCopula(theta=1.2).apply([var1, var2])

@@ -16,7 +16,7 @@ from .types import Numeric
 
 percentiles = np.array([1, 2, 5, 10, 20, 50, 70, 80, 90, 95, 99, 99.5, 99.8, 99.9])
 
-NumberOrList = Numeric | list[Numeric]
+NumberOrList = typing.Union[Numeric, list[Numeric]]
 
 
 if typing.TYPE_CHECKING:
@@ -71,9 +71,7 @@ def tvar(values: npt.ArrayLike, p: NumberOrList) -> NumberOrList:
 
     idx = math.ceil(p / 100 * n_sims)
     if idx > n_sims:
-        raise ValueError(
-            f"Percentile {p}% requires more data points than available ({n_sims})"
-        )
+        raise ValueError(f"Percentile {p}% requires more data points than available ({n_sims})")
     # Handle edge case where idx == n_sims (e.g., single value at 50th percentile)
     if idx >= n_sims:
         return float(values_array[rank_positions[-1]])  # Return the maximum value

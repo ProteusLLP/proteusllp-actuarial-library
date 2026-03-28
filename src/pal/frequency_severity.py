@@ -41,9 +41,7 @@ from .stochastic_scalar import (
 # Type aliases for frequency-severity modeling
 
 # Types that can be used in mathematical operations with FreqSevSims objects
-ProteusCompatibleTypes = t.Union[
-    "FreqSevSims", StochasticScalar, int, float, npt.NDArray[t.Any]
-]
+ProteusCompatibleTypes = t.Union["FreqSevSims", StochasticScalar, int, float, npt.NDArray[t.Any]]
 
 # Function signature for numpy ufunc operations that reduce events to simulations
 ReductionOperation = t.Callable[
@@ -103,9 +101,7 @@ class FrequencySeverityModel:
         self.freq_dist = freq_dist
         self.sev_dist = sev_dist
 
-    def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator = config.rng
-    ) -> FreqSevSims:
+    def generate(self, n_sims: int | None = None, rng: np.random.Generator = config.rng) -> FreqSevSims:
         """Generate simulations from the Frequency-Severity model.
 
         Parameters:
@@ -124,9 +120,7 @@ class FrequencySeverityModel:
         sev = self.sev_dist.generate(int(total_events), rng)
         # Convert n_events to integers since _get_sims_of_events expects integer counts
         # but n_events.values comes from distributions which return floating arrays
-        result = FreqSevSims(
-            _get_sims_of_events(n_events.values.astype(np.int64)), sev.values, n_sims
-        )
+        result = FreqSevSims(_get_sims_of_events(n_events.values.astype(np.int64)), sev.values, n_sims)
         result.coupled_variable_group.merge(n_events.coupled_variable_group)
         result.coupled_variable_group.merge(sev.coupled_variable_group)
         return result
@@ -204,12 +198,7 @@ class FreqSevSims(ProteusStochasticVariable):
             )
 
     def __str__(self):
-        return (
-            "Simulation Index\n"
-            + str(self.sim_index)
-            + "\n Values\n"
-            + str(self.values)
-        )
+        return "Simulation Index\n" + str(self.sim_index) + "\n Values\n" + str(self.values)
 
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
         """Reorder simulations according to the given order.
@@ -313,6 +302,36 @@ class FreqSevSims(ProteusStochasticVariable):
         """
         return self._reduce_over_events(np.maximum.at)
 
+    def count(self) -> StochasticScalar:
+        """Counts the number of losses (events) in each simulation.
+
+        Returns the frequency count of how many individual losses occurred
+        within each simulation. This is useful for analyzing frequency
+        distributions and understanding claim counts.
+
+        Example:
+            >>> sim_index = np.array([0, 0, 1, 1, 1, 2, 2, 2, 2])
+            >>> values = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
+            >>> n_sims = 3
+            >>> fs = FreqSevSims(sim_index, values, n_sims)
+            >>> loss_counts: StochasticScalar = fs.count()
+            >>> loss_counts
+            StochasticScalar([2., 3., 4.])
+            >>> # Now you can apply statistical methods
+            >>> loss_counts.mean()
+            3.0
+            >>> loss_counts.quantile(0.5)
+            3.0
+
+        Returns:
+            StochasticScalar: Array containing the number of losses for each
+                simulation. Use this for analyzing frequency distributions.
+        """
+        counts = xp.bincount(self.sim_index, minlength=self.n_sims).astype(float)
+        result = StochasticScalar(counts)
+        result.coupled_variable_group.merge(self.coupled_variable_group)
+        return result
+
     def deep_copy(self) -> FreqSevSims:
         """Creates a deep copy of the FreqSevSims object."""
         return FreqSevSims(self.sim_index, self.values.copy(), self.n_sims)
@@ -350,9 +369,7 @@ class FreqSevSims(ProteusStochasticVariable):
             # Scalar value - return as-is
             return x
 
-    def __array_ufunc__(
-        self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any
-    ) -> FreqSevSims:
+    def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any) -> FreqSevSims:
         _inputs = tuple(self._extract_array_for_ufunc(x) for x in inputs)
         out = kwargs.get("out", ())
         if out:
@@ -390,6 +407,7 @@ class FreqSevSims(ProteusStochasticVariable):
             np.minimum,
             np.maximum,
             np.mean,
+            np.round,
         ):
             raise NotImplementedError(f"Function {func.__name__} not supported")
 
@@ -398,15 +416,13 @@ class FreqSevSims(ProteusStochasticVariable):
             return func(self.aggregate(), **kwargs)
 
         # Extract values from FreqSevSims objects, leave others as-is
-        processed_args = tuple(
-            x.values if isinstance(x, FreqSevSims) else x for x in args
-        )
+        processed_args = tuple(x.values if isinstance(x, FreqSevSims) else x for x in args)
 
         result = func(*processed_args, **kwargs)
 
         # If result is a scalar, return it directly
         # Type ignore: Pyright can't infer the exact numpy scalar type
-        if isinstance(result, np.number | np.bool_ | bool) or np.isscalar(result):
+        if isinstance(result, (np.number, np.bool_, bool)) or np.isscalar(result):
             return result  # type: ignore[misc]
 
         # Otherwise create a new FreqSevSims object with the result
@@ -445,11 +461,7 @@ class FreqSevSims(ProteusStochasticVariable):
         sim_index = np.repeat(self.sim_index, n_sims // self.n_sims)
         values = np.repeat(self.values, n_sims // self.n_sims)
         if n_sims % self.n_sims > 0:
-            sim_index = np.concatenate(
-                (sim_index, self.sim_index[self.sim_index < n_sims % self.n_sims])
-            )
-            values = np.concatenate(
-                (values, self.values[self.sim_index < n_sims % self.n_sims])
-            )
+            sim_index = np.concatenate((sim_index, self.sim_index[self.sim_index < n_sims % self.n_sims]))
+            values = np.concatenate((values, self.values[self.sim_index < n_sims % self.n_sims]))
         sim_index = sim_index + xp.arange(len(sim_index)) % n_sims
         return FreqSevSims(sim_index, values, n_sims)

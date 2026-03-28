@@ -1,0 +1,304 @@
+"""Extended tests for StochasticScalar to improve coverage.
+
+Tests for input validation, edge cases, and error handling.
+"""
+
+import numpy as np
+import pytest
+from pal import maths as pnp
+from pal.variables import StochasticScalar
+
+# =============================================================================
+# Input Validation Tests
+# =============================================================================
+
+
+def test_invalid_2d_array():
+    """Test that 2D arrays raise ValueError."""
+    with pytest.raises(ValueError, match="1D array"):
+        StochasticScalar([[1, 2], [3, 4]])
+
+
+def test_invalid_3d_array():
+    """Test that 3D arrays raise ValueError."""
+    with pytest.raises(ValueError, match="1D array"):
+        StochasticScalar([[[1, 2]], [[3, 4]]])
+
+
+def test_invalid_numpy_2d_array():
+    """Test that 2D numpy arrays raise ValueError."""
+    arr = np.array([[1, 2, 3], [4, 5, 6]])
+    with pytest.raises(ValueError, match="1D array"):
+        StochasticScalar(arr)
+
+
+def test_invalid_type():
+    """Test that invalid types raise TypeError."""
+    with pytest.raises(TypeError):
+        StochasticScalar("not an array")
+
+
+def test_invalid_dict():
+    """Test that dictionaries raise TypeError."""
+    with pytest.raises(TypeError):
+        StochasticScalar({"a": 1, "b": 2})
+
+
+# =============================================================================
+# Edge Cases for Statistical Methods
+# =============================================================================
+
+
+def test_statistics_single_value():
+    """Test statistics with single value."""
+    x = StochasticScalar([42])
+    assert x.mean() == 42
+    assert x.std() == 0
+    assert x.var() == 0
+    assert x.min() == 42
+    assert x.max() == 42
+
+
+def test_statistics_identical_values():
+    """Test statistics when all values are identical."""
+    x = StochasticScalar([5, 5, 5, 5, 5])
+    assert x.mean() == 5
+    assert x.std() == 0
+    assert x.var() == 0
+
+
+def test_negative_values():
+    """Test operations with negative values."""
+    x = StochasticScalar([-5, -3, -1, 0, 1, 3, 5])
+    assert x.mean() == 0
+    assert x.min() == -5
+    assert x.max() == 5
+
+
+def test_percentile_edge_cases():
+    """Test percentile calculation at edges."""
+    x = StochasticScalar([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    # 0th percentile should be minimum
+    assert pnp.percentile(x, 0) == pytest.approx(1, abs=0.1)
+    # 100th percentile should be maximum
+    assert pnp.percentile(x, 100) == 10
+
+
+def test_tvar_calculation():
+    """Test TVaR (Tail Value at Risk) calculation."""
+    x = StochasticScalar([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    # TVaR at 90% should be average of top 10%
+    tvar_90 = x.tvar(90)
+    assert tvar_90 == 10  # Only the highest value
+
+
+def test_tvar_list():
+    """Test TVaR with list of percentiles."""
+    x = StochasticScalar([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    tvars = x.tvar([50, 90, 99])
+    assert isinstance(tvars, list)
+    assert len(tvars) == 3
+    # Higher percentiles should have higher TVaR
+    assert tvars[0] < tvars[1] < tvars[2]
+
+
+# =============================================================================
+# Array Operations and Indexing
+# =============================================================================
+
+
+def test_boolean_indexing():
+    """Test boolean array indexing."""
+    x = StochasticScalar([1, 2, 3, 4, 5])
+    mask = x.values > 3
+    result = x.values[mask]
+    assert (result == [4, 5]).all()
+
+
+def test_slice_indexing():
+    """Test slice indexing."""
+    x = StochasticScalar([1, 2, 3, 4, 5])
+    assert (x.values[1:3] == [2, 3]).all()
+    assert (x.values[::2] == [1, 3, 5]).all()
+
+
+def test_negative_indexing():
+    """Test negative indexing."""
+    x = StochasticScalar([1, 2, 3, 4, 5])
+    assert x.values[-1] == 5
+    assert x.values[-2] == 4
+
+
+# =============================================================================
+# Type Conversion and Compatibility
+# =============================================================================
+
+
+def test_array_conversion():
+    """Test conversion to numpy array."""
+    x = StochasticScalar([1, 2, 3, 4, 5])
+    arr = np.array(x)
+    assert isinstance(arr, np.ndarray)
+    assert (arr == [1, 2, 3, 4, 5]).all()
+
+
+def test_dtype_preservation():
+    """Test that dtype is preserved."""
+    x_int = StochasticScalar(np.array([1, 2, 3], dtype=np.int32))
+    assert x_int.values.dtype == np.int32
+
+    x_float = StochasticScalar(np.array([1.5, 2.5, 3.5], dtype=np.float64))
+    assert x_float.values.dtype == np.float64
+
+
+def test_list_input():
+    """Test creation from Python list."""
+    x = StochasticScalar([1, 2, 3, 4, 5])
+    assert x.n_sims == 5
+    assert (x.values == [1, 2, 3, 4, 5]).all()
+
+
+def test_tuple_input():
+    """Test creation from tuple."""
+    x = StochasticScalar((1, 2, 3, 4, 5))
+    assert x.n_sims == 5
+    assert (x.values == [1, 2, 3, 4, 5]).all()
+
+
+# =============================================================================
+# Aggregation and Summary Methods
+# =============================================================================
+
+
+def test_aggregate_method():
+    """Test aggregate() returns copy of itself for StochasticScalar."""
+    x = StochasticScalar([1, 2, 3, 4, 5])
+    agg = x.aggregate()
+    assert isinstance(agg, StochasticScalar)
+    assert (agg.values == x.values).all()
+    # Should be same object (not a copy)
+    assert agg is x
+
+
+# =============================================================================
+# Comparison Chain Operations
+# =============================================================================
+
+
+def test_comparison_chain():
+    """Test chained comparisons."""
+    x = StochasticScalar([1, 2, 3, 4, 5])
+    # Create boolean mask
+    mask = (x > 2) & (x < 5)
+    # Count True values
+    assert mask.values.sum() == 2  # Values 3 and 4
+
+
+def test_comparison_with_array():
+    """Test comparison with numpy array."""
+    x = StochasticScalar([1, 2, 3, 4, 5])
+    threshold = np.array([2, 2, 2, 2, 2])
+    result = x > threshold
+    assert (result.values == [False, False, True, True, True]).all()
+
+
+# =============================================================================
+# Edge Cases for Arithmetic Operations
+# =============================================================================
+
+
+def test_division_by_zero_warning():
+    """Test division by zero creates inf values."""
+    x = StochasticScalar([1, 2, 3, 4, 5])
+    # Division by zero should create inf
+    with pytest.warns(RuntimeWarning):
+        result = x / 0
+        assert np.all(np.isinf(result.values))
+
+
+def test_very_large_numbers():
+    """Test operations with very large numbers."""
+    x = StochasticScalar([1e308, 2e308, 3e308])
+    # Should not overflow for addition
+    y = x + 1
+    assert np.all(np.isfinite(y.values))
+
+
+def test_very_small_numbers():
+    """Test operations with very small numbers."""
+    x = StochasticScalar([1e-308, 2e-308, 3e-308])
+    y = x * 2
+    assert np.all(y.values > 0)
+
+
+def test_mixed_numeric_types():
+    """Test operations mixing int and float."""
+    x = StochasticScalar([1, 2, 3])  # Integers
+    y = x * 1.5  # Float multiplication
+    assert y.values.dtype == np.float64
+    assert (y.values == [1.5, 3.0, 4.5]).all()
+
+
+# =============================================================================
+# Copy and Memory Operations
+# =============================================================================
+
+
+def test_copy_independence():
+    """Test that copy creates independent object."""
+    x = StochasticScalar([1, 2, 3])
+    y = x.copy()
+    y.values[0] = 999
+    # Original should be unchanged
+    assert x.values[0] == 1
+    assert y.values[0] == 999
+
+
+def test_shallow_vs_deep_operations():
+    """Test that arithmetic operations don't modify original."""
+    x = StochasticScalar([1, 2, 3])
+    original_values = x.values.copy()
+    y = x + 10
+    # Original should be unchanged
+    assert (x == original_values).all()
+    assert (y == [11, 12, 13]).all()
+
+
+# =============================================================================
+# N_sims Property Tests
+# =============================================================================
+
+
+def test_n_sims_property():
+    """Test n_sims property."""
+    x = StochasticScalar([1, 2, 3, 4, 5])
+    assert x.n_sims == 5
+
+    y = StochasticScalar([])
+    assert y.n_sims == 0
+
+    z = StochasticScalar(np.arange(1000))
+    assert z.n_sims == 1000
+
+
+def test_n_sims_after_operations():
+    """Test n_sims is preserved after operations."""
+    x = StochasticScalar([1, 2, 3, 4, 5])
+    y = x * 2 + 3
+    assert y.n_sims == 5
+    assert x.n_sims == 5
+
+
+# =============================================================================
+# Rank Operations
+# =============================================================================
+
+
+def test_ranks_property():
+    """Test ranks calculation."""
+    x = StochasticScalar([3, 1, 4, 1, 5])
+    ranks = x.ranks
+    # Ranks should be simulation indices sorted by value
+    assert ranks.n_sims == 5
+    # Check that ranks are properly computed
+    assert isinstance(ranks, StochasticScalar)

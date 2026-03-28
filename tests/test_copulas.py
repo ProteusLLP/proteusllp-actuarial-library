@@ -8,11 +8,12 @@ import re
 
 import numpy as np
 import numpy.typing as npt
-import pal.maths as pnp
 import pytest
 import scipy
 import scipy.special
 import scipy.stats  # ignore:import-untyped
+
+import pal.maths as pnp
 from pal import config, copulas, distributions
 from pal.variables import ProteusVariable, StochasticScalar
 
@@ -40,9 +41,7 @@ def copula_margins(
 
 @pytest.mark.parametrize("correlation", [-0.999, 0.5, 0, -0.5, 0.25, 0.75, 0.999])
 def test_gaussian_copula(correlation: float):
-    samples = copulas.GaussianCopula([[1, correlation], [correlation, 1]]).generate(
-        100000
-    )
+    samples = copulas.GaussianCopula([[1, correlation], [correlation, 1]]).generate(100000)
     # test the correlations
     emp_corr = np.corrcoef((samples[0].values, samples[1].values))[0, 1]
     # convert from rank to linear
@@ -74,9 +73,7 @@ def test_gaussian_copula_apply(correlation: float):
 @pytest.mark.parametrize("dof", [1.5, 5, 9, 100])
 @pytest.mark.parametrize("correlation", [-0.999, 0.5, -0.5, 0, 0.25, 0.75, 0.999])
 def test_studentst_copula(correlation: float, dof: float):
-    samples = copulas.StudentsTCopula(
-        [[1, correlation], [correlation, 1]], dof
-    ).generate(100000)
+    samples = copulas.StudentsTCopula([[1, correlation], [correlation, 1]], dof).generate(100000)
     k = scipy.stats.kendalltau(samples[0].values, samples[1].values).statistic
     assert np.isclose(k, 2 / np.pi * np.asin(correlation), atol=1e-2)
     # test the margins
@@ -154,10 +151,7 @@ def test_joe_copula(theta: float):
     k = scipy.stats.kendalltau(samples[0].values, samples[1].values).statistic
     assert np.isclose(
         k,
-        1
-        + 2
-        / (2 - theta)
-        * (scipy.special.digamma(2) - scipy.special.digamma(2 / theta + 1)),
+        1 + 2 / (2 - theta) * (scipy.special.digamma(2) - scipy.special.digamma(2 / theta + 1)),
         atol=1e-2,
     )
     # test the margins
@@ -168,9 +162,7 @@ def debye1(x: float) -> float:
     """The first Debye function."""
     # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType] - scipy.special functions not fully typed
     return (  # pyright: ignore[reportUnknownVariableType]
-        np.log(1 - np.exp(-x)) * x
-        + scipy.special.zeta(2)
-        - scipy.special.spence(1 - np.exp(-x))
+        np.log(1 - np.exp(-x)) * x + scipy.special.zeta(2) - scipy.special.spence(1 - np.exp(-x))
     ) / x
 
 
@@ -217,9 +209,7 @@ def test_plackett_copula(delta: float):
     # calculate the Spearman's rho value
     r = scipy.stats.spearmanr(samples[0].values, samples[1].values).statistic
     # Theoretical Spearman's rho for Plackett copula
-    expected_result = (delta + 1) / (delta - 1) - (2 * delta * np.log(delta)) / (
-        (delta - 1) ** 2
-    )
+    expected_result = (delta + 1) / (delta - 1) - (2 * delta * np.log(delta)) / ((delta - 1) ** 2)
     assert np.isclose(
         r,
         expected_result,
@@ -257,8 +247,7 @@ def test_huslerreiss_copula(matrix: list[list[float]]):
     threshold = 0.995
     estimated_tail_dependence = [
         [
-            ((samples[i] > threshold) & (samples[j] > threshold)).mean()
-            / (samples[i] > threshold).mean()
+            ((samples[i] > threshold) & (samples[j] > threshold)).mean() / (samples[i] > threshold).mean()
             for j in range(d)
         ]
         for i in range(d)
@@ -281,18 +270,12 @@ def test_huslerreiss_copula_parameter_errors():
 def test_hulerreiss_copula_methods():
     """Test Husler-Reiss copula methods."""
     lambda_matrix = np.array([[0, 1.25], [1.25, 0]])
-    tail_dependence_matrix = copulas.HuslerReissCopula(
-        lambda_matrix
-    ).tail_dependence_matrix
+    tail_dependence_matrix = copulas.HuslerReissCopula(lambda_matrix).tail_dependence_matrix
     expected_tail_dependency_matrix = 2 * (1 - scipy.stats.norm.cdf(lambda_matrix))
     assert np.allclose(tail_dependence_matrix, expected_tail_dependency_matrix)
-    lambda_matrix = copulas.HuslerReissCopula.calculate_lambda_from_tail_dependence(
-        tail_dependence_matrix
-    )
+    lambda_matrix = copulas.HuslerReissCopula.calculate_lambda_from_tail_dependence(tail_dependence_matrix)
     assert np.allclose(lambda_matrix, lambda_matrix)
-    copula = copulas.HuslerReissCopula.from_tail_dependence_matrix(
-        tail_dependence_matrix
-    )
+    copula = copulas.HuslerReissCopula.from_tail_dependence_matrix(tail_dependence_matrix)
     assert np.allclose(copula.adjusted_lambda_matrix, lambda_matrix)
 
 
@@ -341,9 +324,7 @@ def test_extremalt_copula_parameter_errors():
     """Test that invalid parameters raise errors."""
     with pytest.raises(ValueError, match="Correlation matrix must be square"):
         copulas.ExtremalTCopula(np.array([[0, 1], [1, 0], [0, 1]]), 1)
-    with pytest.raises(
-        ValueError, match="Correlation matrix diagonal must be all ones"
-    ):
+    with pytest.raises(ValueError, match="Correlation matrix diagonal must be all ones"):
         copulas.ExtremalTCopula(np.array([[0, 1], [1, 0]]), 1)
     with pytest.raises(
         ValueError,
@@ -383,21 +364,16 @@ def test_extremalt_copula_methods():
 def test_mm1_copula(delta_matrix: list[list[float]], theta: float):
     config.rng = np.random.default_rng(12345678)
 
-    samples = copulas.MM1Copula(delta_matrix=delta_matrix, theta=theta).generate(
-        1_000_000
-    )
+    samples = copulas.MM1Copula(delta_matrix=delta_matrix, theta=theta).generate(1_000_000)
     # calculate the tail dependency coefficient of each bivariate margin
     threshold = 0.99
     upper_tail_coefficient = [
-        [((u > threshold) * (v > threshold)).mean() / (1 - threshold) for u in samples]
-        for v in samples
+        [((u > threshold) * (v > threshold)).mean() / (1 - threshold) for u in samples] for v in samples
     ]
 
     def mm1_tail_coeff(delta_ij: float, theta: float, d: int):
         """Calculate the upper tail dependence coefficient for MM1 copula."""
-        return 2 - (
-            ((2 ** (1 / delta_ij)) / (d - 1) + 2 * (d - 2) / (d - 1)) ** (1 / theta)
-        )
+        return 2 - (((2 ** (1 / delta_ij)) / (d - 1) + 2 * (d - 2) / (d - 1)) ** (1 / theta))
 
     expected_tail_coefficients = [
         [mm1_tail_coeff(delta_matrix[i][j], theta, len(delta_matrix)) for j in range(i)]

@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+
 from pal.stats import tvar
 from pal.variables import StochasticScalar
 
@@ -15,9 +16,7 @@ from pal.variables import StochasticScalar
         ([5, 5, 5, 5, 5], 80, 5.0),
     ],
 )
-def test_tvar_single_percentile(
-    values: list[float], percentile: float, expected: float
-) -> None:
+def test_tvar_single_percentile(values: list[float], percentile: float, expected: float) -> None:
     """Test TVAR calculation with single percentiles."""
     result = tvar(np.array(values), percentile)
     assert result == expected

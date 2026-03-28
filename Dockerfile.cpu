@@ -17,6 +17,10 @@ RUN apt-get update && apt-get install -y \
     && sed -i '/en_GB.UTF-8/s/^# //g' /etc/locale.gen \
     && locale-gen
 
+# Set locale environment variables
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+
 # Install pyright globally for type checking
 RUN npm install -g pyright
 
@@ -44,8 +48,8 @@ RUN useradd -m -s /bin/bash vscode && \
     usermod -aG sudo vscode && \
     echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Install dev dependencies (test + dev groups, but not GPU group)
-RUN pip install -e ".[test,dev]"
+# Install dev dependencies (test + dev + docs groups, but not GPU group)
+RUN pip install -e ".[test,dev,docs]"
 
 # Switch to non-root user
 USER vscode

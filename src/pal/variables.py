@@ -58,21 +58,33 @@ import plotly.graph_objects as go  # type: ignore
 import plotly.io as pio  # type: ignore
 import scipy.stats
 
-# local imports
 from . import maths as pnp
+
+# local imports
+from ._compat import Self
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
-from .types import ProteusLike, VectorLike
+from .types import VectorLike
 
 pio.templates.default = "none"
+
+T = t.TypeVar("T")
 
 __all__ = [
     "ProteusVariable",
 ]
 
 
-class ProteusVariable[T]:
+def _format_number(val: int | float) -> str:
+    if isinstance(val, int) or abs(val) >= 100:
+        return f"{val:,.0f}"
+    if abs(val) >= 1:
+        return f"{val:,.4f}"
+    return f"{val:.6g}"
+
+
+class ProteusVariable(t.Generic[T]):
     """A generic, homogeneous container for multivariate variables in simulations.
 
     ProteusVariable is a hierarchical structure that holds multiple variables of
@@ -161,23 +173,15 @@ class ProteusVariable[T]:
         self._dimension_set = set(self.dimensions)
         # Ensure that values is a mapping type
         if not isinstance(values, dict):  # type: ignore[redundant-expr]
-            raise TypeError(
-                f"Expected a mapping (dict-like) for 'values', got "
-                f"{type(values).__name__}"
-            )
+            raise TypeError(f"Expected a mapping (dict-like) for 'values', got {type(values).__name__}")
         # check the number of simulations in each variable
         self.n_sims = None
         for value in (
             self.values.values() if isinstance(self.values, dict) else self.values  # type: ignore[reportUnknownMemberType]
         ):
             if isinstance(value, ProteusVariable):
-                if (
-                    self._dimension_set.intersection(value._dimension_set)
-                    or self.dim_name == value.dim_name
-                ):
-                    raise ValueError(
-                        "Duplicate dimension names in ProteusVariable hierarchy."
-                    )
+                if self._dimension_set.intersection(value._dimension_set) or self.dim_name == value.dim_name:
+                    raise ValueError("Duplicate dimension names in ProteusVariable hierarchy.")
                 self._dimension_set.intersection_update(value.dimensions)
                 self.dimensions.extend(value.dimensions)
 
@@ -248,9 +252,7 @@ class ProteusVariable[T]:
 
         return result
 
-    def __array_ufunc__(
-        self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any
-    ) -> ProteusVariable[T]:
+    def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any) -> ProteusVariable[T]:
         """Handle numpy universal functions applied to ProteusVariable objects.
 
         This method enables ProteusVariable objects to work with numpy ufuncs by
@@ -269,9 +271,7 @@ class ProteusVariable[T]:
             NotImplementedError: If method is not "__call__".
         """
         if method != "__call__":
-            raise NotImplementedError(
-                f"Method {method} not implemented for ProteusVariable."
-            )
+            raise NotImplementedError(f"Method {method} not implemented for ProteusVariable.")
 
         def recursive_apply(*items: t.Any, **kwargs: t.Any) -> t.Any:
             # If none of the items is a ProteusVariable (i.e. a container), then
@@ -285,20 +285,12 @@ class ProteusVariable[T]:
             # Otherwise, at least one of the items is a container.
             # We assume that the container structure is consistent across items.
 
-            first_container = items[
-                [
-                    i
-                    for i, item in enumerate(items)
-                    if isinstance(item, ProteusVariable)
-                ][0]
-            ]
+            first_container = items[[i for i, item in enumerate(items) if isinstance(item, ProteusVariable)][0]]
 
             # if the first container is a ProteusVariable, we can assume that
             # all other items are also ProteusVariables or compatible types.
             if not isinstance(first_container, ProteusVariable):
-                raise TypeError(
-                    f"No {type(self).__name__} found in inputs, cannot apply ufunc."
-                )
+                raise TypeError(f"No {type(self).__name__} found in inputs, cannot apply ufunc.")
 
             # Process dictionary containers.
             if isinstance(
@@ -322,8 +314,7 @@ class ProteusVariable[T]:
                             vals = item.values  # type: ignore[reportUnknownMemberType]
                             if not isinstance(vals, dict):  # type: ignore[redundant-expr]
                                 raise TypeError(
-                                    f"Expected dict values in {type(self).__name__}, "
-                                    f"but got {type(vals).__name__}."  # type: ignore[reportArgumentType]  # noqa: E501
+                                    f"Expected dict values in {type(self).__name__}, but got {type(vals).__name__}."  # type: ignore[reportArgumentType]  # noqa: E501
                                 )
                             new_items.append(vals[key])
                         else:
@@ -457,16 +448,18 @@ class ProteusVariable[T]:
             # If result is 2D, use columns
             return ProteusVariable(
                 self.dim_name,
-                {
-                    key: StochasticScalar(temp[:, i])
-                    for i, key in enumerate(self.values.keys())
-                },
+                {key: StochasticScalar(temp[:, i]) for i, key in enumerate(self.values.keys())},
             )
 
         # This should be unreachable - we've handled 0D, 1D, and 2D arrays
         raise NotImplementedError(
             f"Unexpected array dimensionality: {temp.ndim}D array returned by "
             f"{func.__name__}. Only 0D (scalar), 1D, and 2D arrays are supported."
+        )
+
+    def __bool__(self) -> bool:
+        raise ValueError(
+            "ProteusVariable does not have a single truth value. Use explicit checks on its values instead."
         )
 
     def __iter__(self) -> t.Iterator[T]:
@@ -488,74 +481,84 @@ class ProteusVariable[T]:
         return reversed(list(self.values.values()))
 
     def __repr__(self) -> str:
-        return f"ProteusVariable(dim_name={self.dim_name}, values={self.values})"
+        lines = [f"ProteusVariable ({self.dim_name}):"]
+        max_key_len = max(len(k) for k in self.values)
+        for key, val in self.values.items():
+            if isinstance(val, ProteusVariable):
+                nested = repr(val).replace("\n", "\n  ")
+                lines.append(f"  {key}: {nested}")
+            elif isinstance(val, (int, float)):
+                lines.append(f"  {key:<{max_key_len}}  {_format_number(val):>14}")
+            else:
+                lines.append(f"  {key:<{max_key_len}}  {val!r}")
+        return "\n".join(lines)
 
     # Arithmetic operations
-    def __add__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a + b))
+    def __add__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a + b))
 
-    def __radd__(self, other: t.Any) -> t.Self:
+    def __radd__(self, other: t.Any) -> Self:
         return self.__add__(other)
 
-    def __sub__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a - b))
+    def __sub__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a - b))
 
-    def __rsub__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: b - a))
+    def __rsub__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: b - a))
 
-    def __mul__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a * b))
+    def __mul__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a * b))
 
-    def __rmul__(self, other: t.Any) -> t.Self:
+    def __rmul__(self, other: t.Any) -> Self:
         return self.__mul__(other)
 
-    def __truediv__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a / b))
+    def __truediv__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a / b))
 
-    def __rtruediv__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: b / a))
+    def __rtruediv__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: b / a))
 
-    def __pow__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a**b))
+    def __pow__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a**b))
 
-    def __rpow__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: b**a))
+    def __rpow__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: b**a))
 
-    def __neg__(self) -> t.Self:
+    def __neg__(self) -> Self:
         """Return the negation of the variable."""
-        return t.cast(t.Self, self._binary_operation(self, lambda a, _: -a))
+        return t.cast(Self, self._binary_operation(self, lambda a, _: -a))
 
     # Comparison operations
-    def __lt__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a < b))
+    def __lt__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a < b))
 
-    def __rlt__(self, other: t.Any) -> t.Self:
+    def __rlt__(self, other: t.Any) -> Self:
         return self.__ge__(other)
 
-    def __le__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a <= b))
+    def __le__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a <= b))
 
-    def __rle__(self, other: t.Any) -> t.Self:
+    def __rle__(self, other: t.Any) -> Self:
         return self.__gt__(other)
 
-    def __gt__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a > b))
+    def __gt__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a > b))
 
-    def __rgt__(self, other: t.Any) -> t.Self:
+    def __rgt__(self, other: t.Any) -> Self:
         return self.__le__(other)
 
-    def __ge__(self, other: t.Any) -> t.Self:
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a >= b))
+    def __ge__(self, other: t.Any) -> Self:
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a >= b))
 
-    def __rge__(self, other: t.Any) -> t.Self:
+    def __rge__(self, other: t.Any) -> Self:
         return self.__lt__(other)
 
     # Equality operations
-    def __eq__(self, other: object) -> t.Self:  # type: ignore[override]
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a == b))
+    def __eq__(self, other: object) -> Self:  # type: ignore[override]
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a == b))
 
-    def __ne__(self, other: object) -> t.Self:  # type: ignore[override]
-        return t.cast(t.Self, self._binary_operation(other, lambda a, b: a != b))
+    def __ne__(self, other: object) -> Self:  # type: ignore[override]
+        return t.cast(Self, self._binary_operation(other, lambda a, b: a != b))
 
     def __getitem__(self, key: int | str) -> T:
         # FIXME: This assumes that the ordering of the values never changes. At the
@@ -596,9 +599,7 @@ class ProteusVariable[T]:
         except ValueError as error:
             raise ValueError(f"{value!r} is not in ProteusVariable") from error
 
-    def get_value_at_sim(
-        self, sim_no: int | VectorLike[int]
-    ) -> ProteusVariable[T | VectorLike[T] | ProteusLike[T]]:
+    def get_value_at_sim(self, sim_no: int | StochasticScalar) -> ProteusVariable[T | StochasticScalar]:
         """Get values at specific simulation number(s).
 
         Args:
@@ -616,10 +617,7 @@ class ProteusVariable[T]:
         # will not be VectorLike.
         return ProteusVariable(
             dim_name=self.dim_name,
-            values={
-                k: self._get_value_at_sim_helper(v, sim_no)
-                for k, v in self.values.items()
-            },
+            values={k: self._get_value_at_sim_helper(v, sim_no) for k, v in self.values.items()},
         )
 
     def upsample(self, n_sims: int) -> ProteusVariable[T]:
@@ -629,11 +627,7 @@ class ProteusVariable[T]:
         return ProteusVariable(
             dim_name=self.dim_name,
             values={
-                key: (
-                    value.upsample(n_sims)
-                    if isinstance(value, ProteusStochasticVariable)
-                    else value
-                )
+                key: (value.upsample(n_sims) if isinstance(value, ProteusStochasticVariable) else value)
                 for key, value in self.values.items()
             },
         )
@@ -642,9 +636,7 @@ class ProteusVariable[T]:
         """Return the sum across the outer dimension."""
         return sum(self)  # type: ignore[arg-type]
 
-    def validate_freqsev_consistency(
-        self, _is_nested: bool = False
-    ) -> tuple[bool, str, npt.NDArray[t.Any] | None]:
+    def validate_freqsev_consistency(self, _is_nested: bool = False) -> tuple[bool, str, npt.NDArray[t.Any] | None]:
         """Validate that all FreqSevSims have consistent sim_index.
 
         When a ProteusVariable contains multiple FreqSevSims objects, operations like
@@ -692,9 +684,7 @@ class ProteusVariable[T]:
                         return False, f"Simulation index mismatch at key {key}", None
                 elif isinstance(value, ProteusVariable):
                     # Recursively validate nested ProteusVariable
-                    is_valid, error, nested_sim_index = (
-                        value.validate_freqsev_consistency(_is_nested=True)
-                    )
+                    is_valid, error, nested_sim_index = value.validate_freqsev_consistency(_is_nested=True)
                     if not is_valid:
                         return False, error, None
                     # Check consistency with current level's sim_index
@@ -712,8 +702,7 @@ class ProteusVariable[T]:
                     level = "Immediate" if not _is_nested else "Nested"
                     return (
                         False,
-                        f"{level} value for key {key} is "
-                        f"{type(value).__name__}, not FreqSevSims",
+                        f"{level} value for key {key} is {type(value).__name__}, not FreqSevSims",
                         None,
                     )
 
@@ -756,9 +745,7 @@ class ProteusVariable[T]:
         # Type ignore: pandas-stubs has complex overloads causing Pyright to report
         # the function signature as "partially unknown" despite correct usage
         df: pd.DataFrame = pd.read_csv(file_name)  # type: ignore[misc]
-        pivoted_df = df.pivot(
-            index=simulation_column, columns=dim_name, values=values_column
-        )
+        pivoted_df = df.pivot(index=simulation_column, columns=dim_name, values=values_column)
         count = df[dim_name].value_counts()
         # Type ignore: pandas-stubs overloads cause "partially unknown" warnings
         pivoted_df.sort_index(inplace=True)  # type: ignore[misc]
@@ -782,7 +769,7 @@ class ProteusVariable[T]:
     def from_dict(
         cls,
         data: dict[str, list[float]],
-    ) -> ProteusVariable[T]:
+    ) -> ProteusVariable[StochasticScalar]:
         """Create a ProteusVariable from a dictionary.
 
         This method currently has significant limitations and will be replaced
@@ -811,10 +798,10 @@ class ProteusVariable[T]:
         )
         result.n_sims = max([len(v) for v in data.values()])
 
-        return result
+        return result  # type: ignore
 
     @classmethod
-    def from_series(cls, data: pd.Series) -> ProteusVariable[T]:
+    def from_series(cls, data: pd.Series) -> ProteusVariable[float]:
         """Create a ProteusVariable from a pandas Series.
 
         This method currently has significant limitations and will be replaced
@@ -843,29 +830,21 @@ class ProteusVariable[T]:
         )
         result.n_sims = 1
 
-        return result
+        return result  # type: ignore
 
-    def correlation_matrix(
-        self, correlation_type: str = "spearman"
-    ) -> list[list[float]]:
+    def correlation_matrix(self, correlation_type: str = "spearman") -> list[list[float]]:
         """Compute correlation matrix between variables."""
         # validate type
         correlation_type = correlation_type.lower()
         if correlation_type not in ["linear", "spearman", "kendall"]:
             raise ValueError(
-                f"Invalid correlation_type: '{correlation_type}'. "
-                f"Must be one of: 'linear', 'spearman', 'kendall'"
+                f"Invalid correlation_type: '{correlation_type}'. Must be one of: 'linear', 'spearman', 'kendall'"
             )
         if not hasattr(self[0], "values"):
-            raise TypeError(
-                f"First element must have 'values' attribute, "
-                f"got {type(self[0]).__name__}"
-            )
+            raise TypeError(f"First element must have 'values' attribute, got {type(self[0]).__name__}")
         n = len(self.values)
         result: list[list[float]] = [[0.0] * n] * n
-        values: list[npt.NDArray[t.Any]] = [
-            t.cast(npt.NDArray[t.Any], self[i]) for i in range(len(self.values))
-        ]
+        values: list[npt.NDArray[t.Any]] = [t.cast(npt.NDArray[t.Any], self[i]) for i in range(len(self.values))]
         if correlation_type.lower() in ["spearman", "kendall"]:
             # rank the variables first
             for i, value in enumerate(values):
@@ -913,14 +892,10 @@ class ProteusVariable[T]:
             return
         fig = go.Figure(layout=go.Layout(title=title))
         for label, value in self.values.items():
-            if not isinstance(value, (ProteusVariable | ProteusStochasticVariable)):
-                raise TypeError(
-                    f"{type(value).__name__} does not support CDF plotting. "
-                )
+            if not isinstance(value, (ProteusVariable, ProteusStochasticVariable)):
+                raise TypeError(f"{type(value).__name__} does not support CDF plotting. ")
             if value.n_sims is None or value.n_sims <= 1:
-                raise ValueError(
-                    "CDF can only be plotted for variables with multiple simulations."
-                )
+                raise ValueError("CDF can only be plotted for variables with multiple simulations.")
             # Type ignore: plotly-stubs has incomplete type information
             fig.add_trace(  # type: ignore[misc]
                 go.Scatter(
@@ -963,8 +938,8 @@ class ProteusVariable[T]:
     def _get_value_at_sim_helper(
         self,
         x: T,
-        sim_no: int | VectorLike[int],
-    ) -> T | VectorLike[T] | ProteusLike[T]:
+        sim_no: int | StochasticScalar,
+    ) -> T | StochasticScalar:
         """Helper method to get value at simulation for a single element."""
         if isinstance(x, ProteusVariable):
             # Type ignore: Private helper method with runtime type checks ensures
@@ -985,11 +960,10 @@ class ProteusVariable[T]:
                 return StochasticScalar(x.values[indices])
 
             # Handle the main case: extract value at specific simulation index
-            if isinstance(sim_no, int):
-                return x.values[sim_no]
-
-            if isinstance(sim_no, list):
-                return StochasticScalar(x.values[sim_no])
+            if isinstance(sim_no, int):  # type: ignore[redundant-expr]
+                # Type ignore: numpy array indexing returns element type which is compatible
+                # with T | StochasticScalar in practice but type checker can't infer this
+                return x.values[sim_no]  # type: ignore[return-value]
 
             return x
 

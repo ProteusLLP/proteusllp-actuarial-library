@@ -3,8 +3,26 @@
   <div>
     <h1 style="margin: 0;">Proteus Actuarial Library</h1>
     <p style="margin: 5px 0 0 0;">
+      <a href="https://github.com/ProteusLLP/proteusllp-actuarial-library/actions/workflows/ci.yml">
+        <img src="https://github.com/ProteusLLP/proteusllp-actuarial-library/actions/workflows/ci.yml/badge.svg" alt="CI Status"/>
+      </a>
+      <a href="https://codecov.io/gh/ProteusLLP/proteusllp-actuarial-library">
+        <img src="https://codecov.io/gh/ProteusLLP/proteusllp-actuarial-library/branch/main/graph/badge.svg" alt="Coverage Status"/>
+      </a>
       <a href="https://proteusllp-actuarial-library.readthedocs.io/en/latest/?badge=latest">
         <img src="https://readthedocs.org/projects/proteusllp-actuarial-library/badge/?version=latest" alt="Documentation Status"/>
+      </a>
+      <a href="https://pypi.org/project/proteusllp-actuarial-library/">
+        <img src="https://img.shields.io/pypi/v/proteusllp-actuarial-library.svg" alt="PyPI version"/>
+      </a>
+      <a href="https://pypi.org/project/proteusllp-actuarial-library/">
+        <img src="https://img.shields.io/pypi/pyversions/proteusllp-actuarial-library.svg" alt="Python versions"/>
+      </a>
+      <a href="https://www.codefactor.io/repository/github/proteusllp/proteusllp-actuarial-library">
+        <img src="https://www.codefactor.io/repository/github/proteusllp/proteusllp-actuarial-library/badge" alt="CodeFactor"/>
+      </a>
+      <a href="https://github.com/astral-sh/ruff">
+        <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"/>
       </a>
     </p>
   </div>
@@ -16,8 +34,6 @@ An actuarial stochastic modeling library in python.
 
 **Note**
 This library is still in beta!
-
-📚 **[Development Guide](docs/development.md)** - Get started with development setup and testing
 
 ## Introduction
 
@@ -40,7 +56,7 @@ losses = distributions.Gamma(alpha=2.5, theta=2).generate()
 expenses = distributions.LogNormal(mu=1, sigma=0.5).generate()
 
 # Apply statistical dependencies
-copulas.GumbelCopula(theta=1.2, n=2).apply([losses, expenses])
+copulas.GumbelCopula(theta=1.2).apply([losses, expenses])
 
 # Variables are now correlated
 total = losses + expenses
@@ -85,3 +101,6 @@ Please log issues on our github [page](https://github.com/ProteusLLP/proteusllp-
 ## Contributing
 
 You are welcome to contribute pull requests. Please see the [Contributer License Agreement](./CLA.md)
+
+📚 **[Development Guide](docs/development.md)** - Get started with development setup and testing
+

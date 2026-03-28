@@ -16,6 +16,7 @@ import plotly.graph_objects as go  # type: ignore
 
 from pal import stats  # type: ignore
 
+from ._compat import Self
 from ._maths import xp
 from .couplings import CouplingGroup, ProteusStochasticVariable
 from .stats import NumberOrList
@@ -74,9 +75,7 @@ class StochasticScalar(ProteusStochasticVariable):
             raise ValueError("Values must be a 1D array.")
 
         # Type ignore: Generic ArrayLike type inference limitation
-        raise TypeError(
-            "Type of values must be a sequence or array. Found " + type(values).__name__
-        )  # type: ignore[misc]
+        raise TypeError("Type of values must be a sequence or array. Found " + type(values).__name__)  # type: ignore[misc]
 
     def __repr__(self) -> str:
         try:
@@ -136,9 +135,7 @@ class StochasticScalar(ProteusStochasticVariable):
             keepdims = kwargs.get("keepdims", False)
             axis = kwargs.get("axis", None)
 
-            if keepdims or (
-                axis is not None and hasattr(result, "shape") and result.shape
-            ):
+            if keepdims or (axis is not None and hasattr(result, "shape") and result.shape):
                 return self._wrap_result_with_coupling(result, inputs)
 
             # Standard reduction returns scalar directly
@@ -171,14 +168,12 @@ class StochasticScalar(ProteusStochasticVariable):
             NotImplementedError: If the function is not supported
         """
         # Extract values from StochasticScalar objects, leave others as-is
-        processed_args = tuple(
-            x.values if isinstance(x, StochasticScalar) else x for x in args
-        )
+        processed_args = tuple(x.values if isinstance(x, StochasticScalar) else x for x in args)
         result = func(*processed_args, **kwargs)
 
         # If result is a scalar, return it directly
         # Type ignore: Pyright can't infer the exact numpy scalar type
-        if isinstance(result, np.number | np.bool_ | bool) or np.isscalar(result):
+        if isinstance(result, (np.number, np.bool_, bool)) or np.isscalar(result):
             return result  # type: ignore[misc]
 
         # Otherwise create a new StochasticScalar object with the result
@@ -224,8 +219,7 @@ class StochasticScalar(ProteusStochasticVariable):
             return result
 
         raise TypeError(
-            f"Unexpected type {type(index).__name__}. Index must be an integer, "
-            "float, or StochasticScalar."
+            f"Unexpected type {type(index).__name__}. Index must be an integer, float, or StochasticScalar."
         )
 
     def __len__(self) -> int:
@@ -277,7 +271,9 @@ class StochasticScalar(ProteusStochasticVariable):
             The percentile value.
 
         """
-        return t.cast(NumberOrList, xp.percentile(self.values, p).tolist())  # type: ignore[misc]
+        if isinstance(p, list):
+            return t.cast(list[Numeric], xp.percentile(self.values, p).tolist())  # type: ignore
+        return float(xp.percentile(self.values, p))  # type: ignore
 
     def tvar(self, p: NumberOrList) -> NumberOrList:
         """Calculate the Tail Value at Risk (TVaR) at a given percentile.
@@ -290,7 +286,7 @@ class StochasticScalar(ProteusStochasticVariable):
         """
         return stats.tvar(self.values, p)
 
-    def upsample(self, n_sims: int) -> t.Self:
+    def upsample(self, n_sims: int) -> Self:
         """Increase the number of simulations in the variable."""
         if n_sims == self.n_sims:
             return self
@@ -337,9 +333,7 @@ class StochasticScalar(ProteusStochasticVariable):
         """Reorder the simulations in the variable."""
         self.values = self.values[new_order]
 
-    def _wrap_result_with_coupling(
-        self, result_array: t.Any, inputs: tuple[t.Any, ...]
-    ) -> StochasticScalar:
+    def _wrap_result_with_coupling(self, result_array: t.Any, inputs: tuple[t.Any, ...]) -> StochasticScalar:
         """Wrap result in StochasticScalar and merge coupling groups.
 
         Args:

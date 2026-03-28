@@ -17,17 +17,19 @@ classifiers = [
     "Intended Audience :: Financial and Insurance Industry",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.9"
 dependencies = [
     "numpy>=1.24,<3.0",
     "scipy>=1.10,<2.0",
     "plotly>=5.0",
     "pandas>=2.0",
-    "pandas-stubs>=2.0.0.0",
-    "scipy-stubs>=1.10.0.0",
+    "typing_extensions>=4.0; python_version < '3.12'",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +47,8 @@ test = [
     "pytest-codeblocks>=0.17.0",
 ]
 dev = [
+    "pandas-stubs>=2.0.0.0",
+    "scipy-stubs>=1.10.0.0",
     "jupyter>=1.0",
     "jupyterlab>=4.0",
     "ruff>=0.8.0",
@@ -66,10 +70,10 @@ build-backend = "setuptools.build_meta"
 
 # Static analysis tool configurations
 [tool.ruff]
-line-length = 88
-target-version = "py312"
-src = ["pal"]
-exclude = ["pal/_version.py"]
+line-length = 120
+target-version = "py39"
+src = ["src"]
+exclude = ["src/pal/_version.py"]
 
 [tool.ruff.lint]
 select = [
@@ -85,6 +89,7 @@ select = [
     "S",   # bandit (security)
 ]
 ignore = [
+    "D102", # Missing docstring in public method (overrides inherit from base)
     "D105", # Missing docstring in magic method
 ]
 
@@ -94,7 +99,7 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "D103"] # Allow assert and skip test function docstrings
 "examples/*" = ["D"]       # Skip docstrings in examples
-"pal/__init__.py" = ["F403"] # Allow star imports in package init
+"src/pal/__init__.py" = ["F403"] # Allow star imports in package init
 
 
 [tool.bandit]
@@ -102,10 +107,11 @@ exclude_dirs = ["tests"]
 skips = ["B101"]  # Skip assert_used test - asserts are normal in tests
 
 [tool.vulture]
-paths = ["pal"]
+paths = ["src/pal"]
 min_confidence = 80
 
 [tool.setuptools]
+package-dir = {"" = "src"}
 packages = ["pal"]
 include-package-data = true
 
@@ -115,5 +121,5 @@ pal = ["py.typed"]
 [tool.setuptools_scm]
 # Automatic versioning from git tags
 # Version will be determined from git tags (e.g., v0.2.8 → 0.2.8)
-version_file = "pal/_version.py"
+version_file = "src/pal/_version.py"
 fallback_version = "0.0.0+unknown"

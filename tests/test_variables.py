@@ -83,11 +83,7 @@ def test_sum_stochastic():
     y = sum(x)
     assert isinstance(y, StochasticScalar)  # Type guard for type checker
     assert pnp.all(y == StochasticScalar([3, 5, 7]))
-    assert (
-        y.coupled_variable_group
-        == x[0].coupled_variable_group
-        == x[1].coupled_variable_group
-    )
+    assert y.coupled_variable_group == x[0].coupled_variable_group == x[1].coupled_variable_group
 
 
 def test_divide():
@@ -350,9 +346,7 @@ def test_get_value_at_sim_stochastic():
     )
     assert pnp.all(
         x.get_value_at_sim(StochasticScalar([0, 2]))
-        == ProteusVariable(
-            "dim1", {"a": StochasticScalar([1, 3]), "b": StochasticScalar([2, 4])}
-        )
+        == ProteusVariable("dim1", {"a": StochasticScalar([1, 3]), "b": StochasticScalar([2, 4])})
     )
 
 
@@ -382,9 +376,7 @@ def test_array_func2():
 
 def test_from_csv():
     # we know the type because we are reading from a file with known contents...
-    x = ProteusVariable[StochasticScalar].from_csv(
-        "tests/data/variable.csv", "class", "value"
-    )
+    x = ProteusVariable[StochasticScalar].from_csv("tests/data/variable.csv", "class", "value")
     expected = ProteusVariable(
         dim_name="class",
         values={
@@ -519,7 +511,16 @@ def test_mean_nested_proteus_variable() -> None:
     assert set(result.values.keys()) == {"nested", "simple"}
 
     # Nested ProteusVariable should be converted to float via mean
-    assert result.values["nested"] == 7.0  # mean of inner_var.mean() = (4.0 + 10.0) / 2
+    assert all(
+        result.values["nested"]
+        == ProteusVariable(
+            dim_name="inner",
+            values={
+                "a": 4.0,
+                "b": 10.0,
+            },
+        )
+    )  # mean of inner_var.mean() = (4.0 + 10.0) / 2
     assert result.values["simple"] == 3.0  # mean of [1, 3, 5]
 
 
@@ -637,7 +638,7 @@ def test_upsample_dict_mixed_types():
     # type checker can infer that the ProteusVariable contains a union of types - we're
     # only annotating here to prove the point and raise a type error we ever break this.
     # vscode, for example, will show you the type if you hover over 'x'.
-    x: ProteusVariable[StochasticScalar | int] = ProteusVariable(
+    x = ProteusVariable(
         dim_name="test",
         values={
             "stochastic": StochasticScalar([1, 2, 3]),

@@ -6,6 +6,7 @@ dependency structures for complex actuarial risk modeling scenarios.
 
 import numpy as np
 import scipy
+
 from pal import config
 from pal.copulas import GumbelCopula, apply_copula
 from pal.distributions import GPD, Poisson
@@ -74,12 +75,8 @@ def test_fs_reordering3():
     """Tests that other variables attached to FreqSevSims are correctly reordered."""
     config.rng = np.random.default_rng(123456)
 
-    x = FrequencySeverityModel(
-        Poisson(mean=2), GPD(shape=0.33, scale=100000, loc=0)
-    ).generate()
-    y = FrequencySeverityModel(
-        Poisson(mean=2), GPD(shape=0.33, scale=100000, loc=0)
-    ).generate()
+    x = FrequencySeverityModel(Poisson(mean=2), GPD(shape=0.33, scale=100000, loc=0)).generate()
+    y = FrequencySeverityModel(Poisson(mean=2), GPD(shape=0.33, scale=100000, loc=0)).generate()
     x1 = x * 2
     y1 = y * 3
     a = x1.aggregate()

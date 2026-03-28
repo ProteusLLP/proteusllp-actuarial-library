@@ -5,8 +5,8 @@ This document outlines the coding standards and style guidelines for the Proteus
 
 ## Code Style
 
-- **Line Length**: 88 characters (following Black's default)
-- **Python Version**: 3.13+
+- **Line Length**: 120 characters (following Black's default)
+- **Python Version**: 3.11+
 - **Import Sorting**: Automatic via ruff (isort rules)
 - **Code Formatting**: Automatic via ruff formatter
 - **Whitespace**: No trailing whitespace at end of lines
@@ -80,7 +80,7 @@ def calculate_premium(base_amount: float, rate: float) -> float:
 ## Comments
 
 - **Purpose**: Comments should explain WHY, not WHAT the code does
-- **Line Length**: Must not exceed 88 characters per line
+- **Line Length**: Must not exceed 120 characters per line
 - **Quality**: The code itself shows what it does - comments that repeat this are redundant noise
 - **Good comments explain**:
   - Business logic and domain-specific rules

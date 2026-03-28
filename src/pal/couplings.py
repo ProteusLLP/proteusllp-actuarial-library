@@ -16,6 +16,7 @@ import numpy as np
 import numpy.typing as npt
 from numpy.lib.mixins import NDArrayOperatorsMixin
 
+from pal._compat import Self
 from pal.config import Config
 
 
@@ -28,20 +29,20 @@ class CouplingGroup:
         Args:
             variable: The initial variable to add to the group.
         """
-        self._refs: weakref.WeakValueDictionary[int, ProteusStochasticVariable] = (
-            weakref.WeakValueDictionary({variable._uid: variable})  # type: ignore[misc]
+        self._refs: weakref.WeakValueDictionary[int, ProteusStochasticVariable] = weakref.WeakValueDictionary(
+            {variable._uid: variable}  # type: ignore[misc]  # pyright: ignore[reportPrivateUsage]
         )
 
     def add(self, obj: ProteusStochasticVariable) -> None:
         """Add a variable to the coupling group."""
-        self._refs[obj._uid] = obj  # type: ignore[misc]
+        self._refs[obj._uid] = obj  # type: ignore[misc]  # pyright: ignore[reportPrivateUsage]
 
     def discard(self, obj: ProteusStochasticVariable) -> None:
         """Remove a variable from the coupling group if it exists."""
-        self._refs.pop(obj._uid, None)  # type: ignore[misc]
+        self._refs.pop(obj._uid, None)  # type: ignore[misc]  # pyright: ignore[reportPrivateUsage]
 
     def __contains__(self, obj: ProteusStochasticVariable) -> bool:
-        return obj._uid in self._refs  # type: ignore[misc]
+        return obj._uid in self._refs  # type: ignore[misc]  # pyright: ignore[reportPrivateUsage]
 
     def __len__(self) -> int:
         return len(self._refs)
@@ -69,7 +70,7 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
     """A class to represent a stochastic variable in a simulation."""
 
     n_sims: int | None = None
-    values: npt.NDArray[np.floating]
+    values: npt.NDArray[np.number[t.Any]]
     _uid: int
 
     # ===================
@@ -81,7 +82,7 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
         self._uid = next(Config._uid_counter)  # type: ignore[misc]
         self.coupled_variable_group = CouplingGroup(self)
 
-    def __array__(self, dtype: t.Any = None) -> npt.NDArray[np.floating]:
+    def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:
         """Return the underlying numpy array for compatibility with numpy functions."""
         return self.values if dtype is None else np.asarray(self.values, dtype=dtype)
 
@@ -90,71 +91,160 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
     # NDArrayOperatorsMixin provides comparison operations but returns Any/object types.
     # Since our __array_ufunc__ correctly returns Self, we override these methods
     # to provide accurate type information to static type checkers.
-    def __gt__(self, other: t.Any) -> t.Self:
+    def __gt__(self, other: t.Any) -> Self:
         """Greater than comparison returning instance of same type."""
         return super().__gt__(other)  # type: ignore[return-value]
 
-    def __ge__(self, other: t.Any) -> t.Self:
+    def __ge__(self, other: t.Any) -> Self:
         """Greater than or equal comparison returning instance of same type."""
         return super().__ge__(other)  # type: ignore[return-value]
 
-    def __lt__(self, other: t.Any) -> t.Self:
+    def __lt__(self, other: t.Any) -> Self:
         """Less than comparison returning instance of same type."""
         return super().__lt__(other)  # type: ignore[return-value]
 
-    def __le__(self, other: t.Any) -> t.Self:
+    def __le__(self, other: t.Any) -> Self:
         """Less than or equal comparison returning instance of same type."""
         return super().__le__(other)  # type: ignore[return-value]
 
-    def __eq__(self, other: t.Any) -> t.Self:  # type: ignore[override]
+    def __eq__(self, other: t.Any) -> Self:  # type: ignore[override]
         """Equality comparison returning instance of same type."""
         return super().__eq__(other)  # type: ignore[return-value]
 
-    def __ne__(self, other: t.Any) -> t.Self:  # type: ignore[override]
+    def __ne__(self, other: t.Any) -> Self:  # type: ignore[override]
         """Not equal comparison returning instance of same type."""
         return super().__ne__(other)  # type: ignore[return-value]
 
     # Override NDArrayOperatorsMixin arithmetic operators with proper return
     # type annotations for direct arithmetic operations and ufuncs.
-    def __add__(self, other: t.Any) -> t.Self:
+    def __add__(self, other: t.Any) -> Self:
         """Add operation returning instance of same type."""
         return super().__add__(other)  # type: ignore[return-value]
 
-    def __radd__(self, other: t.Any) -> t.Self:
+    def __radd__(self, other: t.Any) -> Self:
         """Right add operation returning instance of same type."""
         return super().__radd__(other)  # type: ignore[return-value]
 
-    def __sub__(self, other: t.Any) -> t.Self:
+    def __sub__(self, other: t.Any) -> Self:
         """Subtract operation returning instance of same type."""
         return super().__sub__(other)  # type: ignore[return-value]
 
-    def __rsub__(self, other: t.Any) -> t.Self:
+    def __rsub__(self, other: t.Any) -> Self:
         """Right subtract operation returning instance of same type."""
         return super().__rsub__(other)  # type: ignore[return-value]
 
-    def __mul__(self, other: t.Any) -> t.Self:
+    def __mul__(self, other: t.Any) -> Self:
         """Multiply operation returning instance of same type."""
         return super().__mul__(other)  # type: ignore[return-value]
 
-    def __rmul__(self, other: t.Any) -> t.Self:
+    def __rmul__(self, other: t.Any) -> Self:
         """Right multiply operation returning instance of same type."""
         return super().__rmul__(other)  # type: ignore[return-value]
 
-    def __truediv__(self, other: t.Any) -> t.Self:
+    def __truediv__(self, other: t.Any) -> Self:
         """Division operation returning instance of same type."""
         return super().__truediv__(other)  # type: ignore[return-value]
 
-    def __rtruediv__(self, other: t.Any) -> t.Self:
+    def __rtruediv__(self, other: t.Any) -> Self:
         """Right division operation returning instance of same type."""
         return super().__rtruediv__(other)  # type: ignore[return-value]
 
-    def __pow__(self, other: t.Any) -> t.Self:
+    def __pow__(self, other: t.Any) -> Self:
         """Power operation returning instance of same type."""
         return super().__pow__(other)  # type: ignore[return-value]
 
-    def __rpow__(self, other: t.Any) -> t.Self:
+    def __rpow__(self, other: t.Any) -> Self:
         """Right power operation returning instance of same type."""
         return super().__rpow__(other)  # type: ignore[return-value]
+
+    def __floordiv__(self, other: t.Any) -> Self:
+        """Floor division operation returning instance of same type."""
+        return super().__floordiv__(other)  # type: ignore[return-value]
+
+    def __rfloordiv__(self, other: t.Any) -> Self:
+        """Right floor division operation returning instance of same type."""
+        return super().__rfloordiv__(other)  # type: ignore[return-value]
+
+    def __mod__(self, other: t.Any) -> Self:
+        """Modulo operation returning instance of same type."""
+        return super().__mod__(other)  # type: ignore[return-value]
+
+    def __rmod__(self, other: t.Any) -> Self:
+        """Right modulo operation returning instance of same type."""
+        return super().__rmod__(other)  # type: ignore[return-value]
+
+    def __divmod__(self, other: t.Any) -> tuple[Self, Self]:
+        """Combined quotient and remainder returning tuple of same types."""
+        # Extract values from other if it's a stochastic variable
+        other_values = other.values if hasattr(other, "values") else other
+        q_values, r_values = np.divmod(self.values, other_values)
+
+        # Create result objects
+        quotient = type(self)(q_values)  # type: ignore[assignment]
+        remainder = type(self)(r_values)  # type: ignore[assignment]
+
+        # Merge coupling groups
+        quotient.coupled_variable_group.merge(self.coupled_variable_group)
+        remainder.coupled_variable_group.merge(self.coupled_variable_group)
+        if hasattr(other, "coupled_variable_group"):
+            quotient.coupled_variable_group.merge(other.coupled_variable_group)
+            remainder.coupled_variable_group.merge(other.coupled_variable_group)
+
+        return quotient, remainder  # type: ignore[return-value]
+
+    def __rdivmod__(self, other: t.Any) -> tuple[Self, Self]:
+        """Right combined quotient and remainder returning tuple of same types."""
+        # Extract values from other if it's a stochastic variable
+        other_values = other.values if hasattr(other, "values") else other
+        q_values, r_values = np.divmod(other_values, self.values)
+
+        # Create result objects
+        quotient = type(self)(q_values)  # type: ignore[assignment]
+        remainder = type(self)(r_values)  # type: ignore[assignment]
+
+        # Merge coupling groups
+        quotient.coupled_variable_group.merge(self.coupled_variable_group)
+        remainder.coupled_variable_group.merge(self.coupled_variable_group)
+        if hasattr(other, "coupled_variable_group"):
+            quotient.coupled_variable_group.merge(other.coupled_variable_group)
+            remainder.coupled_variable_group.merge(other.coupled_variable_group)
+
+        return quotient, remainder  # type: ignore[return-value]
+
+    def __pos__(self) -> Self:
+        """Unary positive operation returning instance of same type."""
+        # Unary positive is identity - use numpy's positive ufunc
+        return np.positive(self)  # type: ignore[return-value]
+
+    def __abs__(self) -> Self:
+        """Absolute value operation returning instance of same type."""
+        # Use numpy ufunc to ensure proper handling through __array_ufunc__
+        return np.abs(self)  # type: ignore[return-value]
+
+    def __round__(self, ndigits: int | None = None) -> Self:
+        """Round to specified number of digits returning instance of same type."""
+        # Use numpy function to ensure proper handling through __array_ufunc__
+        if ndigits is None:
+            return np.round(self)  # type: ignore[return-value]
+        return np.round(self, ndigits)  # type: ignore[return-value]
+
+    def __floor__(self) -> Self:
+        """Floor operation returning instance of same type."""
+        # Use numpy ufunc to ensure proper handling through __array_ufunc__
+        return np.floor(self)  # type: ignore[return-value]
+
+    def __ceil__(self) -> Self:
+        """Ceiling operation returning instance of same type."""
+        # Use numpy ufunc to ensure proper handling through __array_ufunc__
+        return np.ceil(self)  # type: ignore[return-value]
+
+    def __trunc__(self) -> Self:
+        """Truncate to integer returning instance of same type."""
+        # Use numpy ufunc to ensure proper handling through __array_ufunc__
+        return np.trunc(self)  # type: ignore[return-value]
+
+    # Explicitly mark as unhashable (mutable type)
+    __hash__ = None  # type: ignore[assignment]
 
     def __bool__(self) -> bool:
         """Prevent ambiguous truth value evaluation."""
@@ -198,7 +288,7 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
     # PUBLIC METHODS
     # ===================
 
-    def upsample(self, n_sims: int) -> t.Self:
+    def upsample(self, n_sims: int) -> Self:
         """Upsample the variable to match the specified number of simulations.
 
         Args:

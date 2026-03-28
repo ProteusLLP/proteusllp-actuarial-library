@@ -78,24 +78,14 @@ class XoL:
         self.name = name
         self.limit = limit
         self.excess = excess
-        self.aggregate_limit: float = (
-            aggregate_limit if aggregate_limit is not None else np.inf
-        )
+        self.aggregate_limit: float = aggregate_limit if aggregate_limit is not None else np.inf
         self.premium = premium
-        self.aggregate_deductible: float = (
-            aggregate_deductible if aggregate_deductible is not None else 0
-        )
+        self.aggregate_deductible: float = aggregate_deductible if aggregate_deductible is not None else 0
         self.franchise: float = franchise if franchise is not None else 0
-        self.reverse_franchise: float = (
-            reverse_franchise if reverse_franchise is not None else np.inf
-        )
+        self.reverse_franchise: float = reverse_franchise if reverse_franchise is not None else np.inf
         self.summary: dict[str, float] = {}
-        self.num_reinstatements = (
-            aggregate_limit / limit - 1 if aggregate_limit is not None else None
-        )
-        self.reinstatement_premium_cost = (
-            np.array(reinstatement_cost) if reinstatement_cost is not None else None
-        )
+        self.num_reinstatements = aggregate_limit / limit - 1 if aggregate_limit is not None else None
+        self.reinstatement_premium_cost = np.array(reinstatement_cost) if reinstatement_cost is not None else None
 
     def apply(self, claims: FreqSevSims) -> ContractResults:
         """Apply the XoL contract to a set of claims.
@@ -140,9 +130,7 @@ class XoL:
         """
         # apply franchise
         if self.franchise != 0 or self.reverse_franchise != np.inf:
-            is_in_window = (claims >= self.franchise) & (
-                claims < self.reverse_franchise
-            )
+            is_in_window = (claims >= self.franchise) & (claims < self.reverse_franchise)
             # FreqSevSims supports np.where through __array_function__
             claims = np.where(is_in_window, claims, 0)  # type: ignore[assignment]
 
@@ -167,17 +155,12 @@ class XoL:
 
         recoveries = individual_recoveries_pre_aggregate * ratio
         results = ContractResults(recoveries)
-        if (
-            self.reinstatement_premium_cost is not None
-            and self.num_reinstatements is not None
-        ):
+        if self.reinstatement_premium_cost is not None and self.num_reinstatements is not None:
             cumulative_reinstatement_cost = np.cumsum(self.reinstatement_premium_cost)
             limits_used = aggregate_recoveries / self.limit
             reinstatements_used = np.minimum(limits_used, self.num_reinstatements)
             reinstatements_used_full = StochasticScalar(np.floor(reinstatements_used))
-            reinstatements_used_fraction = (
-                reinstatements_used - reinstatements_used_full
-            )
+            reinstatements_used_fraction = reinstatements_used - reinstatements_used_full
             reinstatement_number = np.maximum(reinstatements_used_full - 1, 0)
             reinstatement_premium_proportion = StochasticScalar(  # type: ignore[assignment]
                 self.reinstatement_premium_cost
@@ -191,9 +174,7 @@ class XoL:
         self.calc_summary(claims, aggregate_recoveries)
         return results
 
-    def calc_summary(
-        self, gross_losses: FreqSevSims, aggregate_recoveries: StochasticScalar
-    ):
+    def calc_summary(self, gross_losses: FreqSevSims, aggregate_recoveries: StochasticScalar):
         """Calculate a summary of the losses to the layer.
 
         The results are stored in the summary attribute of the layer.
@@ -213,9 +194,7 @@ class XoL:
         mean = aggregate_recoveries.mean()
         sd = aggregate_recoveries.std()
         count = (aggregate_recoveries > 0).sum()
-        vertical_exhaust: FreqSevSims = np.maximum(
-            gross_losses - self.limit + self.excess, 0
-        )  # type: ignore[assignment]
+        vertical_exhaust: FreqSevSims = np.maximum(gross_losses - self.limit + self.excess, 0)  # type: ignore[assignment]
         aggregate_vertical_exhaust = vertical_exhaust.aggregate()
 
         v_count = (aggregate_vertical_exhaust > 0).sum()
@@ -227,9 +206,7 @@ class XoL:
             "prob_attach": count / aggregate_recoveries.n_sims,
             "prob_vert_exhaust": v_count / len(gross_losses.values),
             "prob_horizonal_exhaust": (
-                h_count / aggregate_recoveries.n_sims
-                if self.aggregate_limit != np.inf
-                else 0.0
+                h_count / aggregate_recoveries.n_sims if self.aggregate_limit != np.inf else 0.0
             ),
         }
 
@@ -326,15 +303,13 @@ class XoLTower:
         Returns:
             ContractResults: The results of applying the XoL Tower to the claims.
         """
-        recoveries = claims.copy() * 0
+        recoveries = claims * 0
         reinstatement_premium = StochasticScalar(xp.zeros(claims.n_sims))
         for layer in self.layers:
             layer_results = layer.apply(claims)
             recoveries += layer_results.recoveries
             reinstatement_premium += (
-                layer_results.reinstatement_premium
-                if layer_results.reinstatement_premium is not None
-                else 0
+                layer_results.reinstatement_premium if layer_results.reinstatement_premium is not None else 0
             )
 
         return ContractResults(recoveries, reinstatement_premium)

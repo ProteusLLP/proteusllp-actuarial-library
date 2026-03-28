@@ -15,12 +15,14 @@ import typing as t
 import numpy.typing as npt
 
 # project
+from ._compat import Self
 from ._maths import xp as np
 
 __all__ = [
     "ArithmeticProtocol",
     "Config",
     "DistributionLike",
+    "DistributionParameter",
     "Numeric",
     "NumericLike",
     "NumericProtocol",
@@ -28,15 +30,22 @@ __all__ = [
     "VectorLike",
 ]
 
-Numeric = float | int | np.number
+Numeric = t.Union[float, int, np.number]
 
 # Type alias for scipy special functions and numpy random generators
 # These functions expect more restrictive types than our general Numeric type.
 # They don't accept complex numbers, _NumericProtocol objects, or general
 # np.number types.
-ScipyNumeric = float | int | np.floating | np.integer
+ScipyNumeric = t.Union[float, int, np.floating, np.integer]
+
+# Type alias for distribution parameters - clean type for documentation
+if t.TYPE_CHECKING:
+    from .stochastic_scalar import StochasticScalar
+
+DistributionParameter = t.Union[int, float, "StochasticScalar"]
 
 T_value = t.TypeVar("T_value")
+T_co = t.TypeVar("T_co", covariant=True)
 
 
 @dataclasses.dataclass
@@ -58,16 +67,16 @@ class ArithmeticProtocol(t.Protocol):
     """
 
     # Arithmetic operations
-    def __add__(self, other: t.Any) -> t.Self: ...
-    def __radd__(self, other: t.Any) -> t.Self: ...
-    def __sub__(self, other: t.Any) -> t.Self: ...
-    def __rsub__(self, other: t.Any) -> t.Self: ...
-    def __mul__(self, other: t.Any) -> t.Self: ...
-    def __rmul__(self, other: t.Any) -> t.Self: ...
-    def __truediv__(self, other: t.Any) -> t.Self: ...
-    def __rtruediv__(self, other: t.Any) -> t.Self: ...
-    def __pow__(self, other: t.Any) -> t.Self: ...
-    def __rpow__(self, other: t.Any) -> t.Self: ...
+    def __add__(self, other: t.Any) -> Self: ...
+    def __radd__(self, other: t.Any) -> Self: ...
+    def __sub__(self, other: t.Any) -> Self: ...
+    def __rsub__(self, other: t.Any) -> Self: ...
+    def __mul__(self, other: t.Any) -> Self: ...
+    def __rmul__(self, other: t.Any) -> Self: ...
+    def __truediv__(self, other: t.Any) -> Self: ...
+    def __rtruediv__(self, other: t.Any) -> Self: ...
+    def __pow__(self, other: t.Any) -> Self: ...
+    def __rpow__(self, other: t.Any) -> Self: ...
     def __neg__(self) -> t.Any: ...
 
 
@@ -141,9 +150,7 @@ class SupportsArray(t.Protocol):
     def __array_ufunc__(
         self,
         ufunc: t.Any,
-        method: t.Literal[
-            "__call__", "reduce", "reduceat", "accumulate", "outer", "at"
-        ],
+        method: t.Literal["__call__", "reduce", "reduceat", "accumulate", "outer", "at"],
         *inputs: t.Any,
         **kwargs: t.Any,
     ) -> t.Any:
@@ -165,23 +172,23 @@ class VectorOperations(ArithmeticProtocol, t.Protocol):
     """
 
     # Comparison operations (vector semantics - return Self)
-    def __lt__(self, other: t.Any) -> t.Self: ...
-    def __le__(self, other: t.Any) -> t.Self: ...
-    def __gt__(self, other: t.Any) -> t.Self: ...
-    def __ge__(self, other: t.Any) -> t.Self: ...
+    def __lt__(self, other: t.Any) -> Self: ...
+    def __le__(self, other: t.Any) -> Self: ...
+    def __gt__(self, other: t.Any) -> Self: ...
+    def __ge__(self, other: t.Any) -> Self: ...
 
     # Equality operations (vector semantics - return Self)
     # Note: These override object.__eq__ and object.__ne__ which return bool,
     # but vector types need to return Self for element-wise comparisons
-    def __eq__(self, other: t.Any) -> t.Self: ...  # type: ignore[override]
-    def __ne__(self, other: t.Any) -> t.Self: ...  # type: ignore[override]
+    def __eq__(self, other: t.Any) -> Self: ...  # type: ignore[override]
+    def __ne__(self, other: t.Any) -> Self: ...  # type: ignore[override]
 
     # Length support
     def __len__(self) -> int: ...
 
 
 @t.runtime_checkable
-class VectorLike[T](VectorOperations, SupportsArray, t.Protocol):
+class VectorLike(VectorOperations, SupportsArray, t.Protocol[T_co]):
     """Protocol for vector-like objects that support array conversion.
 
     This protocol combines VectorOperations (vector-style arithmetic and comparisons)
@@ -260,7 +267,7 @@ class VectorLike[T](VectorOperations, SupportsArray, t.Protocol):
 
 # Union type that includes both the basic numeric types and objects implementing
 # the scalar protocol (comparison operations return bool)
-NumericLike = Numeric | NumericProtocol
+NumericLike = t.Union[Numeric, NumericProtocol]
 
 
 # FIXME: VectorLike should be generic VectorLike[T] to enable proper typing
@@ -379,9 +386,7 @@ class ProteusLike(VectorOperations, SequenceLike[T_value], t.Protocol):
         ...
 
 
-T_distribution = t.TypeVar(
-    "T_distribution", bound="ScipyNumeric | npt.NDArray[np.floating]"
-)
+T_distribution = t.TypeVar("T_distribution", bound="ScipyNumeric | npt.NDArray[np.floating]")
 
 
 class DistributionLike(t.Protocol[T_distribution]):

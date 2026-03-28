@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.11","3.12", "3.13"]
       fail-fast: false
 
     steps:
@@ -69,8 +69,7 @@ jobs:
 
       - name: Run tests
         run: |
-          mkdir -p coverage
-          pytest -v --cov=pal --cov-report=xml:coverage/coverage-${{ matrix.python-version }}.xml --codeblocks
+          pytest -v --cov=pal --cov-report=xml --cov-report=term --codeblocks
 
       # Validate example scripts can compile without running them
       # This checks syntax and import resolution without starting Flask servers
@@ -78,11 +77,14 @@ jobs:
       - name: Check examples compile
         run: python -m compileall examples/ -f
 
-      - name: Upload coverage reports
-        uses: actions/upload-artifact@v7
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
         with:
-          name: coverage-reports-${{ matrix.python-version }}
-          path: coverage/
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: python-${{ matrix.python-version }}
+          name: codecov-py${{ matrix.python-version }}
+          fail_ci_if_error: false
 
   build:
     runs-on: ubuntu-latest
@@ -169,3 +171,5 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+          skip-existing: true
+          verbose: true

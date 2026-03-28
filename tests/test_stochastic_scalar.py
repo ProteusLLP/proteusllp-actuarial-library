@@ -10,8 +10,9 @@ import re
 
 # third party
 import numpy as np
-import pal.maths as pnp
 import pytest
+
+import pal.maths as pnp
 
 # project
 from pal.types import NumericProtocol
@@ -44,9 +45,7 @@ def test_add():
     y = StochasticScalar([1, 2, 3, 4, 5])
     z = x + y
     assert (z.values == [5, 7, 5, 5, 8]).all()
-    assert (
-        x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
-    )
+    assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
 def test_add_self():
@@ -87,9 +86,7 @@ def test_subtract():
     y = StochasticScalar([1, 2, 3, 4, 5])
     z = x - y
     assert (z.values == [3, 3, -1, -3, -2]).all()
-    assert (
-        x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
-    )
+    assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
 def test_subtract_scalar():
@@ -114,9 +111,7 @@ def test_multiply():
     y = StochasticScalar([1, 2, 3, 4, 5])
     z = x * y
     assert (z.values == [4, 10, 6, 4, 15]).all()
-    assert (
-        x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
-    )
+    assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
 def test_multiply_scalar():
@@ -141,9 +136,7 @@ def test_divide():
     y = StochasticScalar([1, 2, 3, 4, 5])
     z: StochasticScalar = x / y
     assert (z.values == [4, 2.5, 2 / 3, 0.25, 0.6]).all()
-    assert (
-        x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
-    )
+    assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
 def test_divide_scalar():
@@ -168,9 +161,7 @@ def test_power():
     y = StochasticScalar([1, 2, 3, 4, 5])
     z = x**y
     assert (z.values == [4, 25, 8, 1, 243]).all()
-    assert (
-        x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
-    )
+    assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
 def test_power_scalar():
@@ -195,9 +186,7 @@ def test_eq():
     y = StochasticScalar([4, 2, 3, 1, 5])
     z = x == y
     assert (z.values == [True, False, False, True, False]).all()
-    assert (
-        x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
-    )
+    assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
 def test_eq_scalar():
@@ -215,9 +204,7 @@ def test_not_eq():
     y = StochasticScalar([4, 2, 3, 1, 5])
     z = x != y
     assert (z.values == [False, True, True, False, True]).all()
-    assert (
-        x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
-    )
+    assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
 def test_not_eq_scalar():
@@ -235,9 +222,7 @@ def test_and():
     y = StochasticScalar([False, False, True, True, True])
     z = x & y
     assert (z.values == [False, False, False, True, True]).all()
-    assert (
-        x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
-    )
+    assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
 def test_numpy_ufunc():
@@ -277,11 +262,7 @@ def test_where():
     condition = StochasticScalar([True, False, True, False, True])
     y = pnp.where(condition, x, 0)
     assert (y.values == [4, 0, 2, 0, 3]).all()
-    assert (
-        x.coupled_variable_group
-        == condition.coupled_variable_group
-        == y.coupled_variable_group
-    )
+    assert x.coupled_variable_group == condition.coupled_variable_group == y.coupled_variable_group
 
 
 def test_where2():
@@ -335,7 +316,7 @@ def test_tvar2():
 def test_min():
     """Test the min() method of a stochastic scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
-    y: int = pnp.min(x)
+    y = pnp.min(x)
     assert y == 1
     assert isinstance(y, NumericProtocol)  # Should return scalar
 
@@ -343,7 +324,7 @@ def test_min():
 def test_max():
     """Test the max() method of a stochastic scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
-    y: int = pnp.max(x)
+    y = pnp.max(x)
     assert y == 5
     assert isinstance(y, NumericProtocol)  # Should return scalar
 
@@ -413,9 +394,7 @@ def test_bool_fails():
     x = StochasticScalar([True])
     with pytest.raises(
         TypeError,
-        match=re.escape(
-            "Ambiguous truth value for StochasticScalar. Use .any() or .all()."
-        ),
+        match=re.escape("Ambiguous truth value for StochasticScalar. Use .any() or .all()."),
     ):
         bool(x)
 
@@ -427,11 +406,7 @@ def test_safe_divide_stochastic():
     default = 99
     result = pnp.safe_divide(numerator, denominator, default)
     assert (result.values == [5, 99, 6, 99]).all()
-    assert (
-        numerator.coupled_variable_group
-        == denominator.coupled_variable_group
-        == result.coupled_variable_group
-    )
+    assert numerator.coupled_variable_group == denominator.coupled_variable_group == result.coupled_variable_group
 
 
 def test_safe_divide_stochastic_default():
@@ -486,11 +461,7 @@ def test_safe_divide_all_nonzero():
     default = 999
     result = pnp.safe_divide(numerator, denominator, default)
     assert (result.values == [5, 5, 6]).all()
-    assert (
-        numerator.coupled_variable_group
-        == denominator.coupled_variable_group
-        == result.coupled_variable_group
-    )
+    assert numerator.coupled_variable_group == denominator.coupled_variable_group == result.coupled_variable_group
 
 
 def test_safe_divide_all_zero():
@@ -500,8 +471,4 @@ def test_safe_divide_all_zero():
     default = 0
     result = pnp.safe_divide(numerator, denominator, default)
     assert (result.values == [0, 0, 0]).all()
-    assert (
-        numerator.coupled_variable_group
-        == denominator.coupled_variable_group
-        == result.coupled_variable_group
-    )
+    assert numerator.coupled_variable_group == denominator.coupled_variable_group == result.coupled_variable_group
