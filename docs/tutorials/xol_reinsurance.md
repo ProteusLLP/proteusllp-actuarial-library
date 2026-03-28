@@ -262,7 +262,7 @@ cat_loss = distributions.LogNormal(mu=16, sigma=1.2).generate()
 
 # Correlate tower recoveries with cat losses
 tower_recoveries = tower_result.recoveries.aggregate()
-copulas.GumbelCopula(theta=1.5, n=2).apply(
+copulas.GumbelCopula(theta=1.5).apply(
     [tower_recoveries, cat_loss]
 )
 

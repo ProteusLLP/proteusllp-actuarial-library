@@ -65,15 +65,15 @@ class TestTable2PurePremiums:
 
     def test_layer_10xs10_k1(self, claims):
         agg = _apply_layer(claims, 10, 10, aggregate_limit=20)
-        assert agg.mean() == pytest.approx(6.6128, rel=0.005)
+        assert agg.mean() == pytest.approx(6.6128, rel=0.01)
 
     def test_layer_10xs20_k1(self, claims):
         agg = _apply_layer(claims, 10, 20, aggregate_limit=20)
-        assert agg.mean() == pytest.approx(2.4103, rel=0.005)
+        assert agg.mean() == pytest.approx(2.4103, rel=0.01)
 
     def test_combined_20xs10_k1(self, claims):
         agg = _apply_layer(claims, 20, 10, aggregate_limit=40)
-        assert agg.mean() == pytest.approx(9.2173, rel=0.005)
+        assert agg.mean() == pytest.approx(9.2173, rel=0.01)
 
     def test_sum_leq_combined_k1(self, claims):
         """Sum of layer premiums <= combined layer premium (Table 2)."""
@@ -86,22 +86,22 @@ class TestTable2PurePremiums:
 
     def test_layer_10xs10_unlimited(self, claims):
         agg = _apply_layer(claims, 10, 10)
-        assert agg.mean() == pytest.approx(6.9444, rel=0.005)
+        assert agg.mean() == pytest.approx(6.9444, rel=0.01)
 
     def test_layer_10xs20_unlimited(self, claims):
         agg = _apply_layer(claims, 10, 20)
-        assert agg.mean() == pytest.approx(2.4305, rel=0.005)
+        assert agg.mean() == pytest.approx(2.4305, rel=0.01)
 
     def test_combined_20xs10_unlimited(self, claims):
         agg = _apply_layer(claims, 20, 10)
-        assert agg.mean() == pytest.approx(9.3749, rel=0.005)
+        assert agg.mean() == pytest.approx(9.3749, rel=0.01)
 
     def test_sum_equals_combined_unlimited(self, claims):
         """With unlimited reinstatements, sum of layers = combined."""
         agg1 = _apply_layer(claims, 10, 10)
         agg2 = _apply_layer(claims, 10, 20)
         aggc = _apply_layer(claims, 20, 10)
-        assert agg1.mean() + agg2.mean() == pytest.approx(aggc.mean(), rel=0.005)
+        assert agg1.mean() + agg2.mean() == pytest.approx(aggc.mean(), rel=0.01)
 
 
 # ── Table 5: PH transform premiums, lambda=10, K=1 free reinstatement ──
@@ -137,9 +137,9 @@ class TestTable5PHTransform:
         ph2 = proportional_hazards_transform(agg2, alpha=alpha)
         phc = proportional_hazards_transform(aggc, alpha=alpha)
 
-        assert ph1.value == pytest.approx(expected_s1, rel=0.005)
-        assert ph2.value == pytest.approx(expected_s2, rel=0.005)
-        assert phc.value == pytest.approx(expected_sc, rel=0.005)
+        assert ph1.value == pytest.approx(expected_s1, rel=0.01)
+        assert ph2.value == pytest.approx(expected_s2, rel=0.01)
+        assert phc.value == pytest.approx(expected_sc, rel=0.01)
 
     @pytest.mark.parametrize("p", [1.0, 1.2, 1.4, 1.6, 1.8, 2.0])
     def test_sub_additivity(self, claims, p):

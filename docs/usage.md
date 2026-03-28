@@ -61,7 +61,7 @@ var1 = distributions.Gamma(alpha=2.5, theta=2).generate()
 var2 = distributions.LogNormal(mu=1, sigma=0.5).generate()
 
 # Apply copula to create dependency
-copulas.GumbelCopula(theta=1.2, n=2).apply([var1, var2])
+copulas.GumbelCopula(theta=1.2).apply([var1, var2])
 ```
 
 ### Variable Coupling
