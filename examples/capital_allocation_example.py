@@ -19,8 +19,8 @@ losses = ProteusVariable(
 )
 
 total_losses = losses.sum()
-total_capital_var = total_losses.percentile(99.0)
-print(f"Total capital required at 99% percentile: {total_capital_var}")
+total_capital_var = risk_measures.var(total_losses, 99.0).value
+print(f"Total capital required at 99% VaR: {total_capital_var}")
 allocated_capital = risk_measures.percentile_layer(total_losses, total_capital_var).allocate(losses)
 print("Allocated capital to each line of business:")
 print(allocated_capital)
@@ -29,8 +29,8 @@ print("Proportion of total capital allocated to each line of business:")
 print(allocated_proportions)
 total_captial_tvar = total_losses.tvar(90)
 
-print(f"Total capital required at 99% TVaR: {total_captial_tvar}")
-allocated_capital_tvar = risk_measures.tvar(total_losses, 0.9).allocate(losses)
+print(f"Total capital required at 90% TVaR: {total_captial_tvar}")
+allocated_capital_tvar = risk_measures.tvar(total_losses, 90).allocate(losses)
 print("Allocated capital to each line of business using TVaR:")
 print(allocated_capital_tvar)
 allocated_proportions_tvar = allocated_capital_tvar / total_captial_tvar

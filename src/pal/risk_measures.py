@@ -253,7 +253,7 @@ def wang_transform(
 
 def tvar(
     risk_profile: StochasticScalar,
-    alpha: float,
+    percentile: float,
     risk_profile_type: RiskProfileType = "loss",
 ) -> RiskMeasureResult:
     r"""Tail Value at Risk (Expected Shortfall).
@@ -303,15 +303,45 @@ def tvar(
 
     Args:
         risk_profile: Stochastic risk profile to weight.
-        alpha: Confidence level (e.g. 0.99 for 99% TVaR).
+        percentile: Percentile level (0-100), e.g. 99 for
+            99% TVaR.
         risk_profile_type: Whether the profile represents losses
             or profits.
     """
+    alpha = percentile / 100
     return _spectral_risk_measure(
         risk_profile,
         lambda u: np.where(u > alpha, 1 / (1 - alpha), 0.0),  # type:ignore
         risk_profile_type,
     )
+
+
+def var(
+    risk_profile: StochasticScalar,
+    percentile: float,
+) -> RiskMeasureResult:
+    r"""Value at Risk with percentile-layer capital allocation.
+
+    VaR is the loss threshold at a given percentile of the
+    distribution:
+
+    .. math::
+
+        \text{VaR}_p(X) = F^{-1}(p/100)
+
+    Note that VaR is not a coherent risk measure and can be non-subadditive, but it is
+    widely used in practice for its simplicity and interpretability.
+
+    Capital allocation for VaR is done using the Euler principle. Note that this uses
+    only a single simulation (the one at the VaR threshold) to allocate capital,
+    which is inherently unstable.
+
+    Args:
+        risk_profile: Stochastic risk profile.
+        percentile: Percentile level (0-100), e.g. 99 for
+            99% VaR.
+    """
+    return svar(risk_profile, percentile, percentile)
 
 
 def dual_power_transform(
@@ -438,12 +468,16 @@ def exponential_transform(
 
 
 def svar(
-    risk_profile: StochasticScalar, lower: float, upper: float, risk_profile_type: RiskProfileType = "loss"
+    risk_profile: StochasticScalar,
+    lower: float,
+    upper: float,
+    risk_profile_type: RiskProfileType = "loss",
 ) -> RiskMeasureResult:
     r"""Spread VaR risk measure.
 
-    The spread VaR (SVaR), also known as 'Window VaR' is the conditional expectation of a random variable
-    between two percentiles.
+    The spread VaR (SVaR), also known as 'Window VaR' is the
+    conditional expectation of a random variable between two
+    percentiles.
 
     For a loss variable :math:`X` with CDF :math:`F`:
 
@@ -465,19 +499,18 @@ def svar(
 
     Args:
         risk_profile: StochasticScalar risk profile to weight.
-        alpha: Upper confidence level (e.g. 0.99 for 99% SVaR).
-        beta: Lower confidence level (e.g. 0.95 for 95% SVaR).
+        lower: Lower percentile (0-100).
+        upper: Upper percentile (0-100).
         risk_profile_type: Whether the profile represents losses
             or profits.
-
-    Returns:
-        SpectralRiskResult with the computed weights.
     """
-    if not (0 <= lower < upper <= 1):
-        raise ValueError("Invalid confidence levels: require 0 <= lower < upper <= 1")
+    if not (0 <= lower < upper <= 100):
+        raise ValueError("Invalid percentiles: require 0 <= lower < upper <= 100")
+    lower_q = lower / 100
+    upper_q = upper / 100
     return _spectral_risk_measure(
         risk_profile,
-        lambda u: np.where((u > lower) & (u < upper), 1 / (upper - lower), 0.0),  # type: ignore
+        lambda u: np.where((u > lower_q) & (u < upper_q), 1 / (upper_q - lower_q), 0.0),  # type: ignore
         risk_profile_type,
     )
 

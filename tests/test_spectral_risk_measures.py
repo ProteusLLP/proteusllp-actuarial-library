@@ -13,6 +13,7 @@ from pal.risk_measures import (
     standard_deviation_principle,
     svar,
     tvar,
+    var,
     wang_transform,
 )
 from pal.stochastic_scalar import StochasticScalar
@@ -63,7 +64,7 @@ class TestRiskMeasureResult:
 
     def test_repr(self, simple_profile: StochasticScalar) -> None:
         """Repr includes the value."""
-        rm = tvar(simple_profile, 0.9)
+        rm = tvar(simple_profile, 90)
         assert "RiskMeasureResult" in repr(rm)
 
 
@@ -203,20 +204,20 @@ class TestTVaR:
 
     def test_weights_average_to_one(self, large_profile: StochasticScalar) -> None:
         """Normalized weights average to 1."""
-        rm = tvar(large_profile, 0.9)
+        rm = tvar(large_profile, 90)
         np.testing.assert_allclose(rm.weights.values.mean(), 1.0, atol=1e-2)
 
     def test_bottom_sims_get_zero_weight(self) -> None:
         """Simulations below the alpha quantile get zero weight."""
         profile = StochasticScalar(np.arange(1.0, 101.0))
-        rm = tvar(profile, 0.9)
+        rm = tvar(profile, 90)
         sorted_weights = rm.weights.values[np.argsort(profile.values)]
         assert np.all(sorted_weights[:90] == 0.0)
 
     def test_top_sims_get_equal_nonzero_weight(self) -> None:
         """Simulations above alpha quantile get equal weight."""
         profile = StochasticScalar(np.arange(1.0, 101.0))
-        rm = tvar(profile, 0.9)
+        rm = tvar(profile, 90)
         sorted_weights = rm.weights.values[np.argsort(profile.values)]
         top_weights = sorted_weights[90:]
         np.testing.assert_allclose(top_weights, top_weights[0], rtol=1e-10)
@@ -225,13 +226,13 @@ class TestTVaR:
         """Risk measure value equals the mean of the tail."""
         values = np.arange(1.0, 101.0)
         profile = StochasticScalar(values)
-        rm = tvar(profile, 0.9)
+        rm = tvar(profile, 90)
         tail_mean = values[90:].mean()
         np.testing.assert_allclose(rm.value, tail_mean, rtol=0.05)
 
     def test_alpha_zero_value_equals_mean(self, large_profile: StochasticScalar) -> None:
         """TVaR at alpha=0 equals the plain mean."""
-        rm = tvar(large_profile, 0.0)
+        rm = tvar(large_profile, 0)
         np.testing.assert_allclose(rm.value, large_profile.mean(), rtol=1e-2)
 
 
@@ -300,19 +301,19 @@ class TestSVaR:
     def test_invalid_bounds_raise(self, simple_profile: StochasticScalar) -> None:
         """Invalid lower/upper bounds raise ValueError."""
         with pytest.raises(ValueError):
-            svar(simple_profile, 0.9, 0.5)
+            svar(simple_profile, 90, 50)
         with pytest.raises(ValueError):
-            svar(simple_profile, -0.1, 0.5)
+            svar(simple_profile, -1, 50)
 
     def test_full_range_equals_mean(self, large_profile: StochasticScalar) -> None:
-        """SVaR over [0, 1] approximates the mean."""
-        rm = svar(large_profile, 0.0, 1.0)
+        """SVaR over [0, 100] approximates the mean."""
+        rm = svar(large_profile, 0, 100)
         np.testing.assert_allclose(rm.value, large_profile.mean(), rtol=0.05)
 
     def test_top_range_approximates_tvar(self, large_profile: StochasticScalar) -> None:
-        """SVaR over [alpha, 1] approximates TVaR at alpha."""
-        rm_svar = svar(large_profile, 0.9, 1.0)
-        rm_tvar = tvar(large_profile, 0.9)
+        """SVaR over [alpha, 100] approximates TVaR at alpha."""
+        rm_svar = svar(large_profile, 90, 100)
+        rm_tvar = tvar(large_profile, 90)
         np.testing.assert_allclose(rm_svar.value, rm_tvar.value, rtol=0.1)
 
 
@@ -425,3 +426,37 @@ class TestPercentileLayer:
         capital = float(np.percentile(large_profile.values, 99))
         rm = percentile_layer(large_profile, capital)
         np.testing.assert_allclose(float(rm.allocate(large_profile)), rm.value, rtol=1e-10)
+
+
+# --- VaR ---
+
+
+class TestVaR:
+    """Tests for var."""
+
+    def test_value_equals_percentile(self, large_profile: StochasticScalar) -> None:
+        """VaR value equals the percentile of the distribution."""
+        rm = var(large_profile, 99)
+        expected = float(np.percentile(large_profile.values, 99))
+        np.testing.assert_allclose(rm.value, expected, rtol=1e-10)
+
+    def test_allocate_self_equals_value(self, large_profile: StochasticScalar) -> None:
+        """Allocating the risk profile to itself equals .value."""
+        rm = var(large_profile, 99)
+        np.testing.assert_allclose(float(rm.allocate(large_profile)), rm.value, rtol=1e-10)
+
+    def test_component_allocations_sum_to_value(self) -> None:
+        """Component allocations sum to the total VaR."""
+        a = np.array([5.0, 15.0, 10.0, 25.0, 30.0])
+        b = np.array([5.0, 5.0, 20.0, 15.0, 20.0])
+        total = StochasticScalar(a + b)
+        rm = var(total, 80)
+        alloc_a = float(rm.allocate(StochasticScalar(a)))
+        alloc_b = float(rm.allocate(StochasticScalar(b)))
+        np.testing.assert_allclose(alloc_a + alloc_b, rm.value, rtol=1e-10)
+
+    def test_var_less_than_tvar(self, large_profile: StochasticScalar) -> None:
+        """VaR is less than or equal to TVaR at the same level."""
+        rm_var = var(large_profile, 99)
+        rm_tvar = tvar(large_profile, 99)
+        assert rm_var.value <= rm_tvar.value

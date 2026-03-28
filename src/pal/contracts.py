@@ -303,7 +303,7 @@ class XoLTower:
         Returns:
             ContractResults: The results of applying the XoL Tower to the claims.
         """
-        recoveries = claims.copy() * 0
+        recoveries = claims * 0
         reinstatement_premium = StochasticScalar(xp.zeros(claims.n_sims))
         for layer in self.layers:
             layer_results = layer.apply(claims)
