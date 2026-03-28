@@ -347,6 +347,29 @@ class HyperGeometric(DiscreteDistributionBase):
         )
 
 
+class Bernoulli(Binomial):
+    r"""Bernoulli Distribution.
+
+    The probability mass function (PMF) is:
+
+    .. math::
+
+        P(X = k) = p^k (1-p)^{1-k}, \quad k = 0, 1
+
+    where :math:`0 \leq p \leq 1` is the probability of success.
+
+    Models a single trial with two possible outcomes: success (1) or failure (0).
+    """
+
+    def __init__(self, p: DistributionParameter) -> None:
+        """Initialize Bernoulli distribution.
+
+        Args:
+            p: Probability of success.
+        """
+        super().__init__(n=1, p=p)
+
+
 # --- Continuous Distributions ---
 
 
@@ -1386,6 +1409,7 @@ class InverseExponential(DistributionBase):
 # --- Distribution Generator Classes ---
 
 AVAILABLE_DISCRETE_DISTRIBUTIONS: dict[str, t.Any] = {
+    "bernoulli": Bernoulli,
     "poisson": Poisson,
     "negbinomial": NegBinomial,
     "binomial": Binomial,

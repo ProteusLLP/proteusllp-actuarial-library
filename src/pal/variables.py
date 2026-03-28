@@ -76,6 +76,14 @@ __all__ = [
 ]
 
 
+def _format_number(val: int | float) -> str:
+    if isinstance(val, int) or abs(val) >= 100:
+        return f"{val:,.0f}"
+    if abs(val) >= 1:
+        return f"{val:,.4f}"
+    return f"{val:.6g}"
+
+
 class ProteusVariable(t.Generic[T]):
     """A generic, homogeneous container for multivariate variables in simulations.
 
@@ -473,7 +481,17 @@ class ProteusVariable(t.Generic[T]):
         return reversed(list(self.values.values()))
 
     def __repr__(self) -> str:
-        return f"ProteusVariable(dim_name={self.dim_name}, values={self.values})"
+        lines = [f"ProteusVariable ({self.dim_name}):"]
+        max_key_len = max(len(k) for k in self.values)
+        for key, val in self.values.items():
+            if isinstance(val, ProteusVariable):
+                nested = repr(val).replace("\n", "\n  ")
+                lines.append(f"  {key}: {nested}")
+            elif isinstance(val, (int, float)):
+                lines.append(f"  {key:<{max_key_len}}  {_format_number(val):>14}")
+            else:
+                lines.append(f"  {key:<{max_key_len}}  {val!r}")
+        return "\n".join(lines)
 
     # Arithmetic operations
     def __add__(self, other: t.Any) -> Self:

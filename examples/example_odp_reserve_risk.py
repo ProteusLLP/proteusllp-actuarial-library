@@ -13,6 +13,7 @@ Proteus Actuarial Library.
 """
 
 import numpy as np
+
 from pal import ProteusVariable, StochasticScalar, config, distributions
 from pal import maths as pnp
 

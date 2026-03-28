@@ -6,6 +6,7 @@ dependency structures for complex actuarial risk modeling scenarios.
 
 import numpy as np
 import scipy
+
 from pal import config
 from pal.copulas import GumbelCopula, apply_copula
 from pal.distributions import GPD, Poisson

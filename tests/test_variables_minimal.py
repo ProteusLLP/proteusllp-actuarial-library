@@ -1,9 +1,10 @@
 """Minimal tests for ProteusVariable to improve coverage."""
 
 import numpy as np
-import pal.maths as pnp
 import pandas as pd
 import pytest
+
+import pal.maths as pnp
 from pal.variables import ProteusVariable, StochasticScalar
 
 

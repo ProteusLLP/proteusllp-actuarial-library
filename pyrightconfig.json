@@ -1,5 +1,5 @@
 {
-  "include": ["pal", "examples"],
+  "include": ["src/pal", "examples"],
   "exclude": ["**/node_modules/**", "**/.venv/**", "**/__pycache__/**", "**/build/**", "**/dist/**", "tests/**"],
   "typeCheckingMode": "standard",
   "reportMissingImports": true,

@@ -72,8 +72,8 @@ build-backend = "setuptools.build_meta"
 [tool.ruff]
 line-length = 120
 target-version = "py39"
-src = ["pal"]
-exclude = ["pal/_version.py"]
+src = ["src"]
+exclude = ["src/pal/_version.py"]
 
 [tool.ruff.lint]
 select = [
@@ -99,7 +99,7 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "D103"] # Allow assert and skip test function docstrings
 "examples/*" = ["D"]       # Skip docstrings in examples
-"pal/__init__.py" = ["F403"] # Allow star imports in package init
+"src/pal/__init__.py" = ["F403"] # Allow star imports in package init
 
 
 [tool.bandit]
@@ -107,10 +107,11 @@ exclude_dirs = ["tests"]
 skips = ["B101"]  # Skip assert_used test - asserts are normal in tests
 
 [tool.vulture]
-paths = ["pal"]
+paths = ["src/pal"]
 min_confidence = 80
 
 [tool.setuptools]
+package-dir = {"" = "src"}
 packages = ["pal"]
 include-package-data = true
 
@@ -120,5 +121,5 @@ pal = ["py.typed"]
 [tool.setuptools_scm]
 # Automatic versioning from git tags
 # Version will be determined from git tags (e.g., v0.2.8 → 0.2.8)
-version_file = "pal/_version.py"
+version_file = "src/pal/_version.py"
 fallback_version = "0.0.0+unknown"

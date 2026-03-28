@@ -1,8 +1,9 @@
 import math
 
 import numpy as np
-import pal.maths as pnp
 import pandas as pd  # type: ignore
+
+import pal.maths as pnp
 from pal import config, distributions
 from pal.variables import FreqSevSims, ProteusVariable
 

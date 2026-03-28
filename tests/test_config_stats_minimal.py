@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+
 from pal import config
 from pal.stats import tvar
 

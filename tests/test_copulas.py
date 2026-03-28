@@ -8,11 +8,12 @@ import re
 
 import numpy as np
 import numpy.typing as npt
-import pal.maths as pnp
 import pytest
 import scipy
 import scipy.special
 import scipy.stats  # ignore:import-untyped
+
+import pal.maths as pnp
 from pal import config, copulas, distributions
 from pal.variables import ProteusVariable, StochasticScalar
 

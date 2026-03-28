@@ -453,9 +453,17 @@ The resulting rank correlations closely match the input:
    Marine       0.177       0.261       0.479       1.000
 ```
 
+
 Compare with input: `[0.6, 0.3, 0.2], [0.4, 0.3], [0.5]` — the rank
 correlations are close but not exact due to finite sample size
 (10,000 simulations).
+
+To be completely precise, we should compare the rank correlation to the Spearman's :math:`\rho_S` of the Gaussian copula, which is related to the underlying correlation parameter :math:`r` by:
+
+.. math::
+
+  \rho_S = \frac{6}{\pi}\asin\left(\frac{r}{2}\right)
+
 
 ## 5. `generate()` vs `apply()`
 

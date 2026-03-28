@@ -1,6 +1,7 @@
 """Tests for contracts module to improve coverage."""
 
 import numpy as np
+
 from pal import FreqSevSims
 from pal.contracts import XoL, XoLTower
 

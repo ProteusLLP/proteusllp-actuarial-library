@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+
 from pal.stats import tvar
 from pal.variables import StochasticScalar
 

@@ -24,19 +24,19 @@ help:
 # Static analysis targets
 .PHONY: lint
 lint:
-	ruff check pal tests examples
+	ruff check src/pal tests examples
 
 .PHONY: lint-fix
 lint-fix:
-	ruff check --fix pal tests examples
+	ruff check --fix src/pal tests examples
 
 .PHONY: format
 format:
-	ruff format pal tests examples
+	ruff format src/pal tests examples
 
 .PHONY: format-check
 format-check:
-	ruff format --check pal tests examples
+	ruff format --check src/pal tests examples
 
 .PHONY: typecheck
 typecheck:
@@ -44,11 +44,11 @@ typecheck:
 
 .PHONY: security
 security:
-	bandit -r pal
+	bandit -r src/pal
 
 .PHONY: deadcode
 deadcode:
-	vulture pal
+	vulture src/pal
 
 .PHONY: static-analysis
 static-analysis: lint format-check typecheck security deadcode

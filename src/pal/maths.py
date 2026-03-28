@@ -93,7 +93,8 @@ def safe_divide(
         >>> result.values
         array([5., 0., 6.])
     """
-    return where(denominator != 0, numerator / denominator, default)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return where(denominator != 0, numerator / denominator, default)
 
 
 def minimum(x: t.Any, y: t.Any) -> t.Any:

@@ -9,11 +9,12 @@ import math
 
 import pytest  # pyright: ignore[reportUnknownMemberType] - pytest.approx not fully typed
 import scipy.special
+from scipy.special import gamma
+
 from pal import distributions
 from pal._maths import xp as np
 from pal.config import set_random_seed
 from pal.stochastic_scalar import StochasticScalar
-from scipy.special import gamma
 
 
 def test_poisson() -> None:

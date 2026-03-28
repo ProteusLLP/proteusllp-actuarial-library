@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+
 from pal import FreqSevSims
 from pal.stats import loss_summary, tvar
 

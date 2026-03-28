@@ -3,7 +3,8 @@
 This notebook demonstrates the use of copulas in the Proteus Actuarial Library
 to model dependencies between different lines of business in insurance."""
 
-import plotly.graph_objects as go  # type: ignore
+import plotly.graph_objects as go
+
 from pal import config, copulas, distributions
 from pal.frequency_severity import FrequencySeverityModel
 from pal.variables import ProteusVariable

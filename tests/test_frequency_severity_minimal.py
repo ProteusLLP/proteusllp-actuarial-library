@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+
 from pal import FreqSevSims
 from pal.variables import StochasticScalar
 

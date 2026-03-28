@@ -5,6 +5,7 @@ arithmetic operations, and integration with other stochastic types.
 """
 
 import numpy as np
+
 import pal.maths as pnp
 from pal.frequency_severity import FreqSevSims
 from pal.variables import StochasticScalar

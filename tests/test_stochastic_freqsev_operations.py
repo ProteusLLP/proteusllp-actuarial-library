@@ -6,6 +6,7 @@ directions, verifies correct results, and ensures coupling groups are maintained
 
 import numpy as np
 import pytest
+
 from pal.frequency_severity import FreqSevSims
 from pal.variables import StochasticScalar
 

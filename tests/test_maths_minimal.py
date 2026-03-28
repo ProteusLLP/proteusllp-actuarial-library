@@ -1,6 +1,7 @@
 """Tests for maths module to improve coverage."""
 
 import numpy as np
+
 from pal import maths as pnp
 from pal.variables import StochasticScalar
 

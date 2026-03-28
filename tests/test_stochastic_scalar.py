@@ -10,8 +10,9 @@ import re
 
 # third party
 import numpy as np
-import pal.maths as pnp
 import pytest
+
+import pal.maths as pnp
 
 # project
 from pal.types import NumericProtocol

@@ -8,6 +8,7 @@ import math
 
 import numpy as np
 import pytest
+
 from pal.frequency_severity import FreqSevSims
 from pal.stochastic_scalar import StochasticScalar
 
