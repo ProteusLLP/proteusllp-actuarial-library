@@ -22,6 +22,7 @@ from .couplings import CouplingGroup, ProteusStochasticVariable
 from .stats import NumberOrList
 from .types import Numeric, NumericLike, ScipyNumeric
 
+
 class StochasticScalar(ProteusStochasticVariable):
     """A class to represent a single scalar variable in a simulation."""
 
@@ -271,8 +272,8 @@ class StochasticScalar(ProteusStochasticVariable):
 
         """
         if isinstance(p, list):
-            return t.cast(list[Numeric], xp.percentile(self.values, p).tolist())
-        return float(xp.percentile(self.values, p))
+            return t.cast(list[Numeric], xp.percentile(self.values, p).tolist())  # type: ignore
+        return float(xp.percentile(self.values, p))  # type: ignore
 
     def tvar(self, p: NumberOrList) -> NumberOrList:
         """Calculate the Tail Value at Risk (TVaR) at a given percentile.
