@@ -9,12 +9,13 @@ from __future__ import annotations
 import math
 import typing
 
+import numpy as np
 import numpy.typing as npt
 
-from ._maths import xp as np
+from ._maths import xp
 from .types import Numeric
 
-percentiles = np.array([1, 2, 5, 10, 20, 50, 70, 80, 90, 95, 99, 99.5, 99.8, 99.9])
+percentiles = xp.array([1, 2, 5, 10, 20, 50, 70, 80, 90, 95, 99, 99.5, 99.8, 99.9])
 
 NumberOrList = typing.Union[Numeric, list[Numeric]]
 
@@ -51,13 +52,13 @@ def tvar(values: npt.ArrayLike, p: NumberOrList) -> NumberOrList:
         >>> tvar(ss, 80)  # Automatic conversion via __array__()
         9.0
     """
-    values_array = np.asarray(values)
+    values_array = xp.asarray(values)
     n_sims = len(values_array)
     if n_sims == 0:
         raise ValueError("Cannot compute TVAR for empty array.")
 
     # Get the rank of the variable
-    rank_positions = np.argsort(values_array)
+    rank_positions = xp.argsort(values_array)
     if isinstance(p, list):
         result: list[Numeric] = []
         for perc in p:
@@ -66,7 +67,7 @@ def tvar(values: npt.ArrayLike, p: NumberOrList) -> NumberOrList:
                 # For high percentiles with small datasets, return the maximum value
                 result.append(float(values_array[rank_positions[-1]]))
                 continue
-            result.append(float(values_array[rank_positions[idx:]].mean()))
+            result.append(float(xp.mean(values_array[rank_positions[idx:]])))
         return result
 
     idx = math.ceil(p / 100 * n_sims)
@@ -75,7 +76,7 @@ def tvar(values: npt.ArrayLike, p: NumberOrList) -> NumberOrList:
     # Handle edge case where idx == n_sims (e.g., single value at 50th percentile)
     if idx >= n_sims:
         return float(values_array[rank_positions[-1]])  # Return the maximum value
-    return float(values_array[rank_positions[idx:]].mean())
+    return float(xp.mean(values_array[rank_positions[idx:]]))
 
 
 def loss_summary(losses: FreqSevSims) -> dict[str, npt.NDArray[np.floating]]:
@@ -88,8 +89,8 @@ def loss_summary(losses: FreqSevSims) -> dict[str, npt.NDArray[np.floating]]:
         Dictionary containing occurrence and aggregate loss percentiles.
     """
     occurrence_losses = losses.occurrence()
-    occurrence_statistics = np.percentile(occurrence_losses, percentiles)
+    occurrence_statistics = xp.percentile(occurrence_losses.values, percentiles)
     aggregate_losses = losses.aggregate()
-    aggregate_statistics = np.percentile(aggregate_losses, percentiles)
+    aggregate_statistics = xp.percentile(aggregate_losses.values, percentiles)
     result = {"Occurrence": occurrence_statistics, "Aggregate": aggregate_statistics}
     return result

@@ -12,13 +12,13 @@ import typing as t
 from abc import ABC, abstractmethod
 
 # Third-party imports
+import numpy as np
 import numpy.typing as npt
 import scipy.stats
-from scipy.special import gamma
+from scipy.special import gamma as scipy_gamma
 
 from . import ProteusVariable, StochasticScalar
 from ._maths import special
-from ._maths import xp as np
 
 # Local imports
 from .config import config
@@ -282,7 +282,7 @@ class StudentsTCopula(EllipticalCopula):
 
     def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Transform t-distributed samples to uniform using CDF."""
-        return scipy.stats.distributions.t(self.dof).cdf(unnormalised_samples)
+        return special.stdtr(self.dof, unnormalised_samples)
 
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None
@@ -776,8 +776,8 @@ class GalambosCopula(Copula):
         # Independence shortcut if needed
         if self.theta < 1e-4:
             return rng.uniform(0, 1, size=(d, n_sims))
-        num = gamma(d) * gamma(1.0 / self.theta)
-        den = gamma(d + 1.0 / self.theta) * self.theta
+        num = scipy_gamma(d) * scipy_gamma(1.0 / self.theta)
+        den = scipy_gamma(d + 1.0 / self.theta) * self.theta
         # Compute c_theta for the Galambos copula in dimension d.
         # S^{-1}(t) = c_theta * t^{-theta}.
         c_theta = (num / den) ** (-self.theta)

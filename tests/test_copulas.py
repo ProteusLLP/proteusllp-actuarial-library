@@ -15,7 +15,19 @@ import scipy.stats  # ignore:import-untyped
 
 import pal.maths as pnp
 from pal import config, copulas, distributions
+from pal._maths import xp
 from pal.variables import ProteusVariable, StochasticScalar
+
+
+@pytest.fixture(autouse=True)
+def _reset_config_rng() -> None:
+    """Reset PAL's global RNG before each test.
+
+    These tests use Monte Carlo estimates with tight tolerances. Other test files
+    (notably minimal tests) intentionally mutate `config.rng` to validate defaults,
+    so we reset it here to avoid order-dependent flakiness.
+    """
+    config.rng = xp.random.default_rng(config.seed)
 
 
 def copula_margins(

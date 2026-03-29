@@ -16,7 +16,7 @@ import numpy.typing as npt
 
 # project
 from ._compat import Self
-from ._maths import xp as np
+from ._maths import xp
 
 __all__ = [
     "ArithmeticProtocol",
@@ -30,13 +30,13 @@ __all__ = [
     "VectorLike",
 ]
 
-Numeric = t.Union[float, int, np.number]
+Numeric = t.Union[float, int, xp.number]
 
 # Type alias for scipy special functions and numpy random generators
 # These functions expect more restrictive types than our general Numeric type.
 # They don't accept complex numbers, _NumericProtocol objects, or general
 # np.number types.
-ScipyNumeric = t.Union[float, int, np.floating, np.integer]
+ScipyNumeric = t.Union[float, int, xp.floating, xp.integer]
 
 # Type alias for distribution parameters - clean type for documentation
 if t.TYPE_CHECKING:
@@ -54,7 +54,7 @@ class Config:
 
     n_sims: int = 10000
     seed: int = 123456789
-    rng: np.random.Generator = np.random.default_rng(seed)
+    rng: xp.random.Generator = xp.random.default_rng(seed)
 
     _uid_counter = itertools.count(1)
 
@@ -386,7 +386,7 @@ class ProteusLike(VectorOperations, SequenceLike[T_value], t.Protocol):
         ...
 
 
-T_distribution = t.TypeVar("T_distribution", bound="ScipyNumeric | npt.NDArray[np.floating]")
+T_distribution = t.TypeVar("T_distribution", bound="ScipyNumeric | npt.NDArray[xp.floating]")
 
 
 class DistributionLike(t.Protocol[T_distribution]):
@@ -439,7 +439,7 @@ class DistributionLike(t.Protocol[T_distribution]):
         ...
 
     def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+        self, n_sims: int | None = None, rng: xp.random.Generator | None = None
     ) -> ProteusLike[T_distribution]:
         """Generate random samples from the distribution.
 

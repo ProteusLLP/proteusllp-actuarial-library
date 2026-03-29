@@ -24,10 +24,11 @@ from __future__ import annotations
 import typing as t
 from abc import ABC
 
+import numpy as np
+
 # Local imports
 from ._compat import override
-from ._maths import special
-from ._maths import xp as np
+from ._maths import special, xp
 from .config import config
 from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter
@@ -309,7 +310,7 @@ class HyperGeometric(DiscreteDistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        if np.__name__ == "cupy":
+        if xp.__name__ == "cupy":
             raise NotImplementedError("HyperGeometric CDF is not supported on GPU.")
 
         # Use scipy.stats because scipy.special does not expose hypergeom CDF directly
@@ -324,7 +325,7 @@ class HyperGeometric(DiscreteDistributionBase):
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        if np.__name__ == "cupy":
+        if xp.__name__ == "cupy":
             raise NotImplementedError("HyperGeometric inverse CDF is not supported on GPU.")
 
         from scipy.stats import hypergeom
