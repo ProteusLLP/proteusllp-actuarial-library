@@ -33,7 +33,7 @@ import numpy.typing as npt
 from . import distributions
 from ._maths import xp
 from .config import config
-from .couplings import ProteusStochasticVariable
+from .couplings import ProteusStochasticVariable as _ProteusStochasticVariable
 from .stochastic_scalar import (
     StochasticScalar,
 )
@@ -132,7 +132,7 @@ class FrequencySeverityModel:
         return result
 
 
-class FreqSevSims(ProteusStochasticVariable):
+class FreqSevSims(_ProteusStochasticVariable):
     """A class for storing and manipulating Frequency-Severity simulations.
 
     FreqSevSims objects provide convenience methods for aggregating and
@@ -383,7 +383,7 @@ class FreqSevSims(ProteusStochasticVariable):
         result = getattr(ufunc, method)(*_inputs, **kwargs)
         result = FreqSevSims(self.sim_index, result, self.n_sims)
         for input in inputs:
-            if isinstance(input, ProteusStochasticVariable):
+            if isinstance(input, _ProteusStochasticVariable):
                 input.coupled_variable_group.merge(self.coupled_variable_group)
         result.coupled_variable_group.merge(self.coupled_variable_group)
 
