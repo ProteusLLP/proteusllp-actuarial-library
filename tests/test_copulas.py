@@ -18,6 +18,17 @@ from pal import config, copulas, distributions
 from pal.variables import ProteusVariable, StochasticScalar
 
 
+@pytest.fixture(autouse=True)
+def _reset_config_rng() -> None:
+    """Reset PAL's global RNG before each test.
+
+    Several tests in this module rely on Monte Carlo estimates with tight tolerances.
+    Other tests (in this file and elsewhere) may mutate `config.rng`, so we reset it
+    here to avoid order-dependent flakiness.
+    """
+    config.rng = np.random.default_rng(config.seed)
+
+
 def copula_margins(
     copula_samples: list[StochasticScalar] | ProteusVariable[StochasticScalar],
 ):

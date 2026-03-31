@@ -255,9 +255,10 @@ class StudentsTCopula(EllipticalCopula):
 
     The Student's t copula exhibits symmetric tail dependence, making it useful for
     modeling joint extreme events. The upper and lower tail dependence coefficients are given by:
+
     .. math::
 
-        \lambda_U = \lambda_L = 2t_{\nu+1}\left(-\sqrt{\frac{(\nu+1)(1-\rho)}{1+\rho}}\right)
+        \lambda_U = \lambda_L = 2\,t_{\nu+1}\left(-\sqrt{\frac{(\nu+1)(1-\rho)}{1+\rho}}\right)
 
     where :math:`\nu` is the degrees of freedom and :math:`\rho` is the correlation parameter.
     """
@@ -350,12 +351,13 @@ class ClaytonCopula(ArchimedeanCopula):
 
     .. math::
 
-        C(u_1, \ldots, u_n) = \left(\sum_{i=1}^d u_i^{-\theta} - n + 1\right)^{-1/\theta}
+        C(u_1, \ldots, u_d) = \left(\sum_{i=1}^d u_i^{-\theta} - d + 1\right)^{-1/\theta}
 
     where :math:`\theta \geq 0` is the dependence parameter. The Clayton copula
     exhibits lower tail dependence and is part of the Archimedean family.
 
     The lower tail dependence coefficient between any pair of variables in the Clayton copula is given by:
+
     .. math::
 
         \lambda_L = 2^{-1/\theta}
@@ -459,12 +461,14 @@ class GumbelCopula(ArchimedeanCopula):
 
     .. math::
 
-        C(u_1, \ldots, u_d) = \exp\left[-\left(\sum_{i=1}^d (-\ln u_i)^\theta\right)^{1/\theta}\right]
+        C(u_1, \ldots, u_d) = \exp\left(-\left(\sum_{i=1}^d (-\ln u_i)^\theta\right)^{1/\theta}\right)
 
     where :math:`\theta \geq 1` is the dependence parameter. The Gumbel copula
-    exhibits upper tail dependence and is part of the Archimedean family. The
-        upper tail dependence coefficient between any pair of variables in the Gumbel copula is given by:
+    exhibits upper tail dependence and is part of the Archimedean family. The upper tail dependence
+    coefficient between any pair of variables in the Gumbel copula is given by:
+
     .. math::
+
         \lambda_U = 2 - 2^{1/\theta}
 
     The generator function is:
@@ -505,9 +509,9 @@ class FrankCopula(ArchimedeanCopula):
 
     .. math::
 
-        C(u_1, \ldots, u_d) = -\frac{1}{\theta} \ln\left(1 +
-            \frac{\prod_{i=1}^d (e^{-\theta u_i} - 1)}{(e^{-\theta} - 1)^{d-1}}
-            \right)
+        C(u_1, \ldots, u_d) = -\frac{1}{\theta}\ln\left(
+            1 + \frac{\prod_{i=1}^d (e^{-\theta u_i} - 1)}{(e^{-\theta} - 1)^{d-1}}
+        \right)
 
     where :math:`\theta \in \mathbb{R} \setminus \{0\}` is the dependence parameter.
     The Frank copula is symmetric and does not exhibit tail dependence.
@@ -546,7 +550,7 @@ class JoeCopula(ArchimedeanCopula):
 
     .. math::
 
-    C(u_1, \ldots, u_d) = 1 - \left(1-\prod_{i=1}^d (1 - u_i)^{\theta} \right)^{1/\theta}
+        C(u_1, \ldots, u_d) = 1 - \left(1 - \prod_{i=1}^d (1 - u_i)^{\theta}\right)^{1/\theta}
 
     where :math:`\theta \geq 1` is the dependence parameter.
 
@@ -593,15 +597,14 @@ class MM1Copula(Copula):
 
     .. math::
 
-    C(u_1, \ldots, u_d) = \exp\left\{
-        -\left[
-            \sum_{i<j}\left\{ \left(\frac{-\ln u_i}{d-1}\right)^{\delta_{ij}}
-                        +\left(\frac{-\ln u_j}{d-1}\right)^{\delta_{ij} }
-                        \right\}^{1/\delta_{ij}}
-        \right]^{1/\theta}
-    \right\}
+        C(u_1, \ldots, u_d) = \exp\left\{
+            -\left[
+                \sum_{i<j}\left\{ \left(\frac{-\ln u_i}{d-1}\right)^{\delta_{ij}}
+                            + \left(\frac{-\ln u_j}{d-1}\right)^{\delta_{ij}}\right\}^{1/\delta_{ij}}
+            \right]^{1/\theta}
+        \right\}
 
-    for a symmetric matrix:math:`\delta_{ij} \geq 1` and :math:`\theta \geq 1`. The MM1
+    for a symmetric matrix :math:`\delta_{ij} \geq 1` and :math:`\theta \geq 1`. The MM1
     copula reduces to the Gumbel copula when all :math:`\delta_{ij} = 1`.
 
     The upper tail dependence coefficient between any pair of variables :math:`i`
@@ -609,8 +612,7 @@ class MM1Copula(Copula):
 
     .. math::
 
-        \lambda_{ij} = 2 - \left(\frac{2^{1/\delta_{ij}}}{d-1}
-        + \frac{2(d-2)}{d-1}\right)^{1/\theta}
+        \lambda_{ij} = 2 - \left(\frac{2^{1/\delta_{ij}}}{d-1} + \frac{2(d-2)}{d-1}\right)^{1/\theta}
 
     where :math:`\delta_{ij}` is the pairwise parameter from the delta_matrix,
     :math:`d` is the dimension of the copula, and :math:`\theta` is the overall
@@ -712,7 +714,7 @@ class GalambosCopula(Copula):
 
     .. math::
 
-    C(u, v) = uv\exp\left(-\left[(-\ln u)^{-\theta} + (-\ln v)^{-\theta}\right]^{-1/\theta}\right)
+        C(u, v) = uv\exp\left(-\left[(-\ln u)^{-\theta} + (-\ln v)^{-\theta}\right]^{-1/\theta}\right)
 
     Its dependence structure is characterized by a single parameter,
     :math:`\theta > 0`, which controls the strength of the upper tail dependence.
@@ -962,10 +964,10 @@ class HuslerReissCopula(Copula):
 
     .. math::
 
-    C(u_i, u_j) = \exp\left[
-        \ln u_i\  \Phi\left(\lambda_{ij} + \frac{1}{2}\lambda_{ij}^{-1}\ln[(-\ln u_i)/(-\ln u_j)]\right)
-          +\ln u_j \ \Phi\left(\lambda_{ij} + \frac{1}{2\lambda_{ij}}\ln[(-\ln u_j)/(-\ln u_i)]\right)
-          \right])
+        C(u_i, u_j) = \exp\left(
+            \ln u_i\,\Phi\left(\lambda_{ij} + \frac{1}{2\lambda_{ij}}\ln\left(\frac{-\ln u_i}{-\ln u_j}\right)\right)
+            + \ln u_j\,\Phi\left(\lambda_{ij} + \frac{1}{2\lambda_{ij}}\ln\left(\frac{-\ln u_j}{-\ln u_i}\right)\right)
+        \right)
 
     where :math:`\Phi` is the standard normal CDF and :math:`\lambda_{ij}` is the parameter
     controlling the dependence between the two variables.
@@ -1170,14 +1172,11 @@ class HuslerReissCopula(Copula):
 
     @property
     def tail_dependence_matrix(self) -> npt.NDArray[np.floating]:
-        """Calculate the upper tail dependence matrix for the Hüsler-Reiss copula.
+        r"""Calculate the upper tail dependence matrix for the Hüsler-Reiss copula.
 
         The upper tail dependence coefficient between any pair of variables i and j in
-        the Hüsler-Reiss copula is given by:
-
-        χ_ij = 2 * (1 - Phi( λ_ij  )),
-
-        where Phi is the standard normal CDF.
+        the Hüsler-Reiss copula is given by :math:`\chi_{ij} = 2(1 - \Phi(\lambda_{ij}))`,
+        where :math:`\Phi` is the standard normal CDF.
 
         Returns:
             npt.NDArray[np.floating]: A 2D array representing the upper tail dependence
@@ -1192,20 +1191,16 @@ class HuslerReissCopula(Copula):
     def calculate_lambda_from_tail_dependence(
         tail_dependence_matrix: npt.NDArray[np.floating],
     ) -> npt.NDArray[np.floating]:
-        """Calculate the lambda matrix from a given upper tail dependence matrix.
+        r"""Calculate the lambda matrix from a given upper tail dependence matrix.
 
         The upper tail dependence coefficient between any pair of variables i and j in
-        the Hüsler-Reiss copula is given by:
-
-        χ_ij = 2 * (1 - Phi( λ_ij  )),
-
-        where Phi is the standard normal CDF.
+        the Hüsler-Reiss copula is given by :math:`\chi_{ij} = 2(1 - \Phi(\lambda_{ij}))`,
+        where :math:`\Phi` is the standard normal CDF.
 
         This method inverts the above relationship to compute the lambda matrix from
-        the provided upper tail dependence coefficients.
-        λ_ij = Phi^(-1)(1 - χ_ij / 2)
-
-        where Phi^(-1) is the inverse standard normal CDF.
+        the provided upper tail dependence coefficients as
+        :math:`\lambda_{ij} = \Phi^{-1}(1 - \chi_{ij} / 2)`, where :math:`\Phi^{-1}` is the
+        inverse standard normal CDF.
 
         Args:
             tail_dependence_matrix (npt.NDArray[np.floating]): A 2D array
@@ -1223,14 +1218,11 @@ class HuslerReissCopula(Copula):
 
     @classmethod
     def from_tail_dependence_matrix(cls, tail_dependence_matrix: npt.NDArray[np.floating]) -> HuslerReissCopula:
-        """Create a Hüsler-Reiss copula from a given upper tail dependence matrix.
+        r"""Create a Hüsler-Reiss copula from a given upper tail dependence matrix.
 
         The upper tail dependence coefficient between any pair of variables i and j in
-        the Hüsler-Reiss copula is given by:
-
-        χ_ij = 2 * (1 - Phi( λ_ij  )),
-
-        where Phi is the standard normal CDF.
+        the Hüsler-Reiss copula is given by :math:`\chi_{ij} = 2(1 - \Phi(\lambda_{ij}))`,
+        where :math:`\Phi` is the standard normal CDF.
 
         Args:
             tail_dependence_matrix (npt.NDArray[np.floating]): A 2D array
@@ -1275,15 +1267,19 @@ class ExtremalTCopula(Copula):
     dependence between random variables.
 
     The bivariate cumulative distribution function (CDF) of the Extremal-t copula is given by:
+
     .. math::
-        C(u_i, u_j) = \exp\left(
-        \ln u_i \, t_{\nu+1}\left(
-                        -\sqrt{\frac{(\nu+1)(1-\rho_{ij}^2)}}(-\ln u_i)^{-1/\nu}(-\ln u_j)^{1/\nu}}-\rho_{ij}
-                \right)
-        +\ln u_j \, t_{\nu+1}\left(
-                -\sqrt{\frac{(\nu+1)(1-\rho_{ij}^2)}}(-\ln u_j)^{-1/\nu}(-\ln u_i)^{1/\nu}}-\rho_{ij}
-                \right)
-        \right)
+
+        C(u_i, u_j) = \exp\Bigl(-\ell(-\ln u_i, -\ln u_j)\Bigr)
+
+    where the stable tail dependence function :math:`\ell` can be written as:
+
+    .. math::
+
+        a_{ij} = \sqrt{\frac{\nu+1}{1-\rho_{ij}^2}}
+
+        \ell(x, y) = x\,t_{\nu+1}\left(a_{ij}\left(\left(\frac{y}{x}\right)^{1/\nu} - \rho_{ij}\right)\right)
+            + y\,t_{\nu+1}\left(a_{ij}\left(\left(\frac{x}{y}\right)^{1/\nu} - \rho_{ij}\right)\right)
 
     Its dependence structure is characterized by a correlation matrix and a degrees
     of freedom parameter :math:`\nu > 0`, which controls the strength of the
@@ -1294,8 +1290,7 @@ class ExtremalTCopula(Copula):
 
     .. math::
 
-        \lambda_{ij} = 2 \, t_{\nu+1}\left(-\sqrt{
-        \frac{(\nu+1)(1-\rho_{ij})}{1+\rho_{ij}}}\right)
+        \lambda_{ij} = 2\, t_{\nu+1}\left(-\sqrt{\frac{(\nu+1)(1-\rho_{ij})}{1+\rho_{ij}}}\right)
 
     where :math:`t_{\nu+1}` is the CDF of a univariate t-distribution with
     :math:`\nu+1` degrees of freedom and :math:`\rho_{ij}` is the correlation
@@ -1519,15 +1514,14 @@ class ExtremalTCopula(Copula):
         tail_dependence_matrix: npt.NDArray[np.floating],
         nu: float,
     ) -> ExtremalTCopula:
-        """Create an Extremal-t copula from a given upper tail dependence matrix.
+        r"""Create an Extremal-t copula from a given upper tail dependence matrix.
 
         The upper tail dependence coefficient between any pair of variables i and j in
-        the Extremal-t copula is given by:
-
-        χ_ij = 2 * t_{nu+1}(-sqrt((nu+1)(1-rho_ij)/(1+rho_ij))),
-
-        where t_{nu+1} is the CDF of a univariate t-distribution with nu+1 degrees of
-        freedom and rho_ij is the correlation between variables i and j.
+        the Extremal-t copula is given by
+        :math:`\chi_{ij} = 2\,t_{\nu+1}\left(-\sqrt{\frac{(\nu+1)(1-\rho_{ij})}{1+\rho_{ij}}}\right)`,
+        where :math:`t_{\nu+1}` is the CDF of a univariate t-distribution with
+        :math:`\nu+1` degrees of freedom and :math:`\rho_{ij}` is the correlation
+        between variables :math:`i` and :math:`j`.
 
         This method inverts the above relationship to compute the correlation matrix
         from the provided upper tail dependence coefficients.

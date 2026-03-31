@@ -57,6 +57,8 @@ Installation
    tutorials/frequency_severity_modelling
    tutorials/coupling_groups_and_copulas
    tutorials/xol_reinsurance
+   tutorials/reinstatement_pricing
+   tutorials/risk_measures_and_allocation
    
 .. toctree::
    :maxdepth: 3
@@ -69,6 +71,7 @@ Installation
    :caption: Additional Information
 
    contributing
+   development
    license
 
 Indices and tables

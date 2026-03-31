@@ -189,80 +189,22 @@ class VectorOperations(ArithmeticProtocol, t.Protocol):
 
 @t.runtime_checkable
 class VectorLike(VectorOperations, SupportsArray, t.Protocol[T_co]):
-    """Protocol for vector-like objects that support array conversion.
+    """Protocol for vector-like PAL objects.
 
-    This protocol combines VectorOperations (vector-style arithmetic and comparisons)
-    with SupportsArray (numpy array conversion). Use this for objects that are
-    true vector-like types that can be converted to numpy arrays.
+    Use this for PAL objects that behave like a vector of simulations (for example
+    `StochasticScalar`). Vector-like semantics are:
 
-    Comparison operations return Self (vectorized semantics).
-
-    Why VectorLikeProtocol vs numpy.ArrayLike?
-    --------------------------------------------
-
-    These solve fundamentally different problems:
-
-    **numpy.ArrayLike**: "What can become an array?"
-    - Purpose: Defines what inputs numpy functions will accept and convert to arrays
-    - It's about data conversion compatibility
-    - Just a Union of types that numpy knows how to convert (lists, objects with
-      __array__, etc.)
-    - Example: np.sum([1, 2, 3]) works because list is ArrayLike
-
-    **VectorLikeProtocol**: "How do math operations behave?"
-    - Purpose: Defines the behavioral contract for mathematical operations
-    - It's about operation semantics and type preservation
-    - Ensures that operations return the same type (Self), not just any array
-    - Example: StochasticScalar([1, 2, 3]) + 5 returns StochasticScalar, not ndarray
-
-    Key Differences:
-    ----------------
-    1. **Type Preservation**: VectorLikeProtocol ensures operations maintain the
-       original type (e.g., StochasticScalar + StochasticScalar = StochasticScalar),
-       while ArrayLike would lose this information (becoming ndarray).
-
-    2. **Comparison Semantics**: VectorLikeProtocol defines that comparisons return
-       vectorized results (Self) for element-wise operations, not scalar bool values.
-       Example: StochasticScalar([1, 2, 3]) > 2 returns
-       StochasticScalar([False, False, True])
-
-    3. **Operation Contracts**: VectorLikeProtocol defines how mathematical operations
-       should behave for custom types, while ArrayLike only cares about convertibility.
-
-    Why Both Are Needed:
-    --------------------
-    Classes implementing VectorLikeProtocol should also be ArrayLike-compatible by
-    implementing __array__() for numpy interoperability. This gives:
-    - Type preservation through operations (VectorLikeProtocol benefit)
-    - Numpy function compatibility (ArrayLike benefit)
-    - Clear semantic distinction between scalar and vector operations
-
-    Example Implementation:
-    ----------------------
-    class StochasticScalar:
-        # VectorLikeProtocol: defines operation behavior
-        def __add__(self, other) -> Self: ...  # Returns StochasticScalar
-        def __gt__(self, other) -> Self: ...   # Returns StochasticScalar
-
-        # ArrayLike compatibility: allows numpy function usage
-        def __array__(self) -> np.ndarray: ... # Enables np.sum(stochastic_scalar)
-
-    Numpy Compatibility:
-    -------------------
-    VectorLikeProtocol includes numpy compatibility methods:
-    - __array__(): Enables conversion to numpy array for use with numpy functions
-    - __len__(): Required for many numpy operations
-    - __array_ufunc__(): (inherited from ArrayUfuncCapable) Enables proper handling
-      of numpy universal functions while preserving type
-
-    These methods ensure VectorLike objects can seamlessly integrate with numpy's
-    ecosystem while maintaining their custom type semantics.
+    - arithmetic preserves the type (operations return `Self`)
+    - comparisons are element-wise and return `Self`
+    - objects can be converted to arrays via numpy protocols (`__array__`,
+        `__array_function__`, and `__array_ufunc__`)
     """
 
-    # All methods are inherited from:
-    # - VectorOperations: comparison ops, __len__, __array_ufunc__
-    # - SupportsArray: __array__
-    # - ArithmeticProtocol (via VectorOperations): arithmetic ops
+
+# All methods are inherited from:
+# - VectorOperations: comparison ops, __len__, __array_ufunc__
+# - SupportsArray: __array__
+# - ArithmeticProtocol (via VectorOperations): arithmetic ops
 
 
 # Union type that includes both the basic numeric types and objects implementing
@@ -392,42 +334,12 @@ T_distribution = t.TypeVar("T_distribution", bound="ScipyNumeric | npt.NDArray[n
 class DistributionLike(t.Protocol[T_distribution]):
     """Generic protocol for distribution-like objects.
 
-    DistributionLike is generic over the type of values it operates on, ensuring
-    type consistency between inputs and outputs for mathematical operations.
+    This protocol is generic over the type of values the distribution operates on,
+    and `cdf()`/`invcdf()` preserve that input type.
 
-    Type Parameter:
-        T_distribution: The type of values the distribution operates on, bounded to
-                       ScipyNumeric (float | int | np.floating | np.integer) or
-                       npt.NDArray[np.floating] for vectorized operations.
-
-    Key Properties:
-    ---------------
-    1. **Input-Output Consistency**: cdf() and invcdf() preserve input types
-       - DistributionLike[float].cdf(x: float) -> float
-       - DistributionLike[NDArray].cdf(x: NDArray) -> NDArray
-
-    2. **Scalar and Vector Support**: Same distribution can work with both:
-       - Scalar inputs: Individual probability calculations
-       - Array inputs: Vectorized calculations across multiple values
-
-    3. **Type Safety**: Generic parameter prevents mixing incompatible types
-       and ensures mathematical operations maintain type consistency.
-
-    Usage Examples:
-    --------------
-    ```python
-    # Scalar distribution operations
-    def eval_at_point(dist: DistributionLike[float], value: float) -> float:
-        return dist.cdf(value)  # Returns float
-
-    # Vectorized distribution operations
-    def eval_array(dist: DistributionLike[NDArray], values: NDArray) -> NDArray:
-        return dist.cdf(values)  # Returns NDArray
-
-    # Generate always returns VectorLike (StochasticScalar-like object)
-    def sample_distribution(dist: DistributionLike[Any]) -> VectorLike:
-        return dist.generate(n_sims=1000)
-    ```
+    Examples:
+        >>> def eval_at_point(dist: DistributionLike[float], value: float) -> float:
+        ...     return dist.cdf(value)
     """
 
     def cdf(self, x: T_distribution) -> T_distribution:

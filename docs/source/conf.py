@@ -47,7 +47,9 @@ myst_enable_extensions = [
 ]
 
 templates_path = ["_templates"]
-exclude_patterns = []
+exclude_patterns = [
+    "api/pal*.rst",
+]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
@@ -95,11 +97,16 @@ napoleon_numpy_docstring = True
 napoleon_include_init_with_doc = True
 
 # Intersphinx mapping
-intersphinx_mapping = {
-    "python": ("https://docs.python.org/3", None),
-    "numpy": ("https://numpy.org/doc/stable/", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
-}
+# In many environments (CI, offline devcontainers) we cannot fetch inventories.
+# Keep it opt-in to avoid noisy warnings when building with -W.
+if os.environ.get("PAL_DOCS_INTERSPHINX") == "1":
+    intersphinx_mapping = {
+        "python": ("https://docs.python.org/3", None),
+        "numpy": ("https://numpy.org/doc/stable/", None),
+        "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    }
+else:
+    intersphinx_mapping = {}
 
 # Autosummary settings
 autosummary_generate = True  # Enable autosummary generation
