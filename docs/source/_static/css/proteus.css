@@ -1,0 +1,471 @@
+/* Proteus Actuarial Library documentation theme.
+   Built as a small layer over Furo so upgrades remain straightforward. */
+
+:root {
+  --proteus-navy: #001a64;
+  --proteus-blue: #1d4ed8;
+  --proteus-blue-soft: #eaf1ff;
+  --proteus-ink: #0f172a;
+  --proteus-muted: #526079;
+  --proteus-line: #dce3ee;
+  --proteus-surface: #f7f9fc;
+  --font-stack: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-stack--monospace: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --sidebar-item-line-height: 1.35;
+}
+
+body {
+  letter-spacing: -0.006em;
+}
+
+/* Proteus-branded navigation */
+.sidebar-drawer {
+  background:
+    radial-gradient(circle at 0 0, rgba(91, 141, 239, 0.2), transparent 32rem),
+    var(--proteus-navy);
+  border-right: 0;
+}
+
+.sidebar-brand {
+  padding: 1.75rem 1.2rem 1.2rem;
+}
+
+.sidebar-logo {
+  width: 11.5rem;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+}
+
+.sidebar-search-container {
+  padding: 0 1rem 1rem;
+}
+
+.sidebar-search {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 0.65rem;
+  box-shadow: none;
+}
+
+.sidebar-search::placeholder {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.sidebar-search:focus {
+  border-color: rgba(255, 255, 255, 0.7);
+  outline: 2px solid rgba(143, 184, 255, 0.55);
+}
+
+.sidebar-tree .caption,
+.sidebar-tree .caption-text {
+  color: #9ebcff;
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.sidebar-tree a,
+.sidebar-tree label,
+.sidebar-tree .reference {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.sidebar-tree a:hover,
+.sidebar-tree label:hover,
+.sidebar-tree .reference:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-tree .current-page > .reference,
+.sidebar-tree .current > .reference {
+  color: #fff;
+  font-weight: 650;
+  background: rgba(91, 141, 239, 0.24);
+  border-radius: 0.45rem;
+}
+
+.sidebar-tree .toctree-expand {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Reading experience */
+.content {
+  padding-top: 2.2rem;
+}
+
+.article-container {
+  max-width: 54rem;
+}
+
+.content h1,
+.content h2,
+.content h3,
+.content h4 {
+  color: var(--proteus-ink);
+  letter-spacing: -0.025em;
+}
+
+.content h1 {
+  font-size: clamp(2.05rem, 3.6vw, 3rem);
+  line-height: 1.08;
+}
+
+.content h2 {
+  margin-top: 2.6rem;
+  padding-top: 0.2rem;
+  border-bottom: 0;
+}
+
+.content p,
+.content li {
+  color: #334155;
+  line-height: 1.72;
+}
+
+.content a:not(.sd-card):not(.pal-button) {
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 0.08em;
+}
+
+div[class*="highlight-"] {
+  overflow: hidden;
+  border: 1px solid var(--proteus-line);
+  border-radius: 0.75rem;
+  box-shadow: 0 5px 18px rgba(15, 23, 42, 0.05);
+}
+
+div[class*="highlight-"] pre {
+  padding: 1.05rem 1.2rem;
+}
+
+.code-block-caption {
+  color: var(--proteus-muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+  text-align: left;
+}
+
+.copybtn {
+  border-radius: 0.45rem;
+}
+
+table.docutils {
+  overflow: hidden;
+  border: 1px solid var(--proteus-line);
+  border-radius: 0.65rem;
+  box-shadow: 0 3px 14px rgba(15, 23, 42, 0.04);
+}
+
+table.docutils thead {
+  background: #eef3fb;
+}
+
+dl.py > dt.sig,
+dl.class > dt.sig,
+dl.method > dt.sig,
+dl.function > dt.sig {
+  padding: 0.9rem 1rem;
+  background: var(--proteus-surface);
+  border: 1px solid var(--proteus-line);
+  border-left: 4px solid var(--proteus-blue);
+  border-radius: 0.55rem;
+}
+
+/* Homepage */
+.article-container:has(.pal-hero) {
+  max-width: 72rem;
+}
+
+#proteus-actuarial-library-documentation > h1:first-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.pal-hero {
+  position: relative;
+  isolation: isolate;
+  margin: -0.5rem 0 3.25rem;
+  padding: clamp(2rem, 5vw, 4rem);
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(circle at 92% 0, rgba(91, 141, 239, 0.65), transparent 36%),
+    linear-gradient(135deg, #001a64 0%, #082b83 100%);
+  border-radius: 1.25rem;
+  box-shadow: 0 24px 55px rgba(0, 26, 100, 0.2);
+}
+
+.pal-hero::after {
+  position: absolute;
+  z-index: -1;
+  right: -7rem;
+  bottom: -11rem;
+  width: 28rem;
+  height: 28rem;
+  content: "";
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4rem rgba(255, 255, 255, 0.035), 0 0 0 8rem rgba(255, 255, 255, 0.025);
+}
+
+.pal-eyebrow {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  margin-bottom: 1.35rem;
+  color: #cad8ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pal-eyebrow span {
+  padding: 0.24rem 0.48rem;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+}
+
+.pal-hero-title {
+  max-width: 13ch;
+  margin: 0;
+  color: #fff !important;
+  font-size: clamp(2.65rem, 6vw, 4.7rem);
+  font-weight: 700;
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+.pal-hero-lead {
+  max-width: 47rem;
+  margin: 1.5rem 0 0;
+  color: rgba(255, 255, 255, 0.8) !important;
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
+  line-height: 1.6 !important;
+}
+
+.pal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.8rem;
+}
+
+.pal-button {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.72rem 1.05rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: 0.58rem;
+  transition: transform 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.pal-button:hover {
+  transform: translateY(-1px);
+}
+
+.pal-button-primary {
+  color: var(--proteus-navy);
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+}
+
+.pal-button-secondary {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.pal-button-secondary:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.pal-install {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 2rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  color: #e5edff;
+  background: rgba(0, 8, 36, 0.46);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.6rem;
+}
+
+.pal-install code {
+  color: inherit;
+  font-size: 0.84rem;
+  background: transparent;
+}
+
+.pal-card-grid {
+  margin-top: 1.25rem !important;
+}
+
+.pal-card {
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--proteus-line) !important;
+  border-radius: 0.9rem !important;
+  box-shadow: 0 6px 22px rgba(15, 23, 42, 0.05) !important;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.pal-card:hover {
+  transform: translateY(-3px);
+  border-color: #9db8f2 !important;
+  box-shadow: 0 14px 32px rgba(0, 26, 100, 0.11) !important;
+}
+
+.pal-card .sd-card-title {
+  color: var(--proteus-navy);
+  font-size: 1.05rem;
+  font-weight: 750;
+}
+
+.pal-card .sd-card-body p {
+  color: var(--proteus-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.pal-card .sd-card-footer {
+  color: var(--proteus-blue);
+  background: transparent;
+  border-top: 1px solid #edf1f6;
+}
+
+.pal-feature-grid {
+  margin-top: 1.25rem !important;
+  padding: 1.35rem;
+  background: var(--proteus-surface);
+  border: 1px solid var(--proteus-line);
+  border-radius: 1rem;
+}
+
+.pal-feature-grid .rubric {
+  margin: 0 0 0.45rem;
+  color: var(--proteus-navy);
+  font-size: 1rem;
+}
+
+.pal-feature-grid p {
+  margin-bottom: 0;
+  color: var(--proteus-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.pal-community {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 3rem;
+  padding: 1.6rem 1.8rem;
+  color: #fff;
+  background: var(--proteus-navy);
+  border-radius: 1rem;
+}
+
+.pal-community h2 {
+  margin: 0.2rem 0 0.35rem;
+  padding: 0;
+  color: #fff;
+  font-size: 1.4rem;
+}
+
+.pal-community p {
+  max-width: 42rem;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.pal-community-kicker {
+  color: #9ebcff;
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Dark theme */
+body[data-theme="dark"] {
+  --proteus-ink: #f3f6ff;
+  --proteus-muted: #a9b6cb;
+  --proteus-line: #27334b;
+  --proteus-surface: #10182d;
+}
+
+body[data-theme="dark"] .content p,
+body[data-theme="dark"] .content li {
+  color: #c6d0df;
+}
+
+body[data-theme="dark"] .pal-card .sd-card-title,
+body[data-theme="dark"] .pal-feature-grid .rubric {
+  color: #b8d2ff;
+}
+
+body[data-theme="dark"] .pal-card .sd-card-footer {
+  border-top-color: var(--proteus-line);
+}
+
+body[data-theme="dark"] table.docutils thead {
+  background: #15203a;
+}
+
+@media (max-width: 67rem) {
+  .sidebar-drawer {
+    box-shadow: 1rem 0 3rem rgba(0, 8, 36, 0.35);
+  }
+}
+
+@media (max-width: 48rem) {
+  .content {
+    padding-top: 1.2rem;
+  }
+
+  .pal-hero {
+    margin-top: 0;
+    padding: 1.8rem 1.35rem 2rem;
+    border-radius: 0.9rem;
+  }
+
+  .pal-hero-title {
+    font-size: 2.8rem;
+  }
+
+  .pal-community {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pal-button,
+  .pal-card {
+    transition: none;
+  }
+}

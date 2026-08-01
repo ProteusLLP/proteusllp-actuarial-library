@@ -779,7 +779,7 @@ class InverseGamma(DistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
         alpha, theta, loc = self._param_values
-        return special.gammaincc(alpha, np.divide(theta, (x - loc)))
+        return special.gammaincc(alpha, np.divide(theta, (x - loc)))  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
