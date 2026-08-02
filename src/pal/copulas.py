@@ -1106,8 +1106,8 @@ class HuslerReissCopula(Copula):
     def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Exact simulation from a d-dimensional Hüsler-Reiss copula.
 
-        See Dombry-Engelke-Oesting (2016) Algorithm 1 (spectral measure on the
-        L1-sphere).
+        See Dombry-Engelke-Oesting (2016), Algorithm 2 (spectral measure on the
+        L1-sphere; numbered Algorithm 1 in arXiv:1506.04430v1).
 
         References:
         Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
@@ -1132,7 +1132,7 @@ class HuslerReissCopula(Copula):
         # Z will hold the unit Fréchet max-stable vector
         z = np.zeros((n_sims, d), dtype=float)
 
-        # Poisson process in 1/zeta with rate = d (Alg. 1: Exp(N))
+        # Poisson process in 1/zeta with rate = d (Alg. 2 in Biometrika: Exp(N))
         # So scale = 1 / rate = 1/d
         zeta_inv = rng.exponential(scale=1.0 / d, size=n_sims)
         zeta = 1.0 / zeta_inv
