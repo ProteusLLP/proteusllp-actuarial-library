@@ -6,9 +6,13 @@
   --proteus-blue: #1d4ed8;
   --proteus-blue-soft: #eaf1ff;
   --proteus-ink: #0f172a;
+  --proteus-body: #334155;
   --proteus-muted: #526079;
   --proteus-line: #dce3ee;
   --proteus-surface: #f7f9fc;
+  --proteus-content-accent: #001a64;
+  --proteus-card-divider: #edf1f6;
+  --proteus-table-header: #eef3fb;
   --font-stack: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-stack--monospace: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --sidebar-item-line-height: 1.35;
@@ -122,7 +126,7 @@ body {
 
 .content p,
 .content li {
-  color: #334155;
+  color: var(--proteus-body);
   line-height: 1.72;
 }
 
@@ -161,14 +165,20 @@ table.docutils {
 }
 
 table.docutils thead {
-  background: #eef3fb;
+  background: var(--proteus-table-header);
 }
 
 dl.py > dt.sig,
 dl.class > dt.sig,
 dl.method > dt.sig,
 dl.function > dt.sig {
+  box-sizing: border-box;
+  width: 100%;
+  margin-right: 0;
+  margin-left: 0;
   padding: 0.9rem 1rem;
+  text-indent: 0;
+  overflow-wrap: anywhere;
   background: var(--proteus-surface);
   border: 1px solid var(--proteus-line);
   border-left: 4px solid var(--proteus-blue);
@@ -337,7 +347,7 @@ dl.function > dt.sig {
 }
 
 .pal-card .sd-card-title {
-  color: var(--proteus-navy);
+  color: var(--proteus-content-accent);
   font-size: 1.05rem;
   font-weight: 750;
 }
@@ -351,7 +361,7 @@ dl.function > dt.sig {
 .pal-card .sd-card-footer {
   color: var(--proteus-blue);
   background: transparent;
-  border-top: 1px solid #edf1f6;
+  border-top: 1px solid var(--proteus-card-divider);
 }
 
 .pal-feature-grid {
@@ -364,7 +374,7 @@ dl.function > dt.sig {
 
 .pal-feature-grid .rubric {
   margin: 0 0 0.45rem;
-  color: var(--proteus-navy);
+  color: var(--proteus-content-accent);
   font-size: 1rem;
 }
 
@@ -413,27 +423,28 @@ dl.function > dt.sig {
 /* Dark theme */
 body[data-theme="dark"] {
   --proteus-ink: #f3f6ff;
+  --proteus-body: #c6d0df;
   --proteus-muted: #a9b6cb;
   --proteus-line: #27334b;
   --proteus-surface: #10182d;
+  --proteus-content-accent: #b8d2ff;
+  --proteus-card-divider: #27334b;
+  --proteus-table-header: #15203a;
 }
 
-body[data-theme="dark"] .content p,
-body[data-theme="dark"] .content li {
-  color: #c6d0df;
-}
-
-body[data-theme="dark"] .pal-card .sd-card-title,
-body[data-theme="dark"] .pal-feature-grid .rubric {
-  color: #b8d2ff;
-}
-
-body[data-theme="dark"] .pal-card .sd-card-footer {
-  border-top-color: var(--proteus-line);
-}
-
-body[data-theme="dark"] table.docutils thead {
-  background: #15203a;
+/* Furo's default setting is "auto". Mirror the dark palette whenever the
+   operating system requests dark colours, unless the reader selected light. */
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) {
+    --proteus-ink: #f3f6ff;
+    --proteus-body: #c6d0df;
+    --proteus-muted: #a9b6cb;
+    --proteus-line: #27334b;
+    --proteus-surface: #10182d;
+    --proteus-content-accent: #b8d2ff;
+    --proteus-card-divider: #27334b;
+    --proteus-table-header: #15203a;
+  }
 }
 
 @media (max-width: 67rem) {
