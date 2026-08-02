@@ -462,9 +462,11 @@ class GumbelCopula(ArchimedeanCopula):
         C(u_1, \ldots, u_d) = \exp\left[-\left(\sum_{i=1}^d (-\ln u_i)^\theta\right)^{1/\theta}\right]
 
     where :math:`\theta \geq 1` is the dependence parameter. The Gumbel copula
-    exhibits upper tail dependence and is part of the Archimedean family. The
-        upper tail dependence coefficient between any pair of variables in the Gumbel copula is given by:
+    exhibits upper tail dependence and is part of the Archimedean family. The upper
+    tail dependence coefficient between any pair of variables is given by:
+
     .. math::
+
         \lambda_U = 2 - 2^{1/\theta}
 
     The generator function is:
@@ -1274,16 +1276,29 @@ class ExtremalTCopula(Copula):
     multivariate extreme value copula, which is suited for modeling upper tail
     dependence between random variables.
 
-    The bivariate cumulative distribution function (CDF) of the Extremal-t copula is given by:
+    The bivariate cumulative distribution function (CDF) of the Extremal-t copula is
+    given by:
+
     .. math::
-        C(u_i, u_j) = \exp\left(
-        \ln u_i \, t_{\nu+1}\left(
-                        -\sqrt{\frac{(\nu+1)(1-\rho_{ij}^2)}}(-\ln u_i)^{-1/\nu}(-\ln u_j)^{1/\nu}}-\rho_{ij}
-                \right)
-        +\ln u_j \, t_{\nu+1}\left(
-                -\sqrt{\frac{(\nu+1)(1-\rho_{ij}^2)}}(-\ln u_j)^{-1/\nu}(-\ln u_i)^{1/\nu}}-\rho_{ij}
-                \right)
-        \right)
+
+        C(u_i, u_j)
+        &= \exp\Bigg\{
+            \ln u_i \, t_{\nu+1}\!\left(
+                \sqrt{\frac{\nu+1}{1-\rho_{ij}^2}}
+                \left[
+                    \left(\frac{-\ln u_i}{-\ln u_j}\right)^{1/\nu}
+                    - \rho_{ij}
+                \right]
+            \right) \\
+        &\qquad\quad +
+            \ln u_j \, t_{\nu+1}\!\left(
+                \sqrt{\frac{\nu+1}{1-\rho_{ij}^2}}
+                \left[
+                    \left(\frac{-\ln u_j}{-\ln u_i}\right)^{1/\nu}
+                    - \rho_{ij}
+                \right]
+            \right)
+        \Bigg\}.
 
     Its dependence structure is characterized by a correlation matrix and a degrees
     of freedom parameter :math:`\nu > 0`, which controls the strength of the
