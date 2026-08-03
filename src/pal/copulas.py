@@ -255,6 +255,7 @@ class StudentsTCopula(EllipticalCopula):
 
     The Student's t copula exhibits symmetric tail dependence, making it useful for
     modeling joint extreme events. The upper and lower tail dependence coefficients are given by:
+
     .. math::
 
         \lambda_U = \lambda_L = 2t_{\nu+1}\left(-\sqrt{\frac{(\nu+1)(1-\rho)}{1+\rho}}\right)
@@ -356,6 +357,7 @@ class ClaytonCopula(ArchimedeanCopula):
     exhibits lower tail dependence and is part of the Archimedean family.
 
     The lower tail dependence coefficient between any pair of variables in the Clayton copula is given by:
+
     .. math::
 
         \lambda_L = 2^{-1/\theta}
@@ -548,10 +550,12 @@ class JoeCopula(ArchimedeanCopula):
 
     .. math::
 
+        \begin{aligned}
         C(u_1, \ldots, u_d)
-        = 1 - \left\{
-            1 - \prod_{i=1}^d \left[1 - (1-u_i)^\theta\right]
-          \right\}^{1/\theta}
+          &= 1 - \left\{
+              1 - \prod_{i=1}^d \left[1 - (1-u_i)^\theta\right]
+            \right\}^{1/\theta}
+        \end{aligned}
 
     where :math:`\theta \geq 1` is the dependence parameter.
 
@@ -598,15 +602,19 @@ class MM1Copula(Copula):
 
     .. math::
 
+        \begin{aligned}
         C(u_1, \ldots, u_d)
-        = \exp\left\{
-            -\left[
-                \sum_{i<j}\left\{
-                    \left(\frac{(-\ln u_i)^\theta}{d-1}\right)^{\delta_{ij}}
-                    + \left(\frac{(-\ln u_j)^\theta}{d-1}\right)^{\delta_{ij}}
-                \right\}^{1/\delta_{ij}}
-            \right]^{1/\theta}
-          \right\}
+          &= \exp\left\{
+              -\left[
+                  \sum_{i<j}\left\{
+                      \begin{aligned}
+                      &\left(\frac{(-\ln u_i)^\theta}{d-1}\right)^{\delta_{ij}} \\
+                      &\quad+ \left(\frac{(-\ln u_j)^\theta}{d-1}\right)^{\delta_{ij}}
+                      \end{aligned}
+                  \right\}^{1/\delta_{ij}}
+              \right]^{1/\theta}
+            \right\}
+        \end{aligned}
 
     for a symmetric matrix :math:`\delta_{ij} \geq 1` and
     :math:`\theta \geq 1`. The MM1 copula reduces to the Gumbel copula when all
@@ -720,7 +728,7 @@ class GalambosCopula(Copula):
 
     .. math::
 
-    C(u, v) = uv\exp\left(-\left[(-\ln u)^{-\theta} + (-\ln v)^{-\theta}\right]^{-1/\theta}\right)
+        C(u, v) = uv\exp\left(-\left[(-\ln u)^{-\theta} + (-\ln v)^{-\theta}\right]^{-1/\theta}\right)
 
     Its dependence structure is characterized by a single parameter,
     :math:`\theta > 0`, which controls the strength of the upper tail dependence.
@@ -971,20 +979,22 @@ class HuslerReissCopula(Copula):
 
     .. math::
 
+        \begin{aligned}
         C(u_i, u_j)
-        &= \exp\Bigg\{
-            \ln u_i \, \Phi\!\left(
-                \lambda_{ij}
-                + \frac{1}{2\lambda_{ij}}
-                  \ln\!\left(\frac{-\ln u_i}{-\ln u_j}\right)
-            \right) \\
-        &\qquad\quad +
-            \ln u_j \, \Phi\!\left(
-                \lambda_{ij}
-                + \frac{1}{2\lambda_{ij}}
-                  \ln\!\left(\frac{-\ln u_j}{-\ln u_i}\right)
-            \right)
-          \Bigg\}
+          &= \exp\Bigg\{
+              \ln u_i \, \Phi\!\left(
+                  \lambda_{ij}
+                  + \frac{1}{2\lambda_{ij}}
+                    \ln\!\left(\frac{-\ln u_i}{-\ln u_j}\right)
+              \right) \\
+          &\qquad\quad +
+              \ln u_j \, \Phi\!\left(
+                  \lambda_{ij}
+                  + \frac{1}{2\lambda_{ij}}
+                    \ln\!\left(\frac{-\ln u_j}{-\ln u_i}\right)
+              \right)
+            \Bigg\}
+        \end{aligned}
 
     where :math:`\Phi` is the standard normal CDF and :math:`\lambda_{ij}` is the parameter
     controlling the dependence between the two variables.
@@ -1301,24 +1311,26 @@ class ExtremalTCopula(Copula):
 
     .. math::
 
+        \begin{aligned}
         C(u_i, u_j)
-        &= \exp\Bigg\{
-            \ln u_i \, t_{\nu+1}\!\left(
-                \sqrt{\frac{\nu+1}{1-\rho_{ij}^2}}
-                \left[
-                    \left(\frac{-\ln u_i}{-\ln u_j}\right)^{1/\nu}
-                    - \rho_{ij}
-                \right]
-            \right) \\
-        &\qquad\quad +
-            \ln u_j \, t_{\nu+1}\!\left(
-                \sqrt{\frac{\nu+1}{1-\rho_{ij}^2}}
-                \left[
-                    \left(\frac{-\ln u_j}{-\ln u_i}\right)^{1/\nu}
-                    - \rho_{ij}
-                \right]
-            \right)
-        \Bigg\}.
+          &= \exp\Bigg\{
+              \ln u_i \, t_{\nu+1}\!\left(
+                  \sqrt{\frac{\nu+1}{1-\rho_{ij}^2}}
+                  \left[
+                      \left(\frac{-\ln u_i}{-\ln u_j}\right)^{1/\nu}
+                      - \rho_{ij}
+                  \right]
+              \right) \\
+          &\qquad\quad +
+              \ln u_j \, t_{\nu+1}\!\left(
+                  \sqrt{\frac{\nu+1}{1-\rho_{ij}^2}}
+                  \left[
+                      \left(\frac{-\ln u_j}{-\ln u_i}\right)^{1/\nu}
+                      - \rho_{ij}
+                  \right]
+              \right)
+            \Bigg\}.
+        \end{aligned}
 
     Its dependence structure is characterized by a correlation matrix and a degrees
     of freedom parameter :math:`\nu > 0`, which controls the strength of the
