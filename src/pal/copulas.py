@@ -548,7 +548,10 @@ class JoeCopula(ArchimedeanCopula):
 
     .. math::
 
-    C(u_1, \ldots, u_d) = 1 - \left(1-\prod_{i=1}^d (1 - u_i)^{\theta} \right)^{1/\theta}
+        C(u_1, \ldots, u_d)
+        = 1 - \left\{
+            1 - \prod_{i=1}^d \left[1 - (1-u_i)^\theta\right]
+          \right\}^{1/\theta}
 
     where :math:`\theta \geq 1` is the dependence parameter.
 
@@ -595,16 +598,19 @@ class MM1Copula(Copula):
 
     .. math::
 
-    C(u_1, \ldots, u_d) = \exp\left\{
-        -\left[
-            \sum_{i<j}\left\{ \left(\frac{-\ln u_i}{d-1}\right)^{\delta_{ij}}
-                        +\left(\frac{-\ln u_j}{d-1}\right)^{\delta_{ij} }
-                        \right\}^{1/\delta_{ij}}
-        \right]^{1/\theta}
-    \right\}
+        C(u_1, \ldots, u_d)
+        = \exp\left\{
+            -\left[
+                \sum_{i<j}\left\{
+                    \left(\frac{(-\ln u_i)^\theta}{d-1}\right)^{\delta_{ij}}
+                    + \left(\frac{(-\ln u_j)^\theta}{d-1}\right)^{\delta_{ij}}
+                \right\}^{1/\delta_{ij}}
+            \right]^{1/\theta}
+          \right\}
 
-    for a symmetric matrix:math:`\delta_{ij} \geq 1` and :math:`\theta \geq 1`. The MM1
-    copula reduces to the Gumbel copula when all :math:`\delta_{ij} = 1`.
+    for a symmetric matrix :math:`\delta_{ij} \geq 1` and
+    :math:`\theta \geq 1`. The MM1 copula reduces to the Gumbel copula when all
+    :math:`\delta_{ij} = 1`.
 
     The upper tail dependence coefficient between any pair of variables :math:`i`
     and :math:`j` in the MM1 copula is given by:
@@ -960,14 +966,25 @@ class HuslerReissCopula(Copula):
     random variables and allows for a flexible specification of tail dependency
     for each bivariate pair of variables.
 
-    The bivariate cumulative distribution function (CDF) of the Hüsler-Reiss copula is given by:
+    The bivariate cumulative distribution function (CDF) of the Hüsler-Reiss
+    copula is given by:
 
     .. math::
 
-    C(u_i, u_j) = \exp\left[
-        \ln u_i\  \Phi\left(\lambda_{ij} + \frac{1}{2}\lambda_{ij}^{-1}\ln[(-\ln u_i)/(-\ln u_j)]\right)
-          +\ln u_j \ \Phi\left(\lambda_{ij} + \frac{1}{2\lambda_{ij}}\ln[(-\ln u_j)/(-\ln u_i)]\right)
-          \right])
+        C(u_i, u_j)
+        &= \exp\Bigg\{
+            \ln u_i \, \Phi\!\left(
+                \lambda_{ij}
+                + \frac{1}{2\lambda_{ij}}
+                  \ln\!\left(\frac{-\ln u_i}{-\ln u_j}\right)
+            \right) \\
+        &\qquad\quad +
+            \ln u_j \, \Phi\!\left(
+                \lambda_{ij}
+                + \frac{1}{2\lambda_{ij}}
+                  \ln\!\left(\frac{-\ln u_j}{-\ln u_i}\right)
+            \right)
+          \Bigg\}
 
     where :math:`\Phi` is the standard normal CDF and :math:`\lambda_{ij}` is the parameter
     controlling the dependence between the two variables.
@@ -1030,8 +1047,10 @@ class HuslerReissCopula(Copula):
 
         .. math::
 
-            \lambda_{ij}^2 = 2\left(\text{Var}(Z_i) + \text{Var}(Z_j)
-                - 2\text{Cov}(Z_i, Z_j)\right)
+            \lambda_{ij}^2 = \frac{1}{4}\left(
+                \operatorname{Var}(Z_i) + \operatorname{Var}(Z_j)
+                - 2\operatorname{Cov}(Z_i, Z_j)
+            \right)
 
         This is checked during initialization by attempting to construct a valid
         covariance matrix for the random process :math:`Z_i` from the provided
@@ -1087,7 +1106,8 @@ class HuslerReissCopula(Copula):
     def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
         """Exact simulation from a d-dimensional Hüsler-Reiss copula.
 
-        See Dombry-Engelke-Oesting (2016) Algorithm 2 (spectral measure on L1-sphere).
+        See Dombry-Engelke-Oesting (2016), Algorithm 2 (spectral measure on the
+        L1-sphere; numbered Algorithm 1 in arXiv:1506.04430v1).
 
         References:
         Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
@@ -1112,7 +1132,7 @@ class HuslerReissCopula(Copula):
         # Z will hold the unit Fréchet max-stable vector
         z = np.zeros((n_sims, d), dtype=float)
 
-        # Poisson process in 1/zeta with rate = d (Alg. 2: Exp(N))
+        # Poisson process in 1/zeta with rate = d (Alg. 2 in Biometrika: Exp(N))
         # So scale = 1 / rate = 1/d
         zeta_inv = rng.exponential(scale=1.0 / d, size=n_sims)
         zeta = 1.0 / zeta_inv
