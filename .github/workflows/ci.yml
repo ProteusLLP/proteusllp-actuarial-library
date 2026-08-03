@@ -109,13 +109,13 @@ jobs:
         run: pip install -e ".[docs]"
 
       - name: Validate math directive structure
-        run: python scripts/check_rst_math.py src docs/source
+        run: python scripts/check_rst_math.py src docs
 
       - name: Build documentation
         run: sphinx-build -E -b html docs/source docs/build/html
 
-      - name: Install MathJax
-        run: npm install --no-save --no-package-lock mathjax-full@3.2.2
+      - name: Install MathJax 4
+        run: npm install --no-save --no-package-lock @mathjax/src@4
 
       - name: Validate rendered mathematics
         run: node scripts/check_sphinx_math.mjs docs/build/html

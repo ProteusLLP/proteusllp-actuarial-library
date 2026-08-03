@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate reStructuredText math directives in Python docstrings and RST files."""
+"""Validate math markup in Python docstrings, RST files, and MyST Markdown."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from pathlib import Path
 
 MATH_DIRECTIVE = re.compile(r"^(?P<indent>[ \t]*)\.\. math::(?P<argument>[ \t]+.*)?$")
 STRING_LITERAL = re.compile(r"^(?P<prefix>[rubf]*)['\"]", re.IGNORECASE)
+MARKDOWN_FENCE = re.compile(r"^[ \t]*(?P<fence>`{3,}|~{3,}|:{3,})(?P<info>.*)$")
 DOCSTRING_NODES = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 
 
@@ -103,23 +104,69 @@ def _validate_rst(path: Path) -> tuple[int, list[str]]:
     return _validate_lines(path.read_text(encoding="utf-8").splitlines(), str(path), 1)
 
 
+def _is_closing_fence(line: str, fence: str) -> bool:
+    """Return whether a Markdown line closes the active fenced block."""
+    stripped = line.strip()
+    return bool(stripped) and set(stripped) == {fence[0]} and len(stripped) >= len(fence)
+
+
+def _validate_markdown(path: Path) -> tuple[int, list[str]]:
+    """Validate MyST math fences and reject math markup MyST leaves literal."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    math_count = 0
+    errors: list[str] = []
+    active_fence: str | None = None
+    math_fence_line = 0
+    math_has_body = False
+
+    for index, line in enumerate(lines, start=1):
+        if active_fence is not None:
+            if _is_closing_fence(line, active_fence):
+                if math_fence_line and not math_has_body:
+                    errors.append(f"{path}:{math_fence_line}: MyST math fence must have a non-empty body")
+                active_fence = None
+                math_fence_line = 0
+                math_has_body = False
+            elif math_fence_line:
+                math_has_body = math_has_body or bool(line.strip())
+                if "\t" in line:
+                    errors.append(f"{path}:{index}: tab character in MyST math fence")
+            continue
+
+        fence_match = MARKDOWN_FENCE.match(line)
+        if fence_match is not None:
+            active_fence = fence_match.group("fence")
+            if fence_match.group("info").strip() == "{math}":
+                math_count += 1
+                math_fence_line = index
+            continue
+
+        if ".. math::" in line:
+            errors.append(f"{path}:{index}: use a fenced {{math}} directive in MyST Markdown")
+        if ":math:`" in line:
+            errors.append(f"{path}:{index}: use the MyST {{math}} role instead of the RST math role")
+        if "$$" in line:
+            errors.append(f"{path}:{index}: use a fenced {{math}} directive instead of $$ delimiters")
+
+    if active_fence is not None and math_fence_line:
+        errors.append(f"{path}:{math_fence_line}: unterminated MyST math fence")
+
+    return math_count, errors
+
+
 def _iter_source_files(paths: list[Path]) -> list[Path]:
-    """Expand input paths into Python and RST source files."""
+    """Expand input paths into Python, RST, and Markdown source files."""
     files: set[Path] = set()
     for path in paths:
-        if path.is_file() and path.suffix in {".py", ".rst"}:
+        if path.is_file() and path.suffix in {".py", ".rst", ".md"}:
             files.add(path)
         elif path.is_dir():
-            files.update(
-                candidate
-                for candidate in path.rglob("*.py")
-                if not any(part.startswith(".") for part in candidate.parts)
-            )
-            files.update(
-                candidate
-                for candidate in path.rglob("*.rst")
-                if not any(part.startswith(".") for part in candidate.parts)
-            )
+            for suffix in ("*.py", "*.rst", "*.md"):
+                files.update(
+                    candidate
+                    for candidate in path.rglob(suffix)
+                    if not any(part.startswith(".") for part in candidate.parts)
+                )
         else:
             raise ValueError(f"source path does not exist or is unsupported: {path}")
     return sorted(files)
@@ -142,13 +189,15 @@ def main(arguments: list[str]) -> int:
     for path in files:
         if path.suffix == ".py":
             count, file_errors = _validate_python(path)
-        else:
+        elif path.suffix == ".rst":
             count, file_errors = _validate_rst(path)
+        else:
+            count, file_errors = _validate_markdown(path)
         directive_count += count
         errors.extend(file_errors)
 
     if errors:
-        print("Invalid reStructuredText math directives:", file=sys.stderr)
+        print("Invalid documentation mathematics:", file=sys.stderr)
         for error in errors:
             print(f"- {error}", file=sys.stderr)
         return 1

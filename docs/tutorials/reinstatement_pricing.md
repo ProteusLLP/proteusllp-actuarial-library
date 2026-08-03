@@ -163,9 +163,9 @@ The Proportional Hazard (PH) transform is a risk-adjusted premium
 principle introduced by Wang (1995). For a loss X with survival
 function S(x), the PH premium is:
 
-$$
+```{math}
 \pi_p(X) = \int_0^\infty [S(x)]^{1/p} \, dx
-$$
+```
 
 For p = 1 this is the pure premium (expected value). Higher values
 of p place more weight on the tail, producing a larger loaded

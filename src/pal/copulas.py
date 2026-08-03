@@ -351,7 +351,7 @@ class ClaytonCopula(ArchimedeanCopula):
 
     .. math::
 
-        C(u_1, \ldots, u_n) = \left(\sum_{i=1}^d u_i^{-\theta} - n + 1\right)^{-1/\theta}
+        C(u_1, \ldots, u_d) = \left(\sum_{i=1}^d u_i^{-\theta} - d + 1\right)^{-1/\theta}
 
     where :math:`\theta \geq 0` is the dependence parameter. The Clayton copula
     exhibits lower tail dependence and is part of the Archimedean family.
@@ -728,7 +728,12 @@ class GalambosCopula(Copula):
 
     .. math::
 
-        C(u, v) = uv\exp\left(-\left[(-\ln u)^{-\theta} + (-\ln v)^{-\theta}\right]^{-1/\theta}\right)
+        \begin{aligned}
+        C(u, v)
+          &= uv\exp\!\left\{
+              \left[(-\ln u)^{-\theta} + (-\ln v)^{-\theta}\right]^{-1/\theta}
+            \right\}
+        \end{aligned}
 
     Its dependence structure is characterized by a single parameter,
     :math:`\theta > 0`, which controls the strength of the upper tail dependence.
