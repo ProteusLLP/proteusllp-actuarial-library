@@ -9,6 +9,7 @@
 # Jobs:
 # - static-analysis: Runs linting/type checking on Python 3.13
 # - test: Runs pytest with coverage on Python 3.12 and 3.13 (matrix)
+# - docs-math: Builds the documentation and validates rendered mathematics
 # - build: Builds Python packages using standard build tool
 # - pypi-publish: Publishes to PyPI using trusted publishing (release only)
 #
@@ -85,6 +86,39 @@ jobs:
           flags: python-${{ matrix.python-version }}
           name: codecov-py${{ matrix.python-version }}
           fail_ci_if_error: false
+
+  docs-math:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Install documentation dependencies
+        run: pip install -e ".[docs]"
+
+      - name: Validate math directive structure
+        run: python scripts/check_rst_math.py src docs/source
+
+      - name: Build documentation
+        run: sphinx-build -E -b html docs/source docs/build/html
+
+      - name: Install MathJax
+        run: npm install --no-save --no-package-lock mathjax-full@3.2.2
+
+      - name: Validate rendered mathematics
+        run: node scripts/check_sphinx_math.mjs docs/build/html
 
   build:
     runs-on: ubuntu-latest
