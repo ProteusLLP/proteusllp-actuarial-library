@@ -24,6 +24,7 @@ from pal import (
     PROTEUS_SKY,
     ProteusVariable,
     XoLTower,
+    add_proteus_branding,
     config,
     copulas,
     distributions,
@@ -88,6 +89,7 @@ def plot_allocations(portfolio, measures):
         height=480,
         margin={"t": 100, "b": 100},
     )
+    add_proteus_branding(fig)
     fig.write_image(OUT / "capital_allocations.png", scale=2)
 
 
@@ -114,6 +116,7 @@ def plot_weights(total, measures):
         width=900,
         height=480,
     )
+    add_proteus_branding(fig)
     fig.write_image(OUT / "risk_measure_weights.png", scale=2)
 
 
@@ -165,6 +168,7 @@ def plot_price_curve():
         width=900,
         height=480,
     )
+    add_proteus_branding(fig)
     fig.write_image(OUT / "xol_price_curve.png", scale=2)
 
 

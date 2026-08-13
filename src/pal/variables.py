@@ -66,6 +66,7 @@ from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
 from .types import VectorLike
+from .plotly_template import add_proteus_branding
 
 T = t.TypeVar("T")
 
@@ -869,6 +870,7 @@ class ProteusVariable(t.Generic[T]):
         if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
             return
         fig = go.Figure(layout=go.Layout(title=title))
+        add_proteus_branding(fig)
         for label, value in self.values.items():
             try:
                 # Type ignore: plotly-stubs has incomplete type information
@@ -908,6 +910,7 @@ class ProteusVariable(t.Generic[T]):
         fig.update_xaxes(title_text="Value")  # type: ignore[misc]
         # Type ignore: plotly-stubs has incomplete type information
         fig.update_yaxes(title_text="Cumulative Probability")  # type: ignore[misc]
+        add_proteus_branding(fig)
         # Type ignore: plotly-stubs has incomplete type information
         fig.show()  # type: ignore[misc]
 

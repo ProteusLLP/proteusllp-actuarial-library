@@ -3,14 +3,15 @@
 import plotly.graph_objects as go
 import plotly.io as pio
 
-from pal import PROTEUS_COLORWAY, PROTEUS_NAVY
+from pal import PROTEUS_COLORWAY, PROTEUS_NAVY, add_proteus_branding
 
 
 def test_proteus_is_the_default_plotly_template():
     assert pio.templates.default == "proteus"
     figure = go.Figure()
     assert figure.layout.template.layout.title.font.color == PROTEUS_NAVY
-    assert figure.layout.template.layout.annotations[0].text == "PROTEUS"
+    add_proteus_branding(figure)
+    assert figure.layout.annotations[0].text == "PROTEUS  |  PAL"
 
 
 def test_proteus_template_exposes_brand_palette():

@@ -32,20 +32,43 @@ proteus_template = go.layout.Template(
         hoverlabel={"bgcolor": "white", "font": {"color": "#0f172a"}},
         annotations=[
             {
-                "text": "PROTEUS",
+                "text": "PROTEUS  |  PAL",
                 "xref": "paper",
                 "yref": "paper",
-                "x": 1,
-                "y": -0.16,
+                "x": 0.99,
+                "y": 0.02,
                 "xanchor": "right",
-                "yanchor": "top",
+                "yanchor": "bottom",
                 "showarrow": False,
-                "font": {"size": 10, "color": PROTEUS_NAVY},
-                "opacity": 0.45,
+                "font": {"size": 11, "color": PROTEUS_NAVY},
+                "bgcolor": "rgba(255,255,255,0.82)",
+                "bordercolor": "rgba(0,26,100,0.18)",
+                "borderpad": 3,
+                "opacity": 0.75,
             }
         ],
     )
 )
+
+
+def add_proteus_branding(fig: go.Figure) -> go.Figure:
+    """Add a subtle, export-safe Proteus mark to a Plotly figure."""
+    fig.add_annotation(
+        text="PROTEUS  |  PAL",
+        xref="paper",
+        yref="paper",
+        x=0.99,
+        y=0.02,
+        xanchor="right",
+        yanchor="bottom",
+        showarrow=False,
+        font={"size": 11, "color": PROTEUS_NAVY},
+        bgcolor="rgba(255,255,255,0.82)",
+        bordercolor="rgba(0,26,100,0.18)",
+        borderpad=3,
+        opacity=0.75,
+    )
+    return fig
 
 pio.templates["proteus"] = proteus_template
 pio.templates.default = "proteus"
@@ -57,5 +80,6 @@ __all__ = [
     "PROTEUS_ORANGE",
     "PROTEUS_SKY",
     "PROTEUS_TEAL",
+    "add_proteus_branding",
     "proteus_template",
 ]
