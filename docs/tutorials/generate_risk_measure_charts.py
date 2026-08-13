@@ -17,7 +17,18 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from pal import ProteusVariable, XoLTower, config, copulas, distributions, set_random_seed
+from pal import (
+    PROTEUS_BLUE,
+    PROTEUS_NAVY,
+    PROTEUS_ORANGE,
+    PROTEUS_SKY,
+    ProteusVariable,
+    XoLTower,
+    config,
+    copulas,
+    distributions,
+    set_random_seed,
+)
 from pal.frequency_severity import FrequencySeverityModel
 from pal.risk_measures import (
     percentile_layer,
@@ -30,20 +41,7 @@ from pal.risk_measures import (
 
 OUT = Path(__file__).parent
 # Proteus documentation palette (also defined in docs/source/_static/css/proteus.css).
-PROTEUS_NAVY = "#001a64"
-PROTEUS_BLUE = "#1d4ed8"
-PROTEUS_SKY = "#4aa3df"
-PROTEUS_ORANGE = "#f59e0b"
-PROTEUS_TEAL = "#0f766e"
 COLORS = {"property": PROTEUS_NAVY, "casualty": PROTEUS_BLUE, "marine": PROTEUS_SKY}
-PLOTLY_TEMPLATE = {
-    "layout": {
-        "paper_bgcolor": "white",
-        "plot_bgcolor": "white",
-        "font": {"family": "Arial, sans-serif", "color": "#0f172a"},
-        "colorway": [PROTEUS_NAVY, PROTEUS_BLUE, PROTEUS_SKY, PROTEUS_ORANGE, PROTEUS_TEAL],
-    }
-}
 
 
 def portfolio_results():
@@ -80,7 +78,7 @@ def plot_allocations(portfolio, measures):
         fig.add_bar(x=names, y=values[:, i] * 100, name=lob.title(), marker_color=COLORS[lob])
         bottom += values[:, i]
     fig.update_layout(
-        template=PLOTLY_TEMPLATE,
+        template="proteus",
         title="Capital Allocation by Risk Measure",
         barmode="stack",
         yaxis={"title": "Allocated capital (%)", "range": [0, 100]},
@@ -109,7 +107,7 @@ def plot_weights(total, measures):
             name=name,
         )
     fig.update_layout(
-        template=PLOTLY_TEMPLATE,
+        template="proteus",
         title="Risk Measure Weights by Percentile",
         xaxis={"title": "Percentile of total loss"},
         yaxis={"title": "Signed log₁₀(1 + |simulation weight|)"},
@@ -154,7 +152,7 @@ def plot_price_curve():
         secondary_y=True,
     )
     fig.update_layout(
-        template=PLOTLY_TEMPLATE,
+        template="proteus",
         title="XoL Pricing by Attachment Point (PH α=0.5)",
         barmode="group",
         xaxis={"title": "Attachment point"},

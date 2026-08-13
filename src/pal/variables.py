@@ -67,8 +67,6 @@ from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
 from .types import VectorLike
 
-pio.templates.default = "none"
-
 T = t.TypeVar("T")
 
 __all__ = [

@@ -18,5 +18,6 @@ from .config import *
 from .contracts import *
 from .distributions import *
 from .frequency_severity import *
+from .plotly_template import *
 from .stats import *
 from .variables import *
