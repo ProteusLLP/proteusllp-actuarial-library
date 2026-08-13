@@ -344,6 +344,17 @@ Std dev (k=2)     0.648085  0.185421  0.166494
 CAPL (VaR 99.5%)  0.726285  0.147909  0.125806
 ```
 
+The same comparison is easier to scan visually as a stacked allocation
+chart. Each bar sums to 100% of the capital for that risk measure:
+
+```{figure} capital_allocations.png
+:alt: Stacked bar chart comparing property, casualty and marine capital allocations across five risk measures
+:width: 100%
+:align: center
+
+Capital allocation by risk measure.
+```
+
 Property receives the largest share under every measure because of
 its heavy tail. The more tail-focused the measure (TVaR, CAPL), the
 larger property's share.
@@ -408,6 +419,18 @@ fig.update_layout(
     yaxis=dict(range=[0, 10]),
 )
 fig.show()
+```
+
+The rendered figure below uses the same sorted simulations as the
+example. The symmetric-log vertical scale keeps both the standard
+deviation weights (which can be negative) and the tail weights visible:
+
+```{figure} risk_measure_weights.png
+:alt: Line chart showing risk measure weights by percentile of total loss
+:width: 100%
+:align: center
+
+Risk-measure weights by percentile of total loss.
 ```
 
 The chart shows how each risk measure distributes emphasis across
@@ -563,6 +586,16 @@ fig.update_layout(
 fig.update_yaxes(title_text="% of Limit", secondary_y=False)
 fig.update_yaxes(title_text="Loading %", secondary_y=True)
 fig.show()
+```
+
+Here is the resulting price curve for the five layers:
+
+```{figure} xol_price_curve.png
+:alt: Combined bar and line chart showing loss on line, rate on line and loading by XoL attachment point
+:width: 100%
+:align: center
+
+XoL price curve by attachment point.
 ```
 
 The chart shows loss on line and rate on line as bars (both
