@@ -4,14 +4,18 @@ Run from the repository root with the project dependencies installed::
 
     python docs/tutorials/generate_risk_measure_charts.py
 
+The script uses Plotly for all figures and Kaleido for static PNG export
+(``pip install kaleido``).
+
 The random seed and simulation count intentionally match the tutorial so
 that the figures can be regenerated when the examples change.
 """
 
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from pal import ProteusVariable, XoLTower, config, copulas, distributions, set_random_seed
 from pal.frequency_severity import FrequencySeverityModel
@@ -25,7 +29,21 @@ from pal.risk_measures import (
 
 
 OUT = Path(__file__).parent
-COLORS = {"property": "#4c78a8", "casualty": "#f58518", "marine": "#54a24b"}
+# Proteus documentation palette (also defined in docs/source/_static/css/proteus.css).
+PROTEUS_NAVY = "#001a64"
+PROTEUS_BLUE = "#1d4ed8"
+PROTEUS_SKY = "#4aa3df"
+PROTEUS_ORANGE = "#f59e0b"
+PROTEUS_TEAL = "#0f766e"
+COLORS = {"property": PROTEUS_NAVY, "casualty": PROTEUS_BLUE, "marine": PROTEUS_SKY}
+PLOTLY_TEMPLATE = {
+    "layout": {
+        "paper_bgcolor": "white",
+        "plot_bgcolor": "white",
+        "font": {"family": "Arial, sans-serif", "color": "#0f172a"},
+        "colorway": [PROTEUS_NAVY, PROTEUS_BLUE, PROTEUS_SKY, PROTEUS_ORANGE, PROTEUS_TEAL],
+    }
+}
 
 
 def portfolio_results():
@@ -56,34 +74,49 @@ def plot_allocations(portfolio, measures):
     values = np.array(
         [[float(measures[name].allocate(portfolio)[lob]) / measures[name].value for lob in COLORS] for name in names]
     )
-    fig, ax = plt.subplots(figsize=(9, 4.8), constrained_layout=True)
+    fig = go.Figure()
     bottom = np.zeros(len(names))
     for i, lob in enumerate(COLORS):
-        ax.bar(names, values[:, i] * 100, bottom=bottom * 100, label=lob.title(), color=COLORS[lob])
+        fig.add_bar(x=names, y=values[:, i] * 100, name=lob.title(), marker_color=COLORS[lob])
         bottom += values[:, i]
-    ax.set_ylabel("Allocated capital (%)")
-    ax.set_title("Capital Allocation by Risk Measure")
-    ax.set_ylim(0, 100)
-    ax.tick_params(axis="x", rotation=25)
-    ax.legend(ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.02), frameon=False)
-    fig.savefig(OUT / "capital_allocations.png", dpi=150, facecolor="white")
-    plt.close(fig)
+    fig.update_layout(
+        template=PLOTLY_TEMPLATE,
+        title="Capital Allocation by Risk Measure",
+        barmode="stack",
+        yaxis={"title": "Allocated capital (%)", "range": [0, 100]},
+        xaxis={"tickangle": 25},
+        legend={"orientation": "h", "y": 1.12, "x": 0.5, "xanchor": "center"},
+        width=900,
+        height=480,
+        margin={"t": 100, "b": 100},
+    )
+    fig.write_image(OUT / "capital_allocations.png", scale=2)
 
 
 def plot_weights(total, measures):
     order = np.argsort(total.values)
     percentiles = np.arange(len(order)) / len(order) * 100
-    fig, ax = plt.subplots(figsize=(9, 4.8), constrained_layout=True)
+    fig = go.Figure()
     for name in ("TVaR 99%", "PH (α=0.5)", "Wang (α=1)", "Std dev (k=2)"):
-        ax.plot(percentiles, measures[name].weights.values[order], label=name, linewidth=1.2)
-    ax.set_yscale("symlog", linthresh=1)
-    ax.set_xlabel("Percentile of total loss")
-    ax.set_ylabel("Simulation weight (symmetric log scale)")
-    ax.set_title("Risk Measure Weights by Percentile")
-    ax.grid(alpha=0.2)
-    ax.legend(frameon=False)
-    fig.savefig(OUT / "risk_measure_weights.png", dpi=150, facecolor="white")
-    plt.close(fig)
+        weights = measures[name].weights.values[order]
+        # Plotly has no symmetric-log axis. This signed transform keeps the
+        # negative standard-deviation weights and the large tail weights visible.
+        weights = np.sign(weights) * np.log10(1 + np.abs(weights))
+        fig.add_scatter(
+            x=percentiles,
+            y=weights,
+            mode="lines",
+            name=name,
+        )
+    fig.update_layout(
+        template=PLOTLY_TEMPLATE,
+        title="Risk Measure Weights by Percentile",
+        xaxis={"title": "Percentile of total loss"},
+        yaxis={"title": "Signed log₁₀(1 + |simulation weight|)"},
+        width=900,
+        height=480,
+    )
+    fig.write_image(OUT / "risk_measure_weights.png", scale=2)
 
 
 def plot_price_curve():
@@ -106,23 +139,31 @@ def plot_price_curve():
         els.append(rec.mean() / layer.limit * 100)
         prices.append(rm.value / layer.limit * 100)
         loadings.append((rm.value / rec.mean() - 1) * 100)
-    fig, ax = plt.subplots(figsize=(9, 4.8), constrained_layout=True)
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
     x = np.arange(len(excesses))
-    width = 0.36
-    ax.bar(x - width / 2, els, width, label="Loss on line", color="#4c78a8")
-    ax.bar(x + width / 2, prices, width, label="Rate on line", color="#e45756")
-    ax.set_xticks(x, [f"£{e:.0f}m" for e in excesses])
-    ax.set_xlabel("Attachment point")
-    ax.set_ylabel("% of limit")
-    ax.set_title("XoL Pricing by Attachment Point (PH α=0.5)")
-    ax2 = ax.twinx()
-    ax2.plot(x, loadings, color="#222222", marker="o", linewidth=2, label="Loading")
-    ax2.set_ylabel("Loading (%)")
-    handles, labels = ax.get_legend_handles_labels()
-    handles2, labels2 = ax2.get_legend_handles_labels()
-    ax.legend(handles + handles2, labels + labels2, frameon=False, loc="upper right")
-    fig.savefig(OUT / "xol_price_curve.png", dpi=150, facecolor="white")
-    plt.close(fig)
+    labels = [f"£{e:.0f}m" for e in excesses]
+    fig.add_bar(x=labels, y=els, name="Loss on line", marker_color=PROTEUS_BLUE)
+    fig.add_bar(x=labels, y=prices, name="Rate on line", marker_color=PROTEUS_ORANGE)
+    fig.add_scatter(
+        x=labels,
+        y=loadings,
+        name="Loading",
+        mode="lines+markers",
+        line={"color": PROTEUS_NAVY, "width": 3},
+        marker={"color": PROTEUS_NAVY},
+        secondary_y=True,
+    )
+    fig.update_layout(
+        template=PLOTLY_TEMPLATE,
+        title="XoL Pricing by Attachment Point (PH α=0.5)",
+        barmode="group",
+        xaxis={"title": "Attachment point"},
+        width=900,
+        height=480,
+    )
+    fig.update_yaxes(title_text="% of limit", secondary_y=False)
+    fig.update_yaxes(title_text="Loading (%)", secondary_y=True)
+    fig.write_image(OUT / "xol_price_curve.png", scale=2)
 
 
 if __name__ == "__main__":
