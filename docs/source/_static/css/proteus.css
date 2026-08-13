@@ -42,7 +42,9 @@ body {
 }
 
 .sidebar-search-container {
+  box-sizing: border-box;
   padding: 0 1rem 1rem;
+  width: 100%;
 }
 
 .sidebar-search {
