@@ -351,7 +351,7 @@ class ClaytonCopula(ArchimedeanCopula):
 
     .. math::
 
-        C(u_1, \ldots, u_n) = \left(\sum_{i=1}^d u_i^{-\theta} - n + 1\right)^{-1/\theta}
+        C(u_1, \ldots, u_d) = \left(\sum_{i=1}^d u_i^{-\theta} - d + 1\right)^{-1/\theta}
 
     where :math:`\theta \geq 0` is the dependence parameter. The Clayton copula
     exhibits lower tail dependence and is part of the Archimedean family.
@@ -728,7 +728,12 @@ class GalambosCopula(Copula):
 
     .. math::
 
-        C(u, v) = uv\exp\left(-\left[(-\ln u)^{-\theta} + (-\ln v)^{-\theta}\right]^{-1/\theta}\right)
+        \begin{aligned}
+        C(u, v)
+          &= uv\exp\!\left\{
+              \left[(-\ln u)^{-\theta} + (-\ln v)^{-\theta}\right]^{-1/\theta}
+            \right\}
+        \end{aligned}
 
     Its dependence structure is characterized by a single parameter,
     :math:`\theta > 0`, which controls the strength of the upper tail dependence.
@@ -1202,14 +1207,16 @@ class HuslerReissCopula(Copula):
 
     @property
     def tail_dependence_matrix(self) -> npt.NDArray[np.floating]:
-        """Calculate the upper tail dependence matrix for the Hüsler-Reiss copula.
+        r"""Calculate the upper tail dependence matrix for the Hüsler-Reiss copula.
 
-        The upper tail dependence coefficient between any pair of variables i and j in
-        the Hüsler-Reiss copula is given by:
+        The upper tail dependence coefficient between any pair of variables
+        :math:`i` and :math:`j` in the Hüsler-Reiss copula is given by:
 
-        χ_ij = 2 * (1 - Phi( λ_ij  )),
+        .. math::
 
-        where Phi is the standard normal CDF.
+            \chi_{ij} = 2\left(1 - \Phi(\lambda_{ij})\right)
+
+        where :math:`\Phi` is the standard normal CDF.
 
         Returns:
             npt.NDArray[np.floating]: A 2D array representing the upper tail dependence
@@ -1224,20 +1231,25 @@ class HuslerReissCopula(Copula):
     def calculate_lambda_from_tail_dependence(
         tail_dependence_matrix: npt.NDArray[np.floating],
     ) -> npt.NDArray[np.floating]:
-        """Calculate the lambda matrix from a given upper tail dependence matrix.
+        r"""Calculate the lambda matrix from a given upper tail dependence matrix.
 
-        The upper tail dependence coefficient between any pair of variables i and j in
-        the Hüsler-Reiss copula is given by:
+        The upper tail dependence coefficient between any pair of variables
+        :math:`i` and :math:`j` in the Hüsler-Reiss copula is given by:
 
-        χ_ij = 2 * (1 - Phi( λ_ij  )),
+        .. math::
 
-        where Phi is the standard normal CDF.
+            \chi_{ij} = 2\left(1 - \Phi(\lambda_{ij})\right)
+
+        where :math:`\Phi` is the standard normal CDF.
 
         This method inverts the above relationship to compute the lambda matrix from
         the provided upper tail dependence coefficients.
-        λ_ij = Phi^(-1)(1 - χ_ij / 2)
 
-        where Phi^(-1) is the inverse standard normal CDF.
+        .. math::
+
+            \lambda_{ij} = \Phi^{-1}\left(1 - \frac{\chi_{ij}}{2}\right)
+
+        where :math:`\Phi^{-1}` is the inverse standard normal CDF.
 
         Args:
             tail_dependence_matrix (npt.NDArray[np.floating]): A 2D array
@@ -1255,14 +1267,16 @@ class HuslerReissCopula(Copula):
 
     @classmethod
     def from_tail_dependence_matrix(cls, tail_dependence_matrix: npt.NDArray[np.floating]) -> HuslerReissCopula:
-        """Create a Hüsler-Reiss copula from a given upper tail dependence matrix.
+        r"""Create a Hüsler-Reiss copula from a given upper tail dependence matrix.
 
-        The upper tail dependence coefficient between any pair of variables i and j in
-        the Hüsler-Reiss copula is given by:
+        The upper tail dependence coefficient between any pair of variables
+        :math:`i` and :math:`j` in the Hüsler-Reiss copula is given by:
 
-        χ_ij = 2 * (1 - Phi( λ_ij  )),
+        .. math::
 
-        where Phi is the standard normal CDF.
+            \chi_{ij} = 2\left(1 - \Phi(\lambda_{ij})\right)
+
+        where :math:`\Phi` is the standard normal CDF.
 
         Args:
             tail_dependence_matrix (npt.NDArray[np.floating]): A 2D array
@@ -1566,15 +1580,19 @@ class ExtremalTCopula(Copula):
         tail_dependence_matrix: npt.NDArray[np.floating],
         nu: float,
     ) -> ExtremalTCopula:
-        """Create an Extremal-t copula from a given upper tail dependence matrix.
+        r"""Create an Extremal-t copula from a given upper tail dependence matrix.
 
-        The upper tail dependence coefficient between any pair of variables i and j in
-        the Extremal-t copula is given by:
+        The upper tail dependence coefficient between any pair of variables
+        :math:`i` and :math:`j` in the Extremal-t copula is given by:
 
-        χ_ij = 2 * t_{nu+1}(-sqrt((nu+1)(1-rho_ij)/(1+rho_ij))),
+        .. math::
 
-        where t_{nu+1} is the CDF of a univariate t-distribution with nu+1 degrees of
-        freedom and rho_ij is the correlation between variables i and j.
+            \chi_{ij} = 2 \, t_{\nu+1}\left(-\sqrt{
+            \frac{(\nu+1)(1-\rho_{ij})}{1+\rho_{ij}}}\right)
+
+        where :math:`t_{\nu+1}` is the CDF of a univariate t-distribution with
+        :math:`\nu+1` degrees of freedom and :math:`\rho_{ij}` is the correlation
+        between variables :math:`i` and :math:`j`.
 
         This method inverts the above relationship to compute the correlation matrix
         from the provided upper tail dependence coefficients.

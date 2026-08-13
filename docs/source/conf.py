@@ -48,6 +48,18 @@ myst_enable_extensions = [
     "deflist",
 ]
 
+# Keep long display equations readable on narrow screens. Sphinx 9 uses
+# MathJax 4, whose line-breaking support is configured through this block.
+mathjax4_config = {
+    "output": {
+        "displayOverflow": "linebreak",
+        "linebreaks": {
+            "inline": True,
+            "width": "100%",
+        },
+    },
+}
+
 templates_path = ["_templates"]
 exclude_patterns = []
 

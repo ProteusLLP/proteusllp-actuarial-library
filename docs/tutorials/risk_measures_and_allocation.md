@@ -42,9 +42,9 @@ Acerbi (2002) showed that within the class of coherent risk measures,
 spectral risk measures are those that can be written as a weighted
 average of quantiles:
 
-$$
-ρ(X) = E[φ(F(X))  X]
-$$
+```{math}
+\rho(X) = \mathbb{E}\!\left[\phi(F(X))\,X\right]
+```
 
 where φ is a non-negative, non-decreasing weight function (the "risk
 spectrum") that integrates to 1. The non-decreasing condition ensures
@@ -58,9 +58,9 @@ to individual lines of business. The Euler (gradient) allocation
 splits the total so that each line's share equals its marginal
 contribution:
 
-$$
-C_k = E[X_k · w]
-$$
+```{math}
+C_k = \mathbb{E}\!\left[X_k \cdot w\right]
+```
 
 where w are the per-simulation weights derived from the risk measure.
 The key property is that allocations are additive: Σ C_k = ρ(X).
