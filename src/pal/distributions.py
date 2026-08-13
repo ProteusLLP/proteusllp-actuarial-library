@@ -1339,7 +1339,10 @@ class Uniform(DistributionBase):
     r"""Uniform Distribution.
 
     Defined by:
-        F(x) = (x - a) / (b - a), for a <= x <= b
+
+    .. math::
+
+        F(x) = \frac{x-a}{b-a}, \qquad a \leq x \leq b
 
     Parameters:
         a (float): Lower bound.

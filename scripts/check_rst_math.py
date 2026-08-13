@@ -12,6 +12,7 @@ from pathlib import Path
 MATH_DIRECTIVE = re.compile(r"^(?P<indent>[ \t]*)\.\. math::(?P<argument>[ \t]+.*)?$")
 STRING_LITERAL = re.compile(r"^(?P<prefix>[rubf]*)['\"]", re.IGNORECASE)
 MARKDOWN_FENCE = re.compile(r"^[ \t]*(?P<fence>`{3,}|~{3,}|:{3,})(?P<info>.*)$")
+PLAIN_TEXT_FORMULA = re.compile(r"^[ \t]*(?:[χλρΦΣ]|[A-Za-z](?:_[A-Za-z0-9{}+\-]+)?\([^)]*\)|\\[A-Za-z]+)[^=]*=")
 DOCSTRING_NODES = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 
 
@@ -65,6 +66,28 @@ def _validate_lines(lines: list[str], origin: str, first_line: int) -> tuple[int
     return directive_count, errors
 
 
+def _validate_plain_text_formulae(lines: list[str], origin: str, first_line: int) -> list[str]:
+    """Reject standalone formula-like text outside RST math directives."""
+    errors: list[str] = []
+    math_indent: int | None = None
+
+    for index, line in enumerate(lines):
+        directive = MATH_DIRECTIVE.match(line)
+        if directive is not None:
+            math_indent = _indent_width(line)
+            continue
+
+        if math_indent is not None:
+            if not line.strip() or _indent_width(line) > math_indent:
+                continue
+            math_indent = None
+
+        if PLAIN_TEXT_FORMULA.match(line):
+            errors.append(f"{origin}:{first_line + index}: formula-like text must use a math directive")
+
+    return errors
+
+
 def _validate_python(path: Path) -> tuple[int, list[str]]:
     """Validate math directives in every docstring in a Python file."""
     source = path.read_text(encoding="utf-8")
@@ -87,9 +110,11 @@ def _validate_python(path: Path) -> tuple[int, list[str]]:
             continue
 
         docstring = inspect.cleandoc(expression.value.value)
-        count, docstring_errors = _validate_lines(docstring.splitlines(), str(path), expression.lineno)
+        lines = docstring.splitlines()
+        count, docstring_errors = _validate_lines(lines, str(path), expression.lineno)
         directive_count += count
         errors.extend(docstring_errors)
+        errors.extend(_validate_plain_text_formulae(lines, str(path), expression.lineno))
         if count:
             literal = ast.get_source_segment(source, expression.value) or ""
             literal_match = STRING_LITERAL.match(literal.lstrip())
