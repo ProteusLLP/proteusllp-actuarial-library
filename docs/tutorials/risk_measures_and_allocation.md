@@ -555,7 +555,6 @@ expected loss.
 
 ```python
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 excesses = [layer.excess / 1e6 for layer in tower.layers]
 els, prices, loadings = [], [], []
@@ -566,41 +565,43 @@ for layer in tower.layers:
     prices.append(rm.value / layer.limit * 100)
     loadings.append((rm.value / rec.mean() - 1) * 100)
 
-fig = make_subplots(specs=[[{"secondary_y": True}]])
-fig.add_trace(go.Bar(
-    x=excesses, y=els, name="Loss on Line %", marker_color="steelblue",
-))
-fig.add_trace(go.Bar(
-    x=excesses, y=prices, name="Rate on Line %", marker_color="coral",
-))
+order = np.argsort(els)
+labels = [f"£{e:.0f}m" for e in excesses]
+fig = go.Figure()
 fig.add_trace(go.Scatter(
-    x=excesses, y=loadings, name="Loading %",
-    mode="lines+markers", line=dict(color="black", width=2),
-), secondary_y=True)
+    x=np.array(els)[order], y=np.array(prices)[order],
+    text=np.array(labels)[order], customdata=np.array(loadings)[order],
+    name="XoL layers", mode="lines+markers+text", textposition="top center",
+    line=dict(color="#001a64", width=2),
+    marker=dict(size=11, color=np.array(loadings)[order],
+                colorscale=[[0, "#4aa3df"], [1, "#001a64"]],
+                colorbar=dict(title="Loading (%)")),
+    hovertemplate=("Attachment: %{text}<br>Loss on line: %{x:.2f}%<br>"
+                   "Rate on line: %{y:.2f}%<br>Loading: %{customdata:.1f}%<extra></extra>"),
+))
 
 fig.update_layout(
-    title="XoL Pricing by Attachment Point (PH α=0.5)",
-    xaxis_title="Attachment Point (£m)",
-    barmode="group",
+    title="XoL Rate on Line versus Loss on Line (PH α=0.5)",
+    xaxis_title="Loss on line (%)",
+    yaxis_title="Rate on line (%)",
 )
-fig.update_yaxes(title_text="% of Limit", secondary_y=False)
-fig.update_yaxes(title_text="Loading %", secondary_y=True)
 fig.show()
 ```
 
 Here is the resulting price curve for the five layers:
 
 ```{figure} xol_price_curve.png
-:alt: Combined bar and line chart showing loss on line, rate on line and loading by XoL attachment point
+:alt: Price curve showing rate on line against loss on line for five XoL layers, coloured by loading
 :width: 100%
 :align: center
 
 XoL price curve by attachment point.
 ```
 
-The chart shows loss on line and rate on line as bars (both
-declining with attachment), and the loading as a line (rising
-steeply). This is the signature pattern of distortion pricing:
+The chart plots rate on line against loss on line. Each labelled point
+is one layer, and its colour indicates the loading. As layers become
+more remote, loss on line falls while rate on line remains relatively
+high. This is the signature pattern of distortion pricing:
 the market charges more per unit of risk for remote layers.
 
 ## Summary

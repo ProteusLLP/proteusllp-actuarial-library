@@ -137,30 +137,34 @@ def plot_price_curve():
         els.append(rec.mean() / layer.limit * 100)
         prices.append(rm.value / layer.limit * 100)
         loadings.append((rm.value / rec.mean() - 1) * 100)
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    x = np.arange(len(excesses))
     labels = [f"£{e:.0f}m" for e in excesses]
-    fig.add_bar(x=labels, y=els, name="Loss on line", marker_color=PROTEUS_BLUE)
-    fig.add_bar(x=labels, y=prices, name="Rate on line", marker_color=PROTEUS_ORANGE)
+    order = np.argsort(els)
+    fig = go.Figure()
     fig.add_scatter(
-        x=labels,
-        y=loadings,
-        name="Loading",
-        mode="lines+markers",
-        line={"color": PROTEUS_NAVY, "width": 3},
-        marker={"color": PROTEUS_NAVY},
-        secondary_y=True,
+        x=np.array(els)[order],
+        y=np.array(prices)[order],
+        text=np.array(labels)[order],
+        customdata=np.array(loadings)[order],
+        name="XoL layers",
+        mode="lines+markers+text",
+        textposition="top center",
+        line={"color": PROTEUS_NAVY, "width": 2},
+        marker={
+            "size": 11,
+            "color": np.array(loadings)[order],
+            "colorscale": [[0, PROTEUS_SKY], [1, PROTEUS_NAVY]],
+            "colorbar": {"title": "Loading (%)"},
+        },
+        hovertemplate="Attachment: %{text}<br>Loss on line: %{x:.2f}%<br>Rate on line: %{y:.2f}%<br>Loading: %{customdata:.1f}%<extra></extra>",
     )
     fig.update_layout(
         template="proteus",
-        title="XoL Pricing by Attachment Point (PH α=0.5)",
-        barmode="group",
-        xaxis={"title": "Attachment point"},
+        title="XoL Rate on Line versus Loss on Line (PH α=0.5)",
+        xaxis={"title": "Loss on line (%)"},
+        yaxis={"title": "Rate on line (%)"},
         width=900,
         height=480,
     )
-    fig.update_yaxes(title_text="% of limit", secondary_y=False)
-    fig.update_yaxes(title_text="Loading (%)", secondary_y=True)
     fig.write_image(OUT / "xol_price_curve.png", scale=2)
 
 
