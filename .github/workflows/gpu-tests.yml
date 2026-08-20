@@ -1,0 +1,73 @@
+name: GPU tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gpu-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Do not run untrusted fork code on a billable GPU runner.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: proteus-gpu
+    timeout-minutes: 60
+    env:
+      PAL_USE_GPU: "1"
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[test,gpu]"
+
+      - name: Verify GPU acceleration
+        run: |
+          nvidia-smi
+          python - <<'PY'
+          import cupy
+          from pal._maths import xp
+
+          if xp is not cupy:
+              raise RuntimeError("PAL did not select the CuPy backend")
+
+          device_count = cupy.cuda.runtime.getDeviceCount()
+          if device_count < 1:
+              raise RuntimeError("CuPy did not detect a CUDA device")
+
+          device = cupy.cuda.Device()
+          properties = cupy.cuda.runtime.getDeviceProperties(device.id)
+          device_name = properties["name"]
+          if isinstance(device_name, bytes):
+              device_name = device_name.decode()
+
+          values = cupy.arange(1024, dtype=cupy.float64)
+          result = cupy.sum(values * values)
+          device.synchronize()
+
+          print(f"CUDA devices: {device_count}")
+          print(f"Active device: {device_name}")
+          print(f"CuPy version: {cupy.__version__}")
+          print(f"GPU smoke-test result: {float(result)}")
+          PY
+
+      - name: Run tests with GPU acceleration
+        run: pytest -v --cov=pal --cov-report=term --codeblocks
