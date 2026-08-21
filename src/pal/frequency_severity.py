@@ -31,12 +31,13 @@ import numpy as np
 import numpy.typing as npt
 
 from . import distributions
-from ._maths import xp
+from ._maths import scalar_or_array, to_backend, xp
 from .config import config
 from .couplings import ProteusStochasticVariable as _ProteusStochasticVariable
 from .stochastic_scalar import (
     StochasticScalar,
 )
+from .types import RandomGenerator
 
 # Type aliases for frequency-severity modeling
 
@@ -104,14 +105,14 @@ class FrequencySeverityModel:
     def generate(
         self,
         n_sims: int | None = None,
-        rng: np.random.Generator | None = None,
+        rng: RandomGenerator | None = None,
     ) -> FreqSevSims:
         """Generate simulations from the Frequency-Severity model.
 
         Parameters:
         - n_sims (int): Number of simulations to generate. If None, uses the
             default value from the config.
-        - rng (np.random.Generator, optional): Random number generator. Uses
+        - rng (RandomGenerator, optional): Random number generator. Uses
             config.rng if None.
 
         Returns:
@@ -222,7 +223,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         """Returns the values of the simulation with the given simulation index."""
         # get the positions of the given simulation index
         if isinstance(sim_index, int):  # type: ignore[unecessary-check]
-            ints = np.where(self.sim_index == sim_index)
+            ints = xp.where(self.sim_index == sim_index)
             return StochasticScalar(self.values[ints])
         else:
             raise NotImplementedError
@@ -340,11 +341,11 @@ class FreqSevSims(_ProteusStochasticVariable):
 
     def deep_copy(self) -> FreqSevSims:
         """Creates a deep copy of the FreqSevSims object."""
-        return FreqSevSims(self.sim_index, self.values.copy(), self.n_sims)
+        return FreqSevSims(self.sim_index.copy(), self.values.copy(), self.n_sims)
 
     def copy(self) -> FreqSevSims:
         """Creates a copy of the FreqSevSims object."""
-        result = FreqSevSims(self.sim_index, self.values.copy(), self.n_sims)
+        result = FreqSevSims(self.sim_index.copy(), self.values.copy(), self.n_sims)
         result.coupled_variable_group.merge(self.coupled_variable_group)
         return result
 
@@ -368,9 +369,10 @@ class FreqSevSims(_ProteusStochasticVariable):
             return x.values
         elif isinstance(x, StochasticScalar):
             return x.values[self.sim_index]
-        elif isinstance(x, np.ndarray):
+        elif isinstance(x, (np.ndarray, xp.ndarray)):
+            backend_array = to_backend(x)
             # Type ignore: Pyright can't infer the exact dtype of indexed arrays
-            return x[self.sim_index]  # type: ignore[misc]
+            return backend_array[self.sim_index]  # type: ignore[misc]
         else:
             # Scalar value - return as-is
             return x
@@ -381,6 +383,9 @@ class FreqSevSims(_ProteusStochasticVariable):
         if out:
             kwargs["out"] = tuple(x.values for x in out)
         result = getattr(ufunc, method)(*_inputs, **kwargs)
+        scalar_result = scalar_or_array(result)
+        if scalar_result is not result:
+            return scalar_result  # type: ignore[return-value]
         result = FreqSevSims(self.sim_index, result, self.n_sims)
         for input in inputs:
             if isinstance(input, _ProteusStochasticVariable):
@@ -422,12 +427,15 @@ class FreqSevSims(_ProteusStochasticVariable):
             return func(self.aggregate(), **kwargs)
 
         # Extract values from FreqSevSims objects, leave others as-is
-        processed_args = tuple(x.values if isinstance(x, FreqSevSims) else x for x in args)
+        processed_args = tuple(x.values if isinstance(x, FreqSevSims) else to_backend(x) for x in args)
+        if func is np.where:
+            processed_args = (xp.asarray(processed_args[0]), *processed_args[1:])
 
         result = func(*processed_args, **kwargs)
 
-        # If result is a scalar, return it directly
-        # Type ignore: Pyright can't infer the exact numpy scalar type
+        scalar_result = scalar_or_array(result)
+        if scalar_result is not result:
+            return scalar_result  # type: ignore[return-value]
         if isinstance(result, (np.number, np.bool_, bool)) or np.isscalar(result):
             return result  # type: ignore[misc]
 
@@ -448,7 +456,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         Returns:
             True if compatible, False otherwise
         """
-        return isinstance(other, FreqSevSims) and self.sim_index is other.sim_index
+        return isinstance(other, FreqSevSims) and bool(xp.array_equal(self.sim_index, other.sim_index))
 
     def upsample(self, n_sims: int) -> FreqSevSims:
         """Upsamples the FreqSevSims object to the given number of simulations.
@@ -464,10 +472,10 @@ class FreqSevSims(_ProteusStochasticVariable):
         """
         if n_sims == self.n_sims:
             return self.copy()
-        sim_index = np.repeat(self.sim_index, n_sims // self.n_sims)
-        values = np.repeat(self.values, n_sims // self.n_sims)
+        sim_index = xp.repeat(self.sim_index, n_sims // self.n_sims)
+        values = xp.repeat(self.values, n_sims // self.n_sims)
         if n_sims % self.n_sims > 0:
-            sim_index = np.concatenate((sim_index, self.sim_index[self.sim_index < n_sims % self.n_sims]))
-            values = np.concatenate((values, self.values[self.sim_index < n_sims % self.n_sims]))
+            sim_index = xp.concatenate((sim_index, self.sim_index[self.sim_index < n_sims % self.n_sims]))
+            values = xp.concatenate((values, self.values[self.sim_index < n_sims % self.n_sims]))
         sim_index = sim_index + xp.arange(len(sim_index)) % n_sims
         return FreqSevSims(sim_index, values, n_sims)

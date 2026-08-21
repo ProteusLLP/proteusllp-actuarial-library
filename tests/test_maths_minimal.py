@@ -1,9 +1,9 @@
 """Tests for maths module to improve coverage."""
 
-import numpy as np
-
 from pal import maths as pnp
+from pal._maths import xp
 from pal.variables import StochasticScalar
+from tests._assertions import array_equal, assert_array_equal
 
 
 def test_minimum_function():
@@ -13,7 +13,7 @@ def test_minimum_function():
 
     result = pnp.minimum(x, y)
     assert isinstance(result, StochasticScalar)
-    assert np.array_equal(result.values, [1, 2, 3, 2, 1])
+    assert array_equal(result.values, [1, 2, 3, 2, 1])
 
 
 def test_maximum_function():
@@ -23,7 +23,7 @@ def test_maximum_function():
 
     result = pnp.maximum(x, y)
     assert isinstance(result, StochasticScalar)
-    assert np.array_equal(result.values, [5, 4, 3, 4, 5])
+    assert array_equal(result.values, [5, 4, 3, 4, 5])
 
 
 def test_cumsum_with_list_of_stochastic_scalars():
@@ -33,17 +33,17 @@ def test_cumsum_with_list_of_stochastic_scalars():
     z = StochasticScalar([7, 8, 9])
 
     result = pnp.cumsum([x, y, z])
-    assert isinstance(result, np.ndarray)
+    assert isinstance(result, xp.ndarray)
     assert result.shape == (3, 3)
     # First row is x, second is x+y, third is x+y+z
-    np.testing.assert_array_equal(result[0], [1, 2, 3])
-    np.testing.assert_array_equal(result[1], [5, 7, 9])
-    np.testing.assert_array_equal(result[2], [12, 15, 18])
+    assert_array_equal(result[0], [1, 2, 3])
+    assert_array_equal(result[1], [5, 7, 9])
+    assert_array_equal(result[2], [12, 15, 18])
 
     # Also test with a single StochasticScalar (line 387)
     single_result = pnp.cumsum(x)
     assert isinstance(single_result, StochasticScalar)
-    np.testing.assert_array_equal(single_result.values, [1, 3, 6])
+    assert_array_equal(single_result.values, [1, 3, 6])
 
 
 def test_floor_function():
@@ -52,7 +52,7 @@ def test_floor_function():
 
     result = pnp.floor(x)
     assert isinstance(result, StochasticScalar)
-    assert np.array_equal(result.values, [1.0, 2.0, 3.0, 4.0, 5.0])
+    assert array_equal(result.values, [1.0, 2.0, 3.0, 4.0, 5.0])
 
 
 def test_all_function():

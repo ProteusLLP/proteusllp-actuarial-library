@@ -6,6 +6,7 @@ for dependency modeling between stochastic variables.
 
 from pal import copulas
 from pal.variables import StochasticScalar
+from tests._assertions import array_equal
 
 
 def test_copula_reordering():
@@ -17,8 +18,8 @@ def test_copula_reordering():
         StochasticScalar([1, 3, 2, 0, 4]),
     ]
     copulas.apply_copula([x, y], copula_samples)
-    assert (x.values == [4, 5, 2, 1, 3]).all()
-    assert (y.values == [3, 4, 1, 2, 5]).all()
+    assert array_equal(x.values, [4, 5, 2, 1, 3])
+    assert array_equal(y.values, [3, 4, 1, 2, 5])
 
 
 def test_coupled_variable_reordering():
@@ -31,9 +32,9 @@ def test_coupled_variable_reordering():
         StochasticScalar([1, 3, 2, 0, 4]),
     ]
     copulas.apply_copula([x, y], copula_samples)
-    assert (x.values == [4, 5, 2, 1, 3]).all()
-    assert (y.values == [3, 4, 1, 2, 5]).all()
-    assert (z.values == [4, 5, 2, 3, 6]).all()
+    assert array_equal(x.values, [4, 5, 2, 1, 3])
+    assert array_equal(y.values, [3, 4, 1, 2, 5])
+    assert array_equal(z.values, [4, 5, 2, 3, 6])
     assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
@@ -48,10 +49,10 @@ def test_coupled_variable_reordering2():
         StochasticScalar([1, 3, 2, 0, 4]),
     ]
     copulas.apply_copula([x, y], copula_samples)
-    assert (x.values == [4, 5, 2, 1, 3]).all()
-    assert (y.values == [3, 4, 1, 2, 5]).all()
-    assert (z.values == [1, 9, 7, 3, 0]).all()
-    assert (a.values == [4, 13, 8, 5, 5]).all()
+    assert array_equal(x.values, [4, 5, 2, 1, 3])
+    assert array_equal(y.values, [3, 4, 1, 2, 5])
+    assert array_equal(z.values, [1, 9, 7, 3, 0])
+    assert array_equal(a.values, [4, 13, 8, 5, 5])
     assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group == a.coupled_variable_group
 
 

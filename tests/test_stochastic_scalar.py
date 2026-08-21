@@ -17,6 +17,7 @@ import pal.maths as pnp
 # project
 from pal.types import NumericProtocol
 from pal.variables import StochasticScalar
+from tests._assertions import array_equal
 
 
 def test_empty():
@@ -29,7 +30,7 @@ def test_empty():
 def test_stochastic_scalar():
     """Test that stochastic scalars can be created and manipulated."""
     x = StochasticScalar([4, 5, 2, 1, 3])
-    assert (x.values == [4, 5, 2, 1, 3]).all()
+    assert array_equal(x.values, [4, 5, 2, 1, 3])
     assert pnp.sum(x) == 15
     assert pnp.mean(x) == 3
     assert pnp.var(x) == 2
@@ -44,7 +45,7 @@ def test_add():
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = StochasticScalar([1, 2, 3, 4, 5])
     z = x + y
-    assert (z.values == [5, 7, 5, 5, 8]).all()
+    assert array_equal(z.values, [5, 7, 5, 5, 8])
     assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
@@ -52,7 +53,7 @@ def test_add_self():
     """Tests the addition of a stochastic scalar to itself."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     z: StochasticScalar = x + x
-    assert (z.values == [8, 10, 4, 2, 6]).all()
+    assert array_equal(z.values, [8, 10, 4, 2, 6])
     assert x.coupled_variable_group == z.coupled_variable_group
 
 
@@ -62,14 +63,14 @@ def test_add_self_inplace():
     x = StochasticScalar([4, 5, 2, 1, 3])
     for _i in range(10):
         y += x
-    assert (y.values == [40, 50, 20, 10, 30]).all()
+    assert array_equal(y.values, [40, 50, 20, 10, 30])
 
 
 def test_add_scalar():
     """Tests the addition of a stochastic scalar and a scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     z: StochasticScalar = x + 1
-    assert (z.values == [5, 6, 3, 2, 4]).all()
+    assert array_equal(z.values, [5, 6, 3, 2, 4])
     assert x.coupled_variable_group == z.coupled_variable_group
 
 
@@ -77,7 +78,7 @@ def test_radd_scalar():
     """Tests the addition of a scalar and a stochastic scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     z: StochasticScalar = 1 + x
-    assert (z.values == [5, 6, 3, 2, 4]).all()
+    assert array_equal(z.values, [5, 6, 3, 2, 4])
 
 
 def test_subtract():
@@ -85,7 +86,7 @@ def test_subtract():
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = StochasticScalar([1, 2, 3, 4, 5])
     z = x - y
-    assert (z.values == [3, 3, -1, -3, -2]).all()
+    assert array_equal(z.values, [3, 3, -1, -3, -2])
     assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
@@ -93,7 +94,7 @@ def test_subtract_scalar():
     """Tests the subtraction of a stochastic scalar and a scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     z = x - 1
-    assert (z.values == [3, 4, 1, 0, 2]).all()
+    assert array_equal(z.values, [3, 4, 1, 0, 2])
     assert x.coupled_variable_group == z.coupled_variable_group
 
 
@@ -101,7 +102,7 @@ def test_rsubtract_scalar():
     """Tests the subtraction of a scalar and a stochastic scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     z = 1 - x
-    assert (z.values == [-3, -4, -1, 0, -2]).all()
+    assert array_equal(z.values, [-3, -4, -1, 0, -2])
     assert x.coupled_variable_group == z.coupled_variable_group
 
 
@@ -110,7 +111,7 @@ def test_multiply():
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = StochasticScalar([1, 2, 3, 4, 5])
     z = x * y
-    assert (z.values == [4, 10, 6, 4, 15]).all()
+    assert array_equal(z.values, [4, 10, 6, 4, 15])
     assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
@@ -118,7 +119,7 @@ def test_multiply_scalar():
     """Tests the multiplication of a stochastic scalar and a scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     z = x * 2
-    assert (z.values == [8, 10, 4, 2, 6]).all()
+    assert array_equal(z.values, [8, 10, 4, 2, 6])
     assert x.coupled_variable_group == z.coupled_variable_group
 
 
@@ -126,7 +127,7 @@ def test_rmultiply_scalar():
     """Tests the multiplication of a scalar and a stochastic scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     z = 2 * x
-    assert (z.values == [8, 10, 4, 2, 6]).all()
+    assert array_equal(z.values, [8, 10, 4, 2, 6])
     assert x.coupled_variable_group == z.coupled_variable_group
 
 
@@ -135,7 +136,7 @@ def test_divide():
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = StochasticScalar([1, 2, 3, 4, 5])
     z: StochasticScalar = x / y
-    assert (z.values == [4, 2.5, 2 / 3, 0.25, 0.6]).all()
+    assert array_equal(z.values, [4, 2.5, 2 / 3, 0.25, 0.6])
     assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
@@ -143,7 +144,7 @@ def test_divide_scalar():
     """Tests the division of a stochastic scalar and a scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     z: StochasticScalar = x / 2
-    assert (z.values == [2, 2.5, 1, 0.5, 1.5]).all()
+    assert array_equal(z.values, [2, 2.5, 1, 0.5, 1.5])
     assert x.coupled_variable_group == z.coupled_variable_group
 
 
@@ -151,7 +152,7 @@ def test_rdivide_scalar():
     """Tests the division of a scalar and a stochastic scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     z = 2 / x
-    assert (z.values == [0.5, 0.4, 1, 2, 2 / 3]).all()
+    assert array_equal(z.values, [0.5, 0.4, 1, 2, 2 / 3])
     assert x.coupled_variable_group == z.coupled_variable_group
 
 
@@ -160,7 +161,7 @@ def test_power():
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = StochasticScalar([1, 2, 3, 4, 5])
     z = x**y
-    assert (z.values == [4, 25, 8, 1, 243]).all()
+    assert array_equal(z.values, [4, 25, 8, 1, 243])
     assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
@@ -168,7 +169,7 @@ def test_power_scalar():
     """Tests the power of a stochastic scalar and a scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     z = x**2
-    assert (z.values == [16, 25, 4, 1, 9]).all()
+    assert array_equal(z.values, [16, 25, 4, 1, 9])
     assert x.coupled_variable_group == z.coupled_variable_group
 
 
@@ -176,7 +177,7 @@ def test_rpower_scalar():
     """Tests the power of a scalar and a stochastic scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     z = 2**x
-    assert (z.values == [16, 32, 4, 2, 8]).all()
+    assert array_equal(z.values, [16, 32, 4, 2, 8])
     assert x.coupled_variable_group == z.coupled_variable_group
 
 
@@ -185,7 +186,7 @@ def test_eq():
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = StochasticScalar([4, 2, 3, 1, 5])
     z = x == y
-    assert (z.values == [True, False, False, True, False]).all()
+    assert array_equal(z.values, [True, False, False, True, False])
     assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
@@ -194,7 +195,7 @@ def test_eq_scalar():
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = 1
     z = x == y
-    assert (z.values == [False, False, False, True, False]).all()
+    assert array_equal(z.values, [False, False, False, True, False])
     assert x.coupled_variable_group == z.coupled_variable_group
 
 
@@ -203,7 +204,7 @@ def test_not_eq():
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = StochasticScalar([4, 2, 3, 1, 5])
     z = x != y
-    assert (z.values == [False, True, True, False, True]).all()
+    assert array_equal(z.values, [False, True, True, False, True])
     assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
@@ -212,7 +213,7 @@ def test_not_eq_scalar():
     x = StochasticScalar([4, 5, 2, 1, 3])
     y = 1
     z = x != y
-    assert (z.values == [True, True, True, False, True]).all()
+    assert array_equal(z.values, [True, True, True, False, True])
     assert x.coupled_variable_group == z.coupled_variable_group
 
 
@@ -221,7 +222,7 @@ def test_and():
     x = StochasticScalar([False, True, False, True, True])
     y = StochasticScalar([False, False, True, True, True])
     z = x & y
-    assert (z.values == [False, False, False, True, True]).all()
+    assert array_equal(z.values, [False, False, False, True, True])
     assert x.coupled_variable_group == y.coupled_variable_group == z.coupled_variable_group
 
 
@@ -229,7 +230,7 @@ def test_numpy_ufunc():
     """Tests that a numpy ufunc can be applied to a stochastic scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     y: StochasticScalar = pnp.exp(x)
-    assert (y.values == np.exp([4, 5, 2, 1, 3])).all()
+    assert array_equal(y.values, np.exp([4, 5, 2, 1, 3]))
     assert x.coupled_variable_group == y.coupled_variable_group
     assert type(y) is StochasticScalar
 
@@ -261,7 +262,7 @@ def test_where():
     x = StochasticScalar([4, 5, 2, 1, 3])
     condition = StochasticScalar([True, False, True, False, True])
     y = pnp.where(condition, x, 0)
-    assert (y.values == [4, 0, 2, 0, 3]).all()
+    assert array_equal(y.values, [4, 0, 2, 0, 3])
     assert x.coupled_variable_group == condition.coupled_variable_group == y.coupled_variable_group
 
 
@@ -270,7 +271,7 @@ def test_where2():
     condition = StochasticScalar([True, False, True, False, True])
     replacement = StochasticScalar([3, -1, 5, -1, 10])
     y = pnp.where(condition, x, replacement)
-    assert (y.values == [4, -1, 2, -1, 3]).all()
+    assert array_equal(y.values, [4, -1, 2, -1, 3])
     assert (
         x.coupled_variable_group
         == condition.coupled_variable_group
@@ -283,7 +284,7 @@ def test_stochastic_dereference():
     x = StochasticScalar([4, 5, 2, 1, 3])
     inds = StochasticScalar([3, 2, 1, 0, 0, 4])
     y = x[inds]
-    assert (y.values == [1, 2, 5, 4, 4, 3]).all()
+    assert array_equal(y.values, [1, 2, 5, 4, 4, 3])
     assert inds.coupled_variable_group == y.coupled_variable_group
 
 
@@ -405,7 +406,7 @@ def test_safe_divide_stochastic():
     denominator = StochasticScalar([2, 0, 5, 0])
     default = 99
     result = pnp.safe_divide(numerator, denominator, default)
-    assert (result.values == [5, 99, 6, 99]).all()
+    assert array_equal(result.values, [5, 99, 6, 99])
     assert numerator.coupled_variable_group == denominator.coupled_variable_group == result.coupled_variable_group
 
 
@@ -415,7 +416,7 @@ def test_safe_divide_stochastic_default():
     denominator = StochasticScalar([2, 0, 5, 0])
     default = StochasticScalar([100, 200, 300, 400])
     result = pnp.safe_divide(numerator, denominator, default)
-    assert (result.values == [5, 200, 6, 400]).all()
+    assert array_equal(result.values, [5, 200, 6, 400])
     assert (
         numerator.coupled_variable_group
         == denominator.coupled_variable_group
@@ -430,7 +431,7 @@ def test_safe_divide_scalar_denominator():
     denominator = 5
     default = 99
     result = pnp.safe_divide(numerator, denominator, default)
-    assert (result.values == [2, 4, 6]).all()
+    assert array_equal(result.values, [2, 4, 6])
     assert numerator.coupled_variable_group == result.coupled_variable_group
 
 
@@ -440,7 +441,7 @@ def test_safe_divide_scalar_denominator_zero():
     denominator = 0
     default = 99
     result = pnp.safe_divide(numerator, denominator, default)
-    assert (result.values == [99, 99, 99]).all()
+    assert array_equal(result.values, [99, 99, 99])
     assert numerator.coupled_variable_group == result.coupled_variable_group
 
 
@@ -450,7 +451,7 @@ def test_safe_divide_scalar_numerator():
     denominator = StochasticScalar([2, 0, 5, 10])
     default = -1
     result = pnp.safe_divide(numerator, denominator, default)
-    assert (result.values == [50, -1, 20, 10]).all()
+    assert array_equal(result.values, [50, -1, 20, 10])
     assert denominator.coupled_variable_group == result.coupled_variable_group
 
 
@@ -460,7 +461,7 @@ def test_safe_divide_all_nonzero():
     denominator = StochasticScalar([2, 4, 5])
     default = 999
     result = pnp.safe_divide(numerator, denominator, default)
-    assert (result.values == [5, 5, 6]).all()
+    assert array_equal(result.values, [5, 5, 6])
     assert numerator.coupled_variable_group == denominator.coupled_variable_group == result.coupled_variable_group
 
 
@@ -470,5 +471,5 @@ def test_safe_divide_all_zero():
     denominator = StochasticScalar([0, 0, 0])
     default = 0
     result = pnp.safe_divide(numerator, denominator, default)
-    assert (result.values == [0, 0, 0]).all()
+    assert array_equal(result.values, [0, 0, 0])
     assert numerator.coupled_variable_group == denominator.coupled_variable_group == result.coupled_variable_group

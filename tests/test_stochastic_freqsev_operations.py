@@ -9,6 +9,7 @@ import pytest
 
 from pal.frequency_severity import FreqSevSims
 from pal.variables import StochasticScalar
+from tests._assertions import assert_allclose, assert_array_equal
 
 # =============================================================================
 # Test Setup Fixtures
@@ -44,7 +45,7 @@ def test_freqsev_add_scalar(simple_freqsev, simple_scalar):
     assert isinstance(result, FreqSevSims)
     # Values should be: [10+1, 20+1, 30+2, 40+2, 50+3]
     expected = np.array([11, 21, 32, 42, 53])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Verify coupling groups are merged
     assert fs.coupled_variable_group is sc.coupled_variable_group
@@ -61,7 +62,7 @@ def test_freqsev_sub_scalar(simple_freqsev, simple_scalar):
     assert isinstance(result, FreqSevSims)
     # Values should be: [10-1, 20-1, 30-2, 40-2, 50-3]
     expected = np.array([9, 19, 28, 38, 47])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Verify coupling groups are merged
     assert fs.coupled_variable_group is sc.coupled_variable_group
@@ -78,7 +79,7 @@ def test_freqsev_mul_scalar(simple_freqsev, simple_scalar):
     assert isinstance(result, FreqSevSims)
     # Values should be: [10*1, 20*1, 30*2, 40*2, 50*3]
     expected = np.array([10, 20, 60, 80, 150])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Verify coupling groups are merged
     assert fs.coupled_variable_group is sc.coupled_variable_group
@@ -95,7 +96,7 @@ def test_freqsev_div_scalar(simple_freqsev, simple_scalar):
     assert isinstance(result, FreqSevSims)
     # Values should be: [10/1, 20/1, 30/2, 40/2, 50/3]
     expected = np.array([10.0, 20.0, 15.0, 20.0, 50.0 / 3.0])
-    np.testing.assert_allclose(result.values, expected)
+    assert_allclose(result.values, expected)
 
     # Verify coupling groups are merged
     assert fs.coupled_variable_group is sc.coupled_variable_group
@@ -112,7 +113,7 @@ def test_freqsev_pow_scalar(simple_freqsev, simple_scalar):
     assert isinstance(result, FreqSevSims)
     # Values should be: [10**1, 20**1, 30**2, 40**2, 50**3]
     expected = np.array([10, 20, 900, 1600, 125000])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Verify coupling groups are merged
     assert fs.coupled_variable_group is sc.coupled_variable_group
@@ -134,7 +135,7 @@ def test_scalar_radd_freqsev(simple_freqsev, simple_scalar):
     assert isinstance(result, FreqSevSims)
     # Addition is commutative: [1+10, 1+20, 2+30, 2+40, 3+50]
     expected = np.array([11, 21, 32, 42, 53])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Verify coupling groups are merged
     assert fs.coupled_variable_group is sc.coupled_variable_group
@@ -151,7 +152,7 @@ def test_scalar_rsub_freqsev(simple_freqsev, simple_scalar):
     assert isinstance(result, FreqSevSims)
     # Subtraction is not commutative: [1-10, 1-20, 2-30, 2-40, 3-50]
     expected = np.array([-9, -19, -28, -38, -47])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Verify coupling groups are merged
     assert fs.coupled_variable_group is sc.coupled_variable_group
@@ -168,7 +169,7 @@ def test_scalar_rmul_freqsev(simple_freqsev, simple_scalar):
     assert isinstance(result, FreqSevSims)
     # Multiplication is commutative: [1*10, 1*20, 2*30, 2*40, 3*50]
     expected = np.array([10, 20, 60, 80, 150])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Verify coupling groups are merged
     assert fs.coupled_variable_group is sc.coupled_variable_group
@@ -185,7 +186,7 @@ def test_scalar_rtruediv_freqsev(simple_freqsev, simple_scalar):
     assert isinstance(result, FreqSevSims)
     # Division is not commutative: [1/10, 1/20, 2/30, 2/40, 3/50]
     expected = np.array([0.1, 0.05, 2.0 / 30.0, 2.0 / 40.0, 3.0 / 50.0])
-    np.testing.assert_allclose(result.values, expected)
+    assert_allclose(result.values, expected)
 
     # Verify coupling groups are merged
     assert fs.coupled_variable_group is sc.coupled_variable_group
@@ -203,7 +204,7 @@ def test_scalar_rpow_freqsev(simple_freqsev, simple_scalar):
     assert isinstance(result, FreqSevSims)
     # Power is not commutative: [2**2, 2**3, 3**4, 3**5, 4**6]
     expected = np.array([4, 8, 81, 243, 4096])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Verify coupling groups are merged
     assert fs.coupled_variable_group is sc.coupled_variable_group
@@ -280,12 +281,12 @@ def test_freqsev_scalar_with_zeros():
     # Addition with zeros
     result = fs + sc
     expected = np.array([0, 10, 25])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Multiplication with zeros
     result = fs * sc
     expected = np.array([0, 0, 100])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
 
 def test_freqsev_scalar_with_negatives():
@@ -296,12 +297,12 @@ def test_freqsev_scalar_with_negatives():
     # Addition with negatives
     result = fs + sc
     expected = np.array([-8, 22, -33])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Multiplication with negatives
     result = fs * sc
     expected = np.array([-20, 40, 90])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
 
 def test_freqsev_scalar_single_event_per_sim():
@@ -312,7 +313,7 @@ def test_freqsev_scalar_single_event_per_sim():
     # Each simulation has exactly one event
     result = fs * sc
     expected = np.array([1000, 4000, 9000])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Verify coupling
     assert fs.coupled_variable_group is sc.coupled_variable_group
@@ -328,7 +329,7 @@ def test_freqsev_scalar_many_events_one_sim():
     result = fs + sc
     # Events in sim 0 get +10, events in sim 2 get +30
     expected = np.array([11, 12, 13, 14, 15, 40])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
 
 # =============================================================================
@@ -342,7 +343,7 @@ def test_freqsev_add_constant():
 
     result = fs + 5
     expected = np.array([15, 25, 35])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Result should be coupled with original (though may be different group object)
     assert fs in result.coupled_variable_group
@@ -355,7 +356,7 @@ def test_constant_radd_freqsev():
 
     result = 5 + fs
     expected = np.array([15, 25, 35])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Result should be coupled with original
     assert fs in result.coupled_variable_group
@@ -368,7 +369,7 @@ def test_freqsev_mul_constant():
 
     result = fs * 2
     expected = np.array([20, 40, 60])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Result should be coupled with original
     assert fs in result.coupled_variable_group
@@ -381,7 +382,7 @@ def test_constant_rmul_freqsev():
 
     result = 2 * fs
     expected = np.array([20, 40, 60])
-    np.testing.assert_array_equal(result.values, expected)
+    assert_array_equal(result.values, expected)
 
     # Result should be coupled with original
     assert fs in result.coupled_variable_group

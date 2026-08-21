@@ -5,6 +5,7 @@ import pytest
 
 from pal import FreqSevSims
 from pal.variables import StochasticScalar
+from tests._assertions import assert_array_equal, host_values
 
 
 def test_freqsevsims_init_length_mismatch():
@@ -42,11 +43,11 @@ def test_freqsevsims_len_and_iter():
 
     # Verify the actual values in each simulation
     # Sim 0 has losses at indices where sim_idx == 0
-    np.testing.assert_array_equal(sims_list[0].values, [100, 200])
+    assert_array_equal(sims_list[0].values, [100, 200])
     # Sim 1 has losses at indices where sim_idx == 1
-    np.testing.assert_array_equal(sims_list[1].values, [300, 400])
+    assert_array_equal(sims_list[1].values, [300, 400])
     # Sim 2 has losses at indices where sim_idx == 2
-    np.testing.assert_array_equal(sims_list[2].values, [500])
+    assert_array_equal(sims_list[2].values, [500])
 
 
 def test_freqsevsims_deep_copy():
@@ -61,10 +62,10 @@ def test_freqsevsims_deep_copy():
     # Verify it's a copy with same values
     assert isinstance(copied, FreqSevSims)
     assert len(copied.values) == len(freq_sev.values)
-    np.testing.assert_array_equal(copied.values, freq_sev.values)
+    assert_array_equal(copied.values, freq_sev.values)
 
     # Modify original - copy should not be affected
-    original_value = freq_sev.values[0]
+    original_value = host_values(freq_sev)[0]
     freq_sev.values[0] = 999
     assert copied.values[0] == original_value
     assert copied.values[0] != 999
@@ -120,6 +121,6 @@ def test_freqsevsims_upsample_with_modulo():
 
     # Verify the upsampled values contain the original values
     # Original has [100, 200, 300], upsampled should repeat them
-    original_set = set(freq_sev.values)
-    upsampled_set = set(upsampled.values)
+    original_set = set(host_values(freq_sev))
+    upsampled_set = set(host_values(upsampled))
     assert original_set.issubset(upsampled_set)

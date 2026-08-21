@@ -1,0 +1,87 @@
+name: GPU tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gpu-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Do not run untrusted fork code on a billable GPU runner.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: proteus-gpu
+    timeout-minutes: 60
+    env:
+      PAL_USE_GPU: "1"
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[test,gpu]" "cupy-cuda12x[ctk]"
+
+      - name: Verify GPU acceleration
+        run: |
+          nvidia-smi
+          python - <<'PY'
+          import cupy
+          import numpy
+          from pal import Normal, set_random_seed
+          from pal._maths import xp
+          from pal.config import config
+
+          if xp is not cupy:
+              raise RuntimeError("PAL did not select the CuPy backend")
+
+          device_count = cupy.cuda.runtime.getDeviceCount()
+          if device_count < 1:
+              raise RuntimeError("CuPy did not detect a CUDA device")
+
+          set_random_seed(123456789)
+          if not type(config.rng).__module__.startswith("cupy"):
+              raise RuntimeError("PAL did not configure a CuPy random generator")
+
+          device = cupy.cuda.Device()
+          properties = cupy.cuda.runtime.getDeviceProperties(device.id)
+          device_name = properties["name"]
+          if isinstance(device_name, bytes):
+              device_name = device_name.decode()
+
+          samples = Normal(0, 1).generate(1024)
+          if not isinstance(samples.values, cupy.ndarray):
+              raise RuntimeError("PAL generated stochastic samples on the host")
+
+          transformed = numpy.exp(samples) + numpy.square(samples)
+          if not isinstance(transformed.values, cupy.ndarray):
+              raise RuntimeError("NumPy operations did not dispatch back to CuPy")
+
+          result = cupy.sum(transformed.values)
+          device.synchronize()
+
+          print(f"CUDA devices: {device_count}")
+          print(f"Active device: {device_name}")
+          print(f"CuPy version: {cupy.__version__}")
+          print(f"GPU smoke-test result: {float(result)}")
+          PY
+
+      - name: Run tests with GPU acceleration
+        run: pytest -v --cov=pal --cov-report=term --codeblocks
