@@ -379,7 +379,7 @@ class ProteusVariable(t.Generic[T]):
             if arg is self:
                 # For the ProteusVariable itself, stack its dictionary values as columns
                 value_arrays = [
-                    value.values if isinstance(value, ProteusStochasticVariable) else xp.asarray(value)
+                    value.values if isinstance(value, ProteusStochasticVariable) else xp.atleast_1d(xp.asarray(value))
                     for value in self.values.values()
                 ]
                 parsed_args.append(xp.column_stack(value_arrays))

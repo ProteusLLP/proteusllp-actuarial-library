@@ -230,7 +230,7 @@ def test_numpy_ufunc():
     """Tests that a numpy ufunc can be applied to a stochastic scalar."""
     x = StochasticScalar([4, 5, 2, 1, 3])
     y: StochasticScalar = pnp.exp(x)
-    assert (y.values == np.exp([4, 5, 2, 1, 3])).all()
+    assert array_equal(y.values, np.exp([4, 5, 2, 1, 3]))
     assert x.coupled_variable_group == y.coupled_variable_group
     assert type(y) is StochasticScalar
 

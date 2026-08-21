@@ -395,9 +395,9 @@ def test_gev_gumbel() -> None:
     dist = distributions.GEV(shape, scale, loc)
 
     # Test known CDF values for Gumbel: F(x) = exp(-exp(-(x-μ)/σ))
-    assert dist.cdf(loc) == pytest.approx(np.exp(-1), 1e-8)
-    assert dist.cdf(loc + scale) == pytest.approx(np.exp(-np.exp(-1)), 1e-8)
-    assert dist.cdf(loc - scale) == pytest.approx(np.exp(-np.exp(1)), 1e-8)
+    assert dist.cdf(loc) == pytest.approx(float(np.exp(-1)), 1e-8)
+    assert dist.cdf(loc + scale) == pytest.approx(float(np.exp(-np.exp(-1))), 1e-8)
+    assert dist.cdf(loc - scale) == pytest.approx(float(np.exp(-np.exp(1))), 1e-8)
 
     # Test inverse CDF
     assert dist.invcdf(0.5) == pytest.approx(loc - scale * np.log(-np.log(0.5)), 1e-6)
@@ -433,12 +433,12 @@ def test_gev_frechet() -> None:
     # Test CDF at specific points
     x = loc + scale
     expected_cdf = np.exp(-np.power(1 + shape, -1 / shape))
-    assert dist.cdf(x) == pytest.approx(expected_cdf, 1e-8)
+    assert dist.cdf(x) == pytest.approx(float(expected_cdf), 1e-8)
 
     # Test inverse CDF
     u = 0.5
     expected_x = loc + scale * (np.power(-np.log(u), -shape) - 1) / shape
-    assert dist.invcdf(u) == pytest.approx(expected_x, 1e-6)
+    assert dist.invcdf(u) == pytest.approx(float(expected_x), 1e-6)
 
     # Test round-trip
     test_points = StochasticScalar([loc + 10000, loc + 50000, loc + 100000, loc + 200000])
@@ -467,12 +467,12 @@ def test_gev_weibull() -> None:
     x = loc + scale / 2
     z = (x - loc) / scale
     expected_cdf = np.exp(-np.power(1 + shape * z, -1 / shape))
-    assert dist.cdf(x) == pytest.approx(expected_cdf, 1e-8)
+    assert dist.cdf(x) == pytest.approx(float(expected_cdf), 1e-8)
 
     # Test inverse CDF
     u = 0.7
     expected_x = loc + scale * (np.power(-np.log(u), -shape) - 1) / shape
-    assert dist.invcdf(u) == pytest.approx(expected_x, 1e-6)
+    assert dist.invcdf(u) == pytest.approx(float(expected_x), 1e-6)
 
     # Test round-trip
     test_points = StochasticScalar([loc + 10000, loc + 50000, loc + 100000, loc + 200000])

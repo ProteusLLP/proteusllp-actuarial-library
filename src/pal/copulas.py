@@ -223,6 +223,8 @@ class EllipticalCopula(Copula, ABC):
         if matrix_type == "linear":
             self.correlation_matrix = _matrix
             # Check that the correlation matrix is positive definite
+            if float(np.linalg.eigvalsh(self.correlation_matrix).min()) <= 0:
+                raise ValueError("Correlation matrix is not positive definite")
             try:
                 self._chol = np.linalg.cholesky(self.correlation_matrix)
             except np.linalg.LinAlgError as e:
@@ -1262,7 +1264,7 @@ class HuslerReissCopula(Copula):
             coefficients between each pair of variables.
         """
         lambda_matrix = self.adjusted_lambda_matrix
-        tail_dependence_matrix = 2.0 * (1.0 - scipy.stats.norm.cdf(lambda_matrix))
+        tail_dependence_matrix = np.asarray(2.0 * (1.0 - scipy.stats.norm.cdf(asnumpy(lambda_matrix))))
 
         return tail_dependence_matrix
 
@@ -1300,7 +1302,7 @@ class HuslerReissCopula(Copula):
             corresponding to the given upper tail dependence coefficients.
         """
         chi_ij = tail_dependence_matrix
-        lambda_matrix = scipy.stats.norm.ppf(1.0 - chi_ij / 2.0)
+        lambda_matrix = np.asarray(scipy.stats.norm.ppf(1.0 - asnumpy(chi_ij) / 2.0))
 
         return lambda_matrix
 
@@ -1648,7 +1650,7 @@ class ExtremalTCopula(Copula):
             dependence coefficients.
         """
         chi_ij = tail_dependence_matrix
-        inv_t = scipy.stats.t.ppf(1 - chi_ij / 2.0, df=nu + 1.0)
+        inv_t = np.asarray(scipy.stats.t.ppf(1 - asnumpy(chi_ij) / 2.0, df=nu + 1.0))
         rho_matrix = -((inv_t**2) / (nu + 1.0) - 1) / ((inv_t**2) / (nu + 1.0) + 1)
         np.fill_diagonal(rho_matrix, 1.0)
         return cls(rho_matrix, nu)

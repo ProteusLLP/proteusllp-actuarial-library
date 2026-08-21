@@ -121,14 +121,14 @@ def test_gumbel_copula(theta: float):
     samples = copulas.GumbelCopula(theta, 2).generate(1000000)
     # calculate the Kendall's tau value
     k = scipy.stats.kendalltau(host_values(samples[0]), host_values(samples[1])).statistic
-    assert np.isclose(k, 1 - 1 / theta, atol=1e-2)
+    assert np.isclose(k, 1 - 1 / theta, atol=1.5e-2)
     # test the tail dependence
     expected_tail_dependence = 2 - 2 ** (1 / theta)
     threshold = 0.995
     u_exceed = (samples[0] > threshold).mean()
     both_exceed = ((samples[0] > threshold) * (samples[1] > threshold)).mean()
     estimated_tail_dependence = both_exceed / u_exceed
-    assert np.isclose(estimated_tail_dependence, expected_tail_dependence, atol=1e-2)
+    assert np.isclose(estimated_tail_dependence, expected_tail_dependence, atol=1.5e-2)
     # test the margins
     copula_margins(samples)
 

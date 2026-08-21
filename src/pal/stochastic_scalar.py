@@ -250,17 +250,51 @@ class StochasticScalar(ProteusStochasticVariable):
         """Convert the values to a Python list."""
         return t.cast(list[Numeric], self.values.tolist())
 
-    def mean(self) -> float:
-        """Return the mean of the variable across the simulation dimension."""
-        return float(xp.mean(self.values))
+    def mean(
+        self,
+        axis: int | tuple[int, ...] | None = None,
+        dtype: t.Any = None,
+        out: t.Any = None,
+        keepdims: bool = False,
+    ) -> t.Any:
+        """Return the mean while supporting NumPy/CuPy's ndarray method contract."""
+        result = xp.mean(self.values, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
+        return self._wrap_reduction_result(result)
 
-    def sum(self) -> float:
-        """Return the sum of the variable across the simulation dimension."""
-        return float(xp.sum(self.values))
+    def sum(
+        self,
+        axis: int | tuple[int, ...] | None = None,
+        dtype: t.Any = None,
+        out: t.Any = None,
+        keepdims: bool = False,
+    ) -> t.Any:
+        """Return the sum while supporting NumPy/CuPy's ndarray method contract."""
+        result = xp.sum(self.values, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
+        return self._wrap_reduction_result(result)
 
-    def std(self) -> float:
-        """Return the standard deviation across the simulation dimension."""
-        return float(xp.std(self.values))
+    def std(
+        self,
+        axis: int | tuple[int, ...] | None = None,
+        dtype: t.Any = None,
+        out: t.Any = None,
+        ddof: int = 0,
+        keepdims: bool = False,
+    ) -> t.Any:
+        """Return standard deviation using the backend ndarray method contract."""
+        result = xp.std(self.values, axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
+        return self._wrap_reduction_result(result)
+
+    def var(
+        self,
+        axis: int | tuple[int, ...] | None = None,
+        dtype: t.Any = None,
+        out: t.Any = None,
+        ddof: int = 0,
+        keepdims: bool = False,
+    ) -> t.Any:
+        """Return variance using the backend ndarray method contract."""
+        result = xp.var(self.values, axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
+        return self._wrap_reduction_result(result)
 
     def percentile(self, p: NumberOrList) -> NumberOrList:
         """Return the percentile of the variable across the simulation dimension.
@@ -333,6 +367,17 @@ class StochasticScalar(ProteusStochasticVariable):
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
         """Reorder the simulations in the variable."""
         self.values = self.values[new_order]
+
+    def _wrap_reduction_result(self, result: t.Any) -> t.Any:
+        """Return scalar reductions directly and preserve one-dimensional results."""
+        scalar_result = scalar_or_array(result)
+        if scalar_result is not result:
+            return scalar_result
+        if getattr(result, "ndim", None) == 1:
+            wrapped = StochasticScalar(result)
+            wrapped.coupled_variable_group.merge(self.coupled_variable_group)
+            return wrapped
+        return result
 
     def _wrap_result_with_coupling(self, result_array: t.Any, inputs: tuple[t.Any, ...]) -> t.Any:
         """Wrap result in StochasticScalar and merge coupling groups.

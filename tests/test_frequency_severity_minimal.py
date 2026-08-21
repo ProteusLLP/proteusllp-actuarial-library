@@ -65,7 +65,7 @@ def test_freqsevsims_deep_copy():
     assert_array_equal(copied.values, freq_sev.values)
 
     # Modify original - copy should not be affected
-    original_value = freq_sev.values[0]
+    original_value = host_values(freq_sev)[0]
     freq_sev.values[0] = 999
     assert copied.values[0] == original_value
     assert copied.values[0] != 999

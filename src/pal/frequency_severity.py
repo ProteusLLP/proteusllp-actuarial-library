@@ -340,11 +340,11 @@ class FreqSevSims(_ProteusStochasticVariable):
 
     def deep_copy(self) -> FreqSevSims:
         """Creates a deep copy of the FreqSevSims object."""
-        return FreqSevSims(self.sim_index, self.values.copy(), self.n_sims)
+        return FreqSevSims(self.sim_index.copy(), self.values.copy(), self.n_sims)
 
     def copy(self) -> FreqSevSims:
         """Creates a copy of the FreqSevSims object."""
-        result = FreqSevSims(self.sim_index, self.values.copy(), self.n_sims)
+        result = FreqSevSims(self.sim_index.copy(), self.values.copy(), self.n_sims)
         result.coupled_variable_group.merge(self.coupled_variable_group)
         return result
 
@@ -455,7 +455,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         Returns:
             True if compatible, False otherwise
         """
-        return isinstance(other, FreqSevSims) and self.sim_index is other.sim_index
+        return isinstance(other, FreqSevSims) and bool(xp.array_equal(self.sim_index, other.sim_index))
 
     def upsample(self, n_sims: int) -> FreqSevSims:
         """Upsamples the FreqSevSims object to the given number of simulations.
