@@ -61,11 +61,23 @@ class _BackendGenerator:
         return sample
 
 
-def _backend_rng(generator: t.Any) -> _BackendGenerator:
+def _backend_rng(generator: RandomGenerator | _BackendGenerator) -> RandomGenerator | _BackendGenerator:
     """Return a backend-producing random generator adapter."""
     if isinstance(generator, _BackendGenerator):
         return generator
+    if type(generator).__module__.startswith(np.__name__):
+        return generator
     return _BackendGenerator(generator)
+
+
+def _student_t_cdf(values: t.Any, dof: float) -> t.Any:
+    """Evaluate Student's t CDF without moving backend arrays to the host."""
+    if np.__name__ == "numpy":
+        return special.stdtr(dof, values)
+
+    absolute_values = np.abs(values)
+    tail_probability = special.betainc(dof / 2, 0.5, dof / (dof + absolute_values**2)) / 2
+    return np.where(values >= 0, 1 - tail_probability, tail_probability)
 
 
 class Copula(ABC):
@@ -330,7 +342,7 @@ class StudentsTCopula(EllipticalCopula):
 
     def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Transform t-distributed samples to uniform using CDF."""
-        return np.asarray(scipy.stats.distributions.t(self.dof).cdf(asnumpy(unnormalised_samples)))
+        return _student_t_cdf(unnormalised_samples, self.dof)
 
     def generate(
         self, n_sims: int | None = None, rng: RandomGenerator | None = None
@@ -1693,9 +1705,13 @@ def apply_copula(
 
     # Get sort indices and ranks
     copula_sort_indices = np.argsort(np.array([cs.values for cs in copula_samples]), axis=1, kind="stable")
-    copula_ranks = np.argsort(copula_sort_indices, axis=1)
+    copula_ranks = np.empty_like(copula_sort_indices)
+    copula_ranks[np.arange(len(copula_samples))[:, np.newaxis], copula_sort_indices] = np.arange(
+        copula_sort_indices.shape[1]
+    )
     variable_sort_indices = np.argsort(np.array([var.values for var in variables]), axis=1)
-    first_variable_rank = np.argsort(variable_sort_indices[0])
+    first_variable_rank = np.empty_like(variable_sort_indices[0])
+    first_variable_rank[variable_sort_indices[0]] = np.arange(variable_sort_indices.shape[1])
     copula_ranks = copula_ranks[:, copula_sort_indices[0, first_variable_rank]]
 
     # Apply reordering
