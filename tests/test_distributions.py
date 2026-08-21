@@ -416,6 +416,33 @@ def test_noncentral_chi_squared_stochastic_parameters() -> None:
     assert sims.coupled_variable_group == nonc.coupled_variable_group
 
 
+@pytest.mark.skipif(np.__name__ == "cupy", reason="noncentral chi-squared CDF is CPU-only")
+@pytest.mark.parametrize("method, argument", [("cdf", 5.0), ("invcdf", 0.5)])
+def test_noncentral_chi_squared_stochastic_parameter_coupling(method: str, argument: float) -> None:
+    """Test results are coupled to every stochastic input and parameter."""
+    df = StochasticScalar([2.0, 4.0, 6.0])
+    nonc = StochasticScalar([0.0, 1.0, 2.0])
+    stochastic_argument = StochasticScalar([argument] * 3)
+    dist = distributions.NonCentralChiSquared(df=df, nonc=nonc)
+
+    result = getattr(dist, method)(stochastic_argument)
+
+    assert isinstance(result, StochasticScalar)
+    assert result.coupled_variable_group is stochastic_argument.coupled_variable_group
+    assert result.coupled_variable_group is df.coupled_variable_group
+    assert result.coupled_variable_group is nonc.coupled_variable_group
+
+
+@pytest.mark.skipif(np.__name__ == "cupy", reason="noncentral chi-squared CDF is CPU-only")
+def test_noncentral_chi_squared_stochastic_parameter_with_scalar_argument() -> None:
+    """Test a stochastic parameter produces a coupled stochastic CDF result."""
+    df = StochasticScalar([2.0, 4.0, 6.0])
+    result = distributions.NonCentralChiSquared(df=df, nonc=1.0).cdf(5.0)
+
+    assert isinstance(result, StochasticScalar)
+    assert result.coupled_variable_group is df.coupled_variable_group
+
+
 def test_noncentral_chi_squared_generator() -> None:
     """Test construction through the named continuous generator."""
     generator = distributions.ContinuousDistributionGenerator("noncentralchisquared", [5.0, 2.5])
@@ -773,6 +800,41 @@ def test_generalized_inverse_gaussian() -> None:
 
 
 @pytest.mark.skipif(np.__name__ == "cupy", reason="generalized inverse Gaussian is CPU-only")
+@pytest.mark.parametrize("method, argument", [("cdf", 5.0), ("invcdf", 0.5)])
+def test_generalized_inverse_gaussian_stochastic_parameter_coupling(method: str, argument: float) -> None:
+    """Test GIG results are coupled to every stochastic input and parameter."""
+    p = StochasticScalar([0.5, 0.75, 1.0])
+    chi = StochasticScalar([2.0, 2.5, 3.0])
+    psi = StochasticScalar([1.0, 1.25, 1.5])
+    loc = StochasticScalar([0.0, 0.5, 1.0])
+    stochastic_argument = StochasticScalar([argument] * 3)
+    dist = distributions.GeneralizedInverseGaussian(p=p, chi=chi, psi=psi, loc=loc)
+
+    result = getattr(dist, method)(stochastic_argument)
+
+    assert isinstance(result, StochasticScalar)
+    assert result.coupled_variable_group is stochastic_argument.coupled_variable_group
+    assert result.coupled_variable_group is p.coupled_variable_group
+    assert result.coupled_variable_group is chi.coupled_variable_group
+    assert result.coupled_variable_group is psi.coupled_variable_group
+    assert result.coupled_variable_group is loc.coupled_variable_group
+
+
+@pytest.mark.skipif(np.__name__ == "cupy", reason="generalized inverse Gaussian is CPU-only")
+def test_generalized_inverse_gaussian_stochastic_parameter_generation_coupling() -> None:
+    """Test GIG generation is coupled to every stochastic parameter."""
+    set_random_seed(12345678910)
+    p = StochasticScalar([0.5, 0.75, 1.0])
+    chi = StochasticScalar([2.0, 2.5, 3.0])
+    psi = StochasticScalar([1.0, 1.25, 1.5])
+    result = distributions.GeneralizedInverseGaussian(p=p, chi=chi, psi=psi).generate(3)
+
+    assert result.coupled_variable_group is p.coupled_variable_group
+    assert result.coupled_variable_group is chi.coupled_variable_group
+    assert result.coupled_variable_group is psi.coupled_variable_group
+
+
+@pytest.mark.skipif(np.__name__ == "cupy", reason="generalized inverse Gaussian is CPU-only")
 def test_generalized_inverse_gaussian_contains_inverse_gaussian() -> None:
     """Test the inverse Gaussian special case of the GIG distribution."""
     mu = 4.0
@@ -885,6 +947,36 @@ def test_mbbefd() -> None:
     assert np.mean(sims**2) == pytest.approx(expected_second_moment, rel=1e-2)
     assert np.var(sims) == pytest.approx(expected_variance, rel=1e-2)
     assert np.mean(sims == 1) == pytest.approx(1 / g, abs=1e-3)
+
+
+@pytest.mark.parametrize(
+    "method, argument",
+    [("cdf", 0.5), ("invcdf", 0.5), ("exposure_curve", 0.5)],
+)
+def test_mbbefd_stochastic_parameter_coupling(method: str, argument: float) -> None:
+    """Test MBBEFD results are coupled to every stochastic input and parameter."""
+    g = StochasticScalar([20.0, 25.0, 30.0])
+    b = StochasticScalar([2.0, 3.0, 4.0])
+    stochastic_argument = StochasticScalar([argument] * 3)
+    dist = distributions.MBBEFD(g=g, b=b)
+
+    result = getattr(dist, method)(stochastic_argument)
+
+    assert isinstance(result, StochasticScalar)
+    assert result.coupled_variable_group is stochastic_argument.coupled_variable_group
+    assert result.coupled_variable_group is g.coupled_variable_group
+    assert result.coupled_variable_group is b.coupled_variable_group
+
+
+def test_mbbefd_stochastic_parameter_generation_coupling() -> None:
+    """Test MBBEFD generation is coupled to every stochastic parameter."""
+    set_random_seed(12345678910)
+    g = StochasticScalar([20.0, 25.0, 30.0])
+    b = StochasticScalar([2.0, 3.0, 4.0])
+    result = distributions.MBBEFD(g=g, b=b).generate(3)
+
+    assert result.coupled_variable_group is g.coupled_variable_group
+    assert result.coupled_variable_group is b.coupled_variable_group
 
 
 @pytest.mark.parametrize("g, b", [(5.0, 1.0), (4.0, 0.25)])
