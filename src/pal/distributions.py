@@ -689,6 +689,8 @@ class MBBEFD(DistributionBase):
     def _validated_params(self) -> tuple[t.Any, t.Any]:
         """Return parameters after checking the admissible region."""
         g, b = self._param_values
+        g = xp.asarray(g)
+        b = xp.asarray(b)
         if bool(xp.any(~xp.isfinite(g))) or bool(xp.any(g < 1)):
             raise ValueError("g must be finite and greater than or equal to 1.")
         if bool(xp.any(~xp.isfinite(b))) or bool(xp.any(b < 0)):
