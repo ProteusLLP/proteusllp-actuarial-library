@@ -21,6 +21,7 @@ from ._maths import asnumpy, scalar_or_array, to_backend, xp
 from .couplings import CouplingGroup, ProteusStochasticVariable
 from .stats import NumberOrList
 from .types import Numeric, NumericLike, ScipyNumeric
+from .plotly_template import add_proteus_branding
 
 
 class StochasticScalar(ProteusStochasticVariable):
@@ -336,6 +337,7 @@ class StochasticScalar(ProteusStochasticVariable):
         if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
             return
         fig = go.Figure(go.Histogram(x=self.values), layout={"title": title})
+        add_proteus_branding(fig)
         # Type ignore: plotly-stubs has incomplete type information
         fig.show()  # type: ignore[misc]
 
@@ -358,6 +360,7 @@ class StochasticScalar(ProteusStochasticVariable):
         # Type ignore: plotly-stubs has incomplete type information
         fig.update_xaxes({"title": "Value"})  # type: ignore[misc]
         fig.update_yaxes({"title": "Cumulative Probability"})  # type: ignore[misc]
+        add_proteus_branding(fig)
         fig.show()  # type: ignore[misc]
 
     # ===================
