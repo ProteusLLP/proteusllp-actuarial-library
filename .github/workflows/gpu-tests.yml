@@ -24,12 +24,14 @@ jobs:
     timeout-minutes: 60
     env:
       PAL_USE_GPU: "1"
-      CUPY_CACHE_DIR: ${{ runner.temp }}/cupy-kernel-cache
 
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Configure CuPy kernel cache
+        run: echo "CUPY_CACHE_DIR=$RUNNER_TEMP/cupy-kernel-cache" >> "$GITHUB_ENV"
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v7
@@ -64,7 +66,7 @@ jobs:
       - name: Cache CuPy kernels
         uses: actions/cache@v6
         with:
-          path: ${{ env.CUPY_CACHE_DIR }}
+          path: ${{ runner.temp }}/cupy-kernel-cache
           key: cupy-kernels-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.cupy-cache-compatibility.outputs.stack }}-${{ hashFiles('src/pal/**/*.py', 'tests/**/*.py', 'docs/**/*.md', 'pyproject.toml') }}
           restore-keys: |
             cupy-kernels-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.cupy-cache-compatibility.outputs.stack }}-
