@@ -239,10 +239,12 @@ def test_inverse_para_logistic() -> None:
         1e-3,
     )
     assert np.std(sims) == pytest.approx(
-        scale
-        * np.sqrt(
-            (gamma(shape + 2 / shape) * gamma(1 - 2 / shape) / gamma(shape))
-            - (gamma(shape + 1 / shape) * gamma(1 - 1 / shape) / gamma(shape)) ** 2
+        float(
+            scale
+            * np.sqrt(
+                (gamma(shape + 2 / shape) * gamma(1 - 2 / shape) / gamma(shape))
+                - (gamma(shape + 1 / shape) * gamma(1 - 1 / shape) / gamma(shape)) ** 2
+            )
         ),
         1e-3,
     )
@@ -264,7 +266,9 @@ def test_weibull() -> None:
     sims = dist.generate(100000000)
 
     assert np.mean(sims) == pytest.approx(scale * gamma(1 + 1 / shape) + loc, 1e-3)
-    assert np.std(sims) == pytest.approx(scale * np.sqrt(gamma(1 + 2 / shape) - (gamma(1 + 1 / shape)) ** 2), 1e-3)
+    assert np.std(sims) == pytest.approx(
+        float(scale * np.sqrt(gamma(1 + 2 / shape) - (gamma(1 + 1 / shape)) ** 2)), 1e-3
+    )
 
 
 def test_inverse_weibull() -> None:
@@ -283,7 +287,9 @@ def test_inverse_weibull() -> None:
     sims = dist.generate(100000000)
 
     assert np.mean(sims) == pytest.approx(scale * gamma(1 - 1 / shape) + loc, 1e-3)
-    assert np.std(sims) == pytest.approx(scale * np.sqrt(gamma(1 - 2 / shape) - (gamma(1 - 1 / shape)) ** 2), 1e-3)
+    assert np.std(sims) == pytest.approx(
+        float(scale * np.sqrt(gamma(1 - 2 / shape) - (gamma(1 - 1 / shape)) ** 2)), 1e-3
+    )
 
 
 def test_exponential() -> None:
@@ -400,8 +406,8 @@ def test_gev_gumbel() -> None:
     assert dist.cdf(loc - scale) == pytest.approx(float(np.exp(-np.exp(1))), 1e-8)
 
     # Test inverse CDF
-    assert dist.invcdf(0.5) == pytest.approx(loc - scale * np.log(-np.log(0.5)), 1e-6)
-    assert dist.invcdf(0.9) == pytest.approx(loc - scale * np.log(-np.log(0.9)), 1e-6)
+    assert dist.invcdf(0.5) == pytest.approx(float(loc - scale * np.log(-np.log(0.5))), 1e-6)
+    assert dist.invcdf(0.9) == pytest.approx(float(loc - scale * np.log(-np.log(0.9))), 1e-6)
 
     # Test round-trip
     assert allclose(
@@ -416,7 +422,7 @@ def test_gev_gumbel() -> None:
     sims = dist.generate(10000000)
     euler_gamma = 0.5772156649015329
     expected_mean = loc + scale * euler_gamma
-    expected_std = scale * np.pi / np.sqrt(6)
+    expected_std = float(scale * np.pi / np.sqrt(6))
 
     assert np.mean(sims) == pytest.approx(expected_mean, rel=1e-3)
     assert np.std(sims) == pytest.approx(expected_std, rel=1e-3)

@@ -340,9 +340,6 @@ class HyperGeometric(DiscreteDistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        if xp.__name__ == "cupy":
-            raise NotImplementedError("HyperGeometric CDF is not supported on GPU.")
-
         # Use scipy.stats because scipy.special does not expose hypergeom CDF directly
         from scipy.stats import hypergeom
 
@@ -350,20 +347,29 @@ class HyperGeometric(DiscreteDistributionBase):
         m = ngood + nbad
         n = ngood
         n_total = n_draws
-        return hypergeom.cdf(x, m, n, n_total)  # type: ignore[return-value]
+        x_values = x.values if isinstance(x, StochasticScalar) else x
+        result = xp.asarray(hypergeom.cdf(asnumpy(x_values), m, n, n_total))
+        if isinstance(x, StochasticScalar):
+            wrapped = StochasticScalar(result)
+            wrapped.coupled_variable_group.merge(x.coupled_variable_group)
+            return wrapped
+        return scalar_or_array(result)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        if xp.__name__ == "cupy":
-            raise NotImplementedError("HyperGeometric inverse CDF is not supported on GPU.")
-
         from scipy.stats import hypergeom
 
         ngood, nbad, n_draws = self._param_values
         m = ngood + nbad
         n = ngood
-        return hypergeom.ppf(u, m, n, n_draws)  # type: ignore[return-value]
+        u_values = u.values if isinstance(u, StochasticScalar) else u
+        result = xp.asarray(hypergeom.ppf(asnumpy(u_values), m, n, n_draws))
+        if isinstance(u, StochasticScalar):
+            wrapped = StochasticScalar(result)
+            wrapped.coupled_variable_group.merge(u.coupled_variable_group)
+            return wrapped
+        return scalar_or_array(result)
 
     @override
     def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
