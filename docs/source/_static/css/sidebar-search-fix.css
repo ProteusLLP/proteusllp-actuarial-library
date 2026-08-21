@@ -1,16 +1,9 @@
-/* Centre Furo's search form against the full visible sidebar drawer.
+/* Vertically centre Furo's search input within its search-bar area.
 
-On wide screens Furo right-aligns a fixed-width .sidebar-container inside a
-wider .sidebar-drawer. The search form is therefore centred within the inner
-container, not within the visible blue drawer. Keep the form's existing width
-and move it left by half of that extra drawer width. When the drawer and inner
-container have the same width (mobile/narrow layouts), this evaluates to zero.
-*/
-
-.sidebar-drawer {
-  container-type: inline-size;
-}
+The base Proteus stylesheet gives the search container a full 1rem of bottom
+padding and no top padding, so the input sits at the top of the dark search
+region. Split that spacing evenly above and below the input instead. */
 
 .sidebar-search-container {
-  transform: translateX(calc((100% - 100cqw) * 0.5));
+  padding: 0.5rem 1rem;
 }
