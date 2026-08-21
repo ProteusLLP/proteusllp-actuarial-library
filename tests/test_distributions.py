@@ -15,6 +15,7 @@ from pal import distributions
 from pal._maths import xp as np
 from pal.config import set_random_seed
 from pal.stochastic_scalar import StochasticScalar
+from tests._assertions import allclose
 
 
 def test_poisson() -> None:
@@ -23,7 +24,7 @@ def test_poisson() -> None:
     dist = distributions.Poisson(lamda)
     assert dist.cdf(0) == np.exp(-lamda)
     assert dist.invcdf(0) == 0
-    assert np.allclose(
+    assert allclose(
         dist.invcdf(dist.cdf(StochasticScalar([0, 2, 5, 10]))),
         StochasticScalar([0, 2, 5, 10]),
         1e-8,
@@ -36,14 +37,23 @@ def test_poisson() -> None:
 def test_poisson_gamma() -> None:
     """Tests the Poisson distribution with a gamma distributed lambda."""
     set_random_seed(12345678910)
+    n_sims = 100000
     alpha = 0.5
     beta = 3
-    lamda = distributions.Gamma(alpha, beta).generate(100000)
-    sims = distributions.Poisson(lamda).generate(100000)
+    lamda = distributions.Gamma(alpha, beta).generate(n_sims)
+    sims = distributions.Poisson(lamda).generate(n_sims)
     sims_mean = np.mean(sims)
-    sims_std = np.std(sims)
-    assert np.isclose(sims_mean, alpha * beta, 1e-2)
-    assert np.isclose(sims_std**2, alpha * beta + alpha * beta**2, 1e-2)
+    sims_variance = np.var(sims)
+
+    expected_mean = alpha * beta
+    expected_variance = alpha * beta * (1 + beta)
+    p = 1 / (1 + beta)
+    excess_kurtosis = 6 / alpha + p**2 / (alpha * (1 - p))
+    mean_se = math.sqrt(expected_variance / n_sims)
+    variance_se = expected_variance * math.sqrt((excess_kurtosis + 2) / n_sims)
+
+    assert sims_mean == pytest.approx(expected_mean, abs=5 * mean_se)
+    assert sims_variance == pytest.approx(expected_variance, abs=5 * variance_se)
     assert sims.coupled_variable_group == lamda.coupled_variable_group
 
 
@@ -70,15 +80,15 @@ def test_beta() -> None:
     dist = distributions.Beta(alpha, beta, scale, loc)
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert np.allclose(
+    assert allclose(
         dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))),
         StochasticScalar([1234560.1, 2345670, 3456780]),
         1e-8,
     )
 
     sims = dist.generate(1000000)
-    assert np.allclose(np.mean(sims), alpha / (alpha + beta) * scale + loc, 1e-3)
-    assert np.allclose(
+    assert allclose(np.mean(sims), alpha / (alpha + beta) * scale + loc, 1e-3)
+    assert allclose(
         np.std(sims),
         math.sqrt(alpha * beta / ((alpha + beta) ** 2 * (alpha + beta + 1))) * scale,
         1e-3,
@@ -162,7 +172,7 @@ def test_logistic() -> None:
     dist = distributions.Logistic(mu, sigma)
     assert dist.cdf(2.5) == 0.5
     assert dist.invcdf(0.5) == 2.5
-    assert np.allclose(
+    assert allclose(
         dist.invcdf(dist.cdf(StochasticScalar([1.1, 2, 3]))),
         StochasticScalar([1.1, 2, 3]),
     )
@@ -238,10 +248,12 @@ def test_inverse_para_logistic() -> None:
         1e-3,
     )
     assert np.std(sims) == pytest.approx(
-        scale
-        * np.sqrt(
-            (gamma(shape + 2 / shape) * gamma(1 - 2 / shape) / gamma(shape))
-            - (gamma(shape + 1 / shape) * gamma(1 - 1 / shape) / gamma(shape)) ** 2
+        float(
+            scale
+            * np.sqrt(
+                (gamma(shape + 2 / shape) * gamma(1 - 2 / shape) / gamma(shape))
+                - (gamma(shape + 1 / shape) * gamma(1 - 1 / shape) / gamma(shape)) ** 2
+            )
         ),
         1e-3,
     )
@@ -263,7 +275,9 @@ def test_weibull() -> None:
     sims = dist.generate(100000000)
 
     assert np.mean(sims) == pytest.approx(scale * gamma(1 + 1 / shape) + loc, 1e-3)
-    assert np.std(sims) == pytest.approx(scale * np.sqrt(gamma(1 + 2 / shape) - (gamma(1 + 1 / shape)) ** 2), 1e-3)
+    assert np.std(sims) == pytest.approx(
+        float(scale * np.sqrt(gamma(1 + 2 / shape) - (gamma(1 + 1 / shape)) ** 2)), 1e-3
+    )
 
 
 def test_inverse_weibull() -> None:
@@ -282,7 +296,9 @@ def test_inverse_weibull() -> None:
     sims = dist.generate(100000000)
 
     assert np.mean(sims) == pytest.approx(scale * gamma(1 - 1 / shape) + loc, 1e-3)
-    assert np.std(sims) == pytest.approx(scale * np.sqrt(gamma(1 - 2 / shape) - (gamma(1 - 1 / shape)) ** 2), 1e-3)
+    assert np.std(sims) == pytest.approx(
+        float(scale * np.sqrt(gamma(1 - 2 / shape) - (gamma(1 - 1 / shape)) ** 2)), 1e-3
+    )
 
 
 def test_exponential() -> None:
@@ -325,7 +341,7 @@ def test_gamma() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert np.allclose(
+    assert allclose(
         dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))),
         StochasticScalar([1234560.1, 2345670, 3456780]),
         1e-8,
@@ -333,8 +349,8 @@ def test_gamma() -> None:
 
     sims = dist.generate(10000000)
 
-    assert np.allclose(np.mean(sims), scale * shape + loc, 1e-3)
-    assert np.allclose(np.std(sims), scale * np.sqrt(shape), 1e-3)
+    assert allclose(np.mean(sims), scale * shape + loc, 1e-3)
+    assert allclose(np.std(sims), scale * np.sqrt(shape), 1e-3)
 
 
 def test_log_normal() -> None:
@@ -345,7 +361,7 @@ def test_log_normal() -> None:
 
     assert dist.cdf(0) == 0.0
     assert dist.invcdf(0) == 0
-    assert np.allclose(
+    assert allclose(
         dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))),
         StochasticScalar([1234560.1, 2345670, 3456780]),
         1e-8,
@@ -356,8 +372,8 @@ def test_log_normal() -> None:
     mean = np.exp(mu + 0.5 * sigma**2)
     sd = np.sqrt((np.exp(sigma**2) - 1) * np.exp(2 * mu + sigma**2))
 
-    assert np.allclose(np.mean(sims), mean, 1e-3)
-    assert np.allclose(np.std(sims), sd, 1e-3)
+    assert allclose(np.mean(sims), mean, 1e-3)
+    assert allclose(np.std(sims), sd, 1e-3)
 
 
 def test_inverse_gamma() -> None:
@@ -369,7 +385,7 @@ def test_inverse_gamma() -> None:
 
     assert dist.cdf(1000000) == 0.0
     assert dist.invcdf(0) == 1000000
-    assert np.allclose(
+    assert allclose(
         dist.invcdf(dist.cdf(StochasticScalar([1234560.1, 2345670, 3456780]))),
         StochasticScalar([1234560.1, 2345670, 3456780]),
         1e-8,
@@ -377,8 +393,8 @@ def test_inverse_gamma() -> None:
 
     sims = dist.generate(10000000)
 
-    assert np.allclose(np.mean(sims), scale * gamma(shape - 1) / gamma(shape) + loc, 1e-3)
-    assert np.allclose(
+    assert allclose(np.mean(sims), scale * gamma(shape - 1) / gamma(shape) + loc, 1e-3)
+    assert allclose(
         np.std(sims),
         scale * np.sqrt(gamma(shape - 2) / gamma(shape) - (gamma(shape - 1) / gamma(shape)) ** 2),
         1e-3,
@@ -394,16 +410,16 @@ def test_gev_gumbel() -> None:
     dist = distributions.GEV(shape, scale, loc)
 
     # Test known CDF values for Gumbel: F(x) = exp(-exp(-(x-μ)/σ))
-    assert dist.cdf(loc) == pytest.approx(np.exp(-1), 1e-8)
-    assert dist.cdf(loc + scale) == pytest.approx(np.exp(-np.exp(-1)), 1e-8)
-    assert dist.cdf(loc - scale) == pytest.approx(np.exp(-np.exp(1)), 1e-8)
+    assert dist.cdf(loc) == pytest.approx(float(np.exp(-1)), 1e-8)
+    assert dist.cdf(loc + scale) == pytest.approx(float(np.exp(-np.exp(-1))), 1e-8)
+    assert dist.cdf(loc - scale) == pytest.approx(float(np.exp(-np.exp(1))), 1e-8)
 
     # Test inverse CDF
-    assert dist.invcdf(0.5) == pytest.approx(loc - scale * np.log(-np.log(0.5)), 1e-6)
-    assert dist.invcdf(0.9) == pytest.approx(loc - scale * np.log(-np.log(0.9)), 1e-6)
+    assert dist.invcdf(0.5) == pytest.approx(float(loc - scale * np.log(-np.log(0.5))), 1e-6)
+    assert dist.invcdf(0.9) == pytest.approx(float(loc - scale * np.log(-np.log(0.9))), 1e-6)
 
     # Test round-trip
-    assert np.allclose(
+    assert allclose(
         dist.invcdf(dist.cdf(StochasticScalar([loc - 50000, loc, loc + 50000, loc + 150000]))),
         StochasticScalar([loc - 50000, loc, loc + 50000, loc + 150000]),
         1e-6,
@@ -415,7 +431,7 @@ def test_gev_gumbel() -> None:
     sims = dist.generate(10000000)
     euler_gamma = 0.5772156649015329
     expected_mean = loc + scale * euler_gamma
-    expected_std = scale * np.pi / np.sqrt(6)
+    expected_std = float(scale * np.pi / np.sqrt(6))
 
     assert np.mean(sims) == pytest.approx(expected_mean, rel=1e-3)
     assert np.std(sims) == pytest.approx(expected_std, rel=1e-3)
@@ -432,16 +448,16 @@ def test_gev_frechet() -> None:
     # Test CDF at specific points
     x = loc + scale
     expected_cdf = np.exp(-np.power(1 + shape, -1 / shape))
-    assert dist.cdf(x) == pytest.approx(expected_cdf, 1e-8)
+    assert dist.cdf(x) == pytest.approx(float(expected_cdf), 1e-8)
 
     # Test inverse CDF
     u = 0.5
     expected_x = loc + scale * (np.power(-np.log(u), -shape) - 1) / shape
-    assert dist.invcdf(u) == pytest.approx(expected_x, 1e-6)
+    assert dist.invcdf(u) == pytest.approx(float(expected_x), 1e-6)
 
     # Test round-trip
     test_points = StochasticScalar([loc + 10000, loc + 50000, loc + 100000, loc + 200000])
-    assert np.allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-6)
+    assert allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-6)
 
     # Test statistical moments
     # Mean: μ + σ * (Γ(1-ξ) - 1) / ξ for ξ < 1
@@ -466,16 +482,16 @@ def test_gev_weibull() -> None:
     x = loc + scale / 2
     z = (x - loc) / scale
     expected_cdf = np.exp(-np.power(1 + shape * z, -1 / shape))
-    assert dist.cdf(x) == pytest.approx(expected_cdf, 1e-8)
+    assert dist.cdf(x) == pytest.approx(float(expected_cdf), 1e-8)
 
     # Test inverse CDF
     u = 0.7
     expected_x = loc + scale * (np.power(-np.log(u), -shape) - 1) / shape
-    assert dist.invcdf(u) == pytest.approx(expected_x, 1e-6)
+    assert dist.invcdf(u) == pytest.approx(float(expected_x), 1e-6)
 
     # Test round-trip
     test_points = StochasticScalar([loc + 10000, loc + 50000, loc + 100000, loc + 200000])
-    assert np.allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-6)
+    assert allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-6)
 
     # Test statistical moments (same formulas as Fréchet when ξ < 0)
     sims = dist.generate(10000000)
@@ -506,7 +522,7 @@ def test_studentst_standard() -> None:
 
     # Test round-trip
     test_points = StochasticScalar([-2.0, -1.0, 0.0, 1.0, 2.0])
-    assert np.allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-8)
+    assert allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-8)
 
     # Test statistical moments
     # Mean: μ for ν > 1
@@ -535,7 +551,7 @@ def test_studentst_general() -> None:
 
     # Test round-trip
     test_points = StochasticScalar([mu - 200, mu - 100, mu, mu + 100, mu + 200])
-    assert np.allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-6)
+    assert allclose(dist.invcdf(dist.cdf(test_points)), test_points, 1e-6)
 
     # Test statistical moments
     sims = dist.generate(10000000)

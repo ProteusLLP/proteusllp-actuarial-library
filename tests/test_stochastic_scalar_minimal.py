@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from pal.variables import StochasticScalar
+from tests._assertions import assert_allclose, assert_array_equal, host_values
 
 
 def test_list_input():
@@ -20,7 +21,7 @@ def test_numpy_array_input():
     x = StochasticScalar(arr)
     assert len(x) == 4
     assert x.mean() == 25.0
-    np.testing.assert_array_equal(x.values, arr)
+    assert_array_equal(x.values, arr)
 
 
 def test_array_conversion():
@@ -88,9 +89,9 @@ def test_upsample():
     assert len(y) == 20
     assert isinstance(y, StochasticScalar)
     # Check that upsampling preserves the original values
-    assert set(y.values[:5]) == set(x.values)
+    assert set(host_values(y)[:5]) == set(host_values(x))
     # Mean should be approximately the same
-    np.testing.assert_allclose(y.mean(), x.mean(), rtol=0.1)
+    assert_allclose(y.mean(), x.mean(), rtol=0.1)
 
 
 def test_ranks():
@@ -101,7 +102,7 @@ def test_ranks():
     assert len(ranks) == 5
     # Check that ranks are in the correct order
     # 1 is smallest (rank 0), 2 (rank 1), 5 (rank 2), 8 (rank 3), 9 (rank 4)
-    np.testing.assert_array_equal(ranks.values, [2, 1, 3, 0, 4])
+    assert_array_equal(ranks.values, [2, 1, 3, 0, 4])
 
 
 def test_tolist():
@@ -134,7 +135,7 @@ def test_boolean_indexing():
     mask = x > 3
     filtered = x[mask]
     assert isinstance(filtered, StochasticScalar)
-    np.testing.assert_array_equal(filtered.values, [4, 5])
+    assert_array_equal(filtered.values, [4, 5])
 
 
 def test_arithmetic_operations():
@@ -146,9 +147,9 @@ def test_arithmetic_operations():
     assert isinstance(y, StochasticScalar)
     assert isinstance(z, StochasticScalar)
     assert isinstance(w, StochasticScalar)
-    np.testing.assert_array_equal(y.values, [15, 25, 35])
-    np.testing.assert_array_equal(z.values, [20, 40, 60])
-    np.testing.assert_array_equal(w.values, [5, 10, 15])
+    assert_array_equal(y.values, [15, 25, 35])
+    assert_array_equal(z.values, [20, 40, 60])
+    assert_array_equal(w.values, [5, 10, 15])
 
 
 def test_comparison_operations():
@@ -160,10 +161,10 @@ def test_comparison_operations():
     result4 = x <= 20
     assert isinstance(result1, StochasticScalar)
     assert isinstance(result2, StochasticScalar)
-    np.testing.assert_array_equal(result1.values, [False, True, True])
-    np.testing.assert_array_equal(result2.values, [True, True, False])
-    np.testing.assert_array_equal(result3.values, [False, True, True])
-    np.testing.assert_array_equal(result4.values, [True, True, False])
+    assert_array_equal(result1.values, [False, True, True])
+    assert_array_equal(result2.values, [True, True, False])
+    assert_array_equal(result3.values, [False, True, True])
+    assert_array_equal(result4.values, [True, True, False])
 
 
 def test_negative():
@@ -171,14 +172,14 @@ def test_negative():
     x = StochasticScalar([1, 2, 3])
     neg_x = -x
     assert isinstance(neg_x, StochasticScalar)
-    np.testing.assert_array_equal(neg_x.values, [-1, -2, -3])
+    assert_array_equal(neg_x.values, [-1, -2, -3])
 
 
 def test_abs():
     """Test absolute value."""
     x = StochasticScalar([-5, -2, 0, 3, 7])
     abs_x = abs(x)
-    np.testing.assert_array_equal(abs_x.values, [5, 2, 0, 3, 7])
+    assert_array_equal(abs_x.values, [5, 2, 0, 3, 7])
 
 
 def test_power():
@@ -186,7 +187,7 @@ def test_power():
     x = StochasticScalar([2, 3, 4])
     squared = x**2
     assert isinstance(squared, StochasticScalar)
-    np.testing.assert_array_equal(squared.values, [4, 9, 16])
+    assert_array_equal(squared.values, [4, 9, 16])
 
 
 def test_repr():

@@ -11,6 +11,7 @@ import numpy.typing as npt
 from . import distributions
 from .couplings import ProteusStochasticVariable
 from .stochastic_scalar import StochasticScalar
+from .types import RandomGenerator
 
 ReductionOperation = t.Callable[
     [
@@ -41,7 +42,7 @@ class FrequencySeverityModel:
     def generate(
         self,
         n_sims: int | None = None,
-        rng: np.random.Generator | None = ...,
+        rng: RandomGenerator | None = ...,
     ) -> FreqSevSims: ...
 
 class FreqSevSims(ProteusStochasticVariable):

@@ -12,6 +12,7 @@ from pal.copulas import GumbelCopula, apply_copula
 from pal.distributions import GPD, Poisson
 from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
 from pal.variables import StochasticScalar
+from tests._assertions import allclose, array_equal, host_values
 
 
 def test_fs_reordering():
@@ -24,8 +25,8 @@ def test_fs_reordering():
         StochasticScalar([1, 0, 3, 2, 5, 4]),
     ]
     apply_copula([a, b], copula_samples)
-    assert (a.values == [31, 30, 40, 0, 50, 0]).all()
-    assert (b.values == [52, 0, 54, 0, 12, 42]).all()
+    assert array_equal(a.values, [31, 30, 40, 0, 50, 0])
+    assert array_equal(b.values, [52, 0, 54, 0, 12, 42])
     # expected_x
     expected_x = FreqSevSims([0, 0, 1, 2, 4], [10, 21, 30, 40, 50], 6)
     # expected_y
@@ -50,8 +51,8 @@ def test_fs_reordering2():
         StochasticScalar([1, 0, 3, 2, 5, 4]),
     ]
     apply_copula([a, b], copula_samples)
-    assert (a.values == [62, 60, 80, 0, 100, 0]).all()
-    assert (b.values == [156, 0, 162, 0, 36, 126]).all()
+    assert array_equal(a.values, [62, 60, 80, 0, 100, 0])
+    assert array_equal(b.values, [156, 0, 162, 0, 36, 126])
     # expected_x
     expected_x = FreqSevSims([0, 0, 1, 2, 4], [10, 21, 30, 40, 50], 6)
     # expected_y
@@ -83,14 +84,14 @@ def test_fs_reordering3():
     b = y1.aggregate()
     GumbelCopula(1.5, 2).apply([a, b])
     # check the copula has been applied correctly
-    calculated_tau = scipy.stats.kendalltau(a.values, b.values).statistic
+    calculated_tau = scipy.stats.kendalltau(host_values(a), host_values(b)).statistic
     assert np.isclose(calculated_tau, 1 - 1 / 1.5, atol=1e-2)
     # check that when x and y are re_calculated and reaggregated, they give
     # the same result
     re_calculated_a = (x * 2).aggregate()
     re_calculated_b = (y * 3).aggregate()
-    assert np.allclose(re_calculated_a.values, a.values, atol=1e-10)
-    assert np.allclose(re_calculated_b.values, b.values, atol=1e-10)
+    assert allclose(re_calculated_a.values, a.values, atol=1e-10)
+    assert allclose(re_calculated_b.values, b.values, atol=1e-10)
 
 
 def test_freqsevsims_membership_in_coupling_group() -> None:

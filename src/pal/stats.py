@@ -51,7 +51,7 @@ def tvar(values: npt.ArrayLike, p: NumberOrList) -> NumberOrList:
         >>> tvar(ss, 80)  # Automatic conversion via __array__()
         9.0
     """
-    values_array = np.asarray(values)
+    values_array = np.asarray(getattr(values, "values", values))
     n_sims = len(values_array)
     if n_sims == 0:
         raise ValueError("Cannot compute TVAR for empty array.")
@@ -88,8 +88,8 @@ def loss_summary(losses: FreqSevSims) -> dict[str, npt.NDArray[np.floating]]:
         Dictionary containing occurrence and aggregate loss percentiles.
     """
     occurrence_losses = losses.occurrence()
-    occurrence_statistics = np.percentile(occurrence_losses, percentiles)
+    occurrence_statistics = np.percentile(occurrence_losses.values, percentiles)
     aggregate_losses = losses.aggregate()
-    aggregate_statistics = np.percentile(aggregate_losses, percentiles)
+    aggregate_statistics = np.percentile(aggregate_losses.values, percentiles)
     result = {"Occurrence": occurrence_statistics, "Aggregate": aggregate_statistics}
     return result
