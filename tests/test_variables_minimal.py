@@ -6,6 +6,7 @@ import pytest
 
 import pal.maths as pnp
 from pal.variables import ProteusVariable, StochasticScalar
+from tests._assertions import allclose
 
 
 def test_comparison_lt():
@@ -162,7 +163,7 @@ def test_correlation_matrix():
     corr = x.correlation_matrix()
     # Returns list[list[float]]
     assert isinstance(corr, list)
-    assert np.allclose(corr, [[1.0, 1.0], [1.0, 1.0]])  # Perfect correlation
+    assert allclose(corr, [[1.0, 1.0], [1.0, 1.0]])  # Perfect correlation
     assert len(corr) == 2
 
 

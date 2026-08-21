@@ -17,11 +17,49 @@ import scipy.stats
 from scipy.special import gamma
 
 from . import ProteusVariable, StochasticScalar
-from ._maths import special
+from ._maths import asnumpy, special
 from ._maths import xp as np
 
 # Local imports
 from .config import config
+
+
+def _host_rng_arg(value: t.Any) -> t.Any:
+    """Copy backend array arguments to the host for NumPy random methods."""
+    if isinstance(value, np.ndarray):
+        return asnumpy(value)
+    if isinstance(value, tuple):
+        return tuple(_host_rng_arg(item) for item in value)
+    if isinstance(value, list):
+        return [_host_rng_arg(item) for item in value]
+    return value
+
+
+class _BackendGenerator:
+    """Adapt NumPy's seeded Generator so samples immediately move to the backend."""
+
+    def __init__(self, generator: t.Any) -> None:
+        self._generator = generator
+
+    def __getattr__(self, name: str) -> t.Any:
+        attribute = getattr(self._generator, name)
+        if not callable(attribute):
+            return attribute
+
+        def sample(*args: t.Any, **kwargs: t.Any) -> t.Any:
+            if type(self._generator).__module__.startswith("numpy"):
+                args = tuple(_host_rng_arg(arg) for arg in args)
+                kwargs = {key: _host_rng_arg(value) for key, value in kwargs.items()}
+            return np.asarray(attribute(*args, **kwargs))
+
+        return sample
+
+
+def _backend_rng(generator: t.Any) -> _BackendGenerator:
+    """Return a backend-producing random generator adapter."""
+    if isinstance(generator, _BackendGenerator):
+        return generator
+    return _BackendGenerator(generator)
 
 
 class Copula(ABC):
@@ -124,7 +162,7 @@ class Copula(ABC):
         if rng is None:
             rng = config.rng
 
-        unnormalised = self._generate_unnormalised(n_sims, rng)
+        unnormalised = self._generate_unnormalised(n_sims, _backend_rng(rng))
         uniform_samples = self._transform_to_uniform(unnormalised)
         return self._create_result_from_uniform(uniform_samples)
 
@@ -149,7 +187,8 @@ class Copula(ABC):
         # Check that n_sims is available
         n_sims = variables_list[0].n_sims
         copula_samples = [
-            StochasticScalar(sample) for sample in self._generate_unnormalised(n_sims=n_sims, rng=config.rng)
+            StochasticScalar(sample)
+            for sample in self._generate_unnormalised(n_sims=n_sims, rng=_backend_rng(config.rng))
         ]
         if len(variables) != len(copula_samples):
             raise ValueError("Number of variables and copula samples do not match.")
@@ -283,7 +322,7 @@ class StudentsTCopula(EllipticalCopula):
 
     def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Transform t-distributed samples to uniform using CDF."""
-        return scipy.stats.distributions.t(self.dof).cdf(unnormalised_samples)
+        return np.asarray(scipy.stats.distributions.t(self.dof).cdf(asnumpy(unnormalised_samples)))
 
     def generate(
         self, n_sims: int | None = None, rng: np.random.Generator | None = None

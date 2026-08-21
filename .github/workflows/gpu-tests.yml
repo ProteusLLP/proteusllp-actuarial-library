@@ -70,4 +70,4 @@ jobs:
           PY
 
       - name: Run tests with GPU acceleration
-        run: pytest -v --cov=pal --cov-report=term --codeblocks
+        run: pytest -v --cov=pal --cov-report=term

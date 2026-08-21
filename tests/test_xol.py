@@ -7,6 +7,7 @@ deductibles, aggregate limits, reinstatement premiums, and complex layering.
 import numpy as np
 
 from pal import FreqSevSims, XoL
+from tests._assertions import allclose
 
 
 def test_xol_no_agg():
@@ -65,7 +66,7 @@ def test_xol_multiple_reinstatements():
     result = layer.apply(claims)
     assert result.recoveries.values.tolist() == [0, 350000, 250000, 0]
     assert result.reinstatement_premium is not None
-    assert np.allclose(result.reinstatement_premium, np.array([1200]))
+    assert allclose(result.reinstatement_premium, np.array([1200]))
 
 
 def test_xol_aggregate_limit():
@@ -87,7 +88,7 @@ def test_xol_aggregate_limit():
         500000 * (1000000 / 1250000),
     ]
     assert result.reinstatement_premium is not None
-    assert np.allclose(result.reinstatement_premium, np.array([1000]))
+    assert allclose(result.reinstatement_premium, np.array([1000]))
 
 
 def test_xol_aggregate_deductible():
@@ -110,4 +111,4 @@ def test_xol_aggregate_deductible():
         0,
     ]
     assert result.reinstatement_premium is not None
-    assert np.allclose(result.reinstatement_premium.values.tolist(), [700])
+    assert allclose(result.reinstatement_premium.values.tolist(), [700])
