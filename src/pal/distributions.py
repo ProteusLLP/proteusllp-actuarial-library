@@ -725,7 +725,7 @@ class MBBEFD(DistributionBase):
         safe_g = xp.where(degenerate, 2.0, g)
         safe_b = xp.where(degenerate | b_one | bg_one, 2.0, b)
         limit_b = xp.where(degenerate | b_one, 0.5, b)
-        with xp.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
             main = 1 - (1 - safe_b) * safe_b**values / ((safe_g - 1) * safe_b + (1 - safe_g * safe_b) * safe_b**values)
             b_limit = 1 - 1 / (1 + (g - 1) * values)
             bg_limit = 1 - limit_b**values
@@ -750,7 +750,7 @@ class MBBEFD(DistributionBase):
         safe_g = xp.where(degenerate, 2.0, g)
         safe_b = xp.where(degenerate | b_one | bg_one, 2.0, b)
         limit_b = xp.where(degenerate | b_one, 0.5, b)
-        with xp.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
             main_argument = (safe_g * safe_b - 1) / (safe_g - 1) + ((1 - safe_b) / ((1 - probabilities) * (safe_g - 1)))
             main = 1 - xp.log(main_argument) / xp.log(safe_b)
             b_limit = probabilities / ((1 - probabilities) * (safe_g - 1))
@@ -792,7 +792,7 @@ class MBBEFD(DistributionBase):
         safe_g = xp.where(degenerate, 2.0, g)
         safe_b = xp.where(degenerate | b_one | bg_one, 2.0, b)
         limit_b = xp.where(degenerate | b_one, 0.5, b)
-        with xp.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
             numerator = (safe_g - 1) * safe_b + (1 - safe_g * safe_b) * safe_b**values
             main = xp.log(numerator / (1 - safe_b)) / xp.log(safe_g * safe_b)
             b_limit = xp.log1p((safe_g - 1) * values) / xp.log(safe_g)
