@@ -1,7 +1,6 @@
+:orphan:
+
 pal.distributions module
 ========================
 
-.. automodule:: pal.distributions
-   :members:
-   :show-inheritance:
-   :undoc-members:
+The distribution reference is organised by concrete distribution on :doc:`distributions`.
