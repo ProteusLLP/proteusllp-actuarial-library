@@ -1,0 +1,16 @@
+/* Centre Furo's search form against the full visible sidebar drawer.
+
+On wide screens Furo right-aligns a fixed-width .sidebar-container inside a
+wider .sidebar-drawer. The search form is therefore centred within the inner
+container, not within the visible blue drawer. Keep the form's existing width
+and move it left by half of that extra drawer width. When the drawer and inner
+container have the same width (mobile/narrow layouts), this evaluates to zero.
+*/
+
+.sidebar-drawer {
+  container-type: inline-size;
+}
+
+.sidebar-search-container {
+  transform: translateX(calc((100% - 100cqw) * 0.5));
+}
