@@ -70,10 +70,23 @@ def scalar_or_array(value: t.Any) -> t.Any:
         return value.item()
     return value
 
+
+def create_random_generator(seed: int) -> t.Any:
+    """Create a seeded generator that produces arrays on the active backend.
+
+    CuPy's newer ``Generator`` API does not yet expose every distribution used
+    by PAL, whereas ``RandomState`` does. NumPy continues to use its modern
+    ``Generator`` API on the CPU.
+    """
+    if _USE_GPU:
+        return xp.random.RandomState(seed)
+    return np.random.default_rng(seed)
+
 # export the numpy/cupy and scipy/cupyx special functions/modules for the current
 # execution environment.
 __all__ = [
     "asnumpy",
+    "create_random_generator",
     "scalar_or_array",
     "to_backend",
     "xp",

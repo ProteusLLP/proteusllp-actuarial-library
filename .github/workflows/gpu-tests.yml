@@ -44,7 +44,10 @@ jobs:
           nvidia-smi
           python - <<'PY'
           import cupy
+          import numpy
+          from pal import Normal, set_random_seed
           from pal._maths import xp
+          from pal.config import config
 
           if xp is not cupy:
               raise RuntimeError("PAL did not select the CuPy backend")
@@ -53,14 +56,25 @@ jobs:
           if device_count < 1:
               raise RuntimeError("CuPy did not detect a CUDA device")
 
+          set_random_seed(123456789)
+          if not type(config.rng).__module__.startswith("cupy"):
+              raise RuntimeError("PAL did not configure a CuPy random generator")
+
           device = cupy.cuda.Device()
           properties = cupy.cuda.runtime.getDeviceProperties(device.id)
           device_name = properties["name"]
           if isinstance(device_name, bytes):
               device_name = device_name.decode()
 
-          values = cupy.arange(1024, dtype=cupy.float64)
-          result = cupy.sum(values * values)
+          samples = Normal(0, 1).generate(1024)
+          if not isinstance(samples.values, cupy.ndarray):
+              raise RuntimeError("PAL generated stochastic samples on the host")
+
+          transformed = numpy.exp(samples) + numpy.square(samples)
+          if not isinstance(transformed.values, cupy.ndarray):
+              raise RuntimeError("NumPy operations did not dispatch back to CuPy")
+
+          result = cupy.sum(transformed.values)
           device.synchronize()
 
           print(f"CUDA devices: {device_count}")
@@ -70,4 +84,4 @@ jobs:
           PY
 
       - name: Run tests with GPU acceleration
-        run: pytest -v --cov=pal --cov-report=term
+        run: pytest -v --cov=pal --cov-report=term --codeblocks

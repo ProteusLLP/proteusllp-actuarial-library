@@ -16,6 +16,7 @@ import numpy.typing as npt
 
 # project
 from ._compat import Self
+from ._maths import create_random_generator
 from ._maths import xp as np
 
 __all__ = [
@@ -54,7 +55,7 @@ class Config:
 
     n_sims: int = 10000
     seed: int = 123456789
-    rng: np.random.Generator = np.random.default_rng(seed)
+    rng: t.Any = dataclasses.field(default_factory=lambda: create_random_generator(123456789))
 
     _uid_counter = itertools.count(1)
 

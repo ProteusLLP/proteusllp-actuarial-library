@@ -42,7 +42,12 @@ class _BackendGenerator:
         self._generator = generator
 
     def __getattr__(self, name: str) -> t.Any:
-        attribute = getattr(self._generator, name)
+        # CuPy's RandomState follows NumPy's legacy ``randint`` spelling.
+        # Present the modern Generator spelling used by PAL's copula code.
+        if name == "integers" and not hasattr(self._generator, name):
+            attribute = self._generator.randint
+        else:
+            attribute = getattr(self._generator, name)
         if not callable(attribute):
             return attribute
 
