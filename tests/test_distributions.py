@@ -692,6 +692,21 @@ def test_studentst_heavy_tails() -> None:
     assert t_extreme > normal_extreme
 
 
+def test_studentst_generation_with_stochastic_parameters() -> None:
+    """Generate directly while retaining coupling to stochastic parameters."""
+    n_sims = 4
+    nu = StochasticScalar([3.0, 4.0, 5.0, 6.0])
+    mu = StochasticScalar([0.0, 1.0, 2.0, 3.0])
+    sigma = StochasticScalar([1.0, 1.5, 2.0, 2.5])
+
+    simulations = distributions.StudentsT(nu, mu, sigma).generate(n_sims)
+
+    assert simulations.n_sims == n_sims
+    assert simulations.coupled_variable_group is nu.coupled_variable_group
+    assert simulations.coupled_variable_group is mu.coupled_variable_group
+    assert simulations.coupled_variable_group is sigma.coupled_variable_group
+
+
 def test_inversegaussian() -> None:
     """Test Inverse Gaussian distribution."""
     set_random_seed(12345678910)

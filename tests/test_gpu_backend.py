@@ -3,9 +3,10 @@
 import numpy as np
 import pytest
 
-from pal import InverseGaussian, NegBinomial, Normal, set_random_seed
+from pal import InverseGaussian, NegBinomial, Normal, StudentsT, set_random_seed
 from pal._maths import xp
 from pal.config import config
+from pal.copulas import StudentsTCopula
 
 pytestmark = pytest.mark.skipif(xp.__name__ != "cupy", reason="requires the CuPy backend")
 
@@ -30,12 +31,16 @@ def test_generation_and_numpy_dispatch_do_not_transfer_to_host(monkeypatch: pyte
     try:
         set_random_seed(123456789)
         simulations = Normal(100, 15).generate(4096)
+        students_t = StudentsT(5, 100, 15).generate(4096)
+        students_t_copula = StudentsTCopula([[1, 0.5], [0.5, 1]], 5).generate(4096)
         inverse_gaussian = InverseGaussian(2, 3).generate(256)
         negative_binomial = NegBinomial(4, 0.5).generate(256)
         transformed = np.where(simulations > 100, np.exp(simulations / 100), np.square(simulations / 100))
 
         assert type(config.rng).__module__.startswith("cupy")
         assert isinstance(simulations.values, xp.ndarray)
+        assert isinstance(students_t.values, xp.ndarray)
+        assert all(isinstance(margin.values, xp.ndarray) for margin in students_t_copula)
         assert isinstance(inverse_gaussian.values, xp.ndarray)
         assert isinstance(negative_binomial.values, xp.ndarray)
         assert isinstance(transformed.values, xp.ndarray)

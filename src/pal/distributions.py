@@ -1593,6 +1593,16 @@ class StudentsT(DistributionBase):
 
         return mu + sigma * sign * x
 
+    @override
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
+        """Generate samples using the active backend's Student's t sampler."""
+        nu, mu, sigma = self._param_values
+        nu = _rng_value(nu, rng)
+        mu = _rng_value(mu, rng)
+        sigma = _rng_value(sigma, rng)
+        samples = rng.standard_t(nu, size=n_sims)
+        return StochasticScalar(mu + sigma * samples)
+
 
 class InverseGaussian(DistributionBase):
     r"""Inverse Gaussian (Wald) Distribution.
