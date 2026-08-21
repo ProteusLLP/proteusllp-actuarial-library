@@ -1,0 +1,9 @@
+/* Vertically centre Furo's search input within its search-bar area.
+
+The base Proteus stylesheet gives the search container a full 1rem of bottom
+padding and no top padding, so the input sits at the top of the dark search
+region. Split that spacing evenly above and below the input instead. */
+
+.sidebar-search-container {
+  padding: 0.5rem 1rem;
+}
