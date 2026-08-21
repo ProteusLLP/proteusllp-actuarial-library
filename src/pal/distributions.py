@@ -717,7 +717,7 @@ class MBBEFD(DistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the cumulative distribution function, including the atom at one."""
         g, b = self._validated_params()
-        values = to_backend(x.values if isinstance(x, StochasticScalar) else x)
+        values = xp.asarray(x.values if isinstance(x, StochasticScalar) else x)
         degenerate = (g == 1) | (b == 0)
         b_one = xp.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
         bg_one = xp.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
@@ -742,7 +742,7 @@ class MBBEFD(DistributionBase):
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute the inverse CDF, returning one across the total-loss atom."""
         g, b = self._validated_params()
-        probabilities = to_backend(u.values if isinstance(u, StochasticScalar) else u)
+        probabilities = xp.asarray(u.values if isinstance(u, StochasticScalar) else u)
         degenerate = (g == 1) | (b == 0)
         b_one = xp.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
         bg_one = xp.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
@@ -784,7 +784,7 @@ class MBBEFD(DistributionBase):
             Proportion of expected loss below the policy limit.
         """
         g, b = self._validated_params()
-        values = to_backend(x.values if isinstance(x, StochasticScalar) else x)
+        values = xp.asarray(x.values if isinstance(x, StochasticScalar) else x)
         degenerate = (g == 1) | (b == 0)
         b_one = xp.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
         bg_one = xp.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
