@@ -37,7 +37,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -e ".[test,gpu]"
+        run: pip install -e ".[test,gpu]" "cupy-cuda12x[ctk]"
 
       - name: Verify GPU acceleration
         run: |
