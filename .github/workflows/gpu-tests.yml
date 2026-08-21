@@ -24,6 +24,7 @@ jobs:
     timeout-minutes: 60
     env:
       PAL_USE_GPU: "1"
+      CUPY_CACHE_DIR: ${{ runner.temp }}/cupy-kernel-cache
 
     steps:
       - uses: actions/checkout@v7
@@ -38,6 +39,35 @@ jobs:
 
       - name: Install dependencies
         run: pip install -e ".[test,gpu]" "cupy-cuda12x[ctk]"
+
+      - name: Determine CuPy kernel-cache compatibility
+        id: cupy-cache-compatibility
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+
+          import cupy
+
+          properties = cupy.cuda.runtime.getDeviceProperties(0)
+          compatibility = (
+              f"py{sys.version_info.major}{sys.version_info.minor}-"
+              f"cupy{cupy.__version__}-"
+              f"cuda{cupy.cuda.runtime.runtimeGetVersion()}-"
+              f"sm{properties['major']}{properties['minor']}"
+          )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              print(f"stack={compatibility}", file=output)
+          PY
+
+      - name: Cache CuPy kernels
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.CUPY_CACHE_DIR }}
+          key: cupy-kernels-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.cupy-cache-compatibility.outputs.stack }}-${{ hashFiles('src/pal/**/*.py', 'tests/**/*.py', 'docs/**/*.md', 'pyproject.toml') }}
+          restore-keys: |
+            cupy-kernels-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.cupy-cache-compatibility.outputs.stack }}-
 
       - name: Verify GPU acceleration
         run: |
