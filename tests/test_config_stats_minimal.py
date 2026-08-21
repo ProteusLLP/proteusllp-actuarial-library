@@ -33,7 +33,7 @@ def test_config_initializes_rng_from_seed():
     configured = Config(seed=seed)
     expected = create_random_generator(seed)
 
-    assert bool(xp.array_equal(configured.rng.random(10), expected.random(10)))
+    assert bool(xp.array_equal(configured.rng.uniform(size=10), expected.uniform(size=10)))
 
 
 def test_tvar_high_percentile_error():
