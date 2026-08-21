@@ -4,6 +4,7 @@ Provides configuration management for random seeding, simulation parameters,
 and global library settings.
 """
 
+from pal._maths import create_random_generator
 from pal.types import Config
 
 config = Config()  # config is assumed to be a singleton
@@ -24,4 +25,5 @@ def set_random_seed(seed: int) -> None:
     Args:
         seed (int): The random seed.
     """
-    config.rng.bit_generator.state = type(config.rng.bit_generator)(seed).state
+    config.seed = seed
+    config.rng = create_random_generator(seed)

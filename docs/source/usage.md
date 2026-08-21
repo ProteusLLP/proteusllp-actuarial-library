@@ -98,12 +98,12 @@ PAL uses the `default_rng` class from `numpy.random`, which can also be configur
 
 ### GPU Acceleration
 
-For CUDA-compatible GPUs, install GPU dependencies:
+For CUDA-compatible GPUs, install PAL from PyPI with the GPU extra:
 
 <!--pytest.mark.skip-->
 
 ```bash
-pdm install -G gpu
+pip install "proteusllp-actuarial-library[gpu]"
 ```
 
 Enable GPU mode by setting the environment variable:
@@ -127,7 +127,7 @@ For more complex examples including reinsurance modeling and catastrophe simulat
 ## See Also
 
 - [Development Guide](development.md) - Setting up the development environment
-- [Main README](https://github.com/ProteusLLP/proteus-actuarial-library) - Project overview and quick start
+- [Main README](https://github.com/ProteusLLP/proteusllp-actuarial-library) - Project overview and quick start
 
 ## Performance Tips
 

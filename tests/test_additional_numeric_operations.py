@@ -11,6 +11,7 @@ import pytest
 
 from pal.frequency_severity import FreqSevSims
 from pal.stochastic_scalar import StochasticScalar
+from tests._assertions import assert_array_almost_equal, assert_array_equal
 
 # =============================================================================
 # Floor Division Tests
@@ -24,7 +25,7 @@ def test_stochastic_scalar_floordiv():
     result = x // y
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [3, 5, 6, 7, 7])
+    assert_array_equal(result.values, [3, 5, 6, 7, 7])
     assert x.coupled_variable_group is result.coupled_variable_group
 
 
@@ -34,7 +35,7 @@ def test_stochastic_scalar_floordiv_scalar():
     result = x // 3
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [3, 7, 10, 14, 18])
+    assert_array_equal(result.values, [3, 7, 10, 14, 18])
     assert x.coupled_variable_group is result.coupled_variable_group
 
 
@@ -44,7 +45,7 @@ def test_scalar_rfloordiv_stochastic_scalar():
     result = 20 // x
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [10, 6, 5, 4, 3])
+    assert_array_equal(result.values, [10, 6, 5, 4, 3])
     assert x.coupled_variable_group is result.coupled_variable_group
 
 
@@ -60,7 +61,7 @@ def test_freqsev_floordiv_scalar():
     result = fs // 5
 
     assert isinstance(result, FreqSevSims)
-    np.testing.assert_array_equal(result.values, [2, 4, 6, 8, 11])
+    assert_array_equal(result.values, [2, 4, 6, 8, 11])
     assert fs.coupled_variable_group is result.coupled_variable_group
 
 
@@ -76,7 +77,7 @@ def test_stochastic_scalar_mod():
     result = x % y
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [1, 1, 2, 1, 5])
+    assert_array_equal(result.values, [1, 1, 2, 1, 5])
     assert x.coupled_variable_group is result.coupled_variable_group
 
 
@@ -86,7 +87,7 @@ def test_stochastic_scalar_mod_scalar():
     result = x % 7
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [3, 0, 4, 1, 5])
+    assert_array_equal(result.values, [3, 0, 4, 1, 5])
     assert x.coupled_variable_group is result.coupled_variable_group
 
 
@@ -96,7 +97,7 @@ def test_scalar_rmod_stochastic_scalar():
     result = 20 % x
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [2, 0, 0, 2, 6])
+    assert_array_equal(result.values, [2, 0, 0, 2, 6])
     assert x.coupled_variable_group is result.coupled_variable_group
 
 
@@ -110,7 +111,7 @@ def test_freqsev_mod_scalar():
     result = fs % 10
 
     assert isinstance(result, FreqSevSims)
-    np.testing.assert_array_equal(result.values, [1, 2, 3, 4, 5])
+    assert_array_equal(result.values, [1, 2, 3, 4, 5])
     assert fs.coupled_variable_group is result.coupled_variable_group
 
 
@@ -127,8 +128,8 @@ def test_stochastic_scalar_divmod():
 
     assert isinstance(quotient, StochasticScalar)
     assert isinstance(remainder, StochasticScalar)
-    np.testing.assert_array_equal(quotient.values, [3, 5, 6, 7, 7])
-    np.testing.assert_array_equal(remainder.values, [1, 1, 2, 1, 5])
+    assert_array_equal(quotient.values, [3, 5, 6, 7, 7])
+    assert_array_equal(remainder.values, [1, 1, 2, 1, 5])
 
 
 def test_stochastic_scalar_divmod_scalar():
@@ -138,8 +139,8 @@ def test_stochastic_scalar_divmod_scalar():
 
     assert isinstance(quotient, StochasticScalar)
     assert isinstance(remainder, StochasticScalar)
-    np.testing.assert_array_equal(quotient.values, [1, 3, 4, 6, 7])
-    np.testing.assert_array_equal(remainder.values, [3, 0, 4, 1, 5])
+    assert_array_equal(quotient.values, [1, 3, 4, 6, 7])
+    assert_array_equal(remainder.values, [3, 0, 4, 1, 5])
 
 
 def test_scalar_rdivmod_stochastic_scalar():
@@ -149,8 +150,8 @@ def test_scalar_rdivmod_stochastic_scalar():
 
     assert isinstance(quotient, StochasticScalar)
     assert isinstance(remainder, StochasticScalar)
-    np.testing.assert_array_equal(quotient.values, [6, 5, 4, 3, 2])
-    np.testing.assert_array_equal(remainder.values, [2, 0, 0, 2, 6])
+    assert_array_equal(quotient.values, [6, 5, 4, 3, 2])
+    assert_array_equal(remainder.values, [2, 0, 0, 2, 6])
 
 
 # =============================================================================
@@ -164,7 +165,7 @@ def test_stochastic_scalar_positive():
     result = +x
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [-5, -2, 0, 3, 7])
+    assert_array_equal(result.values, [-5, -2, 0, 3, 7])
     # Should create new object but not merge coupling groups
     assert result is not x
 
@@ -175,7 +176,7 @@ def test_stochastic_scalar_abs():
     result = abs(x)
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [5, 2, 0, 3, 7])
+    assert_array_equal(result.values, [5, 2, 0, 3, 7])
 
 
 def test_stochastic_scalar_negative():
@@ -184,7 +185,7 @@ def test_stochastic_scalar_negative():
     result = -x
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [-1, -2, -3, -4, -5])
+    assert_array_equal(result.values, [-1, -2, -3, -4, -5])
 
 
 def test_freqsev_abs():
@@ -197,7 +198,7 @@ def test_freqsev_abs():
     result = abs(fs)
 
     assert isinstance(result, FreqSevSims)
-    np.testing.assert_array_equal(result.values, [10, 20, 30, 40, 50])
+    assert_array_equal(result.values, [10, 20, 30, 40, 50])
 
 
 # =============================================================================
@@ -211,7 +212,7 @@ def test_stochastic_scalar_round_no_digits():
     result = round(x)
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [1, 2, 4, 5, 5])
+    assert_array_equal(result.values, [1, 2, 4, 5, 5])
 
 
 def test_stochastic_scalar_round_with_digits():
@@ -220,7 +221,7 @@ def test_stochastic_scalar_round_with_digits():
     result = round(x, 1)
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_almost_equal(result.values, [1.2, 2.6, 3.9, 4.5, 5.1])
+    assert_array_almost_equal(result.values, [1.2, 2.6, 3.9, 4.5, 5.1])
 
 
 def test_stochastic_scalar_round_negative_digits():
@@ -229,7 +230,7 @@ def test_stochastic_scalar_round_negative_digits():
     result = round(x, -1)
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [120, 460, 790, 1230, 5680])
+    assert_array_equal(result.values, [120, 460, 790, 1230, 5680])
 
 
 def test_freqsev_round():
@@ -242,7 +243,7 @@ def test_freqsev_round():
     result = round(fs, 1)
 
     assert isinstance(result, FreqSevSims)
-    np.testing.assert_array_almost_equal(result.values, [1.2, 4.6, 7.9, 10.1, 12.3])
+    assert_array_almost_equal(result.values, [1.2, 4.6, 7.9, 10.1, 12.3])
 
 
 # =============================================================================
@@ -256,7 +257,7 @@ def test_stochastic_scalar_floor():
     result = math.floor(x)
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [1, 2, 3, 4, 5])
+    assert_array_equal(result.values, [1, 2, 3, 4, 5])
 
 
 def test_stochastic_scalar_ceil():
@@ -265,7 +266,7 @@ def test_stochastic_scalar_ceil():
     result = math.ceil(x)
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [2, 3, 4, 5, 6])
+    assert_array_equal(result.values, [2, 3, 4, 5, 6])
 
 
 def test_stochastic_scalar_trunc():
@@ -274,7 +275,7 @@ def test_stochastic_scalar_trunc():
     result = math.trunc(x)
 
     assert isinstance(result, StochasticScalar)
-    np.testing.assert_array_equal(result.values, [1, 2, -3, -4, 5])
+    assert_array_equal(result.values, [1, 2, -3, -4, 5])
 
 
 def test_freqsev_floor():
@@ -287,7 +288,7 @@ def test_freqsev_floor():
     result = math.floor(fs)
 
     assert isinstance(result, FreqSevSims)
-    np.testing.assert_array_equal(result.values, [1, 2, 3, 4, 5])
+    assert_array_equal(result.values, [1, 2, 3, 4, 5])
 
 
 def test_freqsev_ceil():
@@ -300,7 +301,7 @@ def test_freqsev_ceil():
     result = math.ceil(fs)
 
     assert isinstance(result, FreqSevSims)
-    np.testing.assert_array_equal(result.values, [2, 3, 4, 5, 6])
+    assert_array_equal(result.values, [2, 3, 4, 5, 6])
 
 
 # =============================================================================
@@ -357,7 +358,7 @@ def test_combined_operations():
     # round(x) // y + x % y = [4.7, 6.3, 8.9, 8.1, 12.6]
     # abs(...) = [4.7, 6.3, 8.9, 8.1, 12.6]
     expected = np.array([4.7, 6.3, 8.9, 8.1, 12.6])
-    np.testing.assert_array_almost_equal(result.values, expected, decimal=10)
+    assert_array_almost_equal(result.values, expected, decimal=10)
 
 
 def test_floor_division_with_negative_numbers():
@@ -368,7 +369,7 @@ def test_floor_division_with_negative_numbers():
 
     assert isinstance(result, StochasticScalar)
     # Python's floor division rounds toward negative infinity
-    np.testing.assert_array_equal(result.values, [-4, -6, 6, -8, 7])
+    assert_array_equal(result.values, [-4, -6, 6, -8, 7])
 
 
 def test_modulo_with_negative_numbers():
@@ -379,7 +380,7 @@ def test_modulo_with_negative_numbers():
 
     assert isinstance(result, StochasticScalar)
     # Python's modulo has same sign as divisor
-    np.testing.assert_array_equal(result.values, [2, 3, 2, 5, 5])
+    assert_array_equal(result.values, [2, 3, 2, 5, 5])
 
 
 def test_unhashable():

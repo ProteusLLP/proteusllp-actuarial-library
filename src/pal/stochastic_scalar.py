@@ -17,7 +17,7 @@ import plotly.graph_objects as go  # type: ignore
 from pal import stats  # type: ignore
 
 from ._compat import Self
-from ._maths import xp
+from ._maths import asnumpy, scalar_or_array, to_backend, xp
 from .couplings import CouplingGroup, ProteusStochasticVariable
 from .stats import NumberOrList
 from .types import Numeric, NumericLike, ScipyNumeric
@@ -116,17 +116,10 @@ class StochasticScalar(ProteusStochasticVariable):
             #
             var_pos = var_not_stochastic_scalar.index(True)
             return inputs[var_pos].__array_ufunc__(ufunc, method, *inputs, **kwargs)
-        _inputs = tuple(
-            (
-                x.values
-                if isinstance(x, StochasticScalar)
-                else x  # promote an input ndarray to match the simulation index
-            )
-            for x in inputs
-        )
+        _inputs = tuple(x.values if isinstance(x, StochasticScalar) else to_backend(x) for x in inputs)
         out = kwargs.get("out", ())
         if out:
-            kwargs["out"] = tuple(x.values for x in out)
+            kwargs["out"] = tuple(x.values if isinstance(x, StochasticScalar) else x for x in out)
 
         # Handle reduction operations - return scalars directly
         if method == "reduce":
@@ -140,7 +133,7 @@ class StochasticScalar(ProteusStochasticVariable):
                 return self._wrap_result_with_coupling(result, inputs)
 
             # Standard reduction returns scalar directly
-            return result
+            return scalar_or_array(result)
 
         # Handle reduceat/accumulate operations - return wrapped arrays
         if method in ("reduceat", "accumulate"):
@@ -168,30 +161,38 @@ class StochasticScalar(ProteusStochasticVariable):
         Raises:
             NotImplementedError: If the function is not supported
         """
-        # Extract values from StochasticScalar objects, leave others as-is
-        processed_args = tuple(x.values if isinstance(x, StochasticScalar) else x for x in args)
+        # Extract PAL values and move any NumPy operands to the active backend.
+        processed_args = tuple(x.values if isinstance(x, StochasticScalar) else to_backend(x) for x in args)
+        if func is np.where:
+            processed_args = (xp.asarray(processed_args[0]), *processed_args[1:])
         result = func(*processed_args, **kwargs)
 
-        # If result is a scalar, return it directly
-        # Type ignore: Pyright can't infer the exact numpy scalar type
+        scalar_result = scalar_or_array(result)
+        if scalar_result is not result:
+            return scalar_result  # type: ignore[return-value]
         if isinstance(result, (np.number, np.bool_, bool)) or np.isscalar(result):
-            return result  # type: ignore[misc]
+            return result  # type: ignore[return-value]
 
-        # Otherwise create a new StochasticScalar object with the result
+        # A StochasticScalar is one-dimensional. Functions such as stack return
+        # higher-dimensional backend arrays and should remain arrays.
+        if getattr(result, "ndim", None) != 1:
+            return result
         return self._wrap_result_with_coupling(result, args)
 
-    def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:
+    def __array__(self, dtype: t.Any = None, copy: bool | None = None) -> npt.NDArray[t.Any]:
         """Convert the StochasticScalar to a numpy array.
 
         Args:
             dtype: The desired data type of the output array.
+            copy: Whether NumPy requires a copy of the host array.
 
         Returns:
             A numpy array representation of the StochasticScalar values.
         """
-        if dtype:
-            return self.values.astype(dtype)
-        return self.values
+        result = asnumpy(self.values, dtype=dtype)
+        if copy is True:
+            return result.copy()
+        return result
 
     def __getitem__(self, index: ScipyNumeric | StochasticScalar) -> StochasticScalar:
         # FIXME: Type signature inconsistent with SequenceLike protocol and runtime
@@ -250,17 +251,51 @@ class StochasticScalar(ProteusStochasticVariable):
         """Convert the values to a Python list."""
         return t.cast(list[Numeric], self.values.tolist())
 
-    def mean(self) -> float:
-        """Return the mean of the variable across the simulation dimension."""
-        return float(xp.mean(self.values))
+    def mean(
+        self,
+        axis: int | tuple[int, ...] | None = None,
+        dtype: t.Any = None,
+        out: t.Any = None,
+        keepdims: bool = False,
+    ) -> t.Any:
+        """Return the mean across the simulations."""
+        result = xp.mean(self.values, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
+        return self._wrap_reduction_result(result)
 
-    def sum(self) -> float:
-        """Return the sum of the variable across the simulation dimension."""
-        return float(xp.sum(self.values))
+    def sum(
+        self,
+        axis: int | tuple[int, ...] | None = None,
+        dtype: t.Any = None,
+        out: t.Any = None,
+        keepdims: bool = False,
+    ) -> t.Any:
+        """Return the sum across the simulations."""
+        result = xp.sum(self.values, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
+        return self._wrap_reduction_result(result)
 
-    def std(self) -> float:
-        """Return the standard deviation across the simulation dimension."""
-        return float(xp.std(self.values))
+    def std(
+        self,
+        axis: int | tuple[int, ...] | None = None,
+        dtype: t.Any = None,
+        out: t.Any = None,
+        ddof: int = 0,
+        keepdims: bool = False,
+    ) -> t.Any:
+        """Return the standard deviation across the simulations."""
+        result = xp.std(self.values, axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
+        return self._wrap_reduction_result(result)
+
+    def var(
+        self,
+        axis: int | tuple[int, ...] | None = None,
+        dtype: t.Any = None,
+        out: t.Any = None,
+        ddof: int = 0,
+        keepdims: bool = False,
+    ) -> t.Any:
+        """Return the variance across the simulations."""
+        result = xp.var(self.values, axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
+        return self._wrap_reduction_result(result)
 
     def percentile(self, p: NumberOrList) -> NumberOrList:
         """Return the percentile of the variable across the simulation dimension.
@@ -336,7 +371,18 @@ class StochasticScalar(ProteusStochasticVariable):
         """Reorder the simulations in the variable."""
         self.values = self.values[new_order]
 
-    def _wrap_result_with_coupling(self, result_array: t.Any, inputs: tuple[t.Any, ...]) -> StochasticScalar:
+    def _wrap_reduction_result(self, result: t.Any) -> t.Any:
+        """Return scalar reductions directly and preserve one-dimensional results."""
+        scalar_result = scalar_or_array(result)
+        if scalar_result is not result:
+            return scalar_result
+        if getattr(result, "ndim", None) == 1:
+            wrapped = StochasticScalar(result)
+            wrapped.coupled_variable_group.merge(self.coupled_variable_group)
+            return wrapped
+        return result
+
+    def _wrap_result_with_coupling(self, result_array: t.Any, inputs: tuple[t.Any, ...]) -> t.Any:
         """Wrap result in StochasticScalar and merge coupling groups.
 
         Args:
@@ -346,6 +392,14 @@ class StochasticScalar(ProteusStochasticVariable):
         Returns:
             A new StochasticScalar with proper coupling group merging.
         """
+        if isinstance(result_array, tuple):
+            return tuple(self._wrap_result_with_coupling(item, inputs) for item in result_array)
+        scalar_result = scalar_or_array(result_array)
+        if scalar_result is not result_array:
+            return scalar_result
+        if getattr(result_array, "ndim", None) != 1:
+            return result_array
+
         wrapped_result = StochasticScalar(result_array)
         for input in inputs:
             if isinstance(input, ProteusStochasticVariable):

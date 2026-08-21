@@ -16,6 +16,7 @@ import numpy.typing as npt
 
 # project
 from ._compat import Self
+from ._maths import create_random_generator
 from ._maths import xp as np
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "Numeric",
     "NumericLike",
     "NumericProtocol",
+    "RandomGenerator",
     "ScipyNumeric",
     "VectorLike",
 ]
@@ -43,6 +45,7 @@ if t.TYPE_CHECKING:
     from .stochastic_scalar import StochasticScalar
 
 DistributionParameter = t.Union[int, float, "StochasticScalar"]
+RandomGenerator = t.Union[np.random.Generator, np.random.RandomState]
 
 T_value = t.TypeVar("T_value")
 T_co = t.TypeVar("T_co", covariant=True)
@@ -54,9 +57,13 @@ class Config:
 
     n_sims: int = 10000
     seed: int = 123456789
-    rng: np.random.Generator = np.random.default_rng(seed)
+    rng: RandomGenerator = dataclasses.field(init=False)
 
     _uid_counter = itertools.count(1)
+
+    def __post_init__(self) -> None:
+        """Initialize the random number generator from the configured seed."""
+        self.rng = create_random_generator(self.seed)
 
 
 @t.runtime_checkable
@@ -438,14 +445,12 @@ class DistributionLike(t.Protocol[T_distribution]):
         """Compute inverse cumulative distribution function."""
         ...
 
-    def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
-    ) -> ProteusLike[T_distribution]:
+    def generate(self, n_sims: int | None = None, rng: RandomGenerator | None = None) -> ProteusLike[T_distribution]:
         """Generate random samples from the distribution.
 
         Parameters:
             n_sims (int, optional): Number of simulations. Uses config.n_sims if None.
-            rng (np.random.Generator, optional): Random number generator.
+            rng (RandomGenerator, optional): Random number generator.
 
         Returns:
             Generated samples.

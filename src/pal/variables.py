@@ -62,6 +62,7 @@ from . import maths as pnp
 
 # local imports
 from ._compat import Self
+from ._maths import asnumpy, xp
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
@@ -200,7 +201,7 @@ class ProteusVariable(t.Generic[T]):
         """Return the number of elements in the variable."""
         return len(self.values)
 
-    def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:
+    def __array__(self, dtype: t.Any = None, copy: bool | None = None) -> npt.NDArray[t.Any]:
         """Convert ProteusVariable to numpy array for basic operations.
 
         This method enables ProteusVariable to work with numpy functions like
@@ -214,6 +215,7 @@ class ProteusVariable(t.Generic[T]):
 
         Args:
             dtype: Optional data type for the resulting array.
+            copy: Whether NumPy requires a copy of the resulting host array.
 
         Returns:
             A numpy array created by concatenating all values.
@@ -248,6 +250,9 @@ class ProteusVariable(t.Generic[T]):
 
         if dtype is not None:
             result = result.astype(dtype)
+
+        if copy is True:
+            return result.copy()
 
         return result
 
@@ -372,8 +377,11 @@ class ProteusVariable(t.Generic[T]):
         for arg in args:
             if arg is self:
                 # For the ProteusVariable itself, stack its dictionary values as columns
-                value_arrays = [np.asarray(value) for value in self.values.values()]
-                parsed_args.append(np.column_stack(value_arrays))
+                value_arrays = [
+                    value.values if isinstance(value, ProteusStochasticVariable) else xp.atleast_1d(xp.asarray(value))
+                    for value in self.values.values()
+                ]
+                parsed_args.append(xp.column_stack(value_arrays))
             else:
                 parsed_args.append(arg)
 
@@ -843,7 +851,9 @@ class ProteusVariable(t.Generic[T]):
             raise TypeError(f"First element must have 'values' attribute, got {type(self[0]).__name__}")
         n = len(self.values)
         result: list[list[float]] = [[0.0] * n] * n
-        values: list[npt.NDArray[t.Any]] = [t.cast(npt.NDArray[t.Any], self[i]) for i in range(len(self.values))]
+        values: list[npt.NDArray[t.Any]] = [
+            asnumpy(getattr(self[i], "values", self[i])) for i in range(len(self.values))
+        ]
         if correlation_type.lower() in ["spearman", "kendall"]:
             # rank the variables first
             for i, value in enumerate(values):
@@ -901,7 +911,7 @@ class ProteusVariable(t.Generic[T]):
                 go.Scatter(
                     # Type ignore: value.values is known to exist due to isinstance
                     # check
-                    x=np.sort(np.array(value.values)),  # type: ignore[attr-defined]
+                    x=np.sort(asnumpy(value.values)),  # type: ignore[attr-defined]
                     y=np.arange(value.n_sims) / value.n_sims,
                     name=label,
                 )

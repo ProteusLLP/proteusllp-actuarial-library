@@ -1,7 +1,7 @@
 <!--pytest-codeblocks:skipfile-->
 # Development Guide
 
-This project uses PDM for dependency management, uv for fast installs, and Docker devcontainers for development.
+This project uses pip for dependency installation and Docker devcontainers for development.
 
 ## Getting Started
 
@@ -14,98 +14,75 @@ This project uses PDM for dependency management, uv for fast installs, and Docke
 1. **Open in devcontainer**:
    - Open the project in VS Code
    - Command Palette → "Dev Containers: Reopen in Container"
-   - Wait for container to build (first time takes several minutes).
+   - Wait for the container to build.
 
 2. **Verify setup**:
    ```bash
-   python --version  # Should show Python 3.13.x
-   pdm --version
-   uv --version
+   python --version
+   pip --version
    pytest --version
    ```
 
-## Managing Dependencies
-
-### Dependency Groups
-
-This project uses PDM dependency groups defined in `pyproject.toml`:
-
-- **Core dependencies**: Required runtime dependencies (numpy, scipy, plotly, pandas)
-- **Optional dependencies**:
-  - `gpu`: CUDA support with cupy-cuda12x
-- **Development dependencies**:
-  - `test`: Testing tools (pytest, pytest-cov, pytest-xdist)
-  - `dev`: Development tools (jupyter, jupyterlab)
-
-**Important**: The devcontainer automatically installs ALL dependency groups (core, optional, and dev groups) to provide a complete development environment. This means you have access to all testing, development, and GPU dependencies without manual installation.
-
-### Adding New Dependencies
-
-Use PDM CLI to manage dependencies:
+The devcontainer installs the project in editable mode with the test, development, and documentation extras:
 
 ```bash
-# Add regular dependencies
-pdm add "new-package>=1.0"
-
-# Add optional dependencies (like GPU)
-pdm add -G gpu "cupy-cuda12x"
-
-# Add development/test dependencies
-pdm add -dG test "pytest-mock"
-
-# Remove dependencies
-pdm remove new-package
+pip install -e ".[test,dev,docs]"
 ```
 
-After adding dependencies, rebuild the container:
-- Command Palette → "Dev Containers: Rebuild Container"
+## Managing Dependencies
 
-### Installing GPU Dependencies
+Dependencies are declared in `pyproject.toml` using standard Python project metadata.
 
-GPU dependencies are in a separate group:
+- **Core dependencies**: required runtime dependencies such as NumPy, SciPy, Plotly and pandas.
+- **Optional dependencies**:
+  - `gpu`: CUDA support with `cupy-cuda12x`.
+  - `docs`: documentation build dependencies.
+  - `test`: testing tools.
+  - `dev`: development and static-analysis tools.
+
+After changing `pyproject.toml`, reinstall the project and the extras you need. For a full development environment:
+
 ```bash
-pdm install -G gpu
+pip install -e ".[test,dev,docs]"
+```
+
+For GPU support:
+
+```bash
+pip install -e ".[gpu]"
+```
+
+Or combine extras when required:
+
+```bash
+pip install -e ".[test,dev,docs,gpu]"
 ```
 
 ## Versioning
 
-**Versions are automatically managed from git tags** - no manual updates needed!
+Versions are automatically managed from Git tags by `setuptools-scm`; no manual version update is required.
 
-### How it works:
-- Version is determined from git tags using SCM (Source Code Management)
-- `dynamic = ["version"]` in pyproject.toml enables this
-- Create releases by tagging: `git tag v1.0.0` → version becomes `1.0.0`
-- Between tags: automatic dev versions like `1.0.0.dev5+g1a2b3c4.d20250630` - this tag would mean that you're on a development version of the package which is 5 commits ahead of `v1.0.0`, with git commit hash beginning `1a2b3c4` and built on date `20250630`. `pdm` likely uses `git describe --tags` to generate this string.
+- `dynamic = ["version"]` in `pyproject.toml` enables dynamic versioning.
+- A tag such as `v1.0.0` produces version `1.0.0`.
+- Commits between releases receive an automatically generated development version.
 
-### Creating a release:
-1. **Tag the release**: `git tag v1.0.0`
-2. **Push the tag**: `git push origin v1.0.0`
-3. **Create GitHub Release** from the tag → triggers automatic PyPI publishing
+### Creating a release
 
-### Check current version:
+1. Tag the release: `git tag v1.0.0`
+2. Push the tag: `git push origin v1.0.0`
+3. Create a GitHub Release from that tag. The release workflow publishes the package to PyPI.
+
+### Check the installed version
+
 ```bash
-pdm show --version  # Shows current computed version
+pip show proteusllp-actuarial-library
 ```
 
 ## Release Process
 
-### Creating GitHub Releases
+### Use PEP 440-Compliant Versions
 
-When creating a GitHub release, follow these steps to avoid common issues. If successful, CI will be triggered and a release built and pushed to PyPI with the associated tag.
-
-#### Create and Push a Valid Tag
-
-GitHub releases require an existing tag. Create one from the command line:
-
-```bash
-# Create a PEP 440-compliant tag
-git tag v0.0.1a1
-git push origin v0.0.1a1
-```
-
-#### Use PEP 440-Compliant Versions
-
-Use a PEP-440-compliant version format. This project uses PDM for Python package versioning, which follows PEP 440. Use these valid version formats:
+Use a PEP 440-compliant version format, for example:
 
 - `v0.0.1a1` (alpha)
 - `v0.0.1b1` (beta)
@@ -113,106 +90,69 @@ Use a PEP-440-compliant version format. This project uses PDM for Python package
 - `v0.0.1.dev1` (development)
 - `v0.0.1.post1` (post-release)
 
-**Avoid** arbitrary suffixes like `-test` that aren't PEP 440 compliant.
+Avoid arbitrary suffixes such as `-test`.
 
-#### Mark Pre-releases Appropriately
-
-For pre-release versions, use GitHub's "Set as pre-release" checkbox instead of adding non-standard suffixes to your tag name.
-
-### Troubleshooting Release Issues
-
-#### "tag name can't be blank, tag name is not well-formed"
-
-This error occurs when:
-- The tag doesn't exist in the repository
-- The tag hasn't been pushed to GitHub
-- The tag name isn't PEP 440 compliant
-
-**Solution**: Create and push a valid tag first, then create the GitHub release.
-
-#### "published releases must have a valid tag"
-
-This indicates the tag exists locally but hasn't been pushed to GitHub.
-
-**Solution**: Push the tag with `git push origin <tag-name>`
+For pre-release versions, use GitHub's "Set as pre-release" option when creating the release.
 
 ## Running Tests
 
 ### From VS Code Terminal
 
-Basic test commands:
 ```bash
 # Run all tests
 pytest
 
-# Run specific test file
+# Run a specific test file
 pytest tests/test_variables.py
 
 # Run with verbose output
 pytest -v
 
-# Run tests with coverage report
+# Run tests with coverage
 pytest --cov=pal
 
-# Run tests in parallel (faster)
+# Run tests in parallel
 pytest -n auto
 
-# Run tests with codeblocks (for doc tests)
+# Execute documentation code blocks
 pytest --codeblocks
 ```
 
 ### From VS Code Test Explorer
 
-1. Open the Test Explorer panel (Testing icon in sidebar)
-2. Click "Configure Python Tests" if prompted
-3. Select "pytest" as the test framework
-4. Tests will appear in the explorer for easy running/debugging
-
-### Test Structure
-
-Tests are organized in the `tests/` directory:
-- `test_*.py` files contain test cases
-- Each test function starts with `test_`
-- Use `pytest.ini` for configuration
+1. Open the Test Explorer panel.
+2. Click "Configure Python Tests" if prompted.
+3. Select `pytest` as the test framework.
 
 ## Container Architecture
 
-The project uses a multi-stage Dockerfile:
-
-- **base**: Python 3.13 + system dependencies
-- **deps**: All PDM dependencies installed (cached layer)
-- **dev**: Development tools + Jupyter + non-root user
-- **ci**: Test runners + CI tools
+The project uses separate CPU and GPU development containers. Both install PAL into the container using pip in editable mode, so changes to the source tree are immediately available.
 
 ## Troubleshooting
 
-### "pdm.lock out of date" Error
+### Dependencies Not Found
 
-This happens when dependencies change:
+Reinstall the editable package with the required extras:
 
-1. Sync dependencies: `pdm sync`
-2. Or rebuild container: "Dev Containers: Rebuild Container"
+```bash
+pip install -e ".[test,dev,docs]"
+```
+
+If the devcontainer itself has changed, rebuild it with "Dev Containers: Rebuild Container".
 
 ### Container Won't Start
 
-Try rebuilding without cache:
-```bash
-docker build --no-cache --target dev -t proteus-dev .
-```
-
-### Dependencies Not Found
-
-Make sure you rebuilt the container after adding dependencies with `pdm add`. VS Code may use cached layers that don't include new dependencies.
+Rebuild the relevant container without cache if necessary.
 
 ## See Also
 
 - [Usage Guide](usage.md) - Comprehensive examples and API documentation
-- [Examples](https://github.com/ProteusLLP/proteus-actuarial-library/tree/main/examples) - Example scripts showing library usage
-- [Main README](https://github.com/ProteusLLP/proteus-actuarial-library) - Project overview and installation
+- [Examples](https://github.com/ProteusLLP/proteusllp-actuarial-library/tree/main/examples) - Example scripts showing library usage
+- [Main README](https://github.com/ProteusLLP/proteusllp-actuarial-library) - Project overview and installation
 
 ## References
 
-- [PDM Documentation](https://pdm-project.org/)
-- [uv Documentation](https://docs.astral.sh/uv/)
+- [pip Documentation](https://pip.pypa.io/)
+- [Python Packaging User Guide](https://packaging.python.org/)
 - [Dev Containers Documentation](https://containers.dev/)
 - [VS Code Dev Containers](https://code.visualstudio.com/docs/devcontainers/containers)
