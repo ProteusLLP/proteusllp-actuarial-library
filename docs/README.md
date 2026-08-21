@@ -11,20 +11,12 @@ https://proteusllp-actuarial-library.readthedocs.io/
 
 ### Prerequisites
 
-Install the documentation dependencies:
+Install the documentation dependencies with pip:
 
 <!--pytest.mark.skip-->
 
 ```bash
-pdm install -G docs
-```
-
-Or with pip:
-
-<!--pytest.mark.skip-->
-
-```bash
-pip install -e .[docs]
+pip install -e ".[docs]"
 ```
 
 ### Build HTML Documentation
