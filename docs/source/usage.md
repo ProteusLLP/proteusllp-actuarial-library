@@ -98,12 +98,12 @@ PAL uses the `default_rng` class from `numpy.random`, which can also be configur
 
 ### GPU Acceleration
 
-For CUDA-compatible GPUs, install PAL with the GPU extra:
+For CUDA-compatible GPUs, install PAL from PyPI with the GPU extra:
 
 <!--pytest.mark.skip-->
 
 ```bash
-pip install -e ".[gpu]"
+pip install "proteusllp-actuarial-library[gpu]"
 ```
 
 Enable GPU mode by setting the environment variable:
