@@ -1813,7 +1813,7 @@ class GeneralizedInverseGaussian(DistributionBase):
         return self._wrap_result(result, u)
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         """Generate random samples using SciPy's GIG sampler."""
         p, scipy_shape, scipy_scale, loc = self._scipy_params()
         result = geninvgauss.rvs(
