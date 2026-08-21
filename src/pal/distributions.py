@@ -26,6 +26,7 @@ from abc import ABC
 
 import numpy as np
 import scipy.special as scipy_special
+from scipy.stats import geninvgauss
 
 # Local imports
 from ._compat import override
@@ -569,6 +570,241 @@ class Beta(DistributionBase):
         )
 
 
+class MBBEFD(DistributionBase):
+    r"""Bernegger's MBBEFD distribution on the interval :math:`[0,1]`.
+
+    This is the :math:`(g,b)` parameterisation of the Maxwell-Boltzmann,
+    Bose-Einstein and Fermi-Dirac distribution class introduced by Bernegger
+    for exposure rating. For finite :math:`g>1`, :math:`b>0`, :math:`b\ne1`
+    and :math:`gb\ne1`, its cumulative distribution function is
+
+    .. math::
+
+        F(x) =
+        \begin{cases}
+        0, & x \leq 0, \\
+        1 - \dfrac{(1-b)b^x}
+        {(g-1)b + (1-gb)b^x}, & 0 < x < 1, \\
+        1, & x \geq 1.
+        \end{cases}
+
+    The density of the continuous part on :math:`(0,1)` is
+
+    .. math::
+
+        f(x) = -\frac{(1-b)(g-1)\log(b)b^{1+x}}
+        {\left((g-1)b+(1-gb)b^x\right)^2}.
+
+    There is also an atom at total loss:
+
+    .. math::
+
+        \Pr(X=1)=\frac{1}{g},
+        \qquad F(1^-)=1-\frac{1}{g}.
+
+    Consequently, the quantile function in the main parameter region is
+
+    .. math::
+
+        F^{-1}(u) =
+        \begin{cases}
+        1 - \dfrac{\log\left(
+        \dfrac{gb-1}{g-1}+
+        \dfrac{1-b}{(1-u)(g-1)}
+        \right)}{\log(b)}, & 0 \leq u < 1-1/g, \\
+        1, & 1-1/g \leq u \leq 1.
+        \end{cases}
+
+    The limiting CDFs used when the main expression is indeterminate are
+
+    .. math::
+
+        F(x) = \frac{(g-1)x}{1+(g-1)x}
+        \quad (b=1),
+        \qquad
+        F(x) = 1-b^x
+        \quad (gb=1),
+
+    for :math:`0<x<1`. If :math:`g=1` or :math:`b=0`, the distribution is a
+    point mass at one.
+
+    Its exposure curve is the normalized limited expected value
+
+    .. math::
+
+        G(x) = \frac{E[\min(X,x)]}{E[X]}
+        = \frac{\log\left(
+        \dfrac{(g-1)b+(1-gb)b^x}{1-b}
+        \right)}{\log(gb)},
+        \qquad 0 \leq x \leq 1.
+
+    The corresponding mean is
+
+    .. math::
+
+        E[X] = \frac{(1-b)\log(gb)}{(1-gb)\log(b)}.
+
+    The parameters satisfy :math:`g \geq 1` and :math:`b \geq 0` and are
+    required to be finite by this implementation.
+
+    Parameters:
+        g: Reciprocal of the total-loss probability.
+        b: Shape parameter.
+
+    References:
+        Bernegger, S. (1997). The Swiss Re Exposure Curves and the MBBEFD
+        Distribution Class. ASTIN Bulletin 27(1), 99--111.
+    """
+
+    def __init__(
+        self,
+        g: DistributionParameter,
+        b: DistributionParameter,
+    ) -> None:
+        """Initialize the MBBEFD distribution.
+
+        Args:
+            g: Reciprocal of the total-loss probability.
+            b: Shape parameter.
+        """
+        super().__init__(g=g, b=b)
+
+    @classmethod
+    def from_c(cls, c: DistributionParameter) -> MBBEFD:
+        r"""Construct the one-parameter Swiss Re curve associated with :math:`c`.
+
+        The conversion is :math:`g=\exp((0.78+0.12c)c)` and
+        :math:`b=\exp(3.1-0.15(1+c)c)`.
+
+        Args:
+            c: Swiss Re curve parameter.
+
+        Returns:
+            MBBEFD distribution with the corresponding ``g`` and ``b`` values.
+        """
+        g = t.cast(DistributionParameter, np.exp((0.78 + 0.12 * c) * c))
+        b = t.cast(DistributionParameter, np.exp(3.1 - 0.15 * (1 + c) * c))
+        return cls(g=g, b=b)
+
+    def _validated_params(self) -> tuple[t.Any, t.Any]:
+        """Return parameters after checking the admissible region."""
+        g, b = self._param_values
+        if bool(np.any(~np.isfinite(g))) or bool(np.any(g < 1)):
+            raise ValueError("g must be finite and greater than or equal to 1.")
+        if bool(np.any(~np.isfinite(b))) or bool(np.any(b < 0)):
+            raise ValueError("b must be finite and greater than or equal to 0.")
+        return g, b
+
+    def _wrap_result(
+        self,
+        result: t.Any,
+        argument: DistributionParameter,
+    ) -> ReturnType:
+        """Preserve stochastic coupling for array-valued results."""
+        candidates = (argument, *self._params.values())
+        stochastic_inputs = [value for value in candidates if isinstance(value, StochasticScalar)]
+        if not stochastic_inputs:
+            return float(result)
+
+        wrapped = StochasticScalar(result)
+        for value in stochastic_inputs:
+            wrapped.coupled_variable_group.merge(value.coupled_variable_group)
+        return wrapped
+
+    @override
+    def cdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the cumulative distribution function, including the atom at one."""
+        g, b = self._validated_params()
+        values = x.values if isinstance(x, StochasticScalar) else x
+        degenerate = (g == 1) | (b == 0)
+        b_one = np.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
+        bg_one = np.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
+
+        safe_g = np.where(degenerate, 2.0, g)
+        safe_b = np.where(degenerate | b_one | bg_one, 2.0, b)
+        limit_b = np.where(degenerate | b_one, 0.5, b)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            main = 1 - (1 - safe_b) * safe_b**values / ((safe_g - 1) * safe_b + (1 - safe_g * safe_b) * safe_b**values)
+            b_limit = 1 - 1 / (1 + (g - 1) * values)
+            bg_limit = 1 - limit_b**values
+
+        interior = np.where(
+            degenerate,
+            0.0,
+            np.where(b_one, b_limit, np.where(bg_one, bg_limit, main)),
+        )
+        result = np.where(values <= 0, 0.0, np.where(values >= 1, 1.0, interior))
+        return self._wrap_result(result, x)
+
+    @override
+    def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Compute the inverse CDF, returning one across the total-loss atom."""
+        g, b = self._validated_params()
+        probabilities = u.values if isinstance(u, StochasticScalar) else u
+        degenerate = (g == 1) | (b == 0)
+        b_one = np.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
+        bg_one = np.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
+
+        safe_g = np.where(degenerate, 2.0, g)
+        safe_b = np.where(degenerate | b_one | bg_one, 2.0, b)
+        limit_b = np.where(degenerate | b_one, 0.5, b)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            main_argument = (safe_g * safe_b - 1) / (safe_g - 1) + ((1 - safe_b) / ((1 - probabilities) * (safe_g - 1)))
+            main = 1 - np.log(main_argument) / np.log(safe_b)
+            b_limit = probabilities / ((1 - probabilities) * (safe_g - 1))
+            bg_limit = np.log1p(-probabilities) / np.log(limit_b)
+
+        below_atom = np.where(
+            degenerate,
+            1.0,
+            np.where(b_one, b_limit, np.where(bg_one, bg_limit, main)),
+        )
+        result = np.where(
+            (probabilities < 0) | (probabilities > 1),
+            np.nan,
+            np.where(
+                degenerate | (probabilities >= 1 - 1 / g),
+                1.0,
+                np.where(probabilities == 0, 0.0, below_atom),
+            ),
+        )
+        return self._wrap_result(result, u)
+
+    def exposure_curve(self, x: DistributionParameter) -> ReturnType:
+        r"""Compute the normalized limited expected value curve.
+
+        The exposure curve is :math:`G(x)=E[\min(X,x)]/E[X]`.
+
+        Args:
+            x: Policy limit as a proportion of the maximum loss.
+
+        Returns:
+            Proportion of expected loss below the policy limit.
+        """
+        g, b = self._validated_params()
+        values = x.values if isinstance(x, StochasticScalar) else x
+        degenerate = (g == 1) | (b == 0)
+        b_one = np.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
+        bg_one = np.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
+
+        safe_g = np.where(degenerate, 2.0, g)
+        safe_b = np.where(degenerate | b_one | bg_one, 2.0, b)
+        limit_b = np.where(degenerate | b_one, 0.5, b)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            numerator = (safe_g - 1) * safe_b + (1 - safe_g * safe_b) * safe_b**values
+            main = np.log(numerator / (1 - safe_b)) / np.log(safe_g * safe_b)
+            b_limit = np.log1p((safe_g - 1) * values) / np.log(safe_g)
+            bg_limit = (1 - limit_b**values) / (1 - limit_b)
+
+        interior = np.where(
+            degenerate,
+            values,
+            np.where(b_one, b_limit, np.where(bg_one, bg_limit, main)),
+        )
+        result = np.where(values <= 0, 0.0, np.where(values >= 1, 1.0, interior))
+        return self._wrap_result(result, x)
+
+
 class LogLogistic(DistributionBase):
     r"""Log-Logistic Distribution.
 
@@ -786,6 +1022,95 @@ class Gamma(DistributionBase):
             rng.gamma(_rng_value(alpha, rng), _rng_value(theta, rng), size=n_sims) + _rng_value(loc, rng)
         )
         return result
+
+
+class NonCentralChiSquared(DistributionBase):
+    r"""Noncentral chi-squared distribution.
+
+    The noncentral chi-squared distribution with degrees of freedom
+    :math:`\nu>0` and noncentrality parameter :math:`\lambda\geq0` has density
+
+    .. math::
+
+        f(x) = \frac{1}{2}\exp\left(-\frac{x+\lambda}{2}\right)
+        \left(\frac{x}{\lambda}\right)^{\nu/4-1/2}
+        I_{\nu/2-1}\left(\sqrt{\lambda x}\right),
+        \qquad x>0,
+
+    for :math:`\lambda>0`, where :math:`I_a` is the modified Bessel function
+    of the first kind. Equivalently, its CDF can be written as the Poisson
+    mixture
+
+    .. math::
+
+        F(x) = \exp\left(-\frac{\lambda}{2}\right)
+        \sum_{j=0}^{\infty}
+        \frac{(\lambda/2)^j}{j!}
+        P\left(\frac{\nu}{2}+j,\frac{x}{2}\right),
+
+    where :math:`P(a,z)` is the regularized lower incomplete gamma function.
+    When :math:`\lambda=0`, this reduces to the central chi-squared
+    distribution. Its first two moments are
+
+    .. math::
+
+        E[X]=\nu+\lambda,
+        \qquad
+        \operatorname{Var}(X)=2(\nu+2\lambda).
+
+    Parameters:
+        df: Degrees of freedom :math:`\nu>0`.
+        nonc: Noncentrality parameter :math:`\lambda\geq0`.
+
+    Notes:
+        Random generation supports both CPU and GPU execution. CDF and inverse
+        CDF evaluation are currently supported on the CPU only.
+    """
+
+    def __init__(
+        self,
+        df: DistributionParameter,
+        nonc: DistributionParameter,
+    ) -> None:
+        """Initialize a noncentral chi-squared distribution.
+
+        Args:
+            df: Positive degrees of freedom.
+            nonc: Non-negative noncentrality parameter.
+        """
+        super().__init__(df=df, nonc=nonc)
+
+    def _validated_params(self) -> tuple[t.Any, t.Any]:
+        """Return parameters after checking the admissible region."""
+        df, nonc = self._param_values
+        if bool(xp.any(xp.asarray(df) <= 0)):
+            raise ValueError("df must be strictly positive.")
+        if bool(xp.any(xp.asarray(nonc) < 0)):
+            raise ValueError("nonc must be greater than or equal to 0.")
+        return df, nonc
+
+    @override
+    def cdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the cumulative distribution function."""
+        if xp.__name__ == "cupy":
+            raise NotImplementedError("NonCentralChiSquared CDF is not supported on GPU.")
+        df, nonc = self._validated_params()
+        return _special_call(special.chndtr, x, df, nonc)  # type: ignore[return-value]
+
+    @override
+    def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Compute the inverse cumulative distribution function."""
+        if xp.__name__ == "cupy":
+            raise NotImplementedError("NonCentralChiSquared inverse CDF is not supported on GPU.")
+        df, nonc = self._validated_params()
+        return _special_call(special.chndtrix, u, df, nonc)  # type: ignore[return-value]
+
+    @override
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
+        """Generate random samples on the backend used by the random generator."""
+        df, nonc = self._validated_params()
+        result = rng.noncentral_chisquare(_rng_value(df, rng), _rng_value(nonc, rng), size=n_sims)
+        return StochasticScalar(result)
 
 
 class InverseGamma(DistributionBase):
@@ -1338,6 +1663,170 @@ class InverseGaussian(DistributionBase):
         return StochasticScalar(x)
 
 
+class GeneralizedInverseGaussian(DistributionBase):
+    r"""Generalized inverse Gaussian distribution.
+
+    Let :math:`Y=X-\mu`, where :math:`\mu` is the location parameter. The
+    probability density function is
+
+    .. math::
+
+        f_X(x) =
+        \begin{cases}
+        \dfrac{(\psi / \chi)^{p / 2}}
+        {2K_p(\sqrt{\chi\psi})}
+        y^{p-1}
+        \exp\left[-\dfrac{1}{2}\left(
+        \dfrac{\chi}{y}+\psi y
+        \right)\right], & y>0, \\
+        0, & y\leq0,
+        \end{cases}
+
+    where :math:`p\in\mathbb{R}`, :math:`\chi>0`, :math:`\psi>0`, and
+    :math:`K_\nu` is the modified Bessel function of the second kind. All
+    power moments of :math:`Y` exist and satisfy
+
+    .. math::
+
+        E[Y^r] =
+        \left(\frac{\chi}{\psi}\right)^{r/2}
+        \frac{K_{p+r}(\sqrt{\chi\psi})}
+        {K_p(\sqrt{\chi\psi})}.
+
+    In particular,
+
+    .. math::
+
+        E[X] = \mu +
+        \sqrt{\frac{\chi}{\psi}}
+        \frac{K_{p+1}(\sqrt{\chi\psi})}
+        {K_p(\sqrt{\chi\psi})},
+
+    and
+
+    .. math::
+
+        \operatorname{Var}(X) = \frac{\chi}{\psi}
+        \left[
+        \frac{K_{p+2}(\sqrt{\chi\psi})}
+        {K_p(\sqrt{\chi\psi})}
+        -
+        \left(
+        \frac{K_{p+1}(\sqrt{\chi\psi})}
+        {K_p(\sqrt{\chi\psi})}
+        \right)^2
+        \right].
+
+    This parameterisation includes the inverse Gaussian distribution with
+    mean :math:`m` and shape :math:`\lambda_{IG}` when
+
+    .. math::
+
+        p=-\frac{1}{2},
+        \qquad \chi=\lambda_{IG},
+        \qquad \psi=\frac{\lambda_{IG}}{m^2}.
+
+    Parameters:
+        p: Index parameter :math:`p`.
+        chi: Reciprocal scale parameter :math:`\chi`.
+        psi: Scale parameter :math:`\psi`.
+        loc: Location parameter :math:`\mu` (default 0).
+
+    Notes:
+        CDF evaluation, inverse CDF evaluation, and random generation are
+        currently supported on the CPU only.
+    """
+
+    def __init__(
+        self,
+        p: DistributionParameter,
+        chi: DistributionParameter,
+        psi: DistributionParameter,
+        loc: DistributionParameter = 0.0,
+    ) -> None:
+        """Initialize generalized inverse Gaussian distribution.
+
+        Args:
+            p: Index parameter.
+            chi: Positive reciprocal scale parameter.
+            psi: Positive scale parameter.
+            loc: Location parameter.
+        """
+        super().__init__(p=p, chi=chi, psi=psi, loc=loc)
+
+    def _scipy_params(self) -> tuple[t.Any, t.Any, t.Any, t.Any]:
+        """Convert the GIG parameters to SciPy's parameterisation."""
+        if xp.__name__ == "cupy":
+            raise NotImplementedError("GeneralizedInverseGaussian is not supported on GPU.")
+
+        p, chi, psi, loc = self._param_values
+        if bool(np.any(chi <= 0)):
+            raise ValueError("chi must be strictly positive.")
+        if bool(np.any(psi <= 0)):
+            raise ValueError("psi must be strictly positive.")
+        scipy_shape = np.sqrt(chi * psi)
+        scipy_scale = np.sqrt(chi / psi)
+        return p, scipy_shape, scipy_scale, loc
+
+    def _wrap_result(
+        self,
+        result: t.Any,
+        argument: DistributionParameter,
+    ) -> ReturnType:
+        """Preserve stochastic coupling when SciPy returns an array."""
+        candidates = (argument, *self._params.values())
+        stochastic_inputs = [value for value in candidates if isinstance(value, StochasticScalar)]
+        if not stochastic_inputs:
+            return float(result)
+
+        wrapped = StochasticScalar(result)
+        for value in stochastic_inputs:
+            wrapped.coupled_variable_group.merge(value.coupled_variable_group)
+        return wrapped
+
+    @override
+    def cdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute cumulative distribution function."""
+        p, scipy_shape, scipy_scale, loc = self._scipy_params()
+        values = x.values if isinstance(x, StochasticScalar) else x
+        result = geninvgauss.cdf(
+            values,
+            p,
+            scipy_shape,
+            loc=loc,
+            scale=scipy_scale,
+        )
+        return self._wrap_result(result, x)
+
+    @override
+    def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Compute inverse cumulative distribution function."""
+        p, scipy_shape, scipy_scale, loc = self._scipy_params()
+        values = u.values if isinstance(u, StochasticScalar) else u
+        result = geninvgauss.ppf(
+            values,
+            p,
+            scipy_shape,
+            loc=loc,
+            scale=scipy_scale,
+        )
+        return self._wrap_result(result, u)
+
+    @override
+    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+        """Generate random samples using SciPy's GIG sampler."""
+        p, scipy_shape, scipy_scale, loc = self._scipy_params()
+        result = geninvgauss.rvs(
+            p,
+            scipy_shape,
+            loc=loc,
+            scale=scipy_scale,
+            size=n_sims,
+            random_state=rng,
+        )
+        return StochasticScalar(result)
+
+
 class Exponential(DistributionBase):
     r"""Exponential Distribution.
 
@@ -1470,10 +1959,13 @@ AVAILABLE_CONTINUOUS_DISTRIBUTIONS: dict[str, t.Any] = {
     "gamma": Gamma,
     "gev": GEV,
     "gpd": GPD,
+    "generalizedinversegaussian": GeneralizedInverseGaussian,
     "inversegaussian": InverseGaussian,
     "logistic": Logistic,
     "lognormal": LogNormal,
     "loglogistic": LogLogistic,
+    "mbbefd": MBBEFD,
+    "noncentralchisquared": NonCentralChiSquared,
     "normal": Normal,
     "paralogistic": Paralogistic,
     "pareto": Pareto,

@@ -70,6 +70,9 @@ validating simulation results.
 | `Logistic` | `mu`, `sigma` | Growth models |
 | `Uniform` | `a`, `b` | Equal-likelihood scenarios |
 | `InverseGamma` | `alpha`, `theta`, `loc=0` | Bayesian priors |
+| `GeneralizedInverseGaussian` | `p`, `chi`, `psi`, `loc=0` | Flexible positive, right-skewed risks |
+| `MBBEFD` | `g`, `b` | Property exposure rating and capped loss-to-value ratios |
+| `NonCentralChiSquared` | `df`, `nonc` | Quadratic forms and sums of squared non-zero-mean normal variables |
 | `Paralogistic` | `shape`, `scale`, `loc=0` | Heavy-tailed alternatives |
 | `InverseBurr` | `power`, `shape`, `scale`, `loc` | Flexible heavy tails |
 | `InverseParalogistic` | `shape`, `scale`, `loc=0` | Heavy-tailed alternatives |
