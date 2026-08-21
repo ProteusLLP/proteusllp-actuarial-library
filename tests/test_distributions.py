@@ -905,7 +905,7 @@ def test_mbbefd_degenerate_case() -> None:
     assert dist.cdf(0.999) == 0.0
     assert dist.cdf(1.0) == 1.0
     assert dist.invcdf(0.0) == 1.0
-    assert np.all(dist.generate(1000) == 1.0)
+    assert np.all(dist.generate(1000).values == 1.0)
     assert dist.exposure_curve(0.4) == pytest.approx(0.4)
 
 
