@@ -106,6 +106,8 @@ class DistributionBase:
 
         if rng is None:
             rng = config.rng
+        if rng is None:
+            raise RuntimeError("No random number generator is configured")
 
         result = self._generate(n_sims, rng)
         # Merge coupled variable groups from parameters if applicable.
@@ -134,7 +136,7 @@ class DistributionBase:
         # When n_sims >= 1, rng.uniform(size=n_sims) returns an array,
         # so invcdf also returns an array (SequenceLike) due to overload typing
         uniform_samples = xp.asarray(rng.uniform(size=n_sims))
-        result = self.invcdf(uniform_samples)
+        result = self.invcdf(StochasticScalar(uniform_samples))
         return StochasticScalar(result)
 
     @property

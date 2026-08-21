@@ -100,7 +100,7 @@ class Copula(ABC):
         """
         pass
 
-    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: t.Any) -> npt.NDArray[np.floating]:
         """Generate samples from the multivariate distribution underlying the copula.
 
         The marginal distribution of the samples will not necessarily be uniform.
@@ -374,6 +374,8 @@ class ArchimedeanCopula(Copula, ABC):
             n_sims = config.n_sims
         if rng is None:
             rng = config.rng
+        if rng is None:
+            raise RuntimeError("No random number generator is configured")
         if self.dimension is None:
             raise RuntimeError("Subclasses of ArchimedeanCopula must set self.dimension to the number of variables")
         n_vars = self.dimension

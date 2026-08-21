@@ -37,7 +37,7 @@ def asnumpy(value: t.Any, dtype: t.Any = None) -> npt.NDArray[t.Any]:
     integrations which do not support CuPy arrays.
     """
     if _USE_GPU and isinstance(value, xp.ndarray):
-        result = xp.asnumpy(value)
+        result = t.cast(t.Any, xp).asnumpy(value)
     else:
         result = np.asarray(value)
     return result if dtype is None else result.astype(dtype, copy=False)
@@ -81,6 +81,7 @@ def create_random_generator(seed: int) -> t.Any:
     if _USE_GPU:
         return xp.random.RandomState(seed)
     return np.random.default_rng(seed)
+
 
 # export the numpy/cupy and scipy/cupyx special functions/modules for the current
 # execution environment.
