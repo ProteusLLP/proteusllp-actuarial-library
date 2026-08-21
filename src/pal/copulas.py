@@ -22,6 +22,7 @@ from ._maths import xp as np
 
 # Local imports
 from .config import config
+from .types import RandomGenerator
 
 
 def _host_rng_arg(value: t.Any) -> t.Any:
@@ -85,7 +86,7 @@ class Copula(ABC):
 
     @abstractmethod
     def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
         """Generate correlated uniform samples from the copula.
 
@@ -148,7 +149,7 @@ class Copula(ABC):
         return result
 
     def _generate_base(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
         """Base implementation of generate with common boilerplate.
 
@@ -275,12 +276,12 @@ class GaussianCopula(EllipticalCopula):
         return special.ndtr(unnormalised_samples)
 
     def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from the Gaussian copula."""
         return self._generate_base(n_sims, rng)
 
-    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         n_vars = self.correlation_matrix.shape[0]
         normal_samples = rng.standard_normal(size=(n_vars, n_sims))
         return self._chol.dot(normal_samples)
@@ -332,12 +333,12 @@ class StudentsTCopula(EllipticalCopula):
         return np.asarray(scipy.stats.distributions.t(self.dof).cdf(asnumpy(unnormalised_samples)))
 
     def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from the Student's T copula."""
         return self._generate_base(n_sims, rng)
 
-    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         n_vars = self.correlation_matrix.shape[0]
         normal_samples = self._chol.dot(rng.standard_normal(size=(n_vars, n_sims)))
         chi_samples = np.sqrt(rng.gamma(self.dof / 2, 2 / self.dof, size=n_sims))
@@ -353,7 +354,7 @@ class ArchimedeanCopula(Copula, ABC):
         pass
 
     @abstractmethod
-    def generate_latent_distribution(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
+    def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution of the copula."""
         pass
 
@@ -362,13 +363,13 @@ class ArchimedeanCopula(Copula, ABC):
         return self.generator_inv(-unnormalised_samples)
 
     def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from the Archimedean copula."""
         return self._generate_base(n_sims, rng)
 
     def _generate_unnormalised(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> npt.NDArray[np.floating]:
         if n_sims is None:
             n_sims = config.n_sims
@@ -450,7 +451,7 @@ class ClaytonCopula(ArchimedeanCopula):
             return np.exp(-t)
         return (1 + t) ** (-1 / self.theta)
 
-    def generate_latent_distribution(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
+    def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution.
 
         For Clayton copula, when theta=0, the copula reduces to the independence
@@ -469,7 +470,7 @@ def levy_stable(
     alpha: float,
     beta: float,
     size: int | tuple[int, ...],
-    rng: np.random.Generator,
+    rng: RandomGenerator,
 ) -> npt.NDArray[np.floating]:
     """Simulate samples from a Lévy stable distribution using Chambers-Mallows-Stuck.
 
@@ -477,7 +478,7 @@ def levy_stable(
         alpha (float): Stability parameter in (0, 2].
         beta (float): Skewness parameter in [-1, 1].
         size (int or tuple of ints): Output shape.
-        rng (np.random.Generator): Random number generator.
+        rng (RandomGenerator): Random number generator.
 
     Returns:
         np.ndarray: Samples from the Lévy stable distribution.
@@ -543,7 +544,7 @@ class GumbelCopula(ArchimedeanCopula):
         """Inverse generator function for Gumbel copula."""
         return np.exp(-(t ** (1 / self.theta)))
 
-    def generate_latent_distribution(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
+    def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution."""
         if self.theta == 1:
             return np.ones(n_sims)
@@ -586,7 +587,7 @@ class FrankCopula(ArchimedeanCopula):
         """Inverse generator function for Frank copula."""
         return -np.log1p(np.exp(-t) * (np.expm1(-self.theta))) / self.theta
 
-    def generate_latent_distribution(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
+    def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution."""
         return rng.logseries(1 - np.exp(-self.theta), size=n_sims).astype(np.float64)
 
@@ -634,7 +635,7 @@ class JoeCopula(ArchimedeanCopula):
         """Inverse generator function for Joe copula."""
         return 1 - (1 - np.exp(-t)) ** (1 / self.theta)
 
-    def generate_latent_distribution(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
+    def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution."""
         return _sibuya_gen(1 / self.theta, n_sims, rng)
 
@@ -718,7 +719,7 @@ class MM1Copula(Copula):
         """Transform max-mixture samples to uniform."""
         return np.exp(-((-np.log(unnormalised_samples)) ** (1 / self.theta)))
 
-    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         n = self.dimension
         theta = self.theta
         delta_matrix = self.delta_matrix
@@ -738,7 +739,7 @@ class MM1Copula(Copula):
         return v
 
     def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from a multivariate max-mixture copula, denoted MM1 by Joe.
 
@@ -821,7 +822,7 @@ class GalambosCopula(Copula):
         if dimension is not None:
             self.dimension = dimension
 
-    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Vectorised simulation from the d-dimensional Galambos copula.
 
         Exact algorithm based on the max stable / reciprocal Archimedean
@@ -834,7 +835,7 @@ class GalambosCopula(Copula):
 
         Args:
             n_sims: Number of samples.
-            rng : np.random.Generator, optional
+            rng : RandomGenerator, optional
             Random generator.
 
         Returns:
@@ -897,7 +898,7 @@ class GalambosCopula(Copula):
         return u
 
     def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from the Galambos copula.
 
@@ -954,12 +955,12 @@ class PlackettCopula(Copula):
             raise ValueError("Delta must be in the range (0, inf)")
         self.delta = delta
 
-    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Generate samples from the Plackett copula.
 
         Args:
             n_sims: Number of samples.
-            rng : np.random.Generator, optional
+            rng : RandomGenerator, optional
             Random generator.
 
         Returns:
@@ -981,7 +982,7 @@ class PlackettCopula(Copula):
         return np.vstack((u, v))
 
     def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from the Plackett copula.
 
@@ -1002,13 +1003,13 @@ class PlackettCopula(Copula):
         return self._generate_base(n_sims, rng)
 
 
-def _sibuya_gen(alpha: float, size: int | tuple[int, ...], rng: np.random.Generator) -> npt.NDArray[np.floating]:
+def _sibuya_gen(alpha: float, size: int | tuple[int, ...], rng: RandomGenerator) -> npt.NDArray[np.floating]:
     """Generate samples from a Sibuya distribution.
 
     Parameters:
         alpha (float): Parameter for the Sibuya distribution.
         size (int or tuple): Output shape.
-        rng (np.random.Generator): Random number generator.
+        rng (RandomGenerator): Random number generator.
 
     Returns:
         np.ndarray: Samples from a Sibuya distribution.
@@ -1168,7 +1169,7 @@ class HuslerReissCopula(Copula):
             np.sqrt(np.diag(covariance_matrix) + np.diag(covariance_matrix)[:, None] - 2 * covariance_matrix) / 2
         )
 
-    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Exact simulation from a d-dimensional Hüsler-Reiss copula.
 
         See Dombry-Engelke-Oesting (2016), Algorithm 2 (spectral measure on the
@@ -1181,7 +1182,7 @@ class HuslerReissCopula(Copula):
         Args:
             n_sims : int
                 Number of samples to generate.
-            rng : np.random.Generator.
+            rng : RandomGenerator.
 
         Returns:
             u : (d,n) ndarray
@@ -1220,7 +1221,10 @@ class HuslerReissCopula(Copula):
             na = idx.size
 
             # 1. Sample anchor indices T ~ Uniform{0,...,d-1}
-            t = rng.integers(low=0, high=d, size=na)
+            integers = getattr(rng, "integers", getattr(rng, "randint", None))
+            if integers is None:
+                raise TypeError("Random number generator must provide integers or randint")
+            t = integers(low=0, high=d, size=na)
 
             # 2. Sample Gaussian W ~ N(0, sigma^2 * R) for active sims
             g = rng.standard_normal(size=(na, d))
@@ -1342,7 +1346,7 @@ class HuslerReissCopula(Copula):
         return cls(lambda_matrix)
 
     def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from the Hüsler-Reiss copula.
 
@@ -1445,7 +1449,7 @@ class ExtremalTCopula(Copula):
         self.nu = nu
         self.dimension = correlation_matrix.shape[0]
 
-    def _generate_unnormalised(self, n_sims: int, rng: np.random.Generator) -> npt.NDArray[np.floating]:
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Exact simulation of the t-EV copula.
 
         See Dombry-Engle-Oesting (2016).
@@ -1601,7 +1605,7 @@ class ExtremalTCopula(Copula):
         return np.exp(-1.0 / samp)
 
     def generate(
-        self, n_sims: int | None = None, rng: np.random.Generator | None = None
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
         """Generate samples from the Extremal-t copula.
 

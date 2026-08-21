@@ -37,6 +37,7 @@ from .couplings import ProteusStochasticVariable as _ProteusStochasticVariable
 from .stochastic_scalar import (
     StochasticScalar,
 )
+from .types import RandomGenerator
 
 # Type aliases for frequency-severity modeling
 
@@ -104,14 +105,14 @@ class FrequencySeverityModel:
     def generate(
         self,
         n_sims: int | None = None,
-        rng: np.random.Generator | None = None,
+        rng: RandomGenerator | None = None,
     ) -> FreqSevSims:
         """Generate simulations from the Frequency-Severity model.
 
         Parameters:
         - n_sims (int): Number of simulations to generate. If None, uses the
             default value from the config.
-        - rng (np.random.Generator, optional): Random number generator. Uses
+        - rng (RandomGenerator, optional): Random number generator. Uses
             config.rng if None.
 
         Returns:

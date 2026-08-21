@@ -4,7 +4,9 @@ import numpy as np
 import pytest
 
 from pal import config
+from pal._maths import create_random_generator, xp
 from pal.stats import tvar
+from pal.types import Config
 
 
 def test_set_default_n_sims():
@@ -23,6 +25,15 @@ def test_set_default_n_sims():
     finally:
         # Restore original
         config.n_sims = original
+
+
+def test_config_initializes_rng_from_seed():
+    """The configured seed determines the initial random-number stream."""
+    seed = 987654321
+    configured = Config(seed=seed)
+    expected = create_random_generator(seed)
+
+    assert bool(xp.array_equal(configured.rng.random(10), expected.random(10)))
 
 
 def test_tvar_high_percentile_error():

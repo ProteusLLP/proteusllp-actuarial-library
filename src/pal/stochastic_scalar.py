@@ -257,7 +257,7 @@ class StochasticScalar(ProteusStochasticVariable):
         out: t.Any = None,
         keepdims: bool = False,
     ) -> t.Any:
-        """Return the mean while supporting NumPy/CuPy's ndarray method contract."""
+        """Return the mean across the simulations."""
         result = xp.mean(self.values, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
         return self._wrap_reduction_result(result)
 
@@ -268,7 +268,7 @@ class StochasticScalar(ProteusStochasticVariable):
         out: t.Any = None,
         keepdims: bool = False,
     ) -> t.Any:
-        """Return the sum while supporting NumPy/CuPy's ndarray method contract."""
+        """Return the sum across the simulations."""
         result = xp.sum(self.values, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
         return self._wrap_reduction_result(result)
 
@@ -280,7 +280,7 @@ class StochasticScalar(ProteusStochasticVariable):
         ddof: int = 0,
         keepdims: bool = False,
     ) -> t.Any:
-        """Return standard deviation using the backend ndarray method contract."""
+        """Return the standard deviation across the simulations."""
         result = xp.std(self.values, axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
         return self._wrap_reduction_result(result)
 
@@ -292,7 +292,7 @@ class StochasticScalar(ProteusStochasticVariable):
         ddof: int = 0,
         keepdims: bool = False,
     ) -> t.Any:
-        """Return variance using the backend ndarray method contract."""
+        """Return the variance across the simulations."""
         result = xp.var(self.values, axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
         return self._wrap_reduction_result(result)
 

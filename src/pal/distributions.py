@@ -32,7 +32,7 @@ from ._compat import override
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
 from .config import config
 from .stochastic_scalar import StochasticScalar
-from .types import DistributionParameter
+from .types import DistributionParameter, RandomGenerator
 
 TOLERANCE = 1e-10  # Tolerance for numerical comparisons
 # FIXME: Consider replaching with VectorLike from types.py
@@ -91,7 +91,7 @@ class DistributionBase:
         """
         raise NotImplementedError
 
-    def generate(self, n_sims: int | None = None, rng: np.random.Generator | None = None) -> StochasticScalar:
+    def generate(self, n_sims: int | None = None, rng: RandomGenerator | None = None) -> StochasticScalar:
         """Generate random samples from the distribution.
 
         Parameters:
@@ -116,7 +116,7 @@ class DistributionBase:
                 result.coupled_variable_group.merge(param.coupled_variable_group)
         return result
 
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         """Generate random samples using the inverse CDF technique.
 
         Args:
@@ -209,7 +209,7 @@ class Poisson(DiscreteDistributionBase):
         return scalar_or_array(result)
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         (mean,) = self._param_values
         return StochasticScalar(rng.poisson(_rng_value(mean, rng), n_sims))
 
@@ -255,7 +255,7 @@ class NegBinomial(DiscreteDistributionBase):
         return _special_call(special.nbdtri, u, n, p)  # type: ignore[misc, arg-type]
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         n, p = self._param_values
         return StochasticScalar(rng.negative_binomial(_rng_value(n, rng), _rng_value(p, rng), size=n_sims))
 
@@ -297,7 +297,7 @@ class Binomial(DiscreteDistributionBase):
         return _special_call(special.bdtri, u, n, p)  # type: ignore[return-value]
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         n, p = self._param_values
         return StochasticScalar(rng.binomial(_rng_value(n, rng), _rng_value(p, rng), n_sims))
 
@@ -374,7 +374,7 @@ class HyperGeometric(DiscreteDistributionBase):
         return scalar_or_array(result)
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         ngood, nbad, n_draws = self._param_values
         return StochasticScalar(
             rng.hypergeometric(
@@ -561,7 +561,7 @@ class Beta(DistributionBase):
         return _special_call(special.betaincinv, alpha, beta, u) * scale + loc  # type: ignore[return-type]
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         alpha, beta, scale, loc = self._param_values
         return StochasticScalar(
             rng.beta(_rng_value(alpha, rng), _rng_value(beta, rng), n_sims) * _rng_value(scale, rng)
@@ -780,7 +780,7 @@ class Gamma(DistributionBase):
         return result
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         alpha, theta, loc = self._param_values
         result = StochasticScalar(
             rng.gamma(_rng_value(alpha, rng), _rng_value(theta, rng), size=n_sims) + _rng_value(loc, rng)
@@ -1318,7 +1318,7 @@ class InverseGaussian(DistributionBase):
         )
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         """Generate samples using the algorithm from Michael, Schucany, and Haas.
 
         Reference:
@@ -1513,7 +1513,7 @@ class DistributionGeneratorBase:
     def generate(
         self,
         n_sims: int | None = None,
-        rng: np.random.Generator | None = None,
+        rng: RandomGenerator | None = None,
     ) -> StochasticScalar:
         """Delegate to wrapped distribution.
 
