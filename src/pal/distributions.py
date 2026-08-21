@@ -1096,16 +1096,26 @@ class NonCentralChiSquared(DistributionBase):
         """Compute the cumulative distribution function."""
         if xp.__name__ == "cupy":
             raise NotImplementedError("NonCentralChiSquared CDF is not supported on GPU.")
-        df, nonc = self._validated_params()
-        return _special_call(special.chndtr, x, df, nonc)  # type: ignore[return-value]
+        self._validated_params()
+        return _special_call(
+            special.chndtr,
+            x,
+            self._params["df"],
+            self._params["nonc"],
+        )  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute the inverse cumulative distribution function."""
         if xp.__name__ == "cupy":
             raise NotImplementedError("NonCentralChiSquared inverse CDF is not supported on GPU.")
-        df, nonc = self._validated_params()
-        return _special_call(special.chndtrix, u, df, nonc)  # type: ignore[return-value]
+        self._validated_params()
+        return _special_call(
+            special.chndtrix,
+            u,
+            self._params["df"],
+            self._params["nonc"],
+        )  # type: ignore[return-value]
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
