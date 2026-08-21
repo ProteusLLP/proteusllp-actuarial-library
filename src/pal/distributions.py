@@ -689,9 +689,9 @@ class MBBEFD(DistributionBase):
     def _validated_params(self) -> tuple[t.Any, t.Any]:
         """Return parameters after checking the admissible region."""
         g, b = self._param_values
-        if bool(np.any(~np.isfinite(g))) or bool(np.any(g < 1)):
+        if bool(xp.any(~xp.isfinite(g))) or bool(xp.any(g < 1)):
             raise ValueError("g must be finite and greater than or equal to 1.")
-        if bool(np.any(~np.isfinite(b))) or bool(np.any(b < 0)):
+        if bool(xp.any(~xp.isfinite(b))) or bool(xp.any(b < 0)):
             raise ValueError("b must be finite and greater than or equal to 0.")
         return g, b
 
@@ -715,57 +715,57 @@ class MBBEFD(DistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the cumulative distribution function, including the atom at one."""
         g, b = self._validated_params()
-        values = x.values if isinstance(x, StochasticScalar) else x
+        values = to_backend(x.values if isinstance(x, StochasticScalar) else x)
         degenerate = (g == 1) | (b == 0)
-        b_one = np.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
-        bg_one = np.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
+        b_one = xp.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
+        bg_one = xp.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
 
-        safe_g = np.where(degenerate, 2.0, g)
-        safe_b = np.where(degenerate | b_one | bg_one, 2.0, b)
-        limit_b = np.where(degenerate | b_one, 0.5, b)
-        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        safe_g = xp.where(degenerate, 2.0, g)
+        safe_b = xp.where(degenerate | b_one | bg_one, 2.0, b)
+        limit_b = xp.where(degenerate | b_one, 0.5, b)
+        with xp.errstate(divide="ignore", invalid="ignore", over="ignore"):
             main = 1 - (1 - safe_b) * safe_b**values / ((safe_g - 1) * safe_b + (1 - safe_g * safe_b) * safe_b**values)
             b_limit = 1 - 1 / (1 + (g - 1) * values)
             bg_limit = 1 - limit_b**values
 
-        interior = np.where(
+        interior = xp.where(
             degenerate,
             0.0,
-            np.where(b_one, b_limit, np.where(bg_one, bg_limit, main)),
+            xp.where(b_one, b_limit, xp.where(bg_one, bg_limit, main)),
         )
-        result = np.where(values <= 0, 0.0, np.where(values >= 1, 1.0, interior))
+        result = xp.where(values <= 0, 0.0, xp.where(values >= 1, 1.0, interior))
         return self._wrap_result(result, x)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute the inverse CDF, returning one across the total-loss atom."""
         g, b = self._validated_params()
-        probabilities = u.values if isinstance(u, StochasticScalar) else u
+        probabilities = to_backend(u.values if isinstance(u, StochasticScalar) else u)
         degenerate = (g == 1) | (b == 0)
-        b_one = np.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
-        bg_one = np.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
+        b_one = xp.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
+        bg_one = xp.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
 
-        safe_g = np.where(degenerate, 2.0, g)
-        safe_b = np.where(degenerate | b_one | bg_one, 2.0, b)
-        limit_b = np.where(degenerate | b_one, 0.5, b)
-        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        safe_g = xp.where(degenerate, 2.0, g)
+        safe_b = xp.where(degenerate | b_one | bg_one, 2.0, b)
+        limit_b = xp.where(degenerate | b_one, 0.5, b)
+        with xp.errstate(divide="ignore", invalid="ignore", over="ignore"):
             main_argument = (safe_g * safe_b - 1) / (safe_g - 1) + ((1 - safe_b) / ((1 - probabilities) * (safe_g - 1)))
-            main = 1 - np.log(main_argument) / np.log(safe_b)
+            main = 1 - xp.log(main_argument) / xp.log(safe_b)
             b_limit = probabilities / ((1 - probabilities) * (safe_g - 1))
-            bg_limit = np.log1p(-probabilities) / np.log(limit_b)
+            bg_limit = xp.log1p(-probabilities) / xp.log(limit_b)
 
-        below_atom = np.where(
+        below_atom = xp.where(
             degenerate,
             1.0,
-            np.where(b_one, b_limit, np.where(bg_one, bg_limit, main)),
+            xp.where(b_one, b_limit, xp.where(bg_one, bg_limit, main)),
         )
-        result = np.where(
+        result = xp.where(
             (probabilities < 0) | (probabilities > 1),
-            np.nan,
-            np.where(
+            xp.nan,
+            xp.where(
                 degenerate | (probabilities >= 1 - 1 / g),
                 1.0,
-                np.where(probabilities == 0, 0.0, below_atom),
+                xp.where(probabilities == 0, 0.0, below_atom),
             ),
         )
         return self._wrap_result(result, u)
@@ -782,26 +782,26 @@ class MBBEFD(DistributionBase):
             Proportion of expected loss below the policy limit.
         """
         g, b = self._validated_params()
-        values = x.values if isinstance(x, StochasticScalar) else x
+        values = to_backend(x.values if isinstance(x, StochasticScalar) else x)
         degenerate = (g == 1) | (b == 0)
-        b_one = np.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
-        bg_one = np.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
+        b_one = xp.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
+        bg_one = xp.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
 
-        safe_g = np.where(degenerate, 2.0, g)
-        safe_b = np.where(degenerate | b_one | bg_one, 2.0, b)
-        limit_b = np.where(degenerate | b_one, 0.5, b)
-        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        safe_g = xp.where(degenerate, 2.0, g)
+        safe_b = xp.where(degenerate | b_one | bg_one, 2.0, b)
+        limit_b = xp.where(degenerate | b_one, 0.5, b)
+        with xp.errstate(divide="ignore", invalid="ignore", over="ignore"):
             numerator = (safe_g - 1) * safe_b + (1 - safe_g * safe_b) * safe_b**values
-            main = np.log(numerator / (1 - safe_b)) / np.log(safe_g * safe_b)
-            b_limit = np.log1p((safe_g - 1) * values) / np.log(safe_g)
+            main = xp.log(numerator / (1 - safe_b)) / xp.log(safe_g * safe_b)
+            b_limit = xp.log1p((safe_g - 1) * values) / xp.log(safe_g)
             bg_limit = (1 - limit_b**values) / (1 - limit_b)
 
-        interior = np.where(
+        interior = xp.where(
             degenerate,
             values,
-            np.where(b_one, b_limit, np.where(bg_one, bg_limit, main)),
+            xp.where(b_one, b_limit, xp.where(bg_one, bg_limit, main)),
         )
-        result = np.where(values <= 0, 0.0, np.where(values >= 1, 1.0, interior))
+        result = xp.where(values <= 0, 0.0, xp.where(values >= 1, 1.0, interior))
         return self._wrap_result(result, x)
 
 
