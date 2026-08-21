@@ -869,7 +869,9 @@ class GalambosCopula(Copula):
             if not np.any(active):
                 break  # all series truncated
 
-            m = active.sum()
+            # ``size`` arguments require a host integer. Transfer only this
+            # scalar count; all simulation arrays remain on the device.
+            m = int(active.sum().item())
 
             # Directions on simplex for active samples: iid exponentials
             e = rng.exponential(scale=1.0, size=(d, m))

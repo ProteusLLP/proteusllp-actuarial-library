@@ -37,14 +37,23 @@ def test_poisson() -> None:
 def test_poisson_gamma() -> None:
     """Tests the Poisson distribution with a gamma distributed lambda."""
     set_random_seed(12345678910)
+    n_sims = 100000
     alpha = 0.5
     beta = 3
-    lamda = distributions.Gamma(alpha, beta).generate(100000)
-    sims = distributions.Poisson(lamda).generate(100000)
+    lamda = distributions.Gamma(alpha, beta).generate(n_sims)
+    sims = distributions.Poisson(lamda).generate(n_sims)
     sims_mean = np.mean(sims)
-    sims_std = np.std(sims)
-    assert np.isclose(sims_mean, alpha * beta, 1e-2)
-    assert np.isclose(sims_std**2, alpha * beta + alpha * beta**2, 1e-2)
+    sims_variance = np.var(sims)
+
+    expected_mean = alpha * beta
+    expected_variance = alpha * beta * (1 + beta)
+    p = 1 / (1 + beta)
+    excess_kurtosis = 6 / alpha + p**2 / (alpha * (1 - p))
+    mean_se = math.sqrt(expected_variance / n_sims)
+    variance_se = expected_variance * math.sqrt((excess_kurtosis + 2) / n_sims)
+
+    assert sims_mean == pytest.approx(expected_mean, abs=5 * mean_se)
+    assert sims_variance == pytest.approx(expected_variance, abs=5 * variance_se)
     assert sims.coupled_variable_group == lamda.coupled_variable_group
 
 
