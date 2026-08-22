@@ -66,7 +66,7 @@ def test_gpu_beta_inverse_round_trip_preserves_tail_probabilities() -> None:
     quantile = betaincinv(device_alpha, device_beta, device_probability)
     recovered = asnumpy(betainc(device_alpha, device_beta, quantile))
     tail_scale = np.minimum(probability, 1 - probability)
-    representable = (quantile > 0) & (quantile < 1)
+    representable = asnumpy((quantile > 0) & (quantile < 1))
 
     np.testing.assert_array_less(
         np.abs(recovered[representable] - probability[representable]),
@@ -93,7 +93,9 @@ def test_gpu_beta_functions_handle_boundaries_and_invalid_inputs() -> None:
 
 def test_gpu_beta_cdf_is_monotone_and_symmetric() -> None:
     """Preserve monotonicity and the complementary beta identity."""
-    values = xp.linspace(1e-12, 1 - 1e-12, 4096)
+    # Binary fractions have exact floating-point complements, so the symmetry
+    # assertion measures the implementation rather than subtraction rounding.
+    values = xp.arange(1, 4096) / 4096
     cdf = betainc(0.3, 12.0, values)
     complement = betainc(12.0, 0.3, 1 - values)
 

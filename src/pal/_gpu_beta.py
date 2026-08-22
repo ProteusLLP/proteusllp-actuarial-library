@@ -352,7 +352,9 @@ __device__ __forceinline__ double pal_ibeta_inverse(
         double lower = 0.0;
         double upper = 1.0;
 
-        for (int iteration = 0; iteration < 24; ++iteration) {
+        // Difficult small-shape tails can require many safeguarded bisection
+        // steps when the density underflows and Halley's step is unavailable.
+        for (int iteration = 0; iteration < 96; ++iteration) {
             const double probability = pal_ibeta(a, b, x);
             const double residual = probability - p;
             if (residual < 0.0) {
@@ -421,14 +423,14 @@ _BETA_INVERSE_KERNEL = cp.ElementwiseKernel(
 def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
     """Evaluate the regularized incomplete beta function on the GPU."""
     if not any(isinstance(value, cp.ndarray) for value in (a, b, x)):
-        x = cp.asarray(x)
+        x = cp.asarray(x, dtype=cp.float64)
     return _BETA_CDF_KERNEL(a, b, x)
 
 
 def betaincinv(a: t.Any, b: t.Any, p: t.Any) -> t.Any:
     """Evaluate the inverse regularized incomplete beta function on the GPU."""
     if not any(isinstance(value, cp.ndarray) for value in (a, b, p)):
-        p = cp.asarray(p)
+        p = cp.asarray(p, dtype=cp.float64)
     return _BETA_INVERSE_KERNEL(a, b, p)
 
 
