@@ -19,7 +19,10 @@ cp = t.cast(t.Any, importlib.import_module("cupy"))
 
 _BETA_PREAMBLE = r"""
 #include <cupy/math_constants.h>
-#include <float.h>
+
+#define PAL_DBL_MIN 2.22507385850720138309e-308
+#define PAL_DBL_MAX 1.79769313486231570815e+308
+#define PAL_DBL_EPSILON 2.22044604925031308085e-16
 
 // Boost.Math lanczos13m53 coefficients, Boost Software License 1.0.
 __constant__ double pal_lanczos_num[13] = {
@@ -117,7 +120,7 @@ __device__ __forceinline__ double pal_ibeta_power_terms(
         ? b * log1p(l2)
         : b * log((y * cgh) / bgh);
 
-    if (log_result < log(DBL_MIN)) {
+    if (log_result < log(PAL_DBL_MIN)) {
         return 0.0;
     }
     return exp(log_result);
@@ -129,7 +132,7 @@ __device__ __forceinline__ double pal_ibeta_fraction(
     const double qab = a + b;
     const double qap = a + 1.0;
     const double qam = a - 1.0;
-    const double tiny = DBL_MIN / DBL_EPSILON;
+    const double tiny = PAL_DBL_MIN / PAL_DBL_EPSILON;
     double c = 1.0;
     double d = 1.0 - qab * x / qap;
     if (fabs(d) < tiny) {
@@ -166,7 +169,7 @@ __device__ __forceinline__ double pal_ibeta_fraction(
         d = 1.0 / d;
         const double delta = d * c;
         result *= delta;
-        if (fabs(delta - 1.0) <= 8.0 * DBL_EPSILON) {
+        if (fabs(delta - 1.0) <= 8.0 * PAL_DBL_EPSILON) {
             break;
         }
     }
@@ -322,9 +325,9 @@ __device__ __forceinline__ double pal_ibeta_inverse(
                 * (correction + 5.0 / 6.0 - 2.0 / (3.0 * scale));
             exponent *= 2.0;
             if (exponent > 700.0) {
-                x = DBL_MIN;
+                x = PAL_DBL_MIN;
             } else if (exponent < -700.0) {
-                x = 1.0 - DBL_EPSILON;
+                x = 1.0 - PAL_DBL_EPSILON;
             } else {
                 x = a / (a + b * exp(exponent));
             }
@@ -334,8 +337,8 @@ __device__ __forceinline__ double pal_ibeta_inverse(
             const double log_x = (log(p) + log(a) + log_beta) / a;
             if (log_x >= 0.0) {
                 x = a / (a + b);
-            } else if (log_x < log(DBL_MIN)) {
-                x = DBL_MIN;
+            } else if (log_x < log(PAL_DBL_MIN)) {
+                x = PAL_DBL_MIN;
             } else {
                 x = exp(log_x);
                 if ((a < 1.0) && (b < 1.0)) {
@@ -344,7 +347,7 @@ __device__ __forceinline__ double pal_ibeta_inverse(
             }
         }
 
-        x = fmin(1.0 - DBL_EPSILON, fmax(DBL_MIN, x));
+        x = fmin(1.0 - PAL_DBL_EPSILON, fmax(PAL_DBL_MIN, x));
         double lower = 0.0;
         double upper = 1.0;
 
@@ -356,14 +359,15 @@ __device__ __forceinline__ double pal_ibeta_inverse(
             } else {
                 upper = x;
             }
-            if (fabs(residual) <= 8.0 * DBL_EPSILON * fmax(p, DBL_MIN)) {
+            if (fabs(residual) <= 8.0 * PAL_DBL_EPSILON * fmax(p, PAL_DBL_MIN)) {
                 break;
             }
 
             const double log_density = (a - 1.0) * log(x)
                 + (b - 1.0) * log1p(-x) - log_beta;
             double candidate = CUDART_NAN;
-            if ((log_density > log(DBL_MIN)) && (log_density < log(DBL_MAX))) {
+            if ((log_density > log(PAL_DBL_MIN)) &&
+                (log_density < log(PAL_DBL_MAX))) {
                 const double step = residual / exp(log_density);
                 const double curvature = (a - 1.0) / x - (b - 1.0) / (1.0 - x);
                 const double denominator = 1.0 - 0.5 * step * curvature;
@@ -415,11 +419,15 @@ _BETA_INVERSE_KERNEL = cp.ElementwiseKernel(
 
 def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
     """Evaluate the regularized incomplete beta function on the GPU."""
+    if not any(isinstance(value, cp.ndarray) for value in (a, b, x)):
+        x = cp.asarray(x)
     return _BETA_CDF_KERNEL(a, b, x)
 
 
 def betaincinv(a: t.Any, b: t.Any, p: t.Any) -> t.Any:
     """Evaluate the inverse regularized incomplete beta function on the GPU."""
+    if not any(isinstance(value, cp.ndarray) for value in (a, b, p)):
+        p = cp.asarray(p)
     return _BETA_INVERSE_KERNEL(a, b, p)
 
 
