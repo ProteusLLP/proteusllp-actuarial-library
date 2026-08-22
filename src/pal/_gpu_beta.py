@@ -424,7 +424,7 @@ __device__ __forceinline__ double pal_temme_ibeta(
 }
 
 __device__ __forceinline__ double pal_ibeta_inverse(
-    double a, double b, double p, const double midpoint_probability
+    double a, double b, double p
 ) {
     if (isnan(a) || isnan(b) || isnan(p)) {
         return CUDART_NAN;
@@ -439,8 +439,12 @@ __device__ __forceinline__ double pal_ibeta_inverse(
         return 1.0;
     }
 
+    const double original_a = a;
+    const double original_b = b;
+    const double original_p = p;
+
     bool reflect = false;
-    if (p > midpoint_probability) {
+    if (p > 0.5) {
         const double temporary = a;
         a = b;
         b = temporary;
@@ -550,7 +554,29 @@ __device__ __forceinline__ double pal_ibeta_inverse(
             x = candidate;
         }
     }
-    return reflect ? 1.0 - x : x;
+    double answer = reflect ? 1.0 - x : x;
+    if ((answer > 0.0) && (answer < 1e-4)) {
+        const double log_beta = pal_log_beta(original_a, original_b);
+        for (int iteration = 0; iteration < 4; ++iteration) {
+            const double probability = pal_ibeta(original_a, original_b, answer);
+            const double log_density = (original_a - 1.0) * log(answer)
+                + (original_b - 1.0) * log1p(-answer) - log_beta;
+            if (!(log_density > log(PAL_DBL_MIN)) ||
+                !(log_density < log(PAL_DBL_MAX))) {
+                break;
+            }
+            const double correction = (probability - original_p) / exp(log_density);
+            const double candidate = answer - correction;
+            if (!(candidate > 0.0) || !(candidate < 1.0) || !isfinite(candidate)) {
+                break;
+            }
+            answer = candidate;
+            if (fabs(correction) <= 4.0 * PAL_DBL_EPSILON * answer) {
+                break;
+            }
+        }
+    }
+    return answer;
 }
 """
 
@@ -564,9 +590,9 @@ _BETA_CDF_KERNEL = cp.ElementwiseKernel(
 )
 
 _BETA_INVERSE_KERNEL = cp.ElementwiseKernel(
-    "float64 a, float64 b, float64 p, float64 midpoint_probability",
+    "float64 a, float64 b, float64 p",
     "float64 result",
-    "result = pal_ibeta_inverse(a, b, p, midpoint_probability);",
+    "result = pal_ibeta_inverse(a, b, p);",
     "pal_gpu_beta_inverse",
     preamble=_BETA_PREAMBLE,
 )
@@ -595,8 +621,7 @@ def betaincinv(a: t.Any, b: t.Any, p: t.Any) -> t.Any:
     p = _coerce_device_array(p)
     if not any(isinstance(value, cp.ndarray) for value in (a, b, p)):
         p = cp.asarray(p, dtype=cp.float64)
-    midpoint_probability = _BETA_CDF_KERNEL(a, b, cp.asarray(0.5))
-    return _BETA_INVERSE_KERNEL(a, b, p, midpoint_probability)
+    return _BETA_INVERSE_KERNEL(a, b, p)
 
 
 __all__ = ["betainc", "betaincinv"]
