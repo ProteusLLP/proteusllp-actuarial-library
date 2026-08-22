@@ -58,7 +58,8 @@ def _validate_parameter_vector(
         raise ValueError(f"{name} must contain at least {minimum_length} value(s).")
     for value in values:
         raw = value.values if isinstance(value, StochasticScalar) else value
-        if bool(xp.any(~xp.isfinite(to_backend(raw)))):
+        backend_value = xp.asarray(to_backend(raw))
+        if bool(xp.any(~xp.isfinite(backend_value))):
             raise ValueError(f"{name} values must be finite.")
     return values, names
 
@@ -73,7 +74,8 @@ def _validate_positive_parameter_vector(
     values, names = _validate_parameter_vector(parameter, name, minimum_length=minimum_length)
     for value in values:
         raw = value.values if isinstance(value, StochasticScalar) else value
-        if bool(xp.any(to_backend(raw) <= 0)):
+        backend_value = xp.asarray(to_backend(raw))
+        if bool(xp.any(backend_value <= 0)):
             raise ValueError(f"{name} values must be positive.")
     return values, names
 
@@ -135,6 +137,8 @@ def _validate_matrix(matrix: npt.ArrayLike, dimension: int, name: str) -> t.Any:
         raise ValueError(f"{name} values must be finite.")
     if not bool(xp.allclose(values, values.T)):
         raise ValueError(f"{name} must be symmetric.")
+    if float(xp.linalg.eigvalsh(values).min().item()) <= 0:
+        raise ValueError(f"{name} must be positive definite.")
     try:
         return xp.linalg.cholesky(values)
     except xp.linalg.LinAlgError as error:
@@ -368,7 +372,8 @@ class MultivariateStudentsT(MultivariateDistributionBase):
     ) -> None:
         """Initialize a multivariate Student's t distribution."""
         raw_nu = nu.values if isinstance(nu, StochasticScalar) else nu
-        if bool(xp.any(~xp.isfinite(to_backend(raw_nu)))) or bool(xp.any(to_backend(raw_nu) <= 0)):
+        backend_nu = xp.asarray(to_backend(raw_nu))
+        if bool(xp.any(~xp.isfinite(backend_nu))) or bool(xp.any(backend_nu <= 0)):
             raise ValueError("nu must be finite and positive.")
         self.nu = nu
         self.mean, parameter_names = _validate_parameter_vector(mean, "mean")
