@@ -184,10 +184,11 @@ __device__ __forceinline__ double pal_ibeta_series(
     double denominator = a;
     double pochhammer = 1.0 - b;
     double sum = 0.0;
-    for (int n = 1; n <= 128; ++n) {
+    #pragma unroll 32
+    for (int n = 1; n <= 32; ++n) {
         const double contribution = term / denominator;
         sum += contribution;
-        if (fabs(contribution) <= PAL_DBL_EPSILON * fabs(sum)) {
+        if (n >= b) {
             break;
         }
         denominator += 1.0;
@@ -347,8 +348,9 @@ __device__ __forceinline__ double pal_ibeta(
 
     const double switch_point = (a + 1.0) / (a + b + 2.0);
     double result;
-    const bool terminating_series =
-        (a >= 1.0) && (b == floor(b)) && (b <= 32.0) && (x <= 0.8);
+    const double series_limit = (a < 10.0) && (b <= 7.0) ? 0.95 : 0.8;
+    const bool terminating_series = (a >= 1.0) && (b == floor(b))
+        && (b <= 32.0) && (x <= series_limit);
     if (terminating_series) {
         result = pal_ibeta_series(a, b, x, log_beta);
     } else if (a + b < 128.0) {
