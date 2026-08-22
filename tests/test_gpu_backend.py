@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pal import InverseGaussian, NegBinomial, Normal, StudentsT, set_random_seed
+from pal import Beta, InverseGaussian, NegBinomial, Normal, StudentsT, set_random_seed
 from pal._maths import xp
 from pal.config import config
 from pal.copulas import StudentsTCopula
@@ -35,6 +35,8 @@ def test_generation_and_numpy_dispatch_do_not_transfer_to_host(monkeypatch: pyte
         students_t_copula = StudentsTCopula([[1, 0.5], [0.5, 1]], 5).generate(4096)
         inverse_gaussian = InverseGaussian(2, 3).generate(256)
         negative_binomial = NegBinomial(4, 0.5).generate(256)
+        beta_probability = Beta(2, 5).cdf(simulations / 200)
+        beta_quantile = Beta(2, 5).invcdf(beta_probability)
         transformed = np.where(simulations > 100, np.exp(simulations / 100), np.square(simulations / 100))
 
         assert type(config.rng).__module__.startswith("cupy")
@@ -43,6 +45,8 @@ def test_generation_and_numpy_dispatch_do_not_transfer_to_host(monkeypatch: pyte
         assert all(isinstance(margin.values, xp.ndarray) for margin in students_t_copula)
         assert isinstance(inverse_gaussian.values, xp.ndarray)
         assert isinstance(negative_binomial.values, xp.ndarray)
+        assert isinstance(beta_probability.values, xp.ndarray)
+        assert isinstance(beta_quantile.values, xp.ndarray)
         assert isinstance(transformed.values, xp.ndarray)
         assert not host_to_device_transfers
     finally:

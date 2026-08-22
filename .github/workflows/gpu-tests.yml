@@ -117,3 +117,6 @@ jobs:
 
       - name: Run tests with GPU acceleration
         run: pytest -v --cov=pal --cov-report=term --codeblocks
+
+      - name: Benchmark GPU beta functions
+        run: python scripts/benchmark_gpu_beta.py --size 1000000 --repeats 7
