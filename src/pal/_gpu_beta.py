@@ -177,6 +177,26 @@ __device__ __forceinline__ double pal_ibeta_fraction(
     return result;
 }
 
+__device__ __forceinline__ double pal_ibeta_series(
+    const double a, const double b, const double x, const double log_beta
+) {
+    double term = exp(a * log(x) - log_beta);
+    double denominator = a;
+    double pochhammer = 1.0 - b;
+    double sum = 0.0;
+    for (int n = 1; n <= 128; ++n) {
+        const double contribution = term / denominator;
+        sum += contribution;
+        if (fabs(contribution) <= PAL_DBL_EPSILON * fabs(sum)) {
+            break;
+        }
+        denominator += 1.0;
+        term *= pochhammer * x / n;
+        pochhammer += 1.0;
+    }
+    return sum;
+}
+
 __device__ __forceinline__ double pal_gamma_q(
     const double shape, const double argument
 ) {
@@ -327,7 +347,10 @@ __device__ __forceinline__ double pal_ibeta(
 
     const double switch_point = (a + 1.0) / (a + b + 2.0);
     double result;
-    if (a + b < 128.0) {
+    const bool terminating_series = (b == floor(b)) && (b <= 32.0) && (x <= 0.8);
+    if (terminating_series || (b * x <= 0.7)) {
+        result = pal_ibeta_series(a, b, x, log_beta);
+    } else if (a + b < 128.0) {
         const double power = exp(a * log(x) + b * log1p(-x) - log_beta);
         if (x <= switch_point) {
             result = power * pal_ibeta_fraction(a, b, x) / a;
