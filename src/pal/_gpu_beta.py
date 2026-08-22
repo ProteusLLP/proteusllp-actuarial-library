@@ -288,7 +288,7 @@ __device__ __forceinline__ double pal_temme_ibeta(
 );
 
 __device__ __forceinline__ double pal_ibeta(
-    const double a, const double b, const double x
+    const double a, const double b, const double x, const double log_beta
 ) {
     if (isnan(a) || isnan(b) || isnan(x)) {
         return CUDART_NAN;
@@ -327,7 +327,15 @@ __device__ __forceinline__ double pal_ibeta(
 
     const double switch_point = (a + 1.0) / (a + b + 2.0);
     double result;
-    if (x <= switch_point) {
+    if (a + b < 128.0) {
+        const double power = exp(a * log(x) + b * log1p(-x) - log_beta);
+        if (x <= switch_point) {
+            result = power * pal_ibeta_fraction(a, b, x) / a;
+        } else {
+            result = power * pal_ibeta_fraction(b, a, 1.0 - x) / b;
+            result = 1.0 - result;
+        }
+    } else if (x <= switch_point) {
         result = pal_ibeta_power_terms(a, b, x, 1.0 - x);
         result *= pal_ibeta_fraction(a, b, x) / a;
     } else {
@@ -424,7 +432,7 @@ __device__ __forceinline__ double pal_temme_ibeta(
 }
 
 __device__ __forceinline__ double pal_ibeta_inverse(
-    double a, double b, double p
+    double a, double b, double p, const double input_log_beta
 ) {
     if (isnan(a) || isnan(b) || isnan(p)) {
         return CUDART_NAN;
@@ -461,7 +469,7 @@ __device__ __forceinline__ double pal_ibeta_inverse(
     } else if (a == 1.0) {
         x = -expm1(log1p(-p) / b);
     } else {
-        const double log_beta = pal_log_beta(a, b);
+        const double log_beta = input_log_beta;
         const double minimum = fmin(a, b);
         const double maximum = fmax(a, b);
 
@@ -511,7 +519,7 @@ __device__ __forceinline__ double pal_ibeta_inverse(
         // Difficult small-shape tails can require many safeguarded bisection
         // steps when the density underflows and Halley's step is unavailable.
         for (int iteration = 0; iteration < 96; ++iteration) {
-            const double probability = pal_ibeta(a, b, x);
+            const double probability = pal_ibeta(a, b, x, log_beta);
             const double residual = probability - p;
             if (residual < 0.0) {
                 lower = x;
@@ -556,9 +564,11 @@ __device__ __forceinline__ double pal_ibeta_inverse(
     }
     double answer = reflect ? 1.0 - x : x;
     if ((answer > 0.0) && (answer < 1e-4)) {
-        const double log_beta = pal_log_beta(original_a, original_b);
+        const double log_beta = input_log_beta;
         for (int iteration = 0; iteration < 4; ++iteration) {
-            const double probability = pal_ibeta(original_a, original_b, answer);
+            const double probability = pal_ibeta(
+                original_a, original_b, answer, log_beta
+            );
             const double log_density = (original_a - 1.0) * log(answer)
                 + (original_b - 1.0) * log1p(-answer) - log_beta;
             if (!(log_density > log(PAL_DBL_MIN)) ||
@@ -582,18 +592,26 @@ __device__ __forceinline__ double pal_ibeta_inverse(
 
 
 _BETA_CDF_KERNEL = cp.ElementwiseKernel(
-    "float64 a, float64 b, float64 x",
+    "float64 a, float64 b, float64 x, float64 log_beta",
     "float64 result",
-    "result = pal_ibeta(a, b, x);",
+    "result = pal_ibeta(a, b, x, log_beta);",
     "pal_gpu_beta_cdf",
     preamble=_BETA_PREAMBLE,
 )
 
 _BETA_INVERSE_KERNEL = cp.ElementwiseKernel(
-    "float64 a, float64 b, float64 p",
+    "float64 a, float64 b, float64 p, float64 log_beta",
     "float64 result",
-    "result = pal_ibeta_inverse(a, b, p);",
+    "result = pal_ibeta_inverse(a, b, p, log_beta);",
     "pal_gpu_beta_inverse",
+    preamble=_BETA_PREAMBLE,
+)
+
+_LOG_BETA_KERNEL = cp.ElementwiseKernel(
+    "float64 a, float64 b",
+    "float64 result",
+    "result = pal_log_beta(a, b);",
+    "pal_gpu_log_beta",
     preamble=_BETA_PREAMBLE,
 )
 
@@ -604,6 +622,12 @@ def _coerce_device_array(value: t.Any) -> t.Any:
     return value
 
 
+def _device_log_beta(a: t.Any, b: t.Any) -> t.Any:
+    if not isinstance(a, cp.ndarray) and not isinstance(b, cp.ndarray):
+        a = cp.asarray(a, dtype=cp.float64)
+    return _LOG_BETA_KERNEL(a, b)
+
+
 def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
     """Evaluate the regularized incomplete beta function on the GPU."""
     a = _coerce_device_array(a)
@@ -611,7 +635,7 @@ def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
     x = _coerce_device_array(x)
     if not any(isinstance(value, cp.ndarray) for value in (a, b, x)):
         x = cp.asarray(x, dtype=cp.float64)
-    return _BETA_CDF_KERNEL(a, b, x)
+    return _BETA_CDF_KERNEL(a, b, x, _device_log_beta(a, b))
 
 
 def betaincinv(a: t.Any, b: t.Any, p: t.Any) -> t.Any:
@@ -621,7 +645,7 @@ def betaincinv(a: t.Any, b: t.Any, p: t.Any) -> t.Any:
     p = _coerce_device_array(p)
     if not any(isinstance(value, cp.ndarray) for value in (a, b, p)):
         p = cp.asarray(p, dtype=cp.float64)
-    return _BETA_INVERSE_KERNEL(a, b, p)
+    return _BETA_INVERSE_KERNEL(a, b, p, _device_log_beta(a, b))
 
 
 __all__ = ["betainc", "betaincinv"]
