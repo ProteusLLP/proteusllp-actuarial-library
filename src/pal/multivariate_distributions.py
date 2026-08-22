@@ -229,10 +229,7 @@ def _matrix_observations(
         return values[xp.newaxis, :, :], stochastic_inputs
     if values.ndim == 3 and values.shape[1:] == (dimension, dimension):
         return values, stochastic_inputs
-    raise ValueError(
-        f"x must have shape ({dimension}, {dimension}), "
-        f"or (n_sims, {dimension}, {dimension})."
-    )
+    raise ValueError(f"x must have shape ({dimension}, {dimension}), or (n_sims, {dimension}, {dimension}).")
 
 
 def _positive_definite_support(observations: t.Any) -> tuple[t.Any, t.Any]:
