@@ -424,7 +424,7 @@ __device__ __forceinline__ double pal_temme_ibeta(
 }
 
 __device__ __forceinline__ double pal_ibeta_inverse(
-    double a, double b, double p
+    double a, double b, double p, const double midpoint_probability
 ) {
     if (isnan(a) || isnan(b) || isnan(p)) {
         return CUDART_NAN;
@@ -440,7 +440,7 @@ __device__ __forceinline__ double pal_ibeta_inverse(
     }
 
     bool reflect = false;
-    if (p > 0.5) {
+    if (p > midpoint_probability) {
         const double temporary = a;
         a = b;
         b = temporary;
@@ -564,9 +564,9 @@ _BETA_CDF_KERNEL = cp.ElementwiseKernel(
 )
 
 _BETA_INVERSE_KERNEL = cp.ElementwiseKernel(
-    "float64 a, float64 b, float64 p",
+    "float64 a, float64 b, float64 p, float64 midpoint_probability",
     "float64 result",
-    "result = pal_ibeta_inverse(a, b, p);",
+    "result = pal_ibeta_inverse(a, b, p, midpoint_probability);",
     "pal_gpu_beta_inverse",
     preamble=_BETA_PREAMBLE,
 )
@@ -595,7 +595,8 @@ def betaincinv(a: t.Any, b: t.Any, p: t.Any) -> t.Any:
     p = _coerce_device_array(p)
     if not any(isinstance(value, cp.ndarray) for value in (a, b, p)):
         p = cp.asarray(p, dtype=cp.float64)
-    return _BETA_INVERSE_KERNEL(a, b, p)
+    midpoint_probability = _BETA_CDF_KERNEL(a, b, cp.asarray(0.5))
+    return _BETA_INVERSE_KERNEL(a, b, p, midpoint_probability)
 
 
 __all__ = ["betainc", "betaincinv"]
