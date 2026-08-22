@@ -23,6 +23,7 @@ _BETA_PREAMBLE = r"""
 #define PAL_DBL_MIN 2.22507385850720138309e-308
 #define PAL_DBL_MAX 1.79769313486231570815e+308
 #define PAL_DBL_EPSILON 2.22044604925031308085e-16
+#define PAL_PI 3.141592653589793238462643383279502884
 
 // Boost.Math lanczos13m53 coefficients, Boost Software License 1.0.
 __constant__ double pal_lanczos_num[13] = {
@@ -195,7 +196,7 @@ __device__ __forceinline__ double pal_ibeta(
         return 0.5;
     }
     if ((a == 0.5) && (b == 0.5)) {
-        return 2.0 * asin(sqrt(x)) / CUDART_PI;
+        return 2.0 * asin(sqrt(x)) / PAL_PI;
     }
     if (b == 1.0) {
         return exp(a * log(x));
@@ -300,7 +301,7 @@ __device__ __forceinline__ double pal_ibeta_inverse(
 
     double x;
     if ((a == 0.5) && (b == 0.5)) {
-        const double sine = sin(p * CUDART_PI / 2.0);
+        const double sine = sin(p * PAL_PI / 2.0);
         x = sine * sine;
     } else if (b == 1.0) {
         x = exp(log(p) / a);
