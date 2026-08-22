@@ -177,6 +177,112 @@ __device__ __forceinline__ double pal_ibeta_fraction(
     return result;
 }
 
+__device__ __forceinline__ double pal_gamma_q(
+    const double shape, const double argument
+) {
+    if (argument == 0.0) {
+        return 1.0;
+    }
+    const double log_prefix = -argument + shape * log(argument) - lgamma(shape);
+    if (argument < shape + 1.0) {
+        double term = 1.0 / shape;
+        double sum = term;
+        double denominator = shape;
+        for (int iteration = 1; iteration <= 256; ++iteration) {
+            denominator += 1.0;
+            term *= argument / denominator;
+            sum += term;
+            if (fabs(term) <= fabs(sum) * PAL_DBL_EPSILON) {
+                break;
+            }
+        }
+        return fmax(0.0, 1.0 - sum * exp(log_prefix));
+    }
+
+    const double tiny = PAL_DBL_MIN / PAL_DBL_EPSILON;
+    double denominator = argument + 1.0 - shape;
+    double c = 1.0 / tiny;
+    double d = 1.0 / denominator;
+    double fraction = d;
+    for (int iteration = 1; iteration <= 256; ++iteration) {
+        const double coefficient = -iteration * (iteration - shape);
+        denominator += 2.0;
+        d = coefficient * d + denominator;
+        if (fabs(d) < tiny) {
+            d = tiny;
+        }
+        c = denominator + coefficient / c;
+        if (fabs(c) < tiny) {
+            c = tiny;
+        }
+        d = 1.0 / d;
+        const double delta = d * c;
+        fraction *= delta;
+        if (fabs(delta - 1.0) <= PAL_DBL_EPSILON) {
+            break;
+        }
+    }
+    return exp(log_prefix) * fraction;
+}
+
+__device__ __forceinline__ double pal_factorial(const int value) {
+    double result = 1.0;
+    for (int factor = 2; factor <= value; ++factor) {
+        result *= factor;
+    }
+    return result;
+}
+
+// DiDonato-Morris BGRAT expansion, following Boost.Math's
+// beta_small_b_large_a_series implementation.
+__device__ __forceinline__ double pal_ibeta_small_b_large_a(
+    const double a, const double b, const double x, const double y
+) {
+    const double bm1 = b - 1.0;
+    const double t = a + bm1 / 2.0;
+    const double lx = y < 0.35 ? log1p(-y) : log(x);
+    const double u = -t * lx;
+    const double log_h = -u + b * log(u) - lgamma(b);
+    const double h = exp(log_h);
+    if (!(h > PAL_DBL_MIN)) {
+        return 0.0;
+    }
+
+    double prefix = exp(log_h + lgamma(a + b) - lgamma(a) - b * log(t));
+    double coefficients[30] = {1.0};
+    double j = pal_gamma_q(b, u) / h;
+    double sum = prefix * j;
+    int twice_n_plus_one = 1;
+    double lx_power = 1.0;
+    const double lx2 = lx * lx / 4.0;
+    const double four_t2 = 4.0 * t * t;
+    double b_plus_twice_n = b;
+
+    for (int n = 1; n < 30; ++n) {
+        twice_n_plus_one += 2;
+        coefficients[n] = 0.0;
+        int factorial_index = 3;
+        for (int m = 1; m < n; ++m) {
+            const double mbn = m * b - n;
+            coefficients[n] += mbn * coefficients[n - m] / pal_factorial(factorial_index);
+            factorial_index += 2;
+        }
+        coefficients[n] /= n;
+        coefficients[n] += bm1 / pal_factorial(twice_n_plus_one);
+
+        j = (b_plus_twice_n * (b_plus_twice_n + 1.0) * j
+            + (u + b_plus_twice_n + 1.0) * lx_power) / four_t2;
+        lx_power *= lx2;
+        b_plus_twice_n += 2.0;
+        const double term = prefix * coefficients[n] * j;
+        sum += term;
+        if (fabs(term) <= PAL_DBL_EPSILON * fabs(sum)) {
+            break;
+        }
+    }
+    return fmin(1.0, fmax(0.0, sum));
+}
+
 __device__ __forceinline__ double pal_temme_ibeta(
     const double a, const double b, const double x
 );
@@ -209,9 +315,16 @@ __device__ __forceinline__ double pal_ibeta(
         return -expm1(b * log1p(-x));
     }
 
+    if ((a >= 15.0) && (b < 1.0) && (x > 0.5)) {
+        return pal_ibeta_small_b_large_a(a, b, x, 1.0 - x);
+    }
+    if ((b >= 15.0) && (a < 1.0) && (x < 0.5)) {
+        return 1.0 - pal_ibeta_small_b_large_a(b, a, 1.0 - x, x);
+    }
+
     const double minimum = fmin(a, b);
     const double maximum = fmax(a, b);
-    if ((minimum > 5.0) && (sqrt(minimum) > maximum - minimum)) {
+    if ((minimum >= 1000.0) && (sqrt(minimum) > maximum - minimum)) {
         return pal_temme_ibeta(a, b, x);
     }
 
@@ -351,9 +464,11 @@ __device__ __forceinline__ double pal_ibeta_inverse(
         const double minimum = fmin(a, b);
         const double maximum = fmax(a, b);
 
-        if ((minimum > 5.0) && (sqrt(minimum) > maximum - minimum)) {
+        if ((minimum >= 1000.0) && (sqrt(minimum) > maximum - minimum)) {
             x = pal_temme_inverse_start(a, b, p);
             return reflect ? 1.0 - x : x;
+        } else if ((minimum > 5.0) && (sqrt(minimum) > maximum - minimum)) {
+            x = pal_temme_inverse_start(a, b, p);
         } else if ((a > 1.0) && (b > 1.0)) {
             // Didonato-Morris/AS109 approximation, also used as a Boost
             // fallback away from the Temme regions.
