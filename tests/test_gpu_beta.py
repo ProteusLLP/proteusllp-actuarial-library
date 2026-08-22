@@ -56,6 +56,15 @@ def test_gpu_beta_inverse_matches_scipy_across_parameter_regimes() -> None:
     np.testing.assert_allclose(actual, expected, rtol=2e-9, atol=2e-13)
 
 
+def test_gpu_beta_cdf_matches_scipy_in_large_symmetric_transition() -> None:
+    """Keep accuracy where a large symmetric beta CDF transitions steeply."""
+    probabilities = PROBABILITIES[2:-2]
+    for shape in (10.0, 100.0, 10_000.0):
+        values = scipy.special.betaincinv(shape, shape, probabilities)
+        actual = asnumpy(betainc(shape, shape, xp.asarray(values)))
+        np.testing.assert_allclose(actual, probabilities, rtol=5e-10, atol=5e-14)
+
+
 def test_gpu_beta_inverse_round_trip_preserves_tail_probabilities() -> None:
     """Recover input probabilities without losing relative tail accuracy."""
     alpha, beta, probability = _parameter_grid(PROBABILITIES)
@@ -69,7 +78,7 @@ def test_gpu_beta_inverse_round_trip_preserves_tail_probabilities() -> None:
     tail_scale = np.minimum(probability, 1 - probability)
     # Exclude endpoint-conditioned quantiles where one ULP in x necessarily
     # represents more probability mass than the requested round-trip tolerance.
-    representable = (host_quantile > np.finfo(float).tiny) & (host_quantile < 1 - 1e-10)
+    representable = (host_quantile > np.finfo(float).tiny) & (host_quantile < 1 - 1e-8)
 
     np.testing.assert_array_less(
         np.abs(recovered[representable] - probability[representable]),

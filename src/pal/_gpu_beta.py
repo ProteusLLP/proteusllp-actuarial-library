@@ -177,6 +177,10 @@ __device__ __forceinline__ double pal_ibeta_fraction(
     return result;
 }
 
+__device__ __forceinline__ double pal_temme_ibeta(
+    const double a, const double b, const double x
+);
+
 __device__ __forceinline__ double pal_ibeta(
     const double a, const double b, const double x
 ) {
@@ -205,6 +209,12 @@ __device__ __forceinline__ double pal_ibeta(
         return -expm1(b * log1p(-x));
     }
 
+    const double minimum = fmin(a, b);
+    const double maximum = fmax(a, b);
+    if ((minimum > 5.0) && (sqrt(minimum) > maximum - minimum)) {
+        return pal_temme_ibeta(a, b, x);
+    }
+
     const double switch_point = (a + 1.0) / (a + b + 2.0);
     double result;
     if (x <= switch_point) {
@@ -219,12 +229,11 @@ __device__ __forceinline__ double pal_ibeta(
 }
 
 // Section 2 of Temme (1992), as used by Boost for nearly symmetric large
-// parameters. This gives the inverse iteration a close, inexpensive start.
-__device__ __forceinline__ double pal_temme_inverse_start(
-    const double a, const double b, const double p
+// parameters. Map its normal-deviate parameter to the beta variate.
+__device__ __forceinline__ double pal_temme_x_from_eta0(
+    const double a, const double b, const double eta0
 ) {
     const double root_two = 1.4142135623730950488;
-    double eta0 = erfcinv(2.0 * p) / -sqrt(a / 2.0);
     const double difference = b - a;
     const double difference2 = difference * difference;
     const double difference3 = difference2 * difference;
@@ -274,6 +283,36 @@ __device__ __forceinline__ double pal_temme_inverse_start(
     return fmin(1.0, fmax(0.0, (1.0 + eta * sqrt((1.0 + exponential) / eta2)) / 2.0));
 }
 
+__device__ __forceinline__ double pal_temme_inverse_start(
+    const double a, const double b, const double p
+) {
+    const double eta0 = erfcinv(2.0 * p) / -sqrt(a / 2.0);
+    return pal_temme_x_from_eta0(a, b, eta0);
+}
+
+__device__ __forceinline__ double pal_temme_ibeta(
+    const double a, const double b, const double x
+) {
+    const double root_two = 1.4142135623730950488;
+    double eta0 = 2.0 * root_two * (x - a / (a + b));
+    for (int iteration = 0; iteration < 8; ++iteration) {
+        const double value = pal_temme_x_from_eta0(a, b, eta0);
+        const double spacing = 1e-6 * fmax(1.0, fabs(eta0));
+        const double right = pal_temme_x_from_eta0(a, b, eta0 + spacing);
+        const double left = pal_temme_x_from_eta0(a, b, eta0 - spacing);
+        const double derivative = (right - left) / (2.0 * spacing);
+        if (!(derivative > 0.0) || !isfinite(derivative)) {
+            break;
+        }
+        const double step = (value - x) / derivative;
+        eta0 -= step;
+        if (fabs(step) <= 8.0 * PAL_DBL_EPSILON * fmax(1.0, fabs(eta0))) {
+            break;
+        }
+    }
+    return 0.5 * erfc(-eta0 * sqrt(a / 2.0));
+}
+
 __device__ __forceinline__ double pal_ibeta_inverse(
     double a, double b, double p
 ) {
@@ -314,6 +353,7 @@ __device__ __forceinline__ double pal_ibeta_inverse(
 
         if ((minimum > 5.0) && (sqrt(minimum) > maximum - minimum)) {
             x = pal_temme_inverse_start(a, b, p);
+            return reflect ? 1.0 - x : x;
         } else if ((a > 1.0) && (b > 1.0)) {
             // Didonato-Morris/AS109 approximation, also used as a Boost
             // fallback away from the Temme regions.
