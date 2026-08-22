@@ -47,6 +47,23 @@ Continuous distributions
    pal.distributions.Uniform
    pal.distributions.InverseExponential
 
+Multivariate distributions
+--------------------------
+
+Multivariate samples are returned as a :class:`pal.variables.ProteusVariable`
+with one named :class:`pal.stochastic_scalar.StochasticScalar` per component.
+
+.. autosummary::
+   :toctree: distributions
+   :nosignatures:
+
+   pal.distributions.MultivariateNormal
+   pal.distributions.MultivariateStudentsT
+   pal.distributions.Dirichlet
+   pal.distributions.InvertedDirichlet
+   pal.distributions.GeneralizedDirichlet
+   pal.distributions.InvertedGeneralizedDirichlet
+
 Supporting API
 --------------
 
@@ -55,6 +72,7 @@ Supporting API
 
    pal.distributions.DistributionBase
    pal.distributions.DiscreteDistributionBase
+   pal.distributions.MultivariateDistributionBase
    pal.distributions.DistributionGeneratorBase
    pal.distributions.DiscreteDistributionGenerator
    pal.distributions.ContinuousDistributionGenerator
