@@ -13,9 +13,11 @@ more important than preserving a float32 input dtype.
 from __future__ import annotations
 
 import importlib
+import numbers
 import typing as t
 
 cp = t.cast(t.Any, importlib.import_module("cupy"))
+cupy_special = t.cast(t.Any, importlib.import_module("cupyx.scipy.special"))
 
 _BETA_PREAMBLE = r"""
 #include <cupy/math_constants.h>
@@ -420,8 +422,49 @@ _BETA_INVERSE_KERNEL = cp.ElementwiseKernel(
 )
 
 
+def _coerce_device_array(value: t.Any) -> t.Any:
+    if isinstance(value, cp.ndarray) and value.dtype != cp.float64:
+        return value.astype(cp.float64)
+    return value
+
+
+def _scalar_shapes_need_fallback(a: t.Any, b: t.Any) -> bool:
+    if not isinstance(a, numbers.Real) or not isinstance(b, numbers.Real):
+        return False
+    smaller = min(float(a), float(b))
+    larger = max(float(a), float(b))
+    return smaller > 0 and larger >= 100 and larger >= 50 * smaller
+
+
+def _mixed_shape_fallback(
+    function: t.Callable[..., t.Any],
+    kernel: t.Callable[..., t.Any],
+    a: t.Any,
+    b: t.Any,
+    value: t.Any,
+) -> t.Any:
+    device_a, device_b, device_value = cp.broadcast_arrays(
+        cp.asarray(a, dtype=cp.float64),
+        cp.asarray(b, dtype=cp.float64),
+        cp.asarray(value, dtype=cp.float64),
+    )
+    result = kernel(device_a, device_b, device_value)
+    smaller = cp.minimum(device_a, device_b)
+    larger = cp.maximum(device_a, device_b)
+    mask = (smaller > 0) & (larger >= 100) & (larger >= 50 * smaller)
+    result[mask] = function(device_a[mask], device_b[mask], device_value[mask])
+    return result
+
+
 def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
     """Evaluate the regularized incomplete beta function on the GPU."""
+    a = _coerce_device_array(a)
+    b = _coerce_device_array(b)
+    x = _coerce_device_array(x)
+    if _scalar_shapes_need_fallback(a, b):
+        return cupy_special.betainc(a, b, x)
+    if isinstance(a, cp.ndarray) or isinstance(b, cp.ndarray):
+        return _mixed_shape_fallback(cupy_special.betainc, _BETA_CDF_KERNEL, a, b, x)
     if not any(isinstance(value, cp.ndarray) for value in (a, b, x)):
         x = cp.asarray(x, dtype=cp.float64)
     return _BETA_CDF_KERNEL(a, b, x)
@@ -429,6 +472,13 @@ def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
 
 def betaincinv(a: t.Any, b: t.Any, p: t.Any) -> t.Any:
     """Evaluate the inverse regularized incomplete beta function on the GPU."""
+    a = _coerce_device_array(a)
+    b = _coerce_device_array(b)
+    p = _coerce_device_array(p)
+    if _scalar_shapes_need_fallback(a, b):
+        return cupy_special.betaincinv(a, b, p)
+    if isinstance(a, cp.ndarray) or isinstance(b, cp.ndarray):
+        return _mixed_shape_fallback(cupy_special.betaincinv, _BETA_INVERSE_KERNEL, a, b, p)
     if not any(isinstance(value, cp.ndarray) for value in (a, b, p)):
         p = cp.asarray(p, dtype=cp.float64)
     return _BETA_INVERSE_KERNEL(a, b, p)
