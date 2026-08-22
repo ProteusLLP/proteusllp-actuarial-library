@@ -347,8 +347,9 @@ __device__ __forceinline__ double pal_ibeta(
 
     const double switch_point = (a + 1.0) / (a + b + 2.0);
     double result;
-    const bool terminating_series = (b == floor(b)) && (b <= 32.0) && (x <= 0.8);
-    if (terminating_series || (b * x <= 0.7)) {
+    const bool terminating_series =
+        (a >= 1.0) && (b == floor(b)) && (b <= 32.0) && (x <= 0.8);
+    if (terminating_series) {
         result = pal_ibeta_series(a, b, x, log_beta);
     } else if (a + b < 128.0) {
         const double power = exp(a * log(x) + b * log1p(-x) - log_beta);
