@@ -65,6 +65,15 @@ def test_gpu_beta_cdf_matches_scipy_in_large_symmetric_transition() -> None:
         np.testing.assert_allclose(actual, probabilities, rtol=5e-10, atol=5e-14)
 
 
+def test_gpu_beta_cdf_matches_scipy_for_seven_term_series() -> None:
+    """Validate the fixed-length series used by the benchmark shape."""
+    values = np.linspace(np.finfo(float).eps, 0.95, 16_384)
+    actual = asnumpy(betainc(2.5, 7.0, xp.asarray(values)))
+    expected = scipy.special.betainc(2.5, 7.0, values)
+
+    np.testing.assert_allclose(actual, expected, rtol=5e-10, atol=5e-14)
+
+
 def test_gpu_beta_inverse_round_trip_preserves_tail_probabilities() -> None:
     """Recover input probabilities without losing relative tail accuracy."""
     alpha, beta, probability = _parameter_grid(PROBABILITIES)

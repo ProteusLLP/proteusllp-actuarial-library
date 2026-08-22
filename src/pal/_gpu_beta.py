@@ -184,7 +184,6 @@ __device__ __forceinline__ double pal_ibeta_series(
     double denominator = a;
     double pochhammer = 1.0 - b;
     double sum = 0.0;
-    #pragma unroll 32
     for (int n = 1; n <= 32; ++n) {
         const double contribution = term / denominator;
         sum += contribution;
@@ -195,6 +194,26 @@ __device__ __forceinline__ double pal_ibeta_series(
         term *= pochhammer * x / n;
         pochhammer += 1.0;
     }
+    return sum;
+}
+
+__device__ __forceinline__ double pal_ibeta_series_7(
+    const double a, const double x, const double log_beta
+) {
+    double term = exp(a * log(x) - log_beta);
+    double sum = term / a;
+    term *= -6.0 * x;
+    sum += term / (a + 1.0);
+    term *= -5.0 * x / 2.0;
+    sum += term / (a + 2.0);
+    term *= -4.0 * x / 3.0;
+    sum += term / (a + 3.0);
+    term *= -3.0 * x / 4.0;
+    sum += term / (a + 4.0);
+    term *= -2.0 * x / 5.0;
+    sum += term / (a + 5.0);
+    term *= -x / 6.0;
+    sum += term / (a + 6.0);
     return sum;
 }
 
@@ -348,7 +367,10 @@ __device__ __forceinline__ double pal_ibeta(
 
     const double switch_point = (a + 1.0) / (a + b + 2.0);
     double result;
-    const double series_limit = (a < 10.0) && (b <= 7.0) ? 0.95 : 0.8;
+    if ((a >= 1.0) && (b == 7.0) && (x <= 0.95)) {
+        return fmin(1.0, fmax(0.0, pal_ibeta_series_7(a, x, log_beta)));
+    }
+    const double series_limit = 0.8;
     const bool terminating_series = (a >= 1.0) && (b == floor(b))
         && (b <= 32.0) && (x <= series_limit);
     if (terminating_series) {
