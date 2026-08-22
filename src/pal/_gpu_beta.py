@@ -197,10 +197,6 @@ __device__ __forceinline__ double pal_ibeta_series(
     return sum;
 }
 
-__device__ __forceinline__ double pal_ibeta(
-    const double a, const double b, const double x, const double log_beta
-);
-
 __device__ __forceinline__ double pal_ibeta_b7(
     const double a, const double x
 ) {
@@ -235,7 +231,10 @@ __device__ __forceinline__ double pal_ibeta_b7(
     if (isfinite(result)) {
         return fmin(1.0, fmax(0.0, result));
     }
-    return pal_ibeta(a, 7.0, x, pal_log_beta(a, 7.0));
+    // c6 can overflow only for shapes above roughly 1e51.  At that scale the
+    // beta distribution is closer to one than any representable x < 1, so
+    // its CDF rounds to zero throughout the open unit interval.
+    return 0.0;
 }
 
 __device__ __forceinline__ double pal_gamma_q(
