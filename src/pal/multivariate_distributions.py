@@ -472,7 +472,7 @@ class Dirichlet(MultivariateDistributionBase):
         observations = xp.broadcast_to(observations, (self.dimension, n_sims))
         alpha = _active_parameter_matrix(self.alpha, n_sims)
         valid = xp.all(observations > 0, axis=0) & xp.isclose(xp.sum(observations, axis=0), 1.0)
-        with xp.errstate(divide="ignore", invalid="ignore"):
+        with np.errstate(divide="ignore", invalid="ignore"):
             result = special.gammaln(xp.sum(alpha, axis=0)) - xp.sum(special.gammaln(alpha), axis=0)
             result += xp.sum((alpha - 1) * xp.log(observations), axis=0)
         result = xp.where(valid, result, -xp.inf)
@@ -539,7 +539,7 @@ class InvertedDirichlet(MultivariateDistributionBase):
         observations = xp.broadcast_to(observations, (self.dimension, n_sims))
         alpha = _active_parameter_matrix(self.alpha, n_sims)
         valid = xp.all(observations > 0, axis=0)
-        with xp.errstate(divide="ignore", invalid="ignore"):
+        with np.errstate(divide="ignore", invalid="ignore"):
             result = special.gammaln(xp.sum(alpha, axis=0)) - xp.sum(special.gammaln(alpha), axis=0)
             result += xp.sum((alpha[:-1] - 1) * xp.log(observations), axis=0)
             result -= xp.sum(alpha, axis=0) * xp.log1p(xp.sum(observations, axis=0))
@@ -620,7 +620,7 @@ class GeneralizedDirichlet(MultivariateDistributionBase):
         valid = xp.all(observations > 0, axis=0) & xp.isclose(xp.sum(observations, axis=0), 1.0)
         remainder = xp.ones(n_sims)
         result = xp.zeros(n_sims)
-        with xp.errstate(divide="ignore", invalid="ignore"):
+        with np.errstate(divide="ignore", invalid="ignore"):
             for index in range(len(self.alpha)):
                 proportion = observations[index] / remainder
                 result += (alpha[index] - 1) * xp.log(proportion)
@@ -713,7 +713,7 @@ class InvertedGeneralizedDirichlet(MultivariateDistributionBase):
         valid = xp.all(observations > 0, axis=0)
         cumulative = xp.ones(n_sims)
         result = xp.zeros(n_sims)
-        with xp.errstate(divide="ignore", invalid="ignore"):
+        with np.errstate(divide="ignore", invalid="ignore"):
             for index in range(self.dimension):
                 ratio = observations[index] / cumulative
                 result += (alpha[index] - 1) * xp.log(ratio)
