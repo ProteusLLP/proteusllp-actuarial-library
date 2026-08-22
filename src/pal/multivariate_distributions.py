@@ -647,8 +647,10 @@ class Multinomial(MultivariateDistributionBase):
 
     def _generate_matrix(self, n_sims: int, rng: RandomGenerator) -> t.Any:
         backend = np if _is_numpy_rng(rng) else xp
-        raw_n = self.n.values if isinstance(self.n, StochasticScalar) else self.n
-        n = backend.broadcast_to(_rng_value(raw_n, rng), (n_sims,)).astype(int)
+        if isinstance(self.n, StochasticScalar):
+            n = _rng_value(self.n.values, rng).astype(int)
+        else:
+            n = backend.full(n_sims, self.n, dtype=int)
         probabilities = _parameter_matrix(self.p, n_sims, rng)
         remaining_n = n.copy()
         remaining_probability = backend.ones(n_sims)
@@ -712,8 +714,10 @@ def _bartlett_factor(
 ) -> t.Any:
     """Generate lower-triangular Bartlett factors on the RNG backend."""
     backend = np if _is_numpy_rng(rng) else xp
-    raw_df = df.values if isinstance(df, StochasticScalar) else df
-    df_values = backend.broadcast_to(_rng_value(raw_df, rng), (n_sims,))
+    if isinstance(df, StochasticScalar):
+        df_values = _rng_value(df.values, rng)
+    else:
+        df_values = backend.full(n_sims, df, dtype=float)
     factor = backend.tril(rng.standard_normal(size=(n_sims, dimension, dimension)), k=-1)
     diagonal_df = df_values[:, None] - backend.arange(dimension)[None, :]
     diagonal = backend.sqrt(rng.gamma(diagonal_df / 2, 2.0))
