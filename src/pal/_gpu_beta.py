@@ -318,9 +318,6 @@ __device__ __forceinline__ double pal_ibeta(
     if ((a >= 15.0) && (b < 1.0) && (x > 0.5)) {
         return pal_ibeta_small_b_large_a(a, b, x, 1.0 - x);
     }
-    if ((b >= 15.0) && (a < 1.0) && (x < 0.5)) {
-        return 1.0 - pal_ibeta_small_b_large_a(b, a, 1.0 - x, x);
-    }
 
     const double minimum = fmin(a, b);
     const double maximum = fmax(a, b);

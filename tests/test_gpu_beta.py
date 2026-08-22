@@ -76,13 +76,23 @@ def test_gpu_beta_inverse_round_trip_preserves_tail_probabilities() -> None:
     recovered = asnumpy(betainc(device_alpha, device_beta, quantile))
     host_quantile = asnumpy(quantile)
     tail_scale = np.minimum(probability, 1 - probability)
-    # Exclude endpoint-conditioned quantiles where one ULP in x necessarily
-    # represents more probability mass than the requested round-trip tolerance.
-    representable = (host_quantile > np.finfo(float).tiny) & (host_quantile < 1 - 1e-8)
+    tolerance = 2e-8 * tail_scale + 5e-15
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        log_density = (
+            (alpha - 1) * np.log(host_quantile)
+            + (beta - 1) * np.log1p(-host_quantile)
+            - scipy.special.betaln(alpha, beta)
+        )
+        probability_resolution = np.exp(log_density) * np.spacing(host_quantile)
+    # Exclude endpoint-conditioned quantiles where two ULPs in x represent
+    # more probability mass than the requested round-trip tolerance.
+    representable = (
+        (host_quantile > np.finfo(float).tiny) & (host_quantile < 1) & (2 * probability_resolution < tolerance)
+    )
 
     np.testing.assert_array_less(
         np.abs(recovered[representable] - probability[representable]),
-        2e-8 * tail_scale[representable] + 5e-15,
+        tolerance[representable],
     )
 
 
