@@ -59,10 +59,13 @@ with one named :class:`pal.stochastic_scalar.StochasticScalar` per component.
 
    pal.distributions.MultivariateNormal
    pal.distributions.MultivariateStudentsT
+   pal.distributions.Multinomial
    pal.distributions.Dirichlet
    pal.distributions.InvertedDirichlet
    pal.distributions.GeneralizedDirichlet
    pal.distributions.InvertedGeneralizedDirichlet
+   pal.distributions.Wishart
+   pal.distributions.InverseWishart
 
 Supporting API
 --------------
@@ -73,6 +76,7 @@ Supporting API
    pal.distributions.DistributionBase
    pal.distributions.DiscreteDistributionBase
    pal.distributions.MultivariateDistributionBase
+   pal.distributions.MatrixDistributionBase
    pal.distributions.DistributionGeneratorBase
    pal.distributions.DiscreteDistributionGenerator
    pal.distributions.ContinuousDistributionGenerator

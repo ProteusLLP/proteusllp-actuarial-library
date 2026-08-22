@@ -10,7 +10,8 @@ be created and passed to another distribution as a parameter.
 Univariate distributions accept and return only primitives (int, float) or
 StochasticScalar. Multivariate distributions return a ProteusVariable containing
 one StochasticScalar per named component, keeping the simulation dimension
-one-dimensional at each leaf.
+one-dimensional at each leaf. Matrix distributions return nested row and column
+ProteusVariable objects with a StochasticScalar at each named matrix entry.
 
 Type Definitions:
 - DistributionParameter: Union[int, float, StochasticScalar]
@@ -37,11 +38,15 @@ from .types import DistributionParameter, RandomGenerator
 if t.TYPE_CHECKING:
     from .multivariate_distributions import Dirichlet as Dirichlet
     from .multivariate_distributions import GeneralizedDirichlet as GeneralizedDirichlet
+    from .multivariate_distributions import InverseWishart as InverseWishart
     from .multivariate_distributions import InvertedDirichlet as InvertedDirichlet
     from .multivariate_distributions import InvertedGeneralizedDirichlet as InvertedGeneralizedDirichlet
+    from .multivariate_distributions import MatrixDistributionBase as MatrixDistributionBase
+    from .multivariate_distributions import Multinomial as Multinomial
     from .multivariate_distributions import MultivariateDistributionBase as MultivariateDistributionBase
     from .multivariate_distributions import MultivariateNormal as MultivariateNormal
     from .multivariate_distributions import MultivariateStudentsT as MultivariateStudentsT
+    from .multivariate_distributions import Wishart as Wishart
 
 TOLERANCE = 1e-10  # Tolerance for numerical comparisons
 # FIXME: Consider replaching with VectorLike from types.py

@@ -29,11 +29,15 @@ from .variables import *
 for _distribution_name in (
     "Dirichlet",
     "GeneralizedDirichlet",
+    "InverseWishart",
     "InvertedDirichlet",
     "InvertedGeneralizedDirichlet",
+    "MatrixDistributionBase",
+    "Multinomial",
     "MultivariateDistributionBase",
     "MultivariateNormal",
     "MultivariateStudentsT",
+    "Wishart",
 ):
     setattr(distributions, _distribution_name, globals()[_distribution_name])
 

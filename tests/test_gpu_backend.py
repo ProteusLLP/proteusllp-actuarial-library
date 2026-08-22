@@ -7,14 +7,17 @@ from pal import (
     Dirichlet,
     GeneralizedDirichlet,
     InverseGaussian,
+    InverseWishart,
     InvertedDirichlet,
     InvertedGeneralizedDirichlet,
+    Multinomial,
     MultivariateNormal,
     MultivariateStudentsT,
     NegBinomial,
     Normal,
     StochasticScalar,
     StudentsT,
+    Wishart,
     set_random_seed,
 )
 from pal._maths import xp
@@ -54,12 +57,18 @@ def test_generation_and_numpy_dispatch_do_not_transfer_to_host(monkeypatch: pyte
         inverted_dirichlet_distribution = InvertedDirichlet([2, 3, 8])
         generalized_dirichlet_distribution = GeneralizedDirichlet([2, 3], [4, 5])
         inverted_generalized_dirichlet_distribution = InvertedGeneralizedDirichlet([2, 3], [6, 8])
+        multinomial_distribution = Multinomial(20, [0.2, 0.3, 0.5])
+        wishart_distribution = Wishart(8, [[1, 0.2], [0.2, 0.7]])
+        inverse_wishart_distribution = InverseWishart(10, [[1, 0.2], [0.2, 0.7]])
         multivariate_normal = multivariate_normal_distribution.generate(256)
         multivariate_students_t = multivariate_students_t_distribution.generate(256)
         dirichlet = dirichlet_distribution.generate(256)
         inverted_dirichlet = inverted_dirichlet_distribution.generate(256)
         generalized_dirichlet = generalized_dirichlet_distribution.generate(256)
         inverted_generalized_dirichlet = inverted_generalized_dirichlet_distribution.generate(256)
+        multinomial = multinomial_distribution.generate(256)
+        wishart = wishart_distribution.generate(256)
+        inverse_wishart = inverse_wishart_distribution.generate(256)
         transformed = np.where(simulations > 100, np.exp(simulations / 100), np.square(simulations / 100))
 
         assert type(config.rng).__module__.startswith("cupy")
@@ -75,6 +84,7 @@ def test_generation_and_numpy_dispatch_do_not_transfer_to_host(monkeypatch: pyte
             inverted_dirichlet,
             generalized_dirichlet,
             inverted_generalized_dirichlet,
+            multinomial,
         )
         multivariate_densities = (
             multivariate_normal_distribution.logpdf(multivariate_normal),
@@ -83,8 +93,17 @@ def test_generation_and_numpy_dispatch_do_not_transfer_to_host(monkeypatch: pyte
             inverted_dirichlet_distribution.logpdf(inverted_dirichlet),
             generalized_dirichlet_distribution.logpdf(generalized_dirichlet),
             inverted_generalized_dirichlet_distribution.logpdf(inverted_generalized_dirichlet),
+            multinomial_distribution.logpmf(multinomial),
+            wishart_distribution.logpdf(wishart),
+            inverse_wishart_distribution.logpdf(inverse_wishart),
         )
         assert all(isinstance(component.values, xp.ndarray) for sample in multivariate_samples for component in sample)
+        assert all(
+            isinstance(entry.values, xp.ndarray)
+            for sample in (wishart, inverse_wishart)
+            for row in sample
+            for entry in row
+        )
         assert all(
             isinstance(density, StochasticScalar) and isinstance(density.values, xp.ndarray)
             for density in multivariate_densities

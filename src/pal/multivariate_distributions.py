@@ -1,9 +1,10 @@
 """Multivariate probability distributions for simulation models.
 
-The distributions in this module return a :class:`ProteusVariable` containing
-one :class:`StochasticScalar` per component. This preserves PAL's convention
-that each stochastic scalar is indexed only by simulation while giving the
-components a named dimension.
+Vector distributions return a :class:`ProteusVariable` containing one
+:class:`StochasticScalar` per component. Matrix distributions return nested
+row and column variables with a stochastic scalar at each entry. This preserves
+PAL's convention that each stochastic scalar is indexed only by simulation
+while giving every distribution dimension a name.
 """
 
 from __future__ import annotations
@@ -23,6 +24,8 @@ from .variables import ProteusVariable
 MultivariateParameter = t.Union[t.Sequence[DistributionParameter], ProteusVariable[t.Any]]
 MultivariateInput = t.Union[npt.ArrayLike, ProteusVariable[t.Any]]
 MultivariateResult = ProteusVariable[StochasticScalar]
+MatrixInput = t.Union[npt.ArrayLike, ProteusVariable[ProteusVariable[t.Any]]]
+MatrixResult = ProteusVariable[ProteusVariable[StochasticScalar]]
 DensityResult = t.Union[float, StochasticScalar]
 
 
@@ -182,6 +185,66 @@ def _density_result(values: t.Any, stochastic_inputs: t.Iterable[DistributionPar
     return wrapped
 
 
+def _validate_degrees_of_freedom(df: DistributionParameter, dimension: int) -> None:
+    """Validate degrees of freedom for a nonsingular matrix distribution."""
+    raw = df.values if isinstance(df, StochasticScalar) else df
+    values = xp.asarray(to_backend(raw), dtype=float)
+    if bool(xp.any(~xp.isfinite(values))) or bool(xp.any(values <= dimension - 1)):
+        raise ValueError(f"df must be finite and greater than {dimension - 1}.")
+
+
+def _matrix_observations(
+    x: MatrixInput,
+    dimension: int,
+) -> tuple[t.Any, list[StochasticScalar]]:
+    """Return matrix observations with simulations in the leading dimension."""
+    stochastic_inputs: list[StochasticScalar] = []
+    if isinstance(x, ProteusVariable):
+        if len(x) != dimension:
+            raise ValueError(f"x must contain {dimension} rows.")
+        matrix_values: list[list[t.Any]] = []
+        raw_values: list[t.Any] = []
+        for row in x:
+            if not isinstance(row, ProteusVariable) or len(row) != dimension:
+                raise ValueError(f"Each row of x must contain {dimension} columns.")
+            values = list(row.values.values())
+            raw_values.extend(values)
+            matrix_values.append(values)
+        stochastic_inputs = [value for value in raw_values if isinstance(value, StochasticScalar)]
+        n_sims = _parameter_n_sims(stochastic_inputs) or 1
+        rows = [
+            xp.stack(
+                [
+                    value.values if isinstance(value, StochasticScalar) else xp.full(n_sims, value, dtype=float)
+                    for value in row
+                ],
+                axis=0,
+            )
+            for row in matrix_values
+        ]
+        return xp.moveaxis(xp.stack(rows, axis=0), -1, 0), stochastic_inputs
+
+    values = xp.asarray(x, dtype=float)
+    if values.ndim == 2 and values.shape == (dimension, dimension):
+        return values[xp.newaxis, :, :], stochastic_inputs
+    if values.ndim == 3 and values.shape[1:] == (dimension, dimension):
+        return values, stochastic_inputs
+    raise ValueError(
+        f"x must have shape ({dimension}, {dimension}), "
+        f"or (n_sims, {dimension}, {dimension})."
+    )
+
+
+def _positive_definite_support(observations: t.Any) -> tuple[t.Any, t.Any]:
+    """Return positive-definite support flags and finite safe observations."""
+    finite = xp.all(xp.isfinite(observations), axis=(1, 2))
+    identity = xp.eye(observations.shape[1], dtype=float)
+    safe = xp.where(finite[:, xp.newaxis, xp.newaxis], observations, identity)
+    symmetric = xp.all(xp.isclose(safe, xp.swapaxes(safe, 1, 2)), axis=(1, 2))
+    positive_definite = xp.linalg.eigvalsh(safe)[:, 0] > 0
+    return finite & symmetric & positive_definite, safe
+
+
 class MultivariateDistributionBase(ABC):
     """Base class for distributions whose samples contain several components."""
 
@@ -267,6 +330,112 @@ class MultivariateDistributionBase(ABC):
         first = result[0]
         for component in result:
             first.coupled_variable_group.merge(component.coupled_variable_group)
+        for parameter in self._parameters:
+            if isinstance(parameter, StochasticScalar):
+                first.coupled_variable_group.merge(parameter.coupled_variable_group)
+        return result
+
+
+class MatrixDistributionBase(ABC):
+    """Base class for distributions whose samples are square matrices."""
+
+    dimension: int
+
+    def __init__(
+        self,
+        dimension: int,
+        *,
+        component_names: t.Sequence[str] | None = None,
+        row_dim_name: str = "row",
+        column_dim_name: str = "column",
+    ) -> None:
+        """Initialize a matrix distribution.
+
+        Args:
+            dimension: Number of rows and columns in each generated matrix.
+            component_names: Optional names used for both matrix axes.
+            row_dim_name: Name of the row dimension.
+            column_dim_name: Name of the column dimension.
+        """
+        self.dimension = dimension
+        self.row_dim_name = row_dim_name
+        self.column_dim_name = column_dim_name
+        if row_dim_name == column_dim_name:
+            raise ValueError("row_dim_name and column_dim_name must be different.")
+        if component_names is None:
+            self.component_names = [f"component_{index + 1}" for index in range(dimension)]
+        else:
+            self.component_names = list(component_names)
+            if len(self.component_names) != dimension:
+                raise ValueError(f"component_names must contain {dimension} names.")
+            if len(set(self.component_names)) != dimension:
+                raise ValueError("component_names must be unique.")
+
+    @property
+    @abstractmethod
+    def _parameters(self) -> tuple[DistributionParameter, ...]:
+        """Return scalar and stochastic parameters used by the distribution."""
+
+    @abstractmethod
+    def _generate_matrices(self, n_sims: int, rng: RandomGenerator) -> t.Any:
+        """Generate samples with shape ``(dimension, dimension, n_sims)``."""
+
+    @abstractmethod
+    def logpdf(self, x: MatrixInput) -> DensityResult:
+        """Compute the matrix-variate log probability density."""
+
+    def pdf(self, x: MatrixInput) -> DensityResult:
+        """Compute the matrix-variate probability density."""
+        result = self.logpdf(x)
+        if isinstance(result, StochasticScalar):
+            return t.cast(StochasticScalar, np.exp(result))
+        return float(np.exp(result))
+
+    def generate(
+        self,
+        n_sims: int | None = None,
+        rng: RandomGenerator | None = None,
+    ) -> MatrixResult:
+        """Generate random positive-definite matrices.
+
+        Args:
+            n_sims: Number of simulations. Uses the configured value when omitted.
+            rng: Random number generator. Uses the configured generator when omitted.
+
+        Returns:
+            A named row-by-column variable with a stochastic scalar at each entry.
+        """
+        if n_sims is None:
+            n_sims = config.n_sims
+        if n_sims < 1:
+            raise ValueError(f"n_sims must be >= 1, got {n_sims}")
+        parameter_n_sims = _parameter_n_sims(self._parameters)
+        if parameter_n_sims is not None and parameter_n_sims != n_sims:
+            raise ValueError(
+                "The number of simulations in stochastic parameters must match the requested number of simulations."
+            )
+        if rng is None:
+            rng = config.rng
+
+        samples = to_backend(self._generate_matrices(n_sims, rng))
+        expected_shape = (self.dimension, self.dimension, n_sims)
+        if samples.shape != expected_shape:
+            raise RuntimeError("A matrix sampler returned an invalid sample shape.")
+        rows = {
+            row_name: ProteusVariable[StochasticScalar](
+                self.column_dim_name,
+                {
+                    column_name: StochasticScalar(samples[row_index, column_index])
+                    for column_index, column_name in enumerate(self.component_names)
+                },
+            )
+            for row_index, row_name in enumerate(self.component_names)
+        }
+        result = ProteusVariable[ProteusVariable[StochasticScalar]](self.row_dim_name, rows)
+        first = result[0][0]
+        for row in result:
+            for entry in row:
+                first.coupled_variable_group.merge(entry.coupled_variable_group)
         for parameter in self._parameters:
             if isinstance(parameter, StochasticScalar):
                 first.coupled_variable_group.merge(parameter.coupled_variable_group)
@@ -416,6 +585,327 @@ class MultivariateStudentsT(MultivariateDistributionBase):
             - 0.5 * (self.dimension * xp.log(nu_values * np.pi) + log_determinant)
             - 0.5 * (nu_values + self.dimension) * xp.log1p(quadratic / nu_values)
         )
+        return _density_result(result, (*stochastic_inputs, *self._parameters))
+
+
+class Multinomial(MultivariateDistributionBase):
+    r"""Multinomial distribution.
+
+    For :math:`n` independent trials assigned to :math:`d` categories with
+    probabilities :math:`p_1,\ldots,p_d`, the probability mass function is
+
+    .. math::
+
+        \Pr(X=x) = \frac{n!}{\prod_{i=1}^d x_i!}
+        \prod_{i=1}^d p_i^{x_i},
+
+    for non-negative integer counts satisfying :math:`\sum_i x_i=n`. Its mean
+    and covariance are
+
+    .. math::
+
+        \operatorname{E}[X]=np, \qquad
+        \operatorname{Cov}(X)=n\left(\operatorname{diag}(p)-pp^\mathsf{T}\right).
+
+    Parameters:
+        n: Non-negative integer number of trials.
+        p: Category probabilities, which must sum to one.
+        component_names: Optional names for the categories.
+        dim_name: Name of the category dimension.
+    """
+
+    def __init__(
+        self,
+        n: DistributionParameter,
+        p: MultivariateParameter,
+        *,
+        component_names: t.Sequence[str] | None = None,
+        dim_name: str = "category",
+    ) -> None:
+        """Initialize a multinomial distribution."""
+        raw_n = n.values if isinstance(n, StochasticScalar) else n
+        backend_n = xp.asarray(to_backend(raw_n), dtype=float)
+        if (
+            bool(xp.any(~xp.isfinite(backend_n)))
+            or bool(xp.any(backend_n < 0))
+            or bool(xp.any(backend_n != xp.floor(backend_n)))
+        ):
+            raise ValueError("n must contain non-negative integers.")
+        self.n = n
+        self.p, parameter_names = _validate_parameter_vector(p, "p", minimum_length=2)
+        probabilities = _active_parameter_matrix(self.p, _parameter_n_sims(self.p) or 1)
+        if bool(xp.any(probabilities < 0)) or bool(xp.any(probabilities > 1)):
+            raise ValueError("p values must lie between zero and one.")
+        if not bool(xp.all(xp.isclose(xp.sum(probabilities, axis=0), 1.0))):
+            raise ValueError("p values must sum to one.")
+        super().__init__(
+            len(self.p),
+            component_names=parameter_names if component_names is None else component_names,
+            dim_name=dim_name,
+        )
+
+    @property
+    def _parameters(self) -> tuple[DistributionParameter, ...]:
+        return (self.n, *self.p)
+
+    def _generate_matrix(self, n_sims: int, rng: RandomGenerator) -> t.Any:
+        backend = np if _is_numpy_rng(rng) else xp
+        raw_n = self.n.values if isinstance(self.n, StochasticScalar) else self.n
+        n = backend.broadcast_to(_rng_value(raw_n, rng), (n_sims,)).astype(int)
+        probabilities = _parameter_matrix(self.p, n_sims, rng)
+        remaining_n = n.copy()
+        remaining_probability = backend.ones(n_sims)
+        samples = backend.zeros((self.dimension, n_sims), dtype=int)
+        for index in range(self.dimension - 1):
+            conditional_probability = backend.where(
+                remaining_probability > 0,
+                probabilities[index] / remaining_probability,
+                0.0,
+            )
+            conditional_probability = backend.clip(conditional_probability, 0.0, 1.0)
+            draw = rng.binomial(remaining_n, conditional_probability)
+            samples[index] = draw
+            remaining_n = remaining_n - draw
+            remaining_probability = remaining_probability - probabilities[index]
+        samples[-1] = remaining_n
+        return samples
+
+    def logpmf(self, x: MultivariateInput) -> DensityResult:
+        """Compute the joint log probability mass."""
+        observations, stochastic_inputs = _observation_matrix(x, self.dimension)
+        parameter_n_sims = _parameter_n_sims(self._parameters) or 1
+        n_sims = max(observations.shape[1], parameter_n_sims)
+        if observations.shape[1] not in (1, n_sims):
+            raise ValueError("Observations and stochastic parameters must have compatible simulation counts.")
+        observations = xp.broadcast_to(observations, (self.dimension, n_sims))
+        probabilities = _active_parameter_matrix(self.p, n_sims)
+        raw_n = self.n.values if isinstance(self.n, StochasticScalar) else xp.full(n_sims, self.n)
+        n = xp.broadcast_to(raw_n, (n_sims,))
+        valid = (
+            xp.all(observations >= 0, axis=0)
+            & xp.all(observations == xp.floor(observations), axis=0)
+            & xp.isclose(xp.sum(observations, axis=0), n)
+        )
+        result = special.gammaln(n + 1) - xp.sum(special.gammaln(observations + 1), axis=0)
+        result += xp.sum(special.xlogy(observations, probabilities), axis=0)
+        result = xp.where(valid, result, -xp.inf)
+        return _density_result(result, (*stochastic_inputs, *self._parameters))
+
+    def pmf(self, x: MultivariateInput) -> DensityResult:
+        """Compute the joint probability mass."""
+        result = self.logpmf(x)
+        if isinstance(result, StochasticScalar):
+            return t.cast(StochasticScalar, np.exp(result))
+        return float(np.exp(result))
+
+    def logpdf(self, x: MultivariateInput) -> DensityResult:
+        """Alias for :meth:`logpmf` provided by the common multivariate API."""
+        return self.logpmf(x)
+
+    def pdf(self, x: MultivariateInput) -> DensityResult:
+        """Alias for :meth:`pmf` provided by the common multivariate API."""
+        return self.pmf(x)
+
+
+def _bartlett_factor(
+    df: DistributionParameter,
+    dimension: int,
+    n_sims: int,
+    rng: RandomGenerator,
+) -> t.Any:
+    """Generate lower-triangular Bartlett factors on the RNG backend."""
+    backend = np if _is_numpy_rng(rng) else xp
+    raw_df = df.values if isinstance(df, StochasticScalar) else df
+    df_values = backend.broadcast_to(_rng_value(raw_df, rng), (n_sims,))
+    factor = backend.tril(rng.standard_normal(size=(n_sims, dimension, dimension)), k=-1)
+    diagonal_df = df_values[:, None] - backend.arange(dimension)[None, :]
+    diagonal = backend.sqrt(rng.gamma(diagonal_df / 2, 2.0))
+    indices = backend.arange(dimension)
+    factor[:, indices, indices] = diagonal
+    return factor
+
+
+class Wishart(MatrixDistributionBase):
+    r"""Wishart distribution over positive-definite matrices.
+
+    If :math:`S\sim W_p(\nu,\Sigma)`, its density is
+
+    .. math::
+
+        f(S) = \frac{|S|^{(\nu-p-1)/2}
+        \exp\{-\operatorname{tr}(\Sigma^{-1}S)/2\}}
+        {2^{\nu p/2}|\Sigma|^{\nu/2}\Gamma_p(\nu/2)},
+
+    for positive-definite :math:`S`, where :math:`\nu>p-1` and
+    :math:`\Sigma` is positive definite. The mean is
+    :math:`\operatorname{E}[S]=\nu\Sigma`.
+
+    Parameters:
+        df: Degrees of freedom :math:`\nu`, greater than :math:`p-1`.
+        scale: Positive-definite scale matrix :math:`\Sigma`.
+        component_names: Optional names used for both matrix axes.
+        row_dim_name: Name of the row dimension.
+        column_dim_name: Name of the column dimension.
+
+    References:
+        Eaton, M. L. (1983). Multivariate Statistics: A Vector Space Approach.
+        Wiley.
+    """
+
+    def __init__(
+        self,
+        df: DistributionParameter,
+        scale: npt.ArrayLike,
+        *,
+        component_names: t.Sequence[str] | None = None,
+        row_dim_name: str = "row",
+        column_dim_name: str = "column",
+    ) -> None:
+        """Initialize a Wishart distribution."""
+        scale_values = xp.asarray(scale, dtype=float)
+        if scale_values.ndim != 2 or scale_values.shape[0] != scale_values.shape[1]:
+            raise ValueError("scale must be a square matrix.")
+        dimension = scale_values.shape[0]
+        self.df = df
+        self.scale = scale_values
+        self._chol = _validate_matrix(scale_values, dimension, "scale")
+        _validate_degrees_of_freedom(df, dimension)
+        self._scale_inverse = xp.linalg.solve(scale_values, xp.eye(dimension))
+        self._log_determinant = 2 * xp.sum(xp.log(xp.diag(self._chol)))
+        super().__init__(
+            dimension,
+            component_names=component_names,
+            row_dim_name=row_dim_name,
+            column_dim_name=column_dim_name,
+        )
+
+    @property
+    def _parameters(self) -> tuple[DistributionParameter, ...]:
+        return (self.df,)
+
+    def _generate_matrices(self, n_sims: int, rng: RandomGenerator) -> t.Any:
+        backend = np if _is_numpy_rng(rng) else xp
+        factor = _bartlett_factor(self.df, self.dimension, n_sims, rng)
+        chol = _rng_value(self._chol, rng)
+        transformed = backend.matmul(chol[None, :, :], factor)
+        samples = backend.matmul(transformed, backend.swapaxes(transformed, 1, 2))
+        return backend.moveaxis(samples, 0, -1)
+
+    def logpdf(self, x: MatrixInput) -> DensityResult:
+        """Compute the joint log probability density."""
+        observations, stochastic_inputs = _matrix_observations(x, self.dimension)
+        parameter_n_sims = _parameter_n_sims(self._parameters) or 1
+        n_sims = max(observations.shape[0], parameter_n_sims)
+        if observations.shape[0] not in (1, n_sims):
+            raise ValueError("Observations and stochastic parameters must have compatible simulation counts.")
+        observations = xp.broadcast_to(observations, (n_sims, self.dimension, self.dimension))
+        valid, safe = _positive_definite_support(observations)
+        raw_df = self.df.values if isinstance(self.df, StochasticScalar) else xp.full(n_sims, self.df)
+        df = xp.broadcast_to(raw_df, (n_sims,))
+        _, log_determinant = xp.linalg.slogdet(safe)
+        trace = xp.einsum("ij,sji->s", self._scale_inverse, safe)
+        result = (
+            0.5 * (df - self.dimension - 1) * log_determinant
+            - 0.5 * trace
+            - 0.5 * df * self.dimension * np.log(2)
+            - 0.5 * df * self._log_determinant
+            - special.multigammaln(df / 2, self.dimension)
+        )
+        result = xp.where(valid, result, -xp.inf)
+        return _density_result(result, (*stochastic_inputs, *self._parameters))
+
+
+class InverseWishart(MatrixDistributionBase):
+    r"""Inverse Wishart distribution over positive-definite matrices.
+
+    If :math:`S\sim W_p^{-1}(\nu,\Psi)`, its density is
+
+    .. math::
+
+        f(S) = \frac{|\Psi|^{\nu/2}
+        \exp\{-\operatorname{tr}(\Psi S^{-1})/2\}}
+        {2^{\nu p/2}|S|^{(\nu+p+1)/2}\Gamma_p(\nu/2)},
+
+    for positive-definite :math:`S`. When :math:`\nu>p+1`, its mean is
+
+    .. math::
+
+        \operatorname{E}[S] = \frac{\Psi}{\nu-p-1}.
+
+    Parameters:
+        df: Degrees of freedom :math:`\nu`, greater than :math:`p-1`.
+        scale: Positive-definite scale matrix :math:`\Psi`.
+        component_names: Optional names used for both matrix axes.
+        row_dim_name: Name of the row dimension.
+        column_dim_name: Name of the column dimension.
+
+    References:
+        Axen, S. D. (2023). Efficiently generating inverse-Wishart matrices
+        and their Cholesky factors. arXiv:2310.15884.
+    """
+
+    def __init__(
+        self,
+        df: DistributionParameter,
+        scale: npt.ArrayLike,
+        *,
+        component_names: t.Sequence[str] | None = None,
+        row_dim_name: str = "row",
+        column_dim_name: str = "column",
+    ) -> None:
+        """Initialize an inverse Wishart distribution."""
+        scale_values = xp.asarray(scale, dtype=float)
+        if scale_values.ndim != 2 or scale_values.shape[0] != scale_values.shape[1]:
+            raise ValueError("scale must be a square matrix.")
+        dimension = scale_values.shape[0]
+        self.df = df
+        self.scale = scale_values
+        self._chol = _validate_matrix(scale_values, dimension, "scale")
+        _validate_degrees_of_freedom(df, dimension)
+        self._log_determinant = 2 * xp.sum(xp.log(xp.diag(self._chol)))
+        super().__init__(
+            dimension,
+            component_names=component_names,
+            row_dim_name=row_dim_name,
+            column_dim_name=column_dim_name,
+        )
+
+    @property
+    def _parameters(self) -> tuple[DistributionParameter, ...]:
+        return (self.df,)
+
+    def _generate_matrices(self, n_sims: int, rng: RandomGenerator) -> t.Any:
+        backend = np if _is_numpy_rng(rng) else xp
+        factor = _bartlett_factor(self.df, self.dimension, n_sims, rng)
+        chol = _rng_value(self._chol, rng)
+        right_hand_side = backend.broadcast_to(chol.T, (n_sims, self.dimension, self.dimension))
+        solved = backend.linalg.solve(factor, right_hand_side)
+        samples = backend.matmul(backend.swapaxes(solved, 1, 2), solved)
+        return backend.moveaxis(samples, 0, -1)
+
+    def logpdf(self, x: MatrixInput) -> DensityResult:
+        """Compute the joint log probability density."""
+        observations, stochastic_inputs = _matrix_observations(x, self.dimension)
+        parameter_n_sims = _parameter_n_sims(self._parameters) or 1
+        n_sims = max(observations.shape[0], parameter_n_sims)
+        if observations.shape[0] not in (1, n_sims):
+            raise ValueError("Observations and stochastic parameters must have compatible simulation counts.")
+        observations = xp.broadcast_to(observations, (n_sims, self.dimension, self.dimension))
+        valid, safe = _positive_definite_support(observations)
+        raw_df = self.df.values if isinstance(self.df, StochasticScalar) else xp.full(n_sims, self.df)
+        df = xp.broadcast_to(raw_df, (n_sims,))
+        _, log_determinant = xp.linalg.slogdet(safe)
+        scale = xp.broadcast_to(self.scale, (n_sims, self.dimension, self.dimension))
+        solved = xp.linalg.solve(safe, scale)
+        trace = xp.sum(xp.diagonal(solved, axis1=1, axis2=2), axis=1)
+        result = (
+            0.5 * df * self._log_determinant
+            - 0.5 * (df + self.dimension + 1) * log_determinant
+            - 0.5 * trace
+            - 0.5 * df * self.dimension * np.log(2)
+            - special.multigammaln(df / 2, self.dimension)
+        )
+        result = xp.where(valid, result, -xp.inf)
         return _density_result(result, (*stochastic_inputs, *self._parameters))
 
 
@@ -727,9 +1217,13 @@ class InvertedGeneralizedDirichlet(MultivariateDistributionBase):
 __all__ = [
     "Dirichlet",
     "GeneralizedDirichlet",
+    "InverseWishart",
     "InvertedDirichlet",
     "InvertedGeneralizedDirichlet",
+    "MatrixDistributionBase",
+    "Multinomial",
     "MultivariateDistributionBase",
     "MultivariateNormal",
     "MultivariateStudentsT",
+    "Wishart",
 ]

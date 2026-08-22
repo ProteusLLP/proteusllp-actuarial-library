@@ -7,12 +7,15 @@ import scipy.stats
 from pal import (
     Dirichlet,
     GeneralizedDirichlet,
+    InverseWishart,
     InvertedDirichlet,
     InvertedGeneralizedDirichlet,
+    Multinomial,
     MultivariateNormal,
     MultivariateStudentsT,
     ProteusVariable,
     StochasticScalar,
+    Wishart,
     set_random_seed,
 )
 from pal._maths import asnumpy, xp
@@ -21,6 +24,18 @@ from pal._maths import asnumpy, xp
 def _sample_matrix(samples: ProteusVariable[StochasticScalar]) -> np.ndarray:
     """Return simulations in rows and components in columns."""
     return asnumpy(xp.stack([component.values for component in samples], axis=1))
+
+
+def _matrix_sample_array(
+    samples: ProteusVariable[ProteusVariable[StochasticScalar]],
+) -> np.ndarray:
+    """Return matrix simulations with shape ``(n_sims, rows, columns)``."""
+    return asnumpy(
+        xp.stack(
+            [xp.stack([entry.values for entry in row], axis=1) for row in samples],
+            axis=1,
+        )
+    )
 
 
 def test_multivariate_normal_density_and_moments() -> None:
@@ -73,6 +88,78 @@ def test_multivariate_students_t_density_and_moments() -> None:
     values = _sample_matrix(samples)
     assert np.mean(values, axis=0) == pytest.approx(mean, abs=0.02)
     assert np.cov(values, rowvar=False) == pytest.approx(nu / (nu - 2) * scale, abs=0.035)
+
+
+def test_multinomial_probability_and_moments() -> None:
+    """Match SciPy's probability mass and the theoretical moments."""
+    set_random_seed(34781)
+    n = 20
+    probabilities = np.array([0.2, 0.3, 0.5])
+    distribution = Multinomial(
+        n,
+        probabilities,
+        component_names=["property", "casualty", "specialty"],
+    )
+    point = np.array([4, 6, 10])
+
+    assert distribution.logpmf(point) == pytest.approx(scipy.stats.multinomial.logpmf(point, n, probabilities))
+    assert distribution.pmf(point) == pytest.approx(scipy.stats.multinomial.pmf(point, n, probabilities))
+    assert distribution.pmf([4, 6, 9]) == 0.0
+    assert distribution.pmf([4, 5.5, 10.5]) == 0.0
+
+    samples = distribution.generate(100_000)
+    values = _sample_matrix(samples)
+    expected_covariance = n * (np.diag(probabilities) - np.outer(probabilities, probabilities))
+    assert list(samples.values) == ["property", "casualty", "specialty"]
+    assert np.sum(values, axis=1) == pytest.approx(np.full(len(values), n))
+    assert np.mean(values, axis=0) == pytest.approx(n * probabilities, abs=0.025)
+    assert np.cov(values, rowvar=False) == pytest.approx(expected_covariance, abs=0.04)
+
+
+def test_wishart_density_and_moments() -> None:
+    """Match SciPy's density and the theoretical mean matrix."""
+    set_random_seed(74219)
+    df = 8.0
+    scale = np.array([[1.0, 0.2], [0.2, 0.7]])
+    distribution = Wishart(
+        df,
+        scale,
+        component_names=["property", "casualty"],
+    )
+    point = np.array([[5.0, 0.4], [0.4, 3.0]])
+
+    assert distribution.logpdf(point) == pytest.approx(scipy.stats.wishart.logpdf(point, df=df, scale=scale))
+    assert distribution.pdf(point) == pytest.approx(scipy.stats.wishart.pdf(point, df=df, scale=scale))
+    assert distribution.pdf([[1.0, 2.0], [2.0, 1.0]]) == 0.0
+
+    samples = distribution.generate(60_000)
+    values = _matrix_sample_array(samples)
+    assert list(samples.values) == ["property", "casualty"]
+    assert list(samples[0].values) == ["property", "casualty"]
+    assert samples.dimensions == ["row", "column"]
+    assert np.mean(values, axis=0) == pytest.approx(df * scale, abs=0.04)
+    assert values == pytest.approx(np.swapaxes(values, 1, 2), abs=1e-12)
+    assert np.all(np.linalg.eigvalsh(values[:1_000]) > 0)
+
+
+def test_inverse_wishart_density_and_moments() -> None:
+    """Match SciPy's density and the finite theoretical mean matrix."""
+    set_random_seed(96541)
+    df = 12.0
+    scale = np.array([[1.0, 0.2], [0.2, 0.7]])
+    distribution = InverseWishart(df, scale)
+    point = np.array([[0.2, 0.03], [0.03, 0.15]])
+
+    assert distribution.logpdf(point) == pytest.approx(scipy.stats.invwishart.logpdf(point, df=df, scale=scale))
+    assert distribution.pdf(point) == pytest.approx(scipy.stats.invwishart.pdf(point, df=df, scale=scale))
+    assert distribution.pdf([[1.0, 2.0], [2.0, 1.0]]) == 0.0
+
+    samples = distribution.generate(80_000)
+    values = _matrix_sample_array(samples)
+    expected_mean = scale / (df - len(scale) - 1)
+    assert np.mean(values, axis=0) == pytest.approx(expected_mean, abs=0.0015)
+    assert values == pytest.approx(np.swapaxes(values, 1, 2), abs=1e-12)
+    assert np.all(np.linalg.eigvalsh(values[:1_000]) > 0)
 
 
 def test_dirichlet_density_simplex_and_moments() -> None:
@@ -180,6 +267,41 @@ def test_multivariate_distribution_stochastic_parameter_coupling() -> None:
     assert density.coupled_variable_group is stochastic_alpha.coupled_variable_group
 
 
+def test_multinomial_stochastic_parameter_coupling() -> None:
+    """Couple multinomial counts and probability mass to stochastic parameters."""
+    n_sims = 2_000
+    stochastic_n = StochasticScalar(xp.full(n_sims, 20))
+    stochastic_probability = StochasticScalar(xp.full(n_sims, 0.2))
+    distribution = Multinomial(stochastic_n, [stochastic_probability, 0.3, 0.5])
+    samples = distribution.generate(n_sims)
+
+    group = samples[0].coupled_variable_group
+    assert stochastic_n.coupled_variable_group is group
+    assert stochastic_probability.coupled_variable_group is group
+    assert all(component.coupled_variable_group is group for component in samples)
+    probability = distribution.logpmf(samples)
+    assert isinstance(probability, StochasticScalar)
+    assert probability.coupled_variable_group is samples[0].coupled_variable_group
+    assert probability.coupled_variable_group is stochastic_n.coupled_variable_group
+    assert probability.coupled_variable_group is stochastic_probability.coupled_variable_group
+
+
+def test_matrix_distribution_stochastic_parameter_coupling() -> None:
+    """Couple every matrix entry and its density to stochastic degrees of freedom."""
+    n_sims = 1_000
+    stochastic_df = StochasticScalar(xp.full(n_sims, 8.0))
+    distribution = Wishart(stochastic_df, [[1.0, 0.2], [0.2, 0.7]])
+    samples = distribution.generate(n_sims)
+
+    group = samples[0][0].coupled_variable_group
+    assert stochastic_df.coupled_variable_group is group
+    assert all(entry.coupled_variable_group is group for row in samples for entry in row)
+    density = distribution.logpdf(samples)
+    assert isinstance(density, StochasticScalar)
+    assert density.coupled_variable_group is samples[0][0].coupled_variable_group
+    assert density.coupled_variable_group is stochastic_df.coupled_variable_group
+
+
 @pytest.mark.parametrize(
     ("constructor", "match"),
     [
@@ -189,6 +311,10 @@ def test_multivariate_distribution_stochastic_parameter_coupling() -> None:
         (lambda: InvertedDirichlet([1.0]), "at least 2"),
         (lambda: GeneralizedDirichlet([1.0, 2.0], [1.0]), "same length"),
         (lambda: InvertedGeneralizedDirichlet([1.0], [0.0]), "positive"),
+        (lambda: Multinomial(-1, [0.5, 0.5]), "non-negative integers"),
+        (lambda: Multinomial(10, [0.4, 0.5]), "sum to one"),
+        (lambda: Wishart(1, [[1.0, 0.0], [0.0, 1.0]]), "df"),
+        (lambda: InverseWishart(3, [[1.0, 2.0], [2.0, 1.0]]), "positive definite"),
     ],
 )
 def test_multivariate_distribution_validation(constructor: object, match: str) -> None:
