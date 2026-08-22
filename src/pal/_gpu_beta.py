@@ -197,24 +197,45 @@ __device__ __forceinline__ double pal_ibeta_series(
     return sum;
 }
 
-__device__ __forceinline__ double pal_ibeta_series_7(
-    const double a, const double x, const double log_beta
+__device__ __forceinline__ double pal_ibeta(
+    const double a, const double b, const double x, const double log_beta
+);
+
+__device__ __forceinline__ double pal_ibeta_b7(
+    const double a, const double x
 ) {
-    double term = exp(a * log(x) - log_beta);
-    double sum = term / a;
-    term *= -6.0 * x;
-    sum += term / (a + 1.0);
-    term *= -5.0 * x / 2.0;
-    sum += term / (a + 2.0);
-    term *= -4.0 * x / 3.0;
-    sum += term / (a + 3.0);
-    term *= -3.0 * x / 4.0;
-    sum += term / (a + 4.0);
-    term *= -2.0 * x / 5.0;
-    sum += term / (a + 5.0);
-    term *= -x / 6.0;
-    sum += term / (a + 6.0);
-    return sum;
+    if (isnan(a) || isnan(x) || !(a > 0.0) || x < 0.0 || x > 1.0) {
+        return CUDART_NAN;
+    }
+    if (x == 0.0) {
+        return 0.0;
+    }
+    if (x == 1.0) {
+        return 1.0;
+    }
+
+    // For positive integer b, the complement of the binomial expansion is
+    // finite and positive.  The b=7 form avoids log-beta evaluation and the
+    // cancellation in the alternating incomplete-beta series:
+    // I_x(a,7) = x^a sum_{j=0}^6 (a)_j (1-x)^j / j!.
+    const double c1 = a;
+    const double c2 = c1 * (a + 1.0) * 0.5;
+    const double c3 = c2 * (a + 2.0) / 3.0;
+    const double c4 = c3 * (a + 3.0) * 0.25;
+    const double c5 = c4 * (a + 4.0) * 0.2;
+    const double c6 = c5 * (a + 5.0) / 6.0;
+    const double y = 1.0 - x;
+    double polynomial = fma(c6, y, c5);
+    polynomial = fma(polynomial, y, c4);
+    polynomial = fma(polynomial, y, c3);
+    polynomial = fma(polynomial, y, c2);
+    polynomial = fma(polynomial, y, c1);
+    polynomial = fma(polynomial, y, 1.0);
+    const double result = exp(a * log(x)) * polynomial;
+    if (isfinite(result)) {
+        return fmin(1.0, fmax(0.0, result));
+    }
+    return pal_ibeta(a, 7.0, x, pal_log_beta(a, 7.0));
 }
 
 __device__ __forceinline__ double pal_gamma_q(
@@ -367,9 +388,6 @@ __device__ __forceinline__ double pal_ibeta(
 
     const double switch_point = (a + 1.0) / (a + b + 2.0);
     double result;
-    if ((a >= 1.0) && (b == 7.0) && (x <= 0.95)) {
-        return fmin(1.0, fmax(0.0, pal_ibeta_series_7(a, x, log_beta)));
-    }
     const double series_limit = 0.8;
     const bool terminating_series = (a >= 1.0) && (b == floor(b))
         && (b <= 32.0) && (x <= series_limit);
@@ -647,6 +665,14 @@ _BETA_CDF_KERNEL = cp.ElementwiseKernel(
     preamble=_BETA_PREAMBLE,
 )
 
+_BETA_CDF_B7_KERNEL = cp.ElementwiseKernel(
+    "float64 a, float64 x",
+    "float64 result",
+    "result = pal_ibeta_b7(a, x);",
+    "pal_gpu_beta_cdf_b7",
+    preamble=_BETA_PREAMBLE,
+)
+
 _BETA_INVERSE_KERNEL = cp.ElementwiseKernel(
     "float64 a, float64 b, float64 p, float64 log_beta",
     "float64 result",
@@ -676,6 +702,15 @@ def _device_log_beta(a: t.Any, b: t.Any) -> t.Any:
     return _LOG_BETA_KERNEL(a, b)
 
 
+def _is_scalar_seven(value: t.Any) -> bool:
+    if isinstance(value, cp.ndarray):
+        return False
+    try:
+        return float(value) == 7.0
+    except (TypeError, ValueError):
+        return False
+
+
 def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
     """Evaluate the regularized incomplete beta function on the GPU."""
     a = _coerce_device_array(a)
@@ -683,6 +718,8 @@ def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
     x = _coerce_device_array(x)
     if not any(isinstance(value, cp.ndarray) for value in (a, b, x)):
         x = cp.asarray(x, dtype=cp.float64)
+    if _is_scalar_seven(b):
+        return _BETA_CDF_B7_KERNEL(a, x)
     return _BETA_CDF_KERNEL(a, b, x, _device_log_beta(a, b))
 
 
