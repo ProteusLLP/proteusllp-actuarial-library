@@ -18,15 +18,18 @@ from . import distributions as distributions
 from .config import *
 from .contracts import *
 from .distributions import *
+from .empirical import Empirical
 from .frequency_severity import *
 from .hyperexponential import HyperExponential
 from .multivariate_distributions import *
 from .stats import *
 from .variables import *
 
-# HyperExponential has vector-valued mixture parameters and is implemented in a
-# separate module. Expose it through the standard distributions namespace and
-# named-distribution generator API.
+# Empirical and HyperExponential have vector-valued parameters and are
+# implemented in separate modules. Expose them through the standard
+# distributions namespace and named-distribution generator APIs.
+distributions.__dict__["Empirical"] = Empirical
+distributions.AVAILABLE_DISCRETE_DISTRIBUTIONS["empirical"] = Empirical
 distributions.__dict__["HyperExponential"] = HyperExponential
 distributions.AVAILABLE_CONTINUOUS_DISTRIBUTIONS["hyperexponential"] = HyperExponential
 
