@@ -264,6 +264,10 @@ severity_figure = make_claim_severity_figure(policy_losses)
 severity_figure.show()
 ```
 
+The histogram is displayed through the 99.5th percentile so that a handful of
+very large claims do not compress the body of the distribution. The exceedance
+curve retains the simulated tail through the 99.9th percentile.
+
 The resulting distribution is continuous between the contractual features, with
 visible concentrations created by the different policy limits. This is a useful
 diagnostic that the simulation is genuinely drawing MBBEFD severities rather
@@ -304,7 +308,8 @@ gross_burn_figure.show()
 
 The mean of this distribution is the simulated portfolio loss ratio. The full
 distribution additionally shows the year-to-year volatility around that pricing
-assumption.
+assumption. As with the severity plot, the histogram is limited to the 99.5th
+percentile for readability while the exceedance curve retains the tail.
 
 ## 9. Layer burn-rate distributions
 
@@ -392,6 +397,8 @@ expected loss. Their remaining differences are simulation error rather than
 severity discretisation error.
 
 Run the complete example from the repository root:
+
+<!--pytest.mark.skip-->
 
 ```bash
 python examples/example_property_exposure_rating.py
