@@ -38,8 +38,8 @@ class StochasticScalar(ProteusStochasticVariable):
         """Initialize a stochastic scalar.
 
         Args:
-            values: An array of values that describe the distribution for the scalar
-                variable.
+            values: An array-like sequence of values that describe the distribution
+                for the scalar variable.
         """
         super().__init__()
 
@@ -49,33 +49,19 @@ class StochasticScalar(ProteusStochasticVariable):
             self.coupled_variable_group.merge(values.coupled_variable_group)
             return
 
-        if isinstance(values, list):
-            # Type ignore: Generic list type inference limitation
-            self.values = xp.array(values)  # type: ignore[misc]
-            self.n_sims = len(values)  # type: ignore[misc]
-            return
+        try:
+            array = xp.asarray(values)
+        except (TypeError, ValueError) as exc:
+            raise TypeError(
+                "Values must be a one-dimensional numeric array-like object. "
+                f"Found {type(values).__name__}."
+            ) from exc
 
-        if isinstance(values, xp.ndarray):
-            if values.ndim == 1:
-                self.values = values
-                # Type ignore: Generic array type inference limitation
-                self.n_sims = len(values)  # type: ignore[misc]
-                return
+        if array.ndim != 1:
             raise ValueError("Values must be a 1D array.")
 
-        if isinstance(values, np.ndarray):
-            if values.ndim == 1:
-                self.values = xp.asarray(
-                    values,
-                    dtype=values.dtype,  # type: ignore
-                )
-                # Type ignore: Generic array type inference limitation
-                self.n_sims = len(values)  # type: ignore[misc]
-                return
-            raise ValueError("Values must be a 1D array.")
-
-        # Type ignore: Generic ArrayLike type inference limitation
-        raise TypeError("Type of values must be a sequence or array. Found " + type(values).__name__)  # type: ignore[misc]
+        self.values = array
+        self.n_sims = len(array)
 
     def __repr__(self) -> str:
         try:
