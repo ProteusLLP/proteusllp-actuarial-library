@@ -83,11 +83,55 @@ def create_random_generator(seed: int) -> t.Any:
     return np.random.default_rng(seed)
 
 
+def generate_upsample_indices(n_sims: int, source_n_sims: int, rng: t.Any) -> t.Any:
+    """Generate balanced random indices for resizing a simulation set.
+
+    Complete copies of the source simulations are sampled without replacement.
+    The first complete copy remains in its original order; later copies are
+    independently permuted. A partial final copy is also sampled without
+    replacement. This preserves the empirical distribution while avoiding an
+    orderly repeated simulation pattern.
+    """
+    if n_sims < 0:
+        raise ValueError("n_sims must be non-negative")
+    if source_n_sims <= 0:
+        raise ValueError("source_n_sims must be positive")
+    if n_sims == 0:
+        return xp.empty(0, dtype=int)
+
+    full_copies, remainder = divmod(n_sims, source_n_sims)
+    parts: list[t.Any] = []
+
+    if full_copies:
+        parts.append(xp.arange(source_n_sims, dtype=int))
+        for _ in range(full_copies - 1):
+            parts.append(xp.asarray(rng.permutation(source_n_sims), dtype=int))
+
+    if remainder:
+        permutation = xp.asarray(rng.permutation(source_n_sims), dtype=int)
+        parts.append(permutation[:remainder])
+
+    if len(parts) == 1:
+        return parts[0]
+    return xp.concatenate(parts)
+
+
+def generate_cyclic_indices(n_sims: int, source_n_sims: int) -> t.Any:
+    """Generate deterministic cyclic indices for resizing a simulation set."""
+    if n_sims < 0:
+        raise ValueError("n_sims must be non-negative")
+    if source_n_sims <= 0:
+        raise ValueError("source_n_sims must be positive")
+    return xp.arange(n_sims, dtype=int) % source_n_sims
+
+
 # export the numpy/cupy and scipy/cupyx special functions/modules for the current
 # execution environment.
 __all__ = [
     "asnumpy",
     "create_random_generator",
+    "generate_cyclic_indices",
+    "generate_upsample_indices",
     "scalar_or_array",
     "to_backend",
     "xp",
