@@ -49,10 +49,7 @@ class StochasticScalar(ProteusStochasticVariable):
             self.coupled_variable_group.merge(values.coupled_variable_group)
             return
 
-        invalid_type_message = (
-            "Type of values must be a sequence or array. "
-            f"Found {type(values).__name__}"
-        )
+        invalid_type_message = f"Type of values must be a sequence or array. Found {type(values).__name__}"
         if isinstance(values, (str, dict, set)):
             raise TypeError(invalid_type_message)
 
