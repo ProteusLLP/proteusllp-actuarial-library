@@ -1,3 +1,4 @@
+# pyright: reportArgumentType=false, reportAttributeAccessIssue=false
 """Property exposure rating and simulation with the MBBEFD distribution."""
 
 from pathlib import Path
@@ -25,7 +26,7 @@ def make_tower():
 def curve_increment(distribution, lower, upper, maximum_loss):
     lower = min(max(lower / maximum_loss, 0.0), 1.0)
     upper = min(max(upper / maximum_loss, 0.0), 1.0)
-    return float(distribution.exposure_curve(upper)) - float(distribution.exposure_curve(lower))
+    return distribution.exposure_curve(upper) - distribution.exposure_curve(lower)
 
 
 def expected_policy_loss_given_claim(row):
@@ -34,7 +35,7 @@ def expected_policy_loss_given_claim(row):
     policy_limit = row["policy_limit"]
     distribution = MBBEFD.from_c(row["mbbefd_c"])
     policy_share = curve_increment(distribution, deductible, deductible + policy_limit, maximum_loss)
-    return maximum_loss * float(distribution.mean()) * policy_share
+    return maximum_loss * distribution.mean() * policy_share
 
 
 def claim_frequencies(exposures):
