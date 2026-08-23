@@ -15,6 +15,7 @@ Discrete distributions
    pal.distributions.Binomial
    pal.distributions.HyperGeometric
    pal.distributions.Bernoulli
+   pal.distributions.Empirical
 
 Continuous distributions
 ------------------------
