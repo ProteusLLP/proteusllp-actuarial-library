@@ -5,6 +5,13 @@ import pytest
 from examples.example_property_exposure_rating import (
     DATA_PATH,
     claim_frequencies,
+    make_calibration_table,
+    make_claim_severity_figure,
+    make_gross_burn_rate_figure,
+    make_layer_burn_rate_figure,
+    make_layer_burn_rates,
+    make_layer_comparison,
+    make_layer_rate_comparison_figure,
     make_tower,
     simulate_claim_rows,
     simulate_policy_losses,
@@ -56,3 +63,31 @@ def test_property_exposure_row_selection_and_mbbefd_severity_workflow() -> None:
     tower = make_tower()
     tower.apply(policy_losses)
     assert all(layer.summary["mean"] >= 0 for layer in tower.layers)
+
+    calibration = make_calibration_table(exposures, frequencies, claim_rows, policy_losses)
+    assert calibration.loc[calibration["metric"] == "Total subject premium", "target"].item() == 2_150_000
+    assert calibration.loc[calibration["metric"] == "Annual policy loss", "target"].item() == 1_422_100
+    assert calibration.loc[calibration["metric"] == "Portfolio loss ratio", "target"].item() == pytest.approx(
+        1_422_100 / 2_150_000
+    )
+
+    total_subject_premium = float(exposures["subject_premium"].sum())
+    comparison = make_layer_comparison(exposures, tower, total_subject_premium)
+    assert comparison["exposure_rate"] == pytest.approx(
+        [0.1163531952, 0.1229171863, 0.1015502012],
+        rel=1e-8,
+    )
+
+    layer_burn_rates = make_layer_burn_rates(tower, policy_losses, total_subject_premium)
+    assert set(layer_burn_rates) == {"5m xs 5m", "10m xs 10m", "20m xs 20m"}
+    assert all(len(burn_rate) == claim_rows.n_sims for burn_rate in layer_burn_rates.values())
+
+    severity_figure = make_claim_severity_figure(policy_losses)
+    gross_burn_figure = make_gross_burn_rate_figure(policy_losses, total_subject_premium)
+    layer_burn_figure = make_layer_burn_rate_figure(layer_burn_rates)
+    comparison_figure = make_layer_rate_comparison_figure(comparison)
+
+    assert len(severity_figure.data) == 2
+    assert len(gross_burn_figure.data) == 2
+    assert len(layer_burn_figure.data) == 3
+    assert len(comparison_figure.data) == 2
