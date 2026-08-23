@@ -46,9 +46,7 @@ def test_value_scatter_returns_all_pairs(variables: ProteusVariable[StochasticSc
 
 
 @pytest.mark.parametrize("method_name", ["rank_scatter", "value_scatter"])
-def test_pair_scatter_can_use_frames(
-    variables: ProteusVariable[StochasticScalar], method_name: str
-) -> None:
+def test_pair_scatter_can_use_frames(variables: ProteusVariable[StochasticScalar], method_name: str) -> None:
     fig = getattr(variables, method_name)(frames=True)
 
     assert isinstance(fig, go.Figure)
@@ -108,9 +106,7 @@ def test_proteus_variable_histogram_and_cdf_return_figures(
     cdf.to_json()
 
 
-def test_returned_figure_can_be_saved(
-    tmp_path: Path, variables: ProteusVariable[StochasticScalar]
-) -> None:
+def test_returned_figure_can_be_saved(tmp_path: Path, variables: ProteusVariable[StochasticScalar]) -> None:
     fig = variables.rank_scatter()
     output = tmp_path / "rank-scatter.html"
 
