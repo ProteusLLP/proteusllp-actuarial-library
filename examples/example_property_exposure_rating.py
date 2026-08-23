@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pal import Empirical, MBBEFD, StochasticScalar, XoLTower, distributions, set_random_seed
+from pal import Empirical, MBBEFD, XoLTower, distributions, set_random_seed
 from pal._maths import xp
 from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
 
@@ -59,25 +59,19 @@ def simulate_claim_rows(exposures, frequencies, n_sims):
 def simulate_policy_losses(exposures, claim_rows):
     row_index = claim_rows.values.astype(int)
     if len(row_index) == 0:
-        result = FreqSevSims(claim_rows.sim_index, [], claim_rows.n_sims)
-        result.coupled_variable_group.merge(claim_rows.coupled_variable_group)
-        return result
+        return claim_rows
 
     maximum_loss = xp.asarray(exposures["maximum_loss"].to_numpy())[row_index]
     policy_limit = xp.asarray(exposures["policy_limit"].to_numpy())[row_index]
     deductible = xp.asarray(exposures["policy_deductible"].to_numpy())[row_index]
-    c = StochasticScalar(xp.asarray(exposures["mbbefd_c"].to_numpy())[row_index])
-    c.coupled_variable_group.merge(claim_rows.coupled_variable_group)
+    c = xp.asarray(exposures["mbbefd_c"].to_numpy())[row_index]
 
     damage_ratio = MBBEFD.from_c(c).generate(len(row_index))
     policy_loss = np.minimum(
         np.maximum(damage_ratio * maximum_loss - deductible, 0.0),
         policy_limit,
     )
-
-    result = FreqSevSims(claim_rows.sim_index, policy_loss.values, claim_rows.n_sims)
-    result.coupled_variable_group.merge(policy_loss.coupled_variable_group)
-    return result
+    return FreqSevSims(claim_rows.sim_index, policy_loss.values, claim_rows.n_sims)
 
 
 def expected_layer_loss(row, layer):
