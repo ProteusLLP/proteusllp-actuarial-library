@@ -282,7 +282,7 @@ the simulations that reach it:
 <!--pytest-codeblocks:cont-->
 
 ```python
-capital = float(np.percentile(total.values, 99.5))
+capital = float(total.percentile(99.5))
 rm_pl = percentile_layer(total, capital)
 print(f"Capital (VaR 99.5%): {capital:,.0f}")
 print(f"Allocated total:     {rm_pl.value:,.0f}")
