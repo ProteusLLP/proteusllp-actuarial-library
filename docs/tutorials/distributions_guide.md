@@ -27,7 +27,7 @@ loss = distributions.LogNormal(mu=10, sigma=1.5).generate()
 
 loss.mean()                           # => 68,673
 loss.std()                            # => 205,459
-np.percentile(loss.values, 99.5)      # => 1,111,353
+loss.percentile(99.5)                 # => 1,111,353
 ```
 
 The number of samples is controlled by `config.n_sims` (default
@@ -57,7 +57,7 @@ validating simulation results.
 
 | Distribution | Parameters | Typical Use |
 |-------------|------------|-------------|
-| `LogNormal` | `mu`, `sigma` | Attritional losses, claim sizes |
+| `LogNormal` | `mu`, `sigma` | Claim sizes |
 | `Gamma` | `alpha`, `theta`, `loc=0` | Aggregate losses, waiting times |
 | `Pareto` | `shape`, `scale` | Large/catastrophe losses |
 | `GPD` | `shape`, `scale`, `loc` | Excess losses above a threshold |
@@ -236,7 +236,7 @@ capped = np.minimum(loss, 5_000_000)
 # Statistics
 loss.mean()
 loss.std()
-np.percentile(loss.values, [25, 50, 75, 95, 99, 99.5])
+loss.percentile([25, 50, 75, 95, 99, 99.5])
 
 # Visualisation
 loss.show_cdf("Loss Distribution")
