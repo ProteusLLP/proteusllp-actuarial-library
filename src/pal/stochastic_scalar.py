@@ -335,7 +335,7 @@ class StochasticScalar(ProteusStochasticVariable):
         """
         if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
             return
-        fig = go.Figure(go.Histogram(x=self.values), layout={"title": title})
+        fig = go.Figure(go.Histogram(x=self), layout={"title": title})
         # Type ignore: plotly-stubs has incomplete type information
         fig.show()  # type: ignore[misc]
 
@@ -348,10 +348,12 @@ class StochasticScalar(ProteusStochasticVariable):
         if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
             return
 
+        sorted_values = StochasticScalar(xp.sort(self.values))
+        cumulative_probabilities = StochasticScalar(xp.arange(self.n_sims) / self.n_sims)
         fig = go.Figure(
             go.Scatter(
-                x=xp.sort(self.values).tolist(),
-                y=(xp.arange(self.n_sims) / self.n_sims).tolist(),
+                x=sorted_values,
+                y=cumulative_probabilities,
             ),
             layout={"title": title},
         )

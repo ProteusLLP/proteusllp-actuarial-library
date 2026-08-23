@@ -176,7 +176,7 @@ set_random_seed(42)
 x = distributions.LogNormal(mu=10, sigma=1.0).generate()
 y = distributions.LogNormal(mu=10, sigma=1.0).generate()
 
-np.corrcoef(x.ranks.values, y.ranks.values)[0, 1]
+np.corrcoef(x.ranks, y.ranks)[0, 1]
 # => -0.0034  (approximately zero)
 ```
 
@@ -190,7 +190,7 @@ x = distributions.LogNormal(mu=10, sigma=1.0).generate()
 y = distributions.LogNormal(mu=10, sigma=1.0).generate()
 copulas.GaussianCopula([[1.0, 0.8], [0.8, 1.0]]).apply([x, y])
 
-np.corrcoef(x.ranks.values, y.ranks.values)[0, 1]
+np.corrcoef(x.ranks, y.ranks)[0, 1]
 # => 0.7853
 ```
 
@@ -204,7 +204,7 @@ x = distributions.LogNormal(mu=10, sigma=1.0).generate()
 y = distributions.LogNormal(mu=10, sigma=1.0).generate()
 copulas.GumbelCopula(theta=3.0).apply([x, y])
 
-np.corrcoef(x.ranks.values, y.ranks.values)[0, 1]
+np.corrcoef(x.ranks, y.ranks)[0, 1]
 # => 0.8465
 ```
 
@@ -221,7 +221,7 @@ x = distributions.LogNormal(mu=10, sigma=1.0).generate()
 y = distributions.LogNormal(mu=10, sigma=1.0).generate()
 copulas.ClaytonCopula(theta=4.0).apply([x, y])
 
-np.corrcoef(x.ranks.values, y.ranks.values)[0, 1]
+np.corrcoef(x.ranks, y.ranks)[0, 1]
 # => 0.8479
 ```
 
@@ -240,7 +240,7 @@ copulas.StudentsTCopula(
     [[1.0, 0.7], [0.7, 1.0]], dof=3
 ).apply([x, y])
 
-np.corrcoef(x.ranks.values, y.ranks.values)[0, 1]
+np.corrcoef(x.ranks, y.ranks)[0, 1]
 # => 0.6658
 ```
 
@@ -369,7 +369,7 @@ np.allclose(np.sort(var_x.values), sorted_x)  # => True
 np.allclose(np.sort(var_y.values), sorted_y)  # => True
 
 # But now correlated
-np.corrcoef(var_x.ranks.values, var_y.ranks.values)[0, 1]
+np.corrcoef(var_x.ranks, var_y.ranks)[0, 1]
 # => 0.8903
 ```
 
@@ -617,7 +617,7 @@ copulas.GumbelCopula(theta=2.0).apply(
 ```
 
 The Gumbel copula introduces upper tail dependence — years with
-high attritional losses also tend to have high catastrophe losses:
+high aggregate losses also tend to have high catastrophe losses:
 
 ```
 After Gumbel copula (theta=2.0):
