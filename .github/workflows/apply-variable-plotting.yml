@@ -1,0 +1,33 @@
+name: Apply variable plotting patch
+
+on:
+  push:
+    branches:
+      - feature/plotly-variable-scatter
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/plotly-variable-scatter
+
+      - name: Apply plotting changes
+        run: git apply .github/plotting-patches/*.diff
+
+      - name: Remove temporary patch machinery
+        run: rm -rf .github/plotting-patches .github/workflows/apply-variable-plotting.yml
+
+      - name: Commit applied changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add Plotly variable scatter plots"
+          git push origin HEAD:feature/plotly-variable-scatter
