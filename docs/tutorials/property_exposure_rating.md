@@ -41,35 +41,35 @@ exposures = pd.read_csv(Path("examples/data/property_exposures.csv"))
 
 ## 2. Infer claim frequency from premium and loss ratio
 
-Let \(X_i\in[0,1]\) be the MBBEFD damage ratio for risk \(i\), conditional on a
-ground-up claim, and let \(M_i\) be its maximum loss. Ground-up loss is
+Let {math}`X_i\in[0,1]` be the MBBEFD damage ratio for risk {math}`i`, conditional on a
+ground-up claim, and let {math}`M_i` be its maximum loss. Ground-up loss is
 
-\[
+```{math}
 L_i=M_iX_i.
-\]
+```
 
-For policy deductible \(D_i\) and limit \(P_i\), policy loss is
+For policy deductible {math}`D_i` and limit {math}`P_i`, policy loss is
 
-\[
+```{math}
 Y_i=\min\{(L_i-D_i)_+,P_i\}.
-\]
+```
 
 The MBBEFD exposure curve is
 
-\[
+```{math}
 G_i(x)=\frac{E[\min(X_i,x)]}{E[X_i]}.
-\]
+```
 
 Therefore
 
-\[
+```{math}
 E[Y_i\mid\text{claim}]
 =M_iE[X_i]
 \left[
 G_i\!\left(\frac{D_i+P_i}{M_i}\right)
 -G_i\!\left(\frac{D_i}{M_i}\right)
 \right],
-\]
+```
 
 with the curve arguments capped at one.
 
@@ -78,36 +78,36 @@ severity is calculated analytically rather than by simulation.
 
 The expected annual policy loss is
 
-\[
+```{math}
 \mu_i=\text{premium}_i\times\text{expected loss ratio}_i,
-\]
+```
 
 which gives annual ground-up claim frequency
 
-\[
+```{math}
 \lambda_i=\frac{\mu_i}{E[Y_i\mid\text{claim}]}.
-\]
+```
 
 Equivalently, this first grosses the expected policy loss back up through the
 exposure curve to obtain the expected ground-up loss and then divides by the
-ground-up mean severity \(M_iE[X_i]\). This is the usual exposure-rating
+ground-up mean severity {math}`M_iE[X_i]`. This is the usual exposure-rating
 assumption that the expected loss ratio applies consistently before and after
 policy terms.
 
 The portfolio claim count is then
 
-\[
+```{math}
 N\sim\operatorname{Poisson}\left(\sum_i\lambda_i\right).
-\]
+```
 
 ## 3. Use `Empirical` to select the exposure rows with claims
 
-Conditional on a portfolio claim occurring, risk \(i\) should be selected with
+Conditional on a portfolio claim occurring, risk {math}`i` should be selected with
 probability
 
-\[
+```{math}
 \Pr(I=i)=\frac{\lambda_i}{\sum_j\lambda_j}.
-\]
+```
 
 This is exactly a weighted empirical distribution over exposure-row numbers.
 There is no need for a custom severity class:
@@ -152,7 +152,7 @@ c = StochasticScalar(exposures["mbbefd_c"])[row_index]
 
 `StochasticScalar` accepts one-dimensional array-like inputs such as pandas
 Series directly. It takes care of the active CPU or GPU backend and preserves the
-coupling created by the sampled row index. The selected \(c\) values can therefore
+coupling created by the sampled row index. The selected {math}`c` values can therefore
 be passed directly to `MBBEFD.from_c`, giving every event its row-specific damage
 ratio distribution:
 
@@ -209,9 +209,9 @@ expressed relative to policy loss rather than underlying maximum loss.
 Before looking at the reinsurance, it is useful to verify that the simulation
 reproduces the assumptions used to calibrate it. The target annual policy loss is
 
-\[
+```{math}
 \sum_i \text{premium}_i\times\text{ELR}_i,
-\]
+```
 
 and the simulated annual policy loss is simply the mean of
 `policy_losses.aggregate()`.
@@ -282,12 +282,12 @@ than resampling a discretised severity table.
 For exposure pricing, absolute aggregate loss is often less informative than
 the annual burn rate on the subject premium. Define
 
-\[
+```{math}
 B_{\mathrm{gross}}
 =
 \frac{\text{annual policy loss}}
 {\text{total subject premium}}.
-\]
+```
 
 Because `FreqSevSims.aggregate()` returns one value per simulation year, this is
 a one-line PAL calculation:
@@ -320,14 +320,14 @@ percentile for readability while the exceedance curve retains the tail.
 ## 9. Layer burn-rate distributions
 
 The same idea is particularly useful for the reinsurance layers. For layer
-\(k\), define its annual burn rate on subject premium as
+{math}`k`, define its annual burn rate on subject premium as
 
-\[
+```{math}
 B_k
 =
 \frac{\text{annual ceded loss to layer }k}
 {\text{total subject premium}}.
-\]
+```
 
 The example obtains the annual recoveries from the existing `XoL` objects and
 plots their exceedance curves together:
@@ -353,14 +353,14 @@ annual distribution with many zero years and occasional large burns.
 
 ## 10. Compare with the analytical exposure rate
 
-For a reinsurance layer with excess \(A\) and limit \(U\), the corresponding
-ground-up thresholds for a policy with deductible \(D\) and limit \(P\) are
+For a reinsurance layer with excess {math}`A` and limit {math}`U`, the corresponding
+ground-up thresholds for a policy with deductible {math}`D` and limit {math}`P` are
 
-\[
+```{math}
 D+\min(A,P)
 \quad\text{and}\quad
 D+\min(A+U,P).
-\]
+```
 
 The expected layer loss for a risk is its expected annual policy loss multiplied
 by the ratio of the layer exposure-curve increment to the policy exposure-curve
@@ -369,11 +369,11 @@ loss.
 
 The pure exposure rate is
 
-\[
+```{math}
 \text{exposure rate}
 =\frac{\text{expected reinsurance loss}}
 {\text{total subject premium}}.
-\]
+```
 
 For the sample schedule, the analytical and simulated results are:
 
