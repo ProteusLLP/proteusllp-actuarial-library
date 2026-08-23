@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from pal import FreqSevSims, ProteusVariable, StochasticScalar, set_random_seed
+from pal import FreqSevSims, ProteusVariable, StochasticScalar
 
 
 def test_upsample_recurses_through_nested_proteus_variables() -> None:
@@ -14,7 +14,6 @@ def test_upsample_recurses_through_nested_proteus_variables() -> None:
     right = ProteusVariable("right", {"value": second})
     variable = ProteusVariable("outer", {"left": left, "right": right})
 
-    set_random_seed(1234)
     result = variable.upsample(9)
 
     resampled_first = result["left"]["value"]
@@ -32,7 +31,6 @@ def test_upsample_keeps_independent_groups_independent() -> None:
     second = StochasticScalar([10.0, 20.0, 30.0])
     variable = ProteusVariable("risk", {"first": first, "second": second})
 
-    set_random_seed(1234)
     result = variable.upsample(9)
 
     assert result["first"].coupled_variable_group is not result["second"].coupled_variable_group
@@ -45,7 +43,6 @@ def test_upsample_freqsev_preserves_shared_simulation_selection() -> None:
     first.coupled_variable_group.merge(second.coupled_variable_group)
     variable = ProteusVariable("risk", {"first": first, "second": second})
 
-    set_random_seed(1234)
     result = variable.upsample(10)
 
     resampled_first = result["first"]

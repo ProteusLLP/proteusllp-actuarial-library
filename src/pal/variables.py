@@ -62,8 +62,7 @@ from . import maths as pnp
 
 # local imports
 from ._compat import Self
-from ._maths import asnumpy, generate_upsample_indices, xp
-from .config import config
+from ._maths import asnumpy, xp
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
@@ -97,9 +96,7 @@ def _resample_freqsev(value: FreqSevSims, indices: StochasticScalar) -> FreqSevS
 
     new_sim_index = xp.repeat(xp.arange(indices.n_sims, dtype=int), target_counts)
     target_event_starts = xp.cumsum(target_counts) - target_counts
-    within_target_offsets = xp.arange(new_sim_index.size, dtype=int) - xp.repeat(
-        target_event_starts, target_counts
-    )
+    within_target_offsets = xp.arange(new_sim_index.size, dtype=int) - xp.repeat(target_event_starts, target_counts)
     source_positions = xp.repeat(target_starts, target_counts) + within_target_offsets
 
     result = FreqSevSims(
@@ -679,18 +676,14 @@ class ProteusVariable(t.Generic[T]):
                     raise ValueError(f"Variable {key} has None n_sims, cannot upsample")
                 group_id = id(value.coupled_variable_group)
                 if group_id not in group_indices:
-                    group_indices[group_id] = StochasticScalar(
-                        generate_upsample_indices(n_sims, value.n_sims, rng=config.rng)
-                    )
+                    group_indices[group_id] = StochasticScalar(xp.arange(n_sims, dtype=int) % value.n_sims)
                 new_values[key] = value[group_indices[group_id]]
                 continue
 
             if isinstance(value, FreqSevSims):
                 group_id = id(value.coupled_variable_group)
                 if group_id not in group_indices:
-                    group_indices[group_id] = StochasticScalar(
-                        generate_upsample_indices(n_sims, value.n_sims, rng=config.rng)
-                    )
+                    group_indices[group_id] = StochasticScalar(xp.arange(n_sims, dtype=int) % value.n_sims)
                 new_values[key] = _resample_freqsev(value, group_indices[group_id])
                 continue
 
