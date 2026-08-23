@@ -8,7 +8,14 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from pal import MBBEFD, Empirical, StochasticScalar, XoLTower, distributions, set_random_seed
+from pal import (
+    MBBEFD,
+    Empirical,
+    StochasticScalar,
+    XoLTower,
+    distributions,
+    set_random_seed,
+)
 from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
 
 N_SIMS = 100_000
@@ -40,7 +47,12 @@ def expected_policy_loss_given_claim(row):
     deductible = row["policy_deductible"]
     policy_limit = row["policy_limit"]
     distribution = MBBEFD.from_c(row["mbbefd_c"])
-    policy_share = curve_increment(distribution, deductible, deductible + policy_limit, maximum_loss)
+    policy_share = curve_increment(
+        distribution,
+        deductible,
+        deductible + policy_limit,
+        maximum_loss,
+    )
     return maximum_loss * distribution.mean() * policy_share
 
 
@@ -48,7 +60,9 @@ def claim_frequencies(exposures):
     frequencies = []
     for _, row in exposures.iterrows():
         expected_annual_loss = row["subject_premium"] * row["expected_loss_ratio"]
-        frequencies.append(expected_annual_loss / expected_policy_loss_given_claim(row))
+        frequencies.append(
+            expected_annual_loss / expected_policy_loss_given_claim(row)
+        )
     return np.asarray(frequencies)
 
 
@@ -108,7 +122,9 @@ def expected_layer_loss(row, layer):
 
 def make_calibration_table(exposures, frequencies, claim_rows, policy_losses):
     total_subject_premium = float(exposures["subject_premium"].sum())
-    target_expected_loss = float((exposures["subject_premium"] * exposures["expected_loss_ratio"]).sum())
+    target_expected_loss = float(
+        (exposures["subject_premium"] * exposures["expected_loss_ratio"]).sum()
+    )
     simulated_expected_loss = float(policy_losses.aggregate().mean())
 
     return pd.DataFrame(
@@ -140,7 +156,9 @@ def make_calibration_table(exposures, frequencies, claim_rows, policy_losses):
 def make_layer_comparison(exposures, tower, total_subject_premium):
     rows = []
     for layer in tower.layers:
-        exposure_expected_loss = sum(expected_layer_loss(row, layer) for _, row in exposures.iterrows())
+        exposure_expected_loss = sum(
+            expected_layer_loss(row, layer) for _, row in exposures.iterrows()
+        )
         simulated_expected_loss = layer.summary["mean"]
         exposure_rate = exposure_expected_loss / total_subject_premium
         simulated_rate = simulated_expected_loss / total_subject_premium
@@ -157,9 +175,9 @@ def make_layer_comparison(exposures, tower, total_subject_premium):
     return pd.DataFrame(rows)
 
 
-def make_layer_burn_rates(tower, policy_losses, total_subject_premium):
+def make_layer_burn_rates(tower, total_subject_premium):
     return {
-        layer.name: layer.apply(policy_losses).recoveries.aggregate() / total_subject_premium
+        layer.name: layer.recoveries.aggregate() / total_subject_premium
         for layer in tower.layers
     }
 
@@ -167,7 +185,12 @@ def make_layer_burn_rates(tower, policy_losses, total_subject_premium):
 def _style_figure(fig):
     fig.update_layout(
         template="plotly_white",
-        colorway=[PROTEUS_NAVY, PROTEUS_BLUE, PROTEUS_MID_BLUE, PROTEUS_LIGHT_BLUE],
+        colorway=[
+            PROTEUS_NAVY,
+            PROTEUS_BLUE,
+            PROTEUS_MID_BLUE,
+            PROTEUS_LIGHT_BLUE,
+        ],
         margin={"l": 60, "r": 30, "t": 80, "b": 80},
         legend_title_text="",
     )
@@ -201,7 +224,9 @@ def make_distribution_figure(values, title, xaxis_title, xaxis_tickformat=None):
             nbinsx=60,
             name="Simulation",
             marker_color=PROTEUS_BLUE,
-            hovertemplate=f"{xaxis_title}: %{{x:,.4g}}<br>Count: %{{y:,}}<extra></extra>",
+            hovertemplate=(
+                f"{xaxis_title}: %{{x:,.4g}}<br>Count: %{{y:,}}<extra></extra>"
+            ),
         ),
         row=1,
         col=1,
@@ -213,15 +238,34 @@ def make_distribution_figure(values, title, xaxis_title, xaxis_tickformat=None):
             mode="lines",
             name="Exceedance",
             line={"color": PROTEUS_NAVY, "width": 2.5},
-            hovertemplate=f"{xaxis_title}: %{{x:,.4g}}<br>Exceedance: %{{y:.2%}}<extra></extra>",
+            hovertemplate=(
+                f"{xaxis_title}: %{{x:,.4g}}<br>"
+                "Exceedance: %{y:.2%}<extra></extra>"
+            ),
         ),
         row=1,
         col=2,
     )
-    fig.update_xaxes(title_text=xaxis_title, tickformat=xaxis_tickformat, row=1, col=1)
-    fig.update_xaxes(title_text=xaxis_title, tickformat=xaxis_tickformat, row=1, col=2)
+    fig.update_xaxes(
+        title_text=xaxis_title,
+        tickformat=xaxis_tickformat,
+        row=1,
+        col=1,
+    )
+    fig.update_xaxes(
+        title_text=xaxis_title,
+        tickformat=xaxis_tickformat,
+        row=1,
+        col=2,
+    )
     fig.update_yaxes(title_text="Simulation count", row=1, col=1)
-    fig.update_yaxes(title_text="Probability of exceedance", tickformat=".0%", range=[0, 1], row=1, col=2)
+    fig.update_yaxes(
+        title_text="Probability of exceedance",
+        tickformat=".0%",
+        range=[0, 1],
+        row=1,
+        col=2,
+    )
     fig.update_layout(title=title, showlegend=False)
     return _style_figure(fig)
 
@@ -261,7 +305,8 @@ def make_layer_burn_rate_figure(layer_burn_rates):
                 name=layer_name,
                 hovertemplate=(
                     "Burn rate: %{x:.2%}<br>"
-                    "Probability of exceedance: %{y:.2%}<extra>%{fullData.name}</extra>"
+                    "Probability of exceedance: %{y:.2%}"
+                    "<extra>%{fullData.name}</extra>"
                 ),
             )
         )
@@ -318,20 +363,34 @@ def main():
     frequency_table = exposures[["risk_id"]].copy()
     frequency_table["annual_claim_frequency"] = frequencies
     print("Inferred annual claim frequencies")
-    print(frequency_table.to_string(index=False, float_format=lambda x: f"{x:,.6f}"))
+    print(
+        frequency_table.to_string(
+            index=False,
+            float_format=lambda x: f"{x:,.6f}",
+        )
+    )
     print(f"\nPortfolio Poisson mean: {frequencies.sum():,.6f}\n")
 
-    calibration = make_calibration_table(exposures, frequencies, claim_rows, policy_losses)
+    calibration = make_calibration_table(
+        exposures,
+        frequencies,
+        claim_rows,
+        policy_losses,
+    )
     print("Portfolio calibration check")
     print(calibration.to_string(index=False, float_format=lambda x: f"{x:,.6f}"))
     print()
 
     total_subject_premium = float(exposures["subject_premium"].sum())
-    comparison = make_layer_comparison(exposures, tower, total_subject_premium)
+    comparison = make_layer_comparison(
+        exposures,
+        tower,
+        total_subject_premium,
+    )
     print("Analytical exposure rates versus simulated mean burn rates")
     print(comparison.to_string(index=False, float_format=lambda x: f"{x:,.6f}"))
 
-    layer_burn_rates = make_layer_burn_rates(tower, policy_losses, total_subject_premium)
+    layer_burn_rates = make_layer_burn_rates(tower, total_subject_premium)
     figures = [
         make_claim_severity_figure(policy_losses),
         make_gross_burn_rate_figure(policy_losses, total_subject_premium),
