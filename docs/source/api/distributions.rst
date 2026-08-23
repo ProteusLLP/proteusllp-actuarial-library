@@ -44,6 +44,7 @@ Continuous distributions
    pal.distributions.InverseGaussian
    pal.distributions.GeneralizedInverseGaussian
    pal.distributions.Exponential
+   pal.distributions.HyperExponential
    pal.distributions.Uniform
    pal.distributions.InverseExponential
 
