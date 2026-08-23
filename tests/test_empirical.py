@@ -80,6 +80,18 @@ def test_empirical_accepts_stochastic_scalar_as_observed_sample() -> None:
     assert dist.invcdf(0.75) == 5.0
 
 
+def test_empirical_generation_is_not_coupled_to_stochastic_input_data() -> None:
+    """Empirical support and weights are data, not stochastic parameters."""
+    source = StochasticScalar([1.0, 2.0, 3.0, 4.0])
+    weights = StochasticScalar([1.0, 2.0, 3.0, 4.0])
+    dist = Empirical(source, weights=weights)
+
+    sims = dist.generate(100)
+
+    assert sims.coupled_variable_group != source.coupled_variable_group
+    assert sims.coupled_variable_group != weights.coupled_variable_group
+
+
 def test_empirical_cdf_and_inverse_preserve_argument_coupling() -> None:
     """Vector CDF and inverse-CDF results remain coupled to their arguments."""
     dist = Empirical(samples=[1.0, 2.0, 5.0], weights=[1.0, 2.0, 1.0])
