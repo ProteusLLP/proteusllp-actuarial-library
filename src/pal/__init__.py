@@ -27,7 +27,7 @@ from .variables import *
 # HyperExponential has vector-valued mixture parameters and is implemented in a
 # separate module. Expose it through the standard distributions namespace and
 # named-distribution generator API.
-setattr(distributions, "HyperExponential", HyperExponential)
+distributions.__dict__["HyperExponential"] = HyperExponential
 distributions.AVAILABLE_CONTINUOUS_DISTRIBUTIONS["hyperexponential"] = HyperExponential
 
 # ``variables`` depends on ``frequency_severity``, which in turn depends on the
