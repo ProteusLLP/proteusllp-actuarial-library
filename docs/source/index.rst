@@ -129,6 +129,7 @@ A small model, end to end
    tutorials/frequency_severity_modelling
    tutorials/coupling_groups_and_copulas
    tutorials/xol_reinsurance
+   tutorials/property_exposure_rating
    tutorials/reinstatement_pricing
    tutorials/risk_measures_and_allocation
 
