@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/plotly-variable-scatter
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
