@@ -48,10 +48,15 @@ def test_property_exposure_row_selection_and_mbbefd_severity_workflow() -> None:
     assert len(row_index) > 0
     assert bool(xp.all(row_index >= 0))
     assert bool(xp.all(row_index < len(exposures)))
-    assert float(claim_rows.count().mean()) == pytest.approx(float(frequencies.sum()), abs=0.08)
+    assert float(claim_rows.count().mean()) == pytest.approx(
+        float(frequencies.sum()),
+        abs=0.08,
+    )
 
     policy_losses = simulate_policy_losses(exposures, claim_rows)
-    selected_limits = xp.asarray(exposures["policy_limit"].to_numpy(dtype=float))[row_index]
+    selected_limits = xp.asarray(exposures["policy_limit"].to_numpy(dtype=float))[
+        row_index
+    ]
 
     assert policy_losses.n_sims == claim_rows.n_sims
     assert bool(xp.array_equal(policy_losses.sim_index, claim_rows.sim_index))
@@ -64,26 +69,49 @@ def test_property_exposure_row_selection_and_mbbefd_severity_workflow() -> None:
     tower.apply(policy_losses)
     assert all(layer.summary["mean"] >= 0 for layer in tower.layers)
 
-    calibration = make_calibration_table(exposures, frequencies, claim_rows, policy_losses)
-    assert calibration.loc[calibration["metric"] == "Total subject premium", "target"].item() == 2_150_000
-    assert calibration.loc[calibration["metric"] == "Annual policy loss", "target"].item() == 1_422_100
-    assert calibration.loc[calibration["metric"] == "Portfolio loss ratio", "target"].item() == pytest.approx(
-        1_422_100 / 2_150_000
+    calibration = make_calibration_table(
+        exposures,
+        frequencies,
+        claim_rows,
+        policy_losses,
     )
+    assert (
+        calibration.loc[
+            calibration["metric"] == "Total subject premium",
+            "target",
+        ].item()
+        == 2_150_000
+    )
+    assert (
+        calibration.loc[
+            calibration["metric"] == "Annual policy loss",
+            "target",
+        ].item()
+        == 1_422_100
+    )
+    assert calibration.loc[
+        calibration["metric"] == "Portfolio loss ratio",
+        "target",
+    ].item() == pytest.approx(1_422_100 / 2_150_000)
 
     total_subject_premium = float(exposures["subject_premium"].sum())
     comparison = make_layer_comparison(exposures, tower, total_subject_premium)
-    assert comparison["exposure_rate"] == pytest.approx(
+    assert comparison["exposure_rate"].tolist() == pytest.approx(
         [0.1163531952, 0.1229171863, 0.1015502012],
         rel=1e-8,
     )
 
-    layer_burn_rates = make_layer_burn_rates(tower, policy_losses, total_subject_premium)
+    layer_burn_rates = make_layer_burn_rates(tower, total_subject_premium)
     assert set(layer_burn_rates) == {"5m xs 5m", "10m xs 10m", "20m xs 20m"}
-    assert all(len(burn_rate) == claim_rows.n_sims for burn_rate in layer_burn_rates.values())
+    assert all(
+        len(burn_rate) == claim_rows.n_sims for burn_rate in layer_burn_rates.values()
+    )
 
     severity_figure = make_claim_severity_figure(policy_losses)
-    gross_burn_figure = make_gross_burn_rate_figure(policy_losses, total_subject_premium)
+    gross_burn_figure = make_gross_burn_rate_figure(
+        policy_losses,
+        total_subject_premium,
+    )
     layer_burn_figure = make_layer_burn_rate_figure(layer_burn_rates)
     comparison_figure = make_layer_rate_comparison_figure(comparison)
 
