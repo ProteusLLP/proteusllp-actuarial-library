@@ -88,6 +88,56 @@ validating simulation results.
 | `Binomial` | `n`, `p` | Events out of fixed trials |
 | `HyperGeometric` | `ngood`, `nbad`, `population_size` | Sampling without replacement |
 
+### Multivariate Distributions
+
+| Distribution | Parameters | Typical Use |
+|-------------|------------|-------------|
+| `MultivariateNormal` | `mean`, `covariance` | Correlated symmetric risk factors |
+| `MultivariateStudentsT` | `nu`, `mean`, `scale` | Correlated heavy-tailed risk factors |
+| `Multinomial` | `n`, `p` | Allocate a fixed count across categories |
+| `Dirichlet` | `alpha` | Random proportions with a fixed total |
+| `InvertedDirichlet` | `alpha` | Positively dependent ratios and positive vectors |
+| `GeneralizedDirichlet` | `alpha`, `beta` | Proportions with a richer covariance structure |
+| `InvertedGeneralizedDirichlet` | `alpha`, `beta` | Positive vectors with a richer covariance structure |
+| `Wishart` | `df`, `scale` | Random covariance or precision matrices |
+| `InverseWishart` | `df`, `scale` | Uncertain covariance matrices |
+
+Multivariate samples contain one `StochasticScalar` per named component:
+
+<!--pytest-codeblocks:cont-->
+
+```python
+economic_factors = distributions.MultivariateStudentsT(
+    nu=6,
+    mean=[0.02, 0.04],
+    scale=[[0.0004, 0.0001], [0.0001, 0.0025]],
+    component_names=["inflation", "equity_return"],
+).generate()
+
+economic_factors["inflation"].mean()
+economic_factors["equity_return"].std()
+```
+
+The generalized Dirichlet returns the final unallocated remainder as an
+explicit component, so all generated components sum to one. The inverted
+Dirichlet uses the final `alpha` value as the common denominator parameter and
+therefore returns one fewer component than the number of parameters.
+
+Wishart and inverse Wishart samples use nested named dimensions. The outer
+variable contains matrix rows and each row contains the corresponding columns:
+
+<!--pytest-codeblocks:cont-->
+
+```python
+covariance = distributions.InverseWishart(
+    df=10,
+    scale=[[0.04, 0.01], [0.01, 0.09]],
+    component_names=["property", "casualty"],
+).generate()
+
+covariance["property"]["casualty"].mean()
+```
+
 ## Comparing Severity Distributions
 
 The choice of severity distribution significantly affects tail

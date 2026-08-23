@@ -181,10 +181,12 @@ class ProteusVariable(t.Generic[T]):
             self.values.values() if isinstance(self.values, dict) else self.values  # type: ignore[reportUnknownMemberType]
         ):
             if isinstance(value, ProteusVariable):
-                if self._dimension_set.intersection(value._dimension_set) or self.dim_name == value.dim_name:
+                if self.dim_name in value._dimension_set:
                     raise ValueError("Duplicate dimension names in ProteusVariable hierarchy.")
-                self._dimension_set.intersection_update(value.dimensions)
-                self.dimensions.extend(value.dimensions)
+                for dimension in value.dimensions:
+                    if dimension not in self._dimension_set:
+                        self._dimension_set.add(dimension)
+                        self.dimensions.append(dimension)
 
             if self.n_sims is None:
                 if isinstance(value, ProteusStochasticVariable):

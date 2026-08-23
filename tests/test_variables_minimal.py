@@ -214,6 +214,15 @@ def test_init_duplicate_dimensions():
         ProteusVariable("inner", {"a": nested, "b": 3})
 
 
+def test_init_repeated_nested_dimensions_are_recorded_once():
+    """Record a shared child dimension once across sibling variables."""
+    first = ProteusVariable("column", {"x": 1, "y": 2})
+    second = ProteusVariable("column", {"x": 3, "y": 4})
+    matrix = ProteusVariable("row", {"a": first, "b": second})
+
+    assert matrix.dimensions == ["row", "column"]
+
+
 def test_init_mismatched_n_sims():
     """Test that mismatched simulation counts raise ValueError."""
     with pytest.raises(ValueError, match="Number of simulations do not match"):
