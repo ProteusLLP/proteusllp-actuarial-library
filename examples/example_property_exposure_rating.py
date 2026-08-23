@@ -60,9 +60,7 @@ def claim_frequencies(exposures):
     frequencies = []
     for _, row in exposures.iterrows():
         expected_annual_loss = row["subject_premium"] * row["expected_loss_ratio"]
-        frequencies.append(
-            expected_annual_loss / expected_policy_loss_given_claim(row)
-        )
+        frequencies.append(expected_annual_loss / expected_policy_loss_given_claim(row))
     return np.asarray(frequencies)
 
 
@@ -122,9 +120,7 @@ def expected_layer_loss(row, layer):
 
 def make_calibration_table(exposures, frequencies, claim_rows, policy_losses):
     total_subject_premium = float(exposures["subject_premium"].sum())
-    target_expected_loss = float(
-        (exposures["subject_premium"] * exposures["expected_loss_ratio"]).sum()
-    )
+    target_expected_loss = float((exposures["subject_premium"] * exposures["expected_loss_ratio"]).sum())
     simulated_expected_loss = float(policy_losses.aggregate().mean())
 
     return pd.DataFrame(
@@ -156,9 +152,7 @@ def make_calibration_table(exposures, frequencies, claim_rows, policy_losses):
 def make_layer_comparison(exposures, tower, total_subject_premium):
     rows = []
     for layer in tower.layers:
-        exposure_expected_loss = sum(
-            expected_layer_loss(row, layer) for _, row in exposures.iterrows()
-        )
+        exposure_expected_loss = sum(expected_layer_loss(row, layer) for _, row in exposures.iterrows())
         simulated_expected_loss = layer.summary["mean"]
         exposure_rate = exposure_expected_loss / total_subject_premium
         simulated_rate = simulated_expected_loss / total_subject_premium
@@ -175,9 +169,9 @@ def make_layer_comparison(exposures, tower, total_subject_premium):
     return pd.DataFrame(rows)
 
 
-def make_layer_burn_rates(tower, total_subject_premium):
+def make_layer_burn_rates(tower, policy_losses, total_subject_premium):
     return {
-        layer.name: layer.recoveries.aggregate() / total_subject_premium
+        layer.name: layer.apply(policy_losses).recoveries.aggregate() / total_subject_premium
         for layer in tower.layers
     }
 
@@ -211,11 +205,12 @@ def make_distribution_figure(values, title, xaxis_title, xaxis_tickformat=None):
     percentiles = np.linspace(0.0, 99.9, 300)
     quantiles = values.percentile(percentiles.tolist())
     exceedance_probabilities = 1 - percentiles / 100
+    histogram_limit = values.percentile(99.5)
 
     fig = make_subplots(
         rows=1,
         cols=2,
-        subplot_titles=("Histogram", "Exceedance probability"),
+        subplot_titles=("Histogram (to 99.5th percentile)", "Exceedance probability"),
         horizontal_spacing=0.12,
     )
     fig.add_trace(
@@ -224,9 +219,7 @@ def make_distribution_figure(values, title, xaxis_title, xaxis_tickformat=None):
             nbinsx=60,
             name="Simulation",
             marker_color=PROTEUS_BLUE,
-            hovertemplate=(
-                f"{xaxis_title}: %{{x:,.4g}}<br>Count: %{{y:,}}<extra></extra>"
-            ),
+            hovertemplate=(f"{xaxis_title}: %{{x:,.4g}}<br>Count: %{{y:,}}<extra></extra>"),
         ),
         row=1,
         col=1,
@@ -238,10 +231,7 @@ def make_distribution_figure(values, title, xaxis_title, xaxis_tickformat=None):
             mode="lines",
             name="Exceedance",
             line={"color": PROTEUS_NAVY, "width": 2.5},
-            hovertemplate=(
-                f"{xaxis_title}: %{{x:,.4g}}<br>"
-                "Exceedance: %{y:.2%}<extra></extra>"
-            ),
+            hovertemplate=(f"{xaxis_title}: %{{x:,.4g}}<br>Exceedance: %{{y:.2%}}<extra></extra>"),
         ),
         row=1,
         col=2,
@@ -249,6 +239,7 @@ def make_distribution_figure(values, title, xaxis_title, xaxis_tickformat=None):
     fig.update_xaxes(
         title_text=xaxis_title,
         tickformat=xaxis_tickformat,
+        range=[0, histogram_limit],
         row=1,
         col=1,
     )
@@ -304,9 +295,7 @@ def make_layer_burn_rate_figure(layer_burn_rates):
                 mode="lines",
                 name=layer_name,
                 hovertemplate=(
-                    "Burn rate: %{x:.2%}<br>"
-                    "Probability of exceedance: %{y:.2%}"
-                    "<extra>%{fullData.name}</extra>"
+                    "Burn rate: %{x:.2%}<br>Probability of exceedance: %{y:.2%}<extra>%{fullData.name}</extra>"
                 ),
             )
         )
@@ -390,7 +379,11 @@ def main():
     print("Analytical exposure rates versus simulated mean burn rates")
     print(comparison.to_string(index=False, float_format=lambda x: f"{x:,.6f}"))
 
-    layer_burn_rates = make_layer_burn_rates(tower, total_subject_premium)
+    layer_burn_rates = make_layer_burn_rates(
+        tower,
+        policy_losses,
+        total_subject_premium,
+    )
     figures = [
         make_claim_severity_figure(policy_losses),
         make_gross_burn_rate_figure(policy_losses, total_subject_premium),
