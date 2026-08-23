@@ -60,10 +60,10 @@ def simulate_policy_losses(exposures, claim_rows):
     if len(row_index) == 0:
         return claim_rows
 
-    maximum_loss = StochasticScalar(exposures["maximum_loss"].values)[row_index]
-    policy_limit = StochasticScalar(exposures["policy_limit"].values)[row_index]
-    deductible = StochasticScalar(exposures["policy_deductible"].values)[row_index]
-    c = StochasticScalar(exposures["mbbefd_c"].values)[row_index]
+    maximum_loss = StochasticScalar(exposures["maximum_loss"])[row_index]
+    policy_limit = StochasticScalar(exposures["policy_limit"])[row_index]
+    deductible = StochasticScalar(exposures["policy_deductible"])[row_index]
+    c = StochasticScalar(exposures["mbbefd_c"])[row_index]
 
     damage_ratio = MBBEFD.from_c(c).generate(len(row_index))
     policy_loss = np.minimum(
