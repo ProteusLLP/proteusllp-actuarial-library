@@ -314,27 +314,46 @@ class StochasticScalar(ProteusStochasticVariable):
             return self
         return type(self)(self.values[xp.arange(n_sims) % self.n_sims])
 
-    def show_histogram(self, title: str | None = None) -> None:
-        """Show a histogram of the variable.
+    def histogram(self, title: str | None = None) -> go.Figure:
+        """Return a Plotly histogram of the simulated values.
 
         Args:
-            title (optional): Title of the histogram plot. Defaults to None.
-        """
-        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
-            return
-        fig = go.Figure(go.Histogram(x=self), layout={"title": title})
-        # Type ignore: plotly-stubs has incomplete type information
-        fig.show()  # type: ignore[misc]
+            title: Optional title for the histogram.
 
-    def show_cdf(self, title: str | None = None) -> None:
-        """Show a plot of the cumulative distribution function (cdf) of the variable.
+        Returns:
+            A Plotly figure. Call ``.show()`` to display it, or use any of
+            Plotly's figure export methods to save it.
+        """
+        return go.Figure(go.Histogram(x=self), layout={"title": title})
+
+    def show_histogram(self, title: str | None = None) -> go.Figure:
+        """Show and return a histogram of the simulated values.
+
+        This method is retained for backwards compatibility. New code can use
+        :meth:`histogram` and explicitly call ``.show()`` when required.
 
         Args:
-            title (optional): Title of the cdf plot. Defaults to None.
-        """
-        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
-            return
+            title: Optional title for the histogram.
 
+        Returns:
+            The Plotly figure that was displayed.
+        """
+        fig = self.histogram(title=title)
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
+            # Type ignore: plotly-stubs has incomplete type information
+            fig.show()  # type: ignore[misc]
+        return fig
+
+    def cdf(self, title: str | None = None) -> go.Figure:
+        """Return a Plotly empirical cumulative distribution function plot.
+
+        Args:
+            title: Optional title for the CDF plot.
+
+        Returns:
+            A Plotly figure. Call ``.show()`` to display it, or use any of
+            Plotly's figure export methods to save it.
+        """
         sorted_values = StochasticScalar(xp.sort(self.values))
         cumulative_probabilities = StochasticScalar(xp.arange(self.n_sims) / self.n_sims)
         fig = go.Figure(
@@ -347,7 +366,25 @@ class StochasticScalar(ProteusStochasticVariable):
         # Type ignore: plotly-stubs has incomplete type information
         fig.update_xaxes({"title": "Value"})  # type: ignore[misc]
         fig.update_yaxes({"title": "Cumulative Probability"})  # type: ignore[misc]
-        fig.show()  # type: ignore[misc]
+        return fig
+
+    def show_cdf(self, title: str | None = None) -> go.Figure:
+        """Show and return the empirical cumulative distribution function.
+
+        This method is retained for backwards compatibility. New code can use
+        :meth:`cdf` and explicitly call ``.show()`` when required.
+
+        Args:
+            title: Optional title for the CDF plot.
+
+        Returns:
+            The Plotly figure that was displayed.
+        """
+        fig = self.cdf(title=title)
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
+            # Type ignore: plotly-stubs has incomplete type information
+            fig.show()  # type: ignore[misc]
+        return fig
 
     # ===================
     # PRIVATE METHODS
