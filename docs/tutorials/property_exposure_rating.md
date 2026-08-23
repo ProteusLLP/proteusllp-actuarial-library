@@ -264,6 +264,10 @@ severity_figure = make_claim_severity_figure(policy_losses)
 severity_figure.show()
 ```
 
+<div id="property-claim-severity" style="width: 100%; height: 480px;"></div>
+<script src="https://cdn.plot.ly/plotly-3.3.1.min.js"></script>
+<script src="../_static/js/property_exposure_plots.js"></script>
+
 The histogram is displayed through the 99.5th percentile so that a handful of
 very large claims do not compress the body of the distribution. The exceedance
 curve retains the simulated tail through the 99.9th percentile.
@@ -306,6 +310,8 @@ gross_burn_figure = make_gross_burn_rate_figure(
 gross_burn_figure.show()
 ```
 
+<div id="property-gross-burn" style="width: 100%; height: 480px;"></div>
+
 The mean of this distribution is the simulated portfolio loss ratio. The full
 distribution additionally shows the year-to-year volatility around that pricing
 assumption. As with the severity plot, the histogram is limited to the 99.5th
@@ -338,6 +344,8 @@ layer_burn_rates = make_layer_burn_rates(
 layer_burn_figure = make_layer_burn_rate_figure(layer_burn_rates)
 layer_burn_figure.show()
 ```
+
+<div id="property-layer-burn" style="width: 100%; height: 480px;"></div>
 
 This gives more information than the mean exposure rate alone. A high-attaching
 layer can have a modest mean burn rate while still showing a highly skewed
@@ -390,6 +398,8 @@ comparison = make_layer_comparison(
 comparison_figure = make_layer_rate_comparison_figure(comparison)
 comparison_figure.show()
 ```
+
+<div id="property-layer-rate" style="width: 100%; height: 440px;"></div>
 
 Because the simulation draws directly from the same MBBEFD distributions used
 for the analytical calculation, the two approaches are estimating the same
