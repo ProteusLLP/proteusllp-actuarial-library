@@ -21,6 +21,7 @@ from .distributions import *
 from .empirical import Empirical
 from .frequency_severity import *
 from .hyperexponential import HyperExponential
+from .mbbefd import MBBEFD as MBBEFD
 from .multivariate_distributions import *
 from .stats import *
 from .variables import *
@@ -32,6 +33,11 @@ distributions.__dict__["Empirical"] = Empirical
 distributions.AVAILABLE_DISCRETE_DISTRIBUTIONS["empirical"] = Empirical
 distributions.__dict__["HyperExponential"] = HyperExponential
 distributions.AVAILABLE_CONTINUOUS_DISTRIBUTIONS["hyperexponential"] = HyperExponential
+
+# Keep the canonical distributions namespace and named generator pointed at the
+# MBBEFD implementation with analytical moment methods.
+distributions.MBBEFD = MBBEFD
+distributions.AVAILABLE_CONTINUOUS_DISTRIBUTIONS["mbbefd"] = MBBEFD
 
 # ``variables`` depends on ``frequency_severity``, which in turn depends on the
 # univariate distributions module. Attach the multivariate API after those modules

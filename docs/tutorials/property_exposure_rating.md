@@ -1,11 +1,11 @@
 # Property Reinsurance Exposure Rating with MBBEFD
 
-This tutorial combines classical property exposure rating with a portfolio
-frequency-severity simulation. We read a schedule of property risks from CSV,
-use an MBBEFD damage distribution for each risk, infer claim frequency from
-premium and expected loss ratio, combine the resulting policy severities in a
-weighted empirical distribution, and pass simulated policy losses through PAL's
-`XoLTower`.
+This tutorial combines classical property exposure rating with occurrence-level
+simulation. We read a schedule of property risks from CSV, infer each risk's
+claim frequency from premium and expected loss ratio, use a weighted empirical
+distribution to decide which exposure row produces each claim, draw the claim
+severity from that row's MBBEFD distribution, and pass the resulting policy
+losses through PAL's existing `XoLTower`.
 
 The complete runnable example is
 `examples/example_property_exposure_rating.py`, with sample data in
@@ -29,7 +29,7 @@ loss ratio and the policy severity model.
 
 `maximum_loss` is separate from the policy limit. It can therefore represent the
 full property exposure, including business interruption or other additional
-cover, even where the contractual limit is lower.
+cover, even where the contractual policy limit is lower.
 
 ```python
 from pathlib import Path
@@ -39,7 +39,7 @@ import pandas as pd
 exposures = pd.read_csv(Path("examples/data/property_exposures.csv"))
 ```
 
-## 2. From MBBEFD damage ratio to policy loss
+## 2. Infer claim frequency from premium and loss ratio
 
 Let \(X_i\in[0,1]\) be the MBBEFD damage ratio for risk \(i\), conditional on a
 ground-up claim, and let \(M_i\) be its maximum loss. Ground-up loss is
@@ -48,127 +48,143 @@ ground-up claim, and let \(M_i\) be its maximum loss. Ground-up loss is
 L_i=M_iX_i.
 \]
 
-For policy deductible \(D_i\) and limit \(P_i\), the policy loss is
+For policy deductible \(D_i\) and limit \(P_i\), policy loss is
 
 \[
 Y_i=\min\{(L_i-D_i)_+,P_i\}.
 \]
 
-For simulation we discretise this conditional policy-loss distribution using a
-midpoint quantile grid. With \(K\) points,
+The MBBEFD exposure curve is
 
 \[
-u_k=\frac{k-1/2}{K},\qquad k=1,\ldots,K,
+G_i(x)=\frac{E[\min(X_i,x)]}{E[X_i]}.
 \]
 
-and
+Therefore
 
 \[
-y_{ik}=\min\left\{\left(M_iF_i^{-1}(u_k)-D_i\right)_+,P_i\right\},
+E[Y_i\mid\text{claim}]
+=M_iE[X_i]
+\left[
+G_i\!\left(\frac{D_i+P_i}{M_i}\right)
+-G_i\!\left(\frac{D_i}{M_i}\right)
+\right],
 \]
 
-where \(F_i\) is the MBBEFD CDF for the risk.
+with the curve arguments capped at one.
 
-Using midpoint quantiles rather than a preliminary random sample makes the
-empirical severity deterministic and gives an accurate numerical representation
-with relatively few points.
+PAL exposes the MBBEFD mean directly on the distribution, so this conditional
+severity is calculated analytically rather than by simulation.
 
-## 3. Infer each risk's claim frequency
-
-The exposure data give the expected annual policy loss directly:
+The expected annual policy loss is
 
 \[
-\mu_i=\text{premium}_i\times\text{expected loss ratio}_i.
+\mu_i=\text{premium}_i\times\text{expected loss ratio}_i,
 \]
 
-The empirical conditional mean policy severity is
+which gives annual ground-up claim frequency
 
 \[
-\hat m_i=\frac{1}{K}\sum_{k=1}^K y_{ik}.
+\lambda_i=rac{\mu_i}{E[Y_i\mid\text{claim}]}.
 \]
 
-We therefore infer annual ground-up claim frequency as
+The portfolio claim count is then
 
 \[
-\hat\lambda_i=\frac{\mu_i}{\hat m_i}.
+N\sim\operatorname{Poisson}\left(\sum_i\lambda_i\right).
 \]
 
-This is the important calibration step: **frequency is a consequence of premium,
-loss ratio and severity, not another assumption in the exposure file.**
+## 3. Use `Empirical` to select the exposure rows with claims
 
-The complete example does this while it builds the empirical severity support:
+Conditional on a portfolio claim occurring, risk \(i\) should be selected with
+probability
+
+\[
+\Pr(I=i)=\frac{\lambda_i}{\sum_j\lambda_j}.
+\]
+
+This is exactly a weighted empirical distribution over exposure-row numbers.
+There is no need for a custom severity class:
 
 <!--pytest.mark.skip-->
 
 ```python
-for _, row in exposures.iterrows():
-    policy_losses = policy_loss_samples(row, n_points)
-    expected_annual_loss = row["subject_premium"] * row["expected_loss_ratio"]
-    frequency = expected_annual_loss / policy_losses.mean()
-```
-
-## 4. Combine the risks with `Empirical`
-
-The portfolio claim count has mean
-
-\[
-\lambda=\sum_i\hat\lambda_i.
-\]
-
-Conditional on a claim occurring, risk \(i\) should be selected with probability
-
-\[
-\frac{\hat\lambda_i}{\sum_j\hat\lambda_j}.
-\]
-
-We can represent this without a custom severity class. Put all of the
-\(y_{ik}\) values into one `Empirical` distribution and give each point from risk
-\(i\) weight
-
-\[
-\frac{\hat\lambda_i}{K}.
-\]
-
-`Empirical` normalises the weights internally, so the required risk-selection
-probabilities follow automatically.
-
-<!--pytest.mark.skip-->
-
-```python
-from pal import Empirical
-
-severity = Empirical(
-    samples=xp.concatenate(samples),
-    weights=xp.concatenate(weights),
-)
-```
-
-The runnable example uses PAL's active array backend for the concatenation so the
-same code works in CPU and GPU mode without moving the severity support between
-devices.
-
-## 5. Build the frequency-severity model
-
-The full portfolio model is now just a Poisson frequency and the weighted
-empirical policy severity:
-
-<!--pytest.mark.skip-->
-
-```python
-from pal import distributions
+from pal import Empirical, distributions
 from pal.frequency_severity import FrequencySeverityModel
 
-model = FrequencySeverityModel(
-    distributions.Poisson(float(frequencies.sum())),
-    severity,
+row_distribution = Empirical(
+    samples=xp.arange(len(exposures), dtype=float),
+    weights=xp.asarray(frequencies),
 )
-policy_losses = model.generate(100_000)
+
+row_model = FrequencySeverityModel(
+    distributions.Poisson(float(frequencies.sum())),
+    row_distribution,
+)
+claim_rows = row_model.generate(100_000)
 ```
 
-`policy_losses` is a `FreqSevSims`: each value is an individual policy loss and
-each value retains the simulation in which it occurred.
+`claim_rows` is a `FreqSevSims`. Its `sim_index` says which annual simulation
+each claim belongs to, while its values are the exposure-row numbers which have
+claims.
 
-## 6. Apply the reinsurance tower
+This is the only use of the empirical distribution. The claim severity itself is
+**not** approximated by an empirical distribution.
+
+## 4. Draw each severity from the selected row's MBBEFD distribution
+
+The row numbers let us select the MBBEFD parameter and policy terms for every
+simulated claim:
+
+<!--pytest.mark.skip-->
+
+```python
+row_index = claim_rows.values.astype(int)
+
+maximum_loss = xp.asarray(exposures["maximum_loss"].to_numpy(dtype=float))[row_index]
+policy_limit = xp.asarray(exposures["policy_limit"].to_numpy(dtype=float))[row_index]
+deductible = xp.asarray(exposures["policy_deductible"].to_numpy(dtype=float))[row_index]
+c = xp.asarray(exposures["mbbefd_c"].to_numpy(dtype=float))[row_index]
+```
+
+The selected \(c\) values form an event-level stochastic parameter. PAL can pass
+that vector directly to `MBBEFD.from_c`, so a genuine continuous MBBEFD damage
+ratio is drawn for every claim:
+
+<!--pytest.mark.skip-->
+
+```python
+from pal import MBBEFD, StochasticScalar
+
+claim_c = StochasticScalar(c)
+damage_ratio = MBBEFD.from_c(claim_c).generate(len(row_index))
+ground_up_loss = damage_ratio * maximum_loss
+policy_loss = np.minimum(
+    np.maximum(ground_up_loss - deductible, 0.0),
+    policy_limit,
+)
+```
+
+We then retain the original claim simulation indices and replace the row-number
+values with the policy losses:
+
+<!--pytest.mark.skip-->
+
+```python
+from pal.frequency_severity import FreqSevSims
+
+policy_losses = FreqSevSims(
+    claim_rows.sim_index,
+    policy_loss.values,
+    claim_rows.n_sims,
+)
+```
+
+The resulting `FreqSevSims` is now an ordinary occurrence-level policy-loss
+simulation and can be used by the rest of PAL without any property-specific
+simulation class.
+
+## 5. Apply the existing reinsurance tower
 
 The policy losses can be passed directly to the normal PAL `XoLTower`:
 
@@ -190,13 +206,7 @@ tower.apply(policy_losses)
 Because the tower receives policy losses, layer attachment and limit are
 expressed relative to policy loss rather than underlying maximum loss.
 
-## 7. Compare with the analytical exposure rate
-
-The MBBEFD exposure curve is
-
-\[
-G(x)=\frac{E[\min(X,x)]}{E[X]}.
-\]
+## 6. Compare with the analytical exposure rate
 
 For a reinsurance layer with excess \(A\) and limit \(U\), the corresponding
 ground-up thresholds for a policy with deductible \(D\) and limit \(P\) are
@@ -221,8 +231,8 @@ The pure exposure rate is
 \]
 
 The example reports this alongside the simulated mean recovery from `XoLTower`.
-With a sufficiently fine empirical grid and enough annual simulations, the two
-should agree closely.
+Because the simulation draws directly from the MBBEFD distribution, any
+difference is Monte Carlo error rather than a severity-discretisation error.
 
 Run the complete example from the repository root:
 
@@ -233,13 +243,14 @@ python examples/example_property_exposure_rating.py
 It reports the inferred frequency for each risk, the total portfolio Poisson
 mean, and analytical versus simulated expected losses and rates for each layer.
 
-## 8. Extensions
+## 7. Extensions
 
-The same pattern works with richer exposure files. MBBEFD parameters can vary by
-occupancy or construction class, and the policy transformation can include
-coinsurance or other terms before the losses are put into `Empirical`. More
-advanced simulations can add catastrophe footprints or dependence, while the
-classical exposure-rate calculation remains a useful expected-loss benchmark.
+The same pattern works with richer exposure schedules. MBBEFD parameters can
+vary by occupancy or construction class, and the policy transformation can
+include coinsurance or additional terms. More advanced simulations can replace
+the independent row-selection model with catastrophe footprints or other
+location dependence, while the analytical exposure rate remains a useful
+expected-loss benchmark.
 
 ## See also
 
