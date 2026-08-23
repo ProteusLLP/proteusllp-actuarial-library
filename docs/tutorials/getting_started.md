@@ -36,7 +36,7 @@ You can inspect it immediately:
 loss.mean()       # => 1,358,389
 loss.std()        # =>   732,520
 np.median(loss.values)               # => 1,200,047
-np.percentile(loss.values, 99.5)     # => 4,443,841
+loss.percentile(99.5)                # => 4,443,841
 ```
 
 ## Arithmetic on Stochastic Variables

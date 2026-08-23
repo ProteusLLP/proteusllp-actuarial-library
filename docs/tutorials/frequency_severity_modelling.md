@@ -206,27 +206,30 @@ count itself is more variable.
 
 ### Attritional + Large Loss Split
 
-Model small frequent losses separately from rare large losses:
+A common insurance model treats attritional losses directly as an
+aggregate annual distribution and models only the relatively rare
+large losses using a frequency-severity model:
 
 <!--pytest-codeblocks:cont-->
 
 ```python
 set_random_seed(42)
 
-# Small frequent claims
-attritional = FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=500),
-    sev_dist=distributions.LogNormal(mu=8, sigma=0.5),
-).generate()
+# Aggregate annual attritional loss
+attritional = distributions.Gamma(alpha=100, theta=150_000).generate()
 
-# Rare large claims
+# Rare large claims modelled individually
 large = FrequencySeverityModel(
     freq_dist=distributions.Poisson(mean=3),
     sev_dist=distributions.Pareto(shape=1.5, scale=1_000_000),
 ).generate()
 
-total = attritional.aggregate() + large.aggregate()
+total = attritional + large.aggregate()
 ```
+
+This keeps the attritional component at the natural aggregate level,
+while retaining event-level large claims where occurrence terms and
+per-claim reinsurance structures may matter.
 
 ### Loss Development / Expense Loading
 
