@@ -89,8 +89,7 @@ def generate_upsample_indices(n_sims: int, source_n_sims: int, rng: t.Any) -> t.
     Complete copies of the source simulations are sampled without replacement.
     The first complete copy remains in its original order; later copies are
     independently permuted. A partial final copy is also sampled without
-    replacement. This preserves the empirical distribution while avoiding an
-    orderly repeated simulation pattern.
+    replacement.
     """
     if n_sims < 0:
         raise ValueError("n_sims must be non-negative")
@@ -116,21 +115,11 @@ def generate_upsample_indices(n_sims: int, source_n_sims: int, rng: t.Any) -> t.
     return xp.concatenate(parts)
 
 
-def generate_cyclic_indices(n_sims: int, source_n_sims: int) -> t.Any:
-    """Generate deterministic cyclic indices for resizing a simulation set."""
-    if n_sims < 0:
-        raise ValueError("n_sims must be non-negative")
-    if source_n_sims <= 0:
-        raise ValueError("source_n_sims must be positive")
-    return xp.arange(n_sims, dtype=int) % source_n_sims
-
-
 # export the numpy/cupy and scipy/cupyx special functions/modules for the current
 # execution environment.
 __all__ = [
     "asnumpy",
     "create_random_generator",
-    "generate_cyclic_indices",
     "generate_upsample_indices",
     "scalar_or_array",
     "to_backend",

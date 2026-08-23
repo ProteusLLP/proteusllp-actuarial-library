@@ -63,6 +63,7 @@ from . import maths as pnp
 # local imports
 from ._compat import Self
 from ._maths import asnumpy, generate_upsample_indices, xp
+from .config import config
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
@@ -83,6 +84,31 @@ def _format_number(val: int | float) -> str:
     if abs(val) >= 1:
         return f"{val:,.4f}"
     return f"{val:.6g}"
+
+
+def _resample_freqsev(value: FreqSevSims, indices: StochasticScalar) -> FreqSevSims:
+    """Select complete frequency-severity simulations using positional indices."""
+    source_counts = xp.bincount(value.sim_index, minlength=value.n_sims)
+    source_starts = xp.cumsum(source_counts) - source_counts
+
+    target_indices = indices.values.astype(int)
+    target_counts = source_counts[target_indices]
+    target_starts = source_starts[target_indices]
+
+    new_sim_index = xp.repeat(xp.arange(indices.n_sims, dtype=int), target_counts)
+    target_event_starts = xp.cumsum(target_counts) - target_counts
+    within_target_offsets = xp.arange(new_sim_index.size, dtype=int) - xp.repeat(
+        target_event_starts, target_counts
+    )
+    source_positions = xp.repeat(target_starts, target_counts) + within_target_offsets
+
+    result = FreqSevSims(
+        sim_index=new_sim_index,
+        values=value.values[source_positions],
+        n_sims=indices.n_sims,
+    )
+    result.coupled_variable_group.merge(indices.coupled_variable_group)
+    return result
 
 
 class ProteusVariable(t.Generic[T]):
@@ -630,114 +656,47 @@ class ProteusVariable(t.Generic[T]):
             values={k: self._get_value_at_sim_helper(v, sim_no) for k, v in self.values.items()},
         )
 
-    def upsample(
-        self,
-        n_sims: int,
-        rng: np.random.Generator | None = None,
-        method: str = "random",
-    ) -> ProteusVariable[T]:
-        """Upsample the variable to the specified number of simulations.
-
-        Recursively upsamples all nested ProteusVariable structures and
-        ProteusStochasticVariable values to ensure consistent n_sims across
-        all levels of nesting.
-
-        Args:
-            n_sims: Target number of simulations.
-            rng: Random number generator. Uses config.rng if None
-                (only used with method="random").
-            method: Upsampling method to use:
-                - "random" (default): Random resampling that preserves coupling groups
-                  and independence between different coupling groups. First chunk is
-                  ordered, remaining chunks are random permutations.
-                - "cyclic": Deterministic cycling through existing simulations. Faster
-                  and deterministic. Does not preserve coupling groups. When used across
-                  multiple variables, induces synchronized resampling (all variables
-                  cycle together).
-
-        Returns:
-            A new ProteusVariable with all values upsampled to n_sims.
-
-        Raises:
-            ValueError: If invalid method specified.
-        """
-        from . import config
-
-        if rng is None:
-            rng = config.rng
-        return self._upsample(n_sims, group_indices=None, rng=rng, method=method)
+    def upsample(self, n_sims: int) -> ProteusVariable[T]:
+        """Upsample stochastic leaves recursively while preserving coupling groups."""
+        if self.n_sims == n_sims:
+            return self
+        return self._upsample(n_sims, {})
 
     def _upsample(
         self,
         n_sims: int,
-        group_indices: dict[int, StochasticScalar] | None,
-        rng: np.random.Generator,
-        method: str = "random",
+        group_indices: dict[int, StochasticScalar],
     ) -> ProteusVariable[T]:
-        """Internal upsample implementation with coupling group tracking.
+        new_values: dict[str, t.Any] = {}
 
-        Args:
-            n_sims: Target number of simulations.
-            group_indices: Dict tracking coupling groups across nested structures.
-            rng: Random number generator to use.
-            method: Upsampling method ("random" or "cyclic").
+        for key, value in self.values.items():
+            if isinstance(value, ProteusVariable):
+                new_values[key] = value._upsample(n_sims, group_indices)
+                continue
 
-        Returns:
-            A new ProteusVariable with all values upsampled to n_sims.
+            if isinstance(value, StochasticScalar):
+                if value.n_sims is None:
+                    raise ValueError(f"Variable {key} has None n_sims, cannot upsample")
+                group_id = id(value.coupled_variable_group)
+                if group_id not in group_indices:
+                    group_indices[group_id] = StochasticScalar(
+                        generate_upsample_indices(n_sims, value.n_sims, rng=config.rng)
+                    )
+                new_values[key] = value[group_indices[group_id]]
+                continue
 
-        Raises:
-            ValueError: If invalid method specified.
-        """
-        if self.n_sims == n_sims:
-            return self
-        if method == "cyclic":
-            # For cyclic method, don't track coupling groups
-            new_values = {}
-            for key, value in self.values.items():
-                if isinstance(value, (ProteusStochasticVariable, ProteusVariable)):
-                    new_values[key] = value.upsample(n_sims, rng=rng, method="cyclic")  # type: ignore[assignment]
-                else:
-                    new_values[key] = value
-            return ProteusVariable(dim_name=self.dim_name, values=new_values)  # type: ignore[arg-type]
-        elif method == "random":
-            # For random method, preserve coupling groups
-            # Initialize group_indices dict on first call
-            if group_indices is None:
-                group_indices = {}
+            if isinstance(value, FreqSevSims):
+                group_id = id(value.coupled_variable_group)
+                if group_id not in group_indices:
+                    group_indices[group_id] = StochasticScalar(
+                        generate_upsample_indices(n_sims, value.n_sims, rng=config.rng)
+                    )
+                new_values[key] = _resample_freqsev(value, group_indices[group_id])
+                continue
 
-            new_values = {}
-            for key, value in self.values.items():
-                if isinstance(value, ProteusStochasticVariable):
-                    group_id = id(value.coupled_variable_group)
+            new_values[key] = value
 
-                    # Get or create the shared index for this coupling group
-                    if group_id not in group_indices:
-                        current_n_sims = value.n_sims
-                        if current_n_sims is None:
-                            raise ValueError(
-                                f"Variable {key} has None n_sims, cannot upsample"
-                            )
-                        indices = generate_upsample_indices(
-                            n_sims, current_n_sims, rng=rng
-                        )
-                        group_indices[group_id] = StochasticScalar(indices)
-
-                    # Use __getitem__ with the coupling group's shared index
-                    new_values[key] = value[group_indices[group_id]]  # type: ignore[index]
-
-                elif isinstance(value, ProteusVariable):
-                    # Recursively upsample, passing the group_indices dict and rng
-                    new_values[key] = value._upsample(
-                        n_sims, group_indices, rng=rng, method="random"
-                    )  # type: ignore[assignment]
-                else:
-                    new_values[key] = value
-
-            return ProteusVariable(dim_name=self.dim_name, values=new_values)  # type: ignore[arg-type]
-        else:
-            raise ValueError(
-                f"Invalid method '{method}'. Must be 'random' or 'cyclic'."
-            )
+        return ProteusVariable(dim_name=self.dim_name, values=new_values)  # type: ignore[arg-type, return-value]
 
     def sum(self) -> T:
         """Return the sum across the outer dimension."""
@@ -1060,23 +1019,21 @@ class ProteusVariable(t.Generic[T]):
             # Handle StochasticScalar and FreqSevSims types
             if x.n_sims <= 1:
                 # If n_sims is 1 or None, return the value directly
-                return x  # type: ignore[return-value]
+                return x
 
             if isinstance(sim_no, StochasticScalar):
-                # Use __getitem__ to preserve coupling relationships
-                return x[sim_no]  # type: ignore[return-value]
+                # Extract all values and return a new StochasticScalar with those
+                # indices
+                indices = sim_no.values.astype(int)
+                return StochasticScalar(x.values[indices])
 
             # Handle the main case: extract value at specific simulation index
-            if isinstance(sim_no, int):
-                result = x[sim_no]
-                return result  # type: ignore[return-value]
+            if isinstance(sim_no, int):  # type: ignore[redundant-expr]
+                # Type ignore: numpy array indexing returns element type which is compatible
+                # with T | StochasticScalar in practice but type checker can't infer this
+                return x.values[sim_no]  # type: ignore[return-value]
 
-            if isinstance(sim_no, list):
-                # Use __getitem__ with StochasticScalar to preserve coupling
-                result = x[StochasticScalar(sim_no)]
-                return result  # type: ignore[return-value]
-
-            return x  # type: ignore[return-value]
+            return x
 
         if isinstance(x, Number):  # type: ignore[uneccesaryIsInstance]
             # If x is a numeric type, return it directly
