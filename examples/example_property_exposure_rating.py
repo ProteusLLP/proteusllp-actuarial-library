@@ -1,4 +1,3 @@
-# pyright: reportArgumentType=false, reportAttributeAccessIssue=false
 """Property exposure rating and simulation with the MBBEFD distribution."""
 
 from pathlib import Path
@@ -6,8 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pal import MBBEFD, Empirical, XoLTower, distributions, set_random_seed
-from pal._maths import xp
+from pal import MBBEFD, Empirical, StochasticScalar, XoLTower, distributions, set_random_seed
 from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
 
 N_SIMS = 100_000
@@ -48,7 +46,7 @@ def claim_frequencies(exposures):
 
 def simulate_claim_rows(exposures, frequencies, n_sims):
     row_distribution = Empirical(
-        samples=xp.arange(len(exposures)),
+        samples=np.arange(len(exposures)),
         weights=frequencies,
     )
     return FrequencySeverityModel(
@@ -58,14 +56,14 @@ def simulate_claim_rows(exposures, frequencies, n_sims):
 
 
 def simulate_policy_losses(exposures, claim_rows):
-    row_index = claim_rows.values.astype(int)
+    row_index = StochasticScalar(claim_rows.values)
     if len(row_index) == 0:
         return claim_rows
 
-    maximum_loss = xp.asarray(exposures["maximum_loss"].to_numpy())[row_index]
-    policy_limit = xp.asarray(exposures["policy_limit"].to_numpy())[row_index]
-    deductible = xp.asarray(exposures["policy_deductible"].to_numpy())[row_index]
-    c = xp.asarray(exposures["mbbefd_c"].to_numpy())[row_index]
+    maximum_loss = StochasticScalar(exposures["maximum_loss"].values)[row_index]
+    policy_limit = StochasticScalar(exposures["policy_limit"].values)[row_index]
+    deductible = StochasticScalar(exposures["policy_deductible"].values)[row_index]
+    c = StochasticScalar(exposures["mbbefd_c"].values)[row_index]
 
     damage_ratio = MBBEFD.from_c(c).generate(len(row_index))
     policy_loss = np.minimum(
