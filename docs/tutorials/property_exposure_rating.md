@@ -138,13 +138,14 @@ row selection can be used directly to pick the policy terms and MBBEFD parameter
 ```python
 row_index = StochasticScalar(claim_rows.values)
 
-maximum_loss = StochasticScalar(exposures["maximum_loss"].values)[row_index]
-policy_limit = StochasticScalar(exposures["policy_limit"].values)[row_index]
-deductible = StochasticScalar(exposures["policy_deductible"].values)[row_index]
-c = StochasticScalar(exposures["mbbefd_c"].values)[row_index]
+maximum_loss = StochasticScalar(exposures["maximum_loss"])[row_index]
+policy_limit = StochasticScalar(exposures["policy_limit"])[row_index]
+deductible = StochasticScalar(exposures["policy_deductible"])[row_index]
+c = StochasticScalar(exposures["mbbefd_c"])[row_index]
 ```
 
-`StochasticScalar` takes care of the active CPU or GPU backend and preserves the
+`StochasticScalar` accepts one-dimensional array-like inputs such as pandas
+Series directly. It takes care of the active CPU or GPU backend and preserves the
 coupling created by the sampled row index. The selected \(c\) values can therefore
 be passed directly to `MBBEFD.from_c`, giving every event its row-specific damage
 ratio distribution:
