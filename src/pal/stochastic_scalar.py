@@ -27,7 +27,7 @@ class StochasticScalar(ProteusStochasticVariable):
     """A class to represent a single scalar variable in a simulation."""
 
     coupled_variable_group: CouplingGroup
-    n_sims: int
+    n_sims: int  # pyright: ignore[reportIncompatibleVariableOverride]
     """The number of simulations in the variable."""
 
     # ===================
