@@ -133,7 +133,7 @@ class Empirical(DiscreteDistributionBase):
         """Compute the generalized inverse empirical CDF."""
         probabilities = xp.asarray(u.values if isinstance(u, StochasticScalar) else u)
         invalid = (probabilities < 0) | (probabilities > 1) | xp.isnan(probabilities)
-        safe_probabilities = xp.clip(probabilities, 0.0, 1.0)
+        safe_probabilities = xp.where(invalid, 0.0, probabilities)
         indices = xp.searchsorted(self._cumulative_weights, safe_probabilities, side="left")
         quantiles = self._samples[indices].astype(float, copy=False)
         result = xp.where(invalid, xp.nan, quantiles)
