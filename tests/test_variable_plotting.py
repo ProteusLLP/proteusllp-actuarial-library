@@ -1,5 +1,7 @@
 """Tests for Plotly figure helpers on stochastic variables."""
 
+from pathlib import Path
+
 import numpy as np
 import plotly.graph_objects as go  # type: ignore
 import pytest
@@ -101,3 +103,17 @@ def test_proteus_variable_histogram_and_cdf_return_figures(
     assert isinstance(histogram, go.Figure)
     assert isinstance(cdf, go.Figure)
     assert len(histogram.data) == 3
+    assert len(cdf.data) == 3
+    histogram.to_json()
+    cdf.to_json()
+
+
+def test_returned_figure_can_be_saved(
+    tmp_path: Path, variables: ProteusVariable[StochasticScalar]
+) -> None:
+    fig = variables.rank_scatter()
+    output = tmp_path / "rank-scatter.html"
+
+    fig.write_html(output)
+
+    assert output.exists()
