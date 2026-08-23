@@ -49,13 +49,17 @@ class StochasticScalar(ProteusStochasticVariable):
             self.coupled_variable_group.merge(values.coupled_variable_group)
             return
 
+        invalid_type_message = (
+            "Type of values must be a sequence or array. "
+            f"Found {type(values).__name__}"
+        )
+        if isinstance(values, (str, dict, set)):
+            raise TypeError(invalid_type_message)
+
         try:
             array = xp.asarray(values)
         except (TypeError, ValueError) as exc:
-            raise TypeError(
-                "Values must be a one-dimensional numeric array-like object. "
-                f"Found {type(values).__name__}."
-            ) from exc
+            raise TypeError(invalid_type_message) from exc
 
         if array.ndim != 1:
             raise ValueError("Values must be a 1D array.")
