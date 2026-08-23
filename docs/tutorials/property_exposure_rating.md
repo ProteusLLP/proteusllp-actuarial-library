@@ -85,7 +85,7 @@ The expected annual policy loss is
 which gives annual ground-up claim frequency
 
 \[
-\lambda_i=rac{\mu_i}{E[Y_i\mid\text{claim}]}.
+\lambda_i=\frac{\mu_i}{E[Y_i\mid\text{claim}]}.
 \]
 
 The portfolio claim count is then
@@ -109,19 +109,15 @@ There is no need for a custom severity class:
 <!--pytest.mark.skip-->
 
 ```python
-from pal import Empirical, distributions
-from pal.frequency_severity import FrequencySeverityModel
-
 row_distribution = Empirical(
-    samples=xp.arange(len(exposures), dtype=float),
-    weights=xp.asarray(frequencies),
+    samples=xp.arange(len(exposures)),
+    weights=frequencies,
 )
 
-row_model = FrequencySeverityModel(
-    distributions.Poisson(float(frequencies.sum())),
+claim_rows = FrequencySeverityModel(
+    distributions.Poisson(frequencies.sum()),
     row_distribution,
-)
-claim_rows = row_model.generate(100_000)
+).generate(100_000)
 ```
 
 `claim_rows` is a `FreqSevSims`. Its `sim_index` says which annual simulation
@@ -133,46 +129,42 @@ This is the only use of the empirical distribution. The claim severity itself is
 
 ## 4. Draw each severity from the selected row's MBBEFD distribution
 
-The row numbers let us select the MBBEFD parameter and policy terms for every
-simulated claim:
+The row numbers select the MBBEFD parameter and policy terms for every simulated
+claim:
 
 <!--pytest.mark.skip-->
 
 ```python
 row_index = claim_rows.values.astype(int)
 
-maximum_loss = xp.asarray(exposures["maximum_loss"].to_numpy(dtype=float))[row_index]
-policy_limit = xp.asarray(exposures["policy_limit"].to_numpy(dtype=float))[row_index]
-deductible = xp.asarray(exposures["policy_deductible"].to_numpy(dtype=float))[row_index]
-c = xp.asarray(exposures["mbbefd_c"].to_numpy(dtype=float))[row_index]
+maximum_loss = xp.asarray(exposures["maximum_loss"].to_numpy())[row_index]
+policy_limit = xp.asarray(exposures["policy_limit"].to_numpy())[row_index]
+deductible = xp.asarray(exposures["policy_deductible"].to_numpy())[row_index]
+c = StochasticScalar(xp.asarray(exposures["mbbefd_c"].to_numpy())[row_index])
 ```
 
 The selected \(c\) values form an event-level stochastic parameter. PAL can pass
-that vector directly to `MBBEFD.from_c`, so a genuine continuous MBBEFD damage
-ratio is drawn for every claim:
+that vector directly to `MBBEFD.from_c`, so a genuine MBBEFD damage ratio is
+drawn for every claim:
 
 <!--pytest.mark.skip-->
 
 ```python
-from pal import MBBEFD, StochasticScalar
+c.coupled_variable_group.merge(claim_rows.coupled_variable_group)
+damage_ratio = MBBEFD.from_c(c).generate(len(row_index))
 
-claim_c = StochasticScalar(c)
-damage_ratio = MBBEFD.from_c(claim_c).generate(len(row_index))
-ground_up_loss = damage_ratio * maximum_loss
 policy_loss = np.minimum(
-    np.maximum(ground_up_loss - deductible, 0.0),
+    np.maximum(damage_ratio * maximum_loss - deductible, 0.0),
     policy_limit,
 )
 ```
 
-We then retain the original claim simulation indices and replace the row-number
-values with the policy losses:
+We retain the original claim simulation indices and replace the row-number values
+with policy losses:
 
 <!--pytest.mark.skip-->
 
 ```python
-from pal.frequency_severity import FreqSevSims
-
 policy_losses = FreqSevSims(
     claim_rows.sim_index,
     policy_loss.values,
@@ -191,8 +183,6 @@ The policy losses can be passed directly to the normal PAL `XoLTower`:
 <!--pytest.mark.skip-->
 
 ```python
-from pal import XoLTower
-
 tower = XoLTower(
     name=["5m xs 5m", "10m xs 10m", "20m xs 20m"],
     limit=[5_000_000, 10_000_000, 20_000_000],
