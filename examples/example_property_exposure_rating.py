@@ -1,14 +1,11 @@
 """Property exposure rating and simulation with the MBBEFD distribution."""
 
-from __future__ import annotations
-
-import typing as t
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from pal import Empirical, MBBEFD, StochasticScalar, XoL, XoLTower, distributions, set_random_seed
+from pal import Empirical, MBBEFD, StochasticScalar, XoLTower, distributions, set_random_seed
 from pal._maths import xp
 from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
 
@@ -16,8 +13,7 @@ N_SIMS = 100_000
 DATA_PATH = Path(__file__).parent / "data" / "property_exposures.csv"
 
 
-def make_tower() -> XoLTower:
-    """Create the illustrative per-risk reinsurance tower."""
+def make_tower():
     return XoLTower(
         name=["5m xs 5m", "10m xs 10m", "20m xs 20m"],
         limit=[5_000_000, 10_000_000, 20_000_000],
@@ -26,98 +22,69 @@ def make_tower() -> XoLTower:
     )
 
 
-def curve_increment(
-    distribution: MBBEFD,
-    lower: float,
-    upper: float,
-    maximum_loss: float,
-) -> float:
-    """Return the exposure-curve share between two ground-up thresholds."""
-    lower_ratio = min(max(lower / maximum_loss, 0.0), 1.0)
-    upper_ratio = min(max(upper / maximum_loss, 0.0), 1.0)
-    lower_share = t.cast(float, distribution.exposure_curve(lower_ratio))
-    upper_share = t.cast(float, distribution.exposure_curve(upper_ratio))
-    return upper_share - lower_share
+def curve_increment(distribution, lower, upper, maximum_loss):
+    lower = min(max(lower / maximum_loss, 0.0), 1.0)
+    upper = min(max(upper / maximum_loss, 0.0), 1.0)
+    return float(distribution.exposure_curve(upper)) - float(distribution.exposure_curve(lower))
 
 
-def expected_policy_loss_given_claim(row: pd.Series) -> float:
-    """Return the expected policy loss conditional on a ground-up claim."""
-    maximum_loss = float(row["maximum_loss"])
-    deductible = float(row["policy_deductible"])
-    policy_limit = float(row["policy_limit"])
-    distribution = MBBEFD.from_c(float(row["mbbefd_c"]))
-    policy_share = curve_increment(
-        distribution,
-        deductible,
-        deductible + policy_limit,
-        maximum_loss,
-    )
+def expected_policy_loss_given_claim(row):
+    maximum_loss = row["maximum_loss"]
+    deductible = row["policy_deductible"]
+    policy_limit = row["policy_limit"]
+    distribution = MBBEFD.from_c(row["mbbefd_c"])
+    policy_share = curve_increment(distribution, deductible, deductible + policy_limit, maximum_loss)
     return maximum_loss * float(distribution.mean()) * policy_share
 
 
-def claim_frequencies(exposures: pd.DataFrame) -> np.ndarray:
-    """Infer annual ground-up claim frequencies from premium and loss ratio."""
+def claim_frequencies(exposures):
     frequencies = []
     for _, row in exposures.iterrows():
-        expected_annual_loss = float(row["subject_premium"]) * float(row["expected_loss_ratio"])
+        expected_annual_loss = row["subject_premium"] * row["expected_loss_ratio"]
         frequencies.append(expected_annual_loss / expected_policy_loss_given_claim(row))
-    return np.asarray(frequencies, dtype=float)
+    return np.asarray(frequencies)
 
 
-def simulate_claim_rows(
-    exposures: pd.DataFrame,
-    frequencies: np.ndarray,
-    n_sims: int,
-) -> FreqSevSims:
-    """Simulate which exposure row gives rise to each ground-up claim."""
+def simulate_claim_rows(exposures, frequencies, n_sims):
     row_distribution = Empirical(
-        samples=xp.arange(len(exposures), dtype=float),
-        weights=xp.asarray(frequencies),
+        samples=xp.arange(len(exposures)),
+        weights=frequencies,
     )
-    model = FrequencySeverityModel(
-        distributions.Poisson(float(frequencies.sum())),
+    return FrequencySeverityModel(
+        distributions.Poisson(frequencies.sum()),
         row_distribution,
-    )
-    return model.generate(n_sims)
+    ).generate(n_sims)
 
 
-def simulate_policy_losses(
-    exposures: pd.DataFrame,
-    claim_rows: FreqSevSims,
-) -> FreqSevSims:
-    """Draw continuous MBBEFD severities for the simulated exposure rows."""
-    row_index = claim_rows.values.astype(np.int64)
+def simulate_policy_losses(exposures, claim_rows):
+    row_index = claim_rows.values.astype(int)
     if len(row_index) == 0:
-        result = FreqSevSims(claim_rows.sim_index, xp.asarray([], dtype=float), claim_rows.n_sims)
+        result = FreqSevSims(claim_rows.sim_index, [], claim_rows.n_sims)
         result.coupled_variable_group.merge(claim_rows.coupled_variable_group)
         return result
 
-    maximum_loss = xp.asarray(exposures["maximum_loss"].to_numpy(dtype=float))[row_index]
-    policy_limit = xp.asarray(exposures["policy_limit"].to_numpy(dtype=float))[row_index]
-    deductible = xp.asarray(exposures["policy_deductible"].to_numpy(dtype=float))[row_index]
-    c = xp.asarray(exposures["mbbefd_c"].to_numpy(dtype=float))[row_index]
+    maximum_loss = xp.asarray(exposures["maximum_loss"].to_numpy())[row_index]
+    policy_limit = xp.asarray(exposures["policy_limit"].to_numpy())[row_index]
+    deductible = xp.asarray(exposures["policy_deductible"].to_numpy())[row_index]
+    c = StochasticScalar(xp.asarray(exposures["mbbefd_c"].to_numpy())[row_index])
+    c.coupled_variable_group.merge(claim_rows.coupled_variable_group)
 
-    event_c = StochasticScalar(c)
-    event_c.coupled_variable_group.merge(claim_rows.coupled_variable_group)
-    damage_ratio = MBBEFD.from_c(event_c).generate(len(row_index))
-    ground_up_loss = damage_ratio * maximum_loss
-    policy_loss = t.cast(
-        StochasticScalar,
-        np.minimum(np.maximum(ground_up_loss - deductible, 0.0), policy_limit),
+    damage_ratio = MBBEFD.from_c(c).generate(len(row_index))
+    policy_loss = np.minimum(
+        np.maximum(damage_ratio * maximum_loss - deductible, 0.0),
+        policy_limit,
     )
 
     result = FreqSevSims(claim_rows.sim_index, policy_loss.values, claim_rows.n_sims)
-    result.coupled_variable_group.merge(claim_rows.coupled_variable_group)
     result.coupled_variable_group.merge(policy_loss.coupled_variable_group)
     return result
 
 
-def expected_layer_loss(row: pd.Series, layer: XoL) -> float:
-    """Calculate the exposure-rated annual expected loss for one risk and layer."""
-    maximum_loss = float(row["maximum_loss"])
-    policy_limit = float(row["policy_limit"])
-    deductible = float(row["policy_deductible"])
-    distribution = MBBEFD.from_c(float(row["mbbefd_c"]))
+def expected_layer_loss(row, layer):
+    maximum_loss = row["maximum_loss"]
+    policy_limit = row["policy_limit"]
+    deductible = row["policy_deductible"]
+    distribution = MBBEFD.from_c(row["mbbefd_c"])
 
     policy_share = curve_increment(
         distribution,
@@ -134,12 +101,11 @@ def expected_layer_loss(row: pd.Series, layer: XoL) -> float:
         maximum_loss,
     )
 
-    expected_policy_loss = float(row["subject_premium"]) * float(row["expected_loss_ratio"])
+    expected_policy_loss = row["subject_premium"] * row["expected_loss_ratio"]
     return expected_policy_loss * layer_share / policy_share
 
 
-def main() -> None:
-    """Run the property exposure-rating example."""
+def main():
     exposures = pd.read_csv(DATA_PATH)
     frequencies = claim_frequencies(exposures)
     set_random_seed(42)
@@ -155,7 +121,7 @@ def main() -> None:
     print(frequency_table.to_string(index=False, float_format=lambda x: f"{x:,.6f}"))
     print(f"\nPortfolio Poisson mean: {frequencies.sum():,.6f}\n")
 
-    total_subject_premium = float(exposures["subject_premium"].sum())
+    total_subject_premium = exposures["subject_premium"].sum()
     rows = []
     for layer in tower.layers:
         exposure_expected_loss = sum(expected_layer_loss(row, layer) for _, row in exposures.iterrows())
