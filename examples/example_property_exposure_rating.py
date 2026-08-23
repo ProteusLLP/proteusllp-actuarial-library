@@ -171,8 +171,7 @@ def make_layer_comparison(exposures, tower, total_subject_premium):
 
 def make_layer_burn_rates(tower, policy_losses, total_subject_premium):
     return {
-        layer.name: layer.apply(policy_losses).recoveries.aggregate() / total_subject_premium
-        for layer in tower.layers
+        layer.name: layer.apply(policy_losses).recoveries.aggregate() / total_subject_premium for layer in tower.layers
     }
 
 
