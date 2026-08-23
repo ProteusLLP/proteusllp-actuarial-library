@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pal import Empirical, MBBEFD, XoLTower, distributions, set_random_seed
+from pal import MBBEFD, Empirical, XoLTower, distributions, set_random_seed
 from pal._maths import xp
 from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
 
