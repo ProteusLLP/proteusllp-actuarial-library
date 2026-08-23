@@ -1,0 +1,281 @@
+"""Extended tests for contracts to improve coverage.
+
+Tests for XoL Tower construction and application.
+"""
+
+import numpy as np
+import pytest
+
+from pal import FreqSevSims, StochasticScalar
+from pal.contracts import XoL, XoLTower
+
+
+# =============================================================================
+# XoL Tower Construction Tests
+# =============================================================================
+
+
+def test_xol_tower_basic_construction():
+    """Test basic XoL tower with two layers."""
+    tower = XoLTower(
+        limit=[100000, 100000],
+        excess=[0, 100000],
+        premium=[1000, 500],
+    )
+    assert tower.n_layers == 2
+    assert len(tower.layers) == 2
+    assert tower.layers[0].limit == 100000
+    assert tower.layers[1].excess == 100000
+
+
+def test_xol_tower_with_names():
+    """Test XoL tower with custom layer names."""
+    tower = XoLTower(
+        name=["Primary", "Excess"],
+        limit=[100000, 200000],
+        excess=[0, 100000],
+        premium=[1500, 800],
+    )
+    assert tower.layers[0].name == "Primary"
+    assert tower.layers[1].name == "Excess"
+
+
+def test_xol_tower_with_aggregate_limits():
+    """Test XoL tower with aggregate limits."""
+    tower = XoLTower(
+        limit=[100000, 100000],
+        excess=[0, 100000],
+        premium=[1000, 500],
+        aggregate_limit=[300000, 200000],
+    )
+    assert tower.layers[0].aggregate_limit == 300000
+    assert tower.layers[1].aggregate_limit == 200000
+
+
+def test_xol_tower_with_aggregate_deductibles():
+    """Test XoL tower with aggregate deductibles."""
+    tower = XoLTower(
+        limit=[100000, 100000],
+        excess=[0, 100000],
+        premium=[1000, 500],
+        aggregate_deductible=[50000, 25000],
+    )
+    assert tower.layers[0].aggregate_deductible == 50000
+    assert tower.layers[1].aggregate_deductible == 25000
+
+
+def test_xol_tower_with_franchise():
+    """Test XoL tower with franchise deductibles."""
+    tower = XoLTower(
+        limit=[100000, 100000],
+        excess=[0, 100000],
+        premium=[1000, 500],
+        franchise=[10000, 20000],
+    )
+    assert tower.layers[0].franchise == 10000
+    assert tower.layers[1].franchise == 20000
+
+
+def test_xol_tower_with_reverse_franchise():
+    """Test XoL tower with reverse franchise."""
+    tower = XoLTower(
+        limit=[100000, 100000],
+        excess=[0, 100000],
+        premium=[1000, 500],
+        reverse_franchise=[5000, 10000],
+    )
+    assert tower.layers[0].reverse_franchise == 5000
+    assert tower.layers[1].reverse_franchise == 10000
+
+
+def test_xol_tower_with_reinstatements():
+    """Test XoL tower with reinstatement costs."""
+    tower = XoLTower(
+        limit=[100000, 100000],
+        excess=[0, 100000],
+        premium=[1000, 500],
+        reinstatement_cost=[[1, 0.5], [1.5]],
+        aggregate_limit=[300000, 200000],
+    )
+    assert tower.layers[0].reinstatement_cost == [1, 0.5]
+    assert tower.layers[1].reinstatement_cost == [1.5]
+
+
+def test_xol_tower_many_layers():
+    """Test XoL tower with many layers."""
+    n = 10
+    tower = XoLTower(
+        limit=[100000] * n,
+        excess=[i * 100000 for i in range(n)],
+        premium=[1000 - i * 50 for i in range(n)],
+    )
+    assert tower.n_layers == 10
+    assert len(tower.layers) == 10
+    # Check layers are properly stacked
+    for i in range(n):
+        assert tower.layers[i].excess == i * 100000
+
+
+# =============================================================================
+# XoL Tower Application Tests
+# =============================================================================
+
+
+def test_xol_tower_apply_simple():
+    """Test applying XoL tower to claims."""
+    tower = XoLTower(
+        limit=[100000, 100000],
+        excess=[0, 100000],
+        premium=[1000, 500],
+    )
+    claims = FreqSevSims(
+        np.array([0, 0, 0]), np.array([50000, 150000, 250000]), 1
+    )
+    result = tower.apply(claims)
+
+    # Layer 1: 0 xs 0 limit 100k
+    # Layer 2: 0 xs 100k limit 100k
+    # Claims: 50k, 150k, 250k
+    # Layer 1 pays: 50k, 100k, 100k = 250k
+    # Layer 2 pays: 0, 50k, 100k = 150k
+    # Total: 400k
+    assert result.recoveries.aggregate().values[0] == pytest.approx(400000)
+
+
+def test_xol_tower_apply_with_reinstatements():
+    """Test XoL tower with reinstatement premiums."""
+    tower = XoLTower(
+        limit=[100000, 100000],
+        excess=[0, 100000],
+        premium=[1000, 500],
+        reinstatement_cost=[[1], [1]],
+        aggregate_limit=[200000, 200000],
+    )
+    claims = FreqSevSims(
+        np.array([0, 0, 0]), np.array([50000, 150000, 250000]), 1
+    )
+    result = tower.apply(claims)
+
+    # Should have reinstatement premiums from both layers
+    assert result.reinstatement_premium is not None
+    assert result.reinstatement_premium.values[0] > 0
+
+
+def test_xol_tower_apply_no_claims():
+    """Test XoL tower with no claims triggering layers."""
+    tower = XoLTower(
+        limit=[100000, 100000],
+        excess=[100000, 200000],  # High attachment points
+        premium=[1000, 500],
+    )
+    claims = FreqSevSims(
+        np.array([0, 0, 0]), np.array([10000, 20000, 30000]), 1  # Small claims
+    )
+    result = tower.apply(claims)
+
+    # No claims should trigger either layer
+    assert result.recoveries.aggregate().values[0] == 0
+
+
+def test_xol_tower_partial_layers():
+    """Test XoL tower where only some layers are triggered."""
+    tower = XoLTower(
+        limit=[50000, 50000, 50000],
+        excess=[0, 50000, 100000],
+        premium=[1000, 500, 250],
+    )
+    claims = FreqSevSims(
+        np.array([0, 0]), np.array([75000, 125000]), 1  # Trigger 1st and 2nd layers
+    )
+    result = tower.apply(claims)
+
+    # First claim (75k): Layer 1 pays 50k, Layer 2 pays 25k
+    # Second claim (125k): Layer 1 pays 50k, Layer 2 pays 50k, Layer 3 pays 25k
+    expected_total = 50000 + 25000 + 50000 + 50000 + 25000
+    assert result.recoveries.aggregate().values[0] == pytest.approx(expected_total)
+
+
+# =============================================================================
+# XoL Tower Edge Cases
+# =============================================================================
+
+
+def test_xol_tower_single_layer():
+    """Test XoL tower with only one layer."""
+    tower = XoLTower(limit=[100000], excess=[0], premium=[1000])
+    assert tower.n_layers == 1
+    claims = FreqSevSims(np.array([0]), np.array([50000]), 1)
+    result = tower.apply(claims)
+    assert result.recoveries.values[0] == 50000
+
+
+def test_xol_tower_empty_claims():
+    """Test XoL tower with empty claims."""
+    tower = XoLTower(
+        limit=[100000, 100000],
+        excess=[0, 100000],
+        premium=[1000, 500],
+    )
+    # Create empty FreqSevSims
+    claims = FreqSevSims(np.array([]), np.array([]), 1)
+    result = tower.apply(claims)
+    assert result.recoveries.aggregate().values[0] == 0
+
+
+def test_xol_tower_very_large_claims():
+    """Test XoL tower exhaustion with very large claims."""
+    tower = XoLTower(
+        limit=[100000, 100000, 100000],
+        excess=[0, 100000, 200000],
+        premium=[1000, 500, 250],
+    )
+    # Claim that exhausts all layers
+    claims = FreqSevSims(np.array([0]), np.array([500000]), 1)
+    result = tower.apply(claims)
+    # Should pay full limits: 100k + 100k + 100k = 300k
+    assert result.recoveries.aggregate().values[0] == 300000
+
+
+# =============================================================================
+# Default Layer Names
+# =============================================================================
+
+
+def test_xol_tower_default_names():
+    """Test XoL tower generates default layer names."""
+    tower = XoLTower(
+        limit=[100000, 200000, 300000],
+        excess=[0, 100000, 300000],
+        premium=[1000, 500, 250],
+    )
+    # Default names should be "Layer 1", "Layer 2", etc.
+    assert tower.layers[0].name == "Layer 1"
+    assert tower.layers[1].name == "Layer 2"
+    assert tower.layers[2].name == "Layer 3"
+
+
+# =============================================================================
+# Reinstatement Premium Accumulation
+# =============================================================================
+
+
+def test_xol_tower_reinstatement_accumulation():
+    """Test that reinstatement premiums accumulate across layers."""
+    tower = XoLTower(
+        limit=[50000, 50000],
+        excess=[0, 50000],
+        premium=[1000, 500],
+        reinstatement_cost=[[1], [2]],  # Different reinstatement costs
+        aggregate_limit=[100000, 100000],
+    )
+    claims = FreqSevSims(
+        np.array([0, 0]), np.array([60000, 60000]), 1  # Two claims
+    )
+    result = tower.apply(claims)
+
+    # Both layers should contribute to total reinstatement premium
+    assert result.reinstatement_premium is not None
+    assert result.reinstatement_premium.values[0] > 0
+    # Should be sum of both layers' reinstatement premiums
+    expected_min = 1000 + 500  # At least the base premiums
+    assert result.reinstatement_premium.values[0] >= expected_min

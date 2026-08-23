@@ -49,9 +49,7 @@ def test_proteus_variable_implements_proteus_like():
 
 def test_nested_proteus_variable_implements_proteus_like():
     """Test that nested ProteusVariable structures implement ProteusLike."""
-    inner = ProteusVariable(
-        dim_name="inner", values={"x": StochasticScalar([1.0, 2.0])}
-    )
+    inner = ProteusVariable(dim_name="inner", values={"x": StochasticScalar([1.0, 2.0])})
 
     outer = ProteusVariable(dim_name="outer", values={"nested": inner})
 

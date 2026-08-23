@@ -17,20 +17,22 @@ RUN apt-get update && apt-get install -y \
     && sed -i '/en_GB.UTF-8/s/^# //g' /etc/locale.gen \
     && locale-gen
 
+# Set locale environment variables
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+
 # Install pyright globally for type checking
 RUN npm install -g pyright
-
-# Install uv and PDM for fast package management
-RUN pip install uv pdm
 
 # Set working directory
 WORKDIR /app
 
-# Copy dependency files
-COPY pyproject.toml pdm.lock* ./
+# Copy dependency files and source code needed for installation
+COPY pyproject.toml ./
+COPY pal/ ./pal/
 
-# Install only main dependencies using PDM with uv backend (no GPU group)
-RUN pdm install --no-self
+# Install the package in editable mode with main dependencies
+RUN pip install -e .
 
 # DEVELOPMENT STAGE ===========================
 FROM base AS dev
@@ -46,8 +48,8 @@ RUN useradd -m -s /bin/bash vscode && \
     usermod -aG sudo vscode && \
     echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Install dev dependencies (test + dev groups, but not GPU group)
-RUN pdm install -dG test -dG dev --no-self
+# Install dev dependencies (test + dev + docs groups, but not GPU group)
+RUN pip install -e ".[test,dev,docs]"
 
 # Switch to non-root user
 USER vscode
@@ -67,5 +69,5 @@ WORKDIR /app
 # Copy source code for CI
 COPY . .
 
-# Install test dependencies and the package itself
-RUN pdm install -dG test
+# Install the package with test dependencies and build tools
+RUN pip install -e ".[test]" && pip install build

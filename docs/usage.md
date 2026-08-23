@@ -61,7 +61,7 @@ var1 = distributions.Gamma(alpha=2.5, theta=2).generate()
 var2 = distributions.LogNormal(mu=1, sigma=0.5).generate()
 
 # Apply copula to create dependency
-copulas.GumbelCopula(theta=1.2, n=2).apply([var1, var2])
+copulas.GumbelCopula(theta=1.2).apply([var1, var2])
 ```
 
 ### Variable Coupling
@@ -102,12 +102,12 @@ PAL supports several environment variables for configuration:
 
 #### GPU Acceleration
 
-For CUDA-compatible GPUs, install GPU dependencies:
+For CUDA-compatible GPUs, install PAL with the GPU extra:
 
 <!--pytest.mark.skip-->
 
 ```bash
-pdm install -G gpu
+pip install -e ".[gpu]"
 ```
 
 Enable GPU mode:
@@ -157,7 +157,7 @@ All development work is done inside the devcontainer. VS Code provides native Ju
 5. **Select Kernel** when prompted:
    - Click "Select Kernel" in the top-right of the notebook
    - Choose "Python Environments"
-   - Select the PDM environment (should show `/workspace/.venv/bin/python`)
+   - Select the project virtual environment (normally `/workspace/.venv/bin/python`)
 6. **Run cells** using:
    - **Ctrl+Enter** - Run current cell
    - **Shift+Enter** - Run current cell and move to next

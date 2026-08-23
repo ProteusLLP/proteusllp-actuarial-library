@@ -13,6 +13,9 @@ help:
 	@echo "  deadcode       - Run vulture dead code detection"
 	@echo "  static-analysis - Run all static analysis tools (lint, format, typecheck, security, deadcode)"
 	@echo "  test           - Run pytest with coverage"
+	@echo "  test-fast      - Run pytest without coverage"
+	@echo "  coverage       - Run tests and show HTML coverage report"
+	@echo "  coverage-report - Show coverage report (requires running tests first)"
 	@echo "  check-notebooks - Execute all notebooks to verify they work"
 	@echo "  check          - Run all checks (static-analysis + tests + notebooks)"
 	@echo "  build          - Build the package"
@@ -21,31 +24,31 @@ help:
 # Static analysis targets
 .PHONY: lint
 lint:
-	pdm run ruff check pal tests examples
+	ruff check src/pal tests examples
 
 .PHONY: lint-fix
 lint-fix:
-	pdm run ruff check --fix pal tests examples
+	ruff check --fix src/pal tests examples
 
 .PHONY: format
 format:
-	pdm run ruff format pal tests examples
+	ruff format src/pal tests examples
 
 .PHONY: format-check
 format-check:
-	pdm run ruff format --check pal tests examples
+	ruff format --check src/pal tests examples
 
 .PHONY: typecheck
 typecheck:
-	pdm run pyright
+	pyright
 
 .PHONY: security
 security:
-	pdm run bandit -r pal
+	bandit -r src/pal
 
 .PHONY: deadcode
 deadcode:
-	pdm run vulture pal
+	vulture src/pal
 
 .PHONY: static-analysis
 static-analysis: lint format-check typecheck security deadcode
@@ -54,15 +57,39 @@ static-analysis: lint format-check typecheck security deadcode
 # Test targets
 .PHONY: test
 test:
-	mkdir -p coverage
-	pdm run pytest -v --cov=pal --cov-report=xml:coverage/coverage.xml
+	pytest -v --cov=pal --cov-report=xml --cov-report=term
+
+.PHONY: test-fast
+test-fast:
+	pytest -v
+
+.PHONY: coverage
+coverage:
+	pytest --cov=pal --cov-report=html --cov-report=term
+	@echo "\nOpening coverage report in browser..."
+	@python -c "import webbrowser; webbrowser.open('htmlcov/index.html')" 2>/dev/null || \
+		(command -v xdg-open >/dev/null && xdg-open htmlcov/index.html) || \
+		(command -v open >/dev/null && open htmlcov/index.html) || \
+		echo "Please open htmlcov/index.html in your browser"
+
+.PHONY: coverage-report
+coverage-report:
+	@if [ -f htmlcov/index.html ]; then \
+		python -c "import webbrowser; webbrowser.open('htmlcov/index.html')" 2>/dev/null || \
+		(command -v xdg-open >/dev/null && xdg-open htmlcov/index.html) || \
+		(command -v open >/dev/null && open htmlcov/index.html) || \
+		echo "Please open htmlcov/index.html in your browser"; \
+	else \
+		echo "Coverage report not found. Run 'make coverage' first."; \
+		exit 1; \
+	fi
 
 .PHONY: check-notebooks
 check-notebooks:
 	@echo "Executing notebooks to verify they work..."
 	@for notebook in $(wildcard examples/*.ipynb); do \
 		echo "Executing $$notebook..."; \
-		PAL_SUPPRESS_PLOTS=true pdm run jupyter nbconvert --to notebook --execute \
+		PAL_SUPPRESS_PLOTS=true jupyter nbconvert --to notebook --execute \
 			--ExecutePreprocessor.timeout=300 \
 			--output-dir=/tmp \
 			"$$notebook" || exit 1; \
@@ -78,13 +105,17 @@ check: static-analysis test check-notebooks
 .PHONY: build
 build:
 	mkdir -p dist
-	pdm build
+	python -m build
 
 .PHONY: clean
 clean:
 	rm -rf dist/
-	rm -rf coverage/
+	rm -rf build/
+	rm -rf htmlcov/
+	rm -rf .coverage
+	rm -rf coverage.xml
 	rm -rf .pytest_cache/
 	rm -rf __pycache__/
 	find . -name "*.pyc" -delete
 	find . -name "__pycache__" -type d -exec rm -rf {} +
+	find . -name "*.egg-info" -type d -exec rm -rf {} +

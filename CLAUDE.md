@@ -10,7 +10,7 @@ This project uses Docker for consistent development environments.
 
 **Run INSIDE the Docker container (`pal-devcontainer`):**
 - All `make` commands (lint, test, typecheck, etc.)
-- Python/PDM commands
+- Python commands
 - Package builds
 
 **Run on the HOST machine:**
@@ -41,19 +41,14 @@ docker exec pal-devcontainer make typecheck
 
 ### Python Execution
 
-**IMPORTANT**: This project uses PDM for dependency management. Always use `pdm run` to execute Python commands to ensure you're using the correct virtual environment:
-
 <!--pytest.mark.skip-->
 
 ```bash
-# Run Python scripts (CORRECT)
-docker exec pal-devcontainer pdm run python script.py
-
-# Run examples (CORRECT)
-docker exec pal-devcontainer pdm run python examples/example_catastrophes.py
-
-# Wrong - uses system Python (INCORRECT)
+# Run Python scripts
 docker exec pal-devcontainer python script.py
+
+# Run examples
+docker exec pal-devcontainer python examples/example_catastrophes.py
 ```
 
 <!--pytest.mark.skip-->

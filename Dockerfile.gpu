@@ -17,6 +17,10 @@ RUN apt-get update && apt-get install -y \
     && sed -i '/en_GB.UTF-8/s/^# //g' /etc/locale.gen \
     && locale-gen
 
+# Set locale environment variables
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+
 # Add NVIDIA package repositories and install CUDA toolkit
 # Using CUDA 12.4 which is more widely available and compatible with driver 580.x
 # Installing cuda-toolkit-12-4 instead of cuda-runtime-12-4 to get development headers
@@ -37,17 +41,16 @@ ENV CUDACXX=${CUDA_HOME}/bin/nvcc
 # Install pyright globally for type checking
 RUN npm install -g pyright
 
-# Install uv and PDM for fast package management
-RUN pip install uv pdm
-
 # Set working directory
 WORKDIR /app
 
-# Copy dependency files
-COPY pyproject.toml pdm.lock* ./
+# Copy dependency files and source code needed for installation
+COPY pyproject.toml ./
+COPY pal/ ./pal/
+COPY .git/ ./.git/
 
-# Install only main dependencies using PDM with uv backend
-RUN pdm install --no-self
+# Install the package in editable mode with main dependencies and GPU support
+RUN pip install -e ".[gpu]"
 
 # DEVELOPMENT STAGE ===========================
 FROM base AS dev
@@ -63,8 +66,8 @@ RUN useradd -m -s /bin/bash vscode && \
     usermod -aG sudo vscode && \
     echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Install dev dependencies (test + dev groups)
-RUN pdm install -dG test -dG dev --no-self
+# Install dev dependencies (test + dev + docs + gpu groups)
+RUN pip install -e ".[test,dev,docs,gpu]"
 
 # Switch to non-root user
 USER vscode
@@ -84,5 +87,5 @@ WORKDIR /app
 # Copy source code for CI
 COPY . .
 
-# Install test dependencies and the package itself
-RUN pdm install -dG test
+# Install the package with test dependencies and build tools
+RUN pip install -e ".[test]" && pip install build

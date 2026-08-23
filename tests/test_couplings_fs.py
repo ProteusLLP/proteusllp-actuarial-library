@@ -6,10 +6,13 @@ dependency structures for complex actuarial risk modeling scenarios.
 
 import numpy as np
 import scipy
+
+from pal import config
 from pal.copulas import GumbelCopula, apply_copula
 from pal.distributions import GPD, Poisson
 from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
 from pal.variables import StochasticScalar
+from tests._assertions import allclose, array_equal, host_values
 
 
 def test_fs_reordering():
@@ -22,8 +25,8 @@ def test_fs_reordering():
         StochasticScalar([1, 0, 3, 2, 5, 4]),
     ]
     apply_copula([a, b], copula_samples)
-    assert (a.values == [31, 30, 40, 0, 50, 0]).all()
-    assert (b.values == [52, 0, 54, 0, 12, 42]).all()
+    assert array_equal(a.values, [31, 30, 40, 0, 50, 0])
+    assert array_equal(b.values, [52, 0, 54, 0, 12, 42])
     # expected_x
     expected_x = FreqSevSims([0, 0, 1, 2, 4], [10, 21, 30, 40, 50], 6)
     # expected_y
@@ -48,8 +51,8 @@ def test_fs_reordering2():
         StochasticScalar([1, 0, 3, 2, 5, 4]),
     ]
     apply_copula([a, b], copula_samples)
-    assert (a.values == [62, 60, 80, 0, 100, 0]).all()
-    assert (b.values == [156, 0, 162, 0, 36, 126]).all()
+    assert array_equal(a.values, [62, 60, 80, 0, 100, 0])
+    assert array_equal(b.values, [156, 0, 162, 0, 36, 126])
     # expected_x
     expected_x = FreqSevSims([0, 0, 1, 2, 4], [10, 21, 30, 40, 50], 6)
     # expected_y
@@ -71,23 +74,64 @@ def test_fs_reordering2():
 
 def test_fs_reordering3():
     """Tests that other variables attached to FreqSevSims are correctly reordered."""
-    x = FrequencySeverityModel(
-        Poisson(mean=2), GPD(shape=0.33, scale=100000, loc=0)
-    ).generate()
-    y = FrequencySeverityModel(
-        Poisson(mean=2), GPD(shape=0.33, scale=100000, loc=0)
-    ).generate()
+    config.rng = np.random.default_rng(123456)
+
+    x = FrequencySeverityModel(Poisson(mean=2), GPD(shape=0.33, scale=100000, loc=0)).generate()
+    y = FrequencySeverityModel(Poisson(mean=2), GPD(shape=0.33, scale=100000, loc=0)).generate()
     x1 = x * 2
     y1 = y * 3
     a = x1.aggregate()
     b = y1.aggregate()
     GumbelCopula(1.5, 2).apply([a, b])
     # check the copula has been applied correctly
-    calculated_tau = scipy.stats.kendalltau(a.values, b.values).statistic
+    calculated_tau = scipy.stats.kendalltau(host_values(a), host_values(b)).statistic
     assert np.isclose(calculated_tau, 1 - 1 / 1.5, atol=1e-2)
     # check that when x and y are re_calculated and reaggregated, they give
     # the same result
     re_calculated_a = (x * 2).aggregate()
     re_calculated_b = (y * 3).aggregate()
-    assert np.allclose(re_calculated_a.values, a.values, atol=1e-10)
-    assert np.allclose(re_calculated_b.values, b.values, atol=1e-10)
+    assert allclose(re_calculated_a.values, a.values, atol=1e-10)
+    assert allclose(re_calculated_b.values, b.values, atol=1e-10)
+
+
+def test_freqsevsims_membership_in_coupling_group() -> None:
+    """Test that FreqSevSims can be checked for coupling group membership."""
+    sim_index = np.array([1, 2, 2, 3, 4], dtype=int)
+    fs = FreqSevSims(
+        sim_index=sim_index,
+        values=np.array([500.0, 700.0, 600.0, 800.0, 550.0]),
+        n_sims=5,
+    )
+
+    # Should be able to check membership
+    assert fs in fs.coupled_variable_group
+
+
+def test_coupled_variables():
+    """Test that coupled variables use identity comparison correctly."""
+    x = FreqSevSims([0, 0, 1, 2, 4], [10, 21, 30, 40, 50], 6)
+    y = FreqSevSims([0, 1, 1, 3, 5], [12, 22, 32, 42, 52], 6)
+
+    # Performing an operation should merge coupling groups
+    z = x + y
+
+    # All should be in the same coupling group now
+    assert x.coupled_variable_group is y.coupled_variable_group
+    assert y.coupled_variable_group is z.coupled_variable_group
+
+    # The internal dictionary in the coupling group should contain all three
+    assert len(x.coupled_variable_group) == 3
+
+    assert x in x.coupled_variable_group
+    assert y in x.coupled_variable_group
+    assert z in x.coupled_variable_group
+
+    z2 = z + x
+    assert x.coupled_variable_group is z2.coupled_variable_group
+    assert len(x.coupled_variable_group) == 4
+
+    y2 = FreqSevSims([0, 1, 1, 3, 5], [12, 22, 32, 42, 52], 6)
+
+    assert y2.coupled_variable_group is not y.coupled_variable_group
+    z3 = x + y2
+    assert z3 in x.coupled_variable_group

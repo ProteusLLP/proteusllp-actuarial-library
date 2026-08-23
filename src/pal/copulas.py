@@ -1,0 +1,1731 @@
+"""Copula Module.
+
+This module contains classes for representing and generating samples from various
+copulas. It includes both elliptical (Gaussian and Student's T) and Archimedean
+copulas.
+"""
+
+# Standard library imports
+from __future__ import annotations
+
+import typing as t
+from abc import ABC, abstractmethod
+
+# Third-party imports
+import numpy.typing as npt
+import scipy.stats
+from scipy.special import gamma
+
+from . import ProteusVariable, StochasticScalar
+from ._maths import asnumpy, special
+from ._maths import xp as np
+
+# Local imports
+from .config import config
+from .types import RandomGenerator
+
+
+def _host_rng_arg(value: t.Any) -> t.Any:
+    """Copy backend array arguments to the host for NumPy random methods."""
+    if isinstance(value, np.ndarray):
+        return asnumpy(value)
+    if isinstance(value, tuple):
+        return tuple(_host_rng_arg(item) for item in value)
+    if isinstance(value, list):
+        return [_host_rng_arg(item) for item in value]
+    return value
+
+
+class _BackendGenerator:
+    """Adapt NumPy's seeded Generator so samples immediately move to the backend."""
+
+    def __init__(self, generator: t.Any) -> None:
+        self._generator = generator
+
+    def __getattr__(self, name: str) -> t.Any:
+        # CuPy's RandomState follows NumPy's legacy ``randint`` spelling.
+        # Present the modern Generator spelling used by PAL's copula code.
+        if name == "integers" and not hasattr(self._generator, name):
+            attribute = self._generator.randint
+        else:
+            attribute = getattr(self._generator, name)
+        if not callable(attribute):
+            return attribute
+
+        def sample(*args: t.Any, **kwargs: t.Any) -> t.Any:
+            if type(self._generator).__module__.startswith("numpy"):
+                args = tuple(_host_rng_arg(arg) for arg in args)
+                kwargs = {key: _host_rng_arg(value) for key, value in kwargs.items()}
+            return np.asarray(attribute(*args, **kwargs))
+
+        return sample
+
+
+def _backend_rng(generator: RandomGenerator | _BackendGenerator) -> RandomGenerator | _BackendGenerator:
+    """Return a backend-producing random generator adapter."""
+    if isinstance(generator, _BackendGenerator):
+        return generator
+    if type(generator).__module__.startswith(np.__name__):
+        return generator
+    return _BackendGenerator(generator)
+
+
+def _student_t_cdf(values: t.Any, dof: float) -> t.Any:
+    """Evaluate Student's t CDF without moving backend arrays to the host."""
+    if np.__name__ == "numpy":
+        return special.stdtr(dof, values)
+
+    absolute_values = np.abs(values)
+    tail_probability = special.betainc(dof / 2, 0.5, dof / (dof + absolute_values**2)) / 2
+    return np.where(values >= 0, 1 - tail_probability, tail_probability)
+
+
+class Copula(ABC):
+    """Base class for copula implementations.
+
+    A copula is a multivariate probability distribution that describes the
+    dependence structure between random variables, separate from their individual
+    marginal distributions. Copulas are used in risk modeling to simulate
+    correlated stochastic variables.
+
+    All copula implementations generate ProteusVariable containers with VectorLike
+    values (typically StochasticScalar instances) that represent correlated
+    uniform random samples on [0,1].
+    """
+
+    dimension: int
+    """The dimension of the copula."""
+
+    @abstractmethod
+    def generate(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate correlated uniform samples from the copula.
+
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+
+        Returns:
+            ProteusVariable containing VectorLike values (typically StochasticScalar)
+            with uniform marginal distributions on [0,1] and the copula's
+            correlation structure.
+        """
+        pass
+
+    def _generate_unnormalised(self, n_sims: int, rng: t.Any) -> npt.NDArray[np.floating]:
+        """Generate samples from the multivariate distribution underlying the copula.
+
+        The marginal distribution of the samples will not necessarily be uniform.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator.
+
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
+        """Transform unnormalised samples to uniform [0,1].
+
+        Override this in subclasses that need custom transformations.
+        Default implementation assumes samples are already uniform.
+
+        Args:
+            unnormalised_samples: Array of samples from the underlying distribution.
+
+        Returns:
+            Array of uniform samples on [0,1].
+        """
+        return unnormalised_samples
+
+    def _create_result_from_uniform(
+        self, uniform_samples: npt.NDArray[np.floating]
+    ) -> ProteusVariable[StochasticScalar]:
+        """Create ProteusVariable result from uniform samples with coupled groups.
+
+        Args:
+            uniform_samples: Array of uniform samples on [0,1].
+
+        Returns:
+            ProteusVariable with StochasticScalar values and merged coupling groups.
+        """
+        result = ProteusVariable[StochasticScalar](
+            "dim1",
+            {f"{type(self).__name__}_{i}": StochasticScalar(sample) for i, sample in enumerate(uniform_samples)},
+        )
+        # Merge all variables into the same coupled group
+        first_scalar = result[0]
+        for val in result:
+            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
+        return result
+
+    def _generate_base(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Base implementation of generate with common boilerplate.
+
+        Subclasses can call this from their generate() method to avoid repetition
+        while maintaining individual docstrings.
+
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+
+        Returns:
+            ProteusVariable with StochasticScalar values representing copula samples.
+        """
+        if n_sims is None:
+            n_sims = config.n_sims
+        if rng is None:
+            rng = config.rng
+
+        unnormalised = self._generate_unnormalised(n_sims, _backend_rng(rng))
+        uniform_samples = self._transform_to_uniform(unnormalised)
+        return self._create_result_from_uniform(uniform_samples)
+
+    def apply(self, variables: ProteusVariable[StochasticScalar] | list[StochasticScalar]) -> None:
+        """Apply the copula's correlation structure to existing variables.
+
+        This method modifies the input variables in-place to exhibit the
+        correlation structure defined by this copula while preserving their
+        marginal distributions.
+
+        Args:
+            variables: Either a ProteusVariable containing VectorLike values or
+                      a list of VectorLike instances.
+
+        Raises:
+            TypeError: If list contains non-StochasticScalar values.
+            ValueError: If variables have inconsistent simulation counts.
+        """
+        variables_list = list(variables)
+        self.dimension = len(variables_list)
+        # Generate the copula samples
+        # Check that n_sims is available
+        n_sims = variables_list[0].n_sims
+        copula_samples = [
+            StochasticScalar(sample)
+            for sample in self._generate_unnormalised(n_sims=n_sims, rng=_backend_rng(config.rng))
+        ]
+        if len(variables) != len(copula_samples):
+            raise ValueError("Number of variables and copula samples do not match.")
+        # Apply the copula to the variables
+        apply_copula(variables_list, copula_samples)
+
+
+class EllipticalCopula(Copula, ABC):
+    """A base class to represent an elliptical copula."""
+
+    _matrix: npt.NDArray[np.floating]
+    _chol: npt.NDArray[np.floating]
+
+    def __init__(
+        self,
+        matrix: npt.NDArray[np.floating] | list[list[float]],
+        *args: t.Any,
+        matrix_type: str = "linear",
+        **kwargs: t.Any,
+    ) -> None:
+        """Initialize an elliptical copula.
+
+        Args:
+            matrix: Correlation matrix or Cholesky decomposition.
+            matrix_type: Type of matrix - "linear" or "chol".
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+        """
+        _matrix = np.asarray(matrix)
+        if _matrix.ndim != 2 or _matrix.shape[0] != _matrix.shape[1]:
+            raise ValueError("Matrix must be square")
+        if matrix_type == "linear":
+            self.correlation_matrix = _matrix
+            # Check that the correlation matrix is positive definite
+            if float(np.linalg.eigvalsh(self.correlation_matrix).min()) <= 0:
+                raise ValueError("Correlation matrix is not positive definite")
+            try:
+                self._chol = np.linalg.cholesky(self.correlation_matrix)
+            except np.linalg.LinAlgError as e:
+                raise ValueError("Correlation matrix is not positive definite") from e
+        elif matrix_type == "chol":
+            self._chol = _matrix
+        else:
+            raise ValueError("matrix_type must be 'linear' or 'chol'")
+        self._matrix = _matrix
+
+
+class GaussianCopula(EllipticalCopula):
+    r"""Gaussian (Normal) Copula.
+
+    The Gaussian copula has the cumulative distribution function:
+
+    .. math::
+
+        C(u_1, \ldots, u_d) = \Phi_R\left(\Phi^{-1}(u_1), \ldots, \Phi^{-1}(u_d)\right)
+
+    where :math:`\Phi` is the standard normal CDF, :math:`\Phi^{-1}` is its inverse,
+    and :math:`\Phi_R` is the multivariate normal CDF with correlation matrix :math:`R`.
+
+    The Gaussian copula is an elliptical copula that models dependence through
+    a multivariate normal distribution.
+    """
+
+    def __init__(
+        self,
+        matrix: npt.NDArray[np.floating] | list[list[float]],
+        matrix_type: str = "linear",
+    ) -> None:
+        """Initialize a Gaussian copula.
+
+        Args:
+            matrix: Correlation matrix.
+            matrix_type: Type of matrix - "linear" or "chol".
+        """
+        super().__init__(matrix, matrix_type=matrix_type)
+
+    def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
+        """Transform normal samples to uniform using CDF."""
+        return special.ndtr(unnormalised_samples)
+
+    def generate(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate samples from the Gaussian copula."""
+        return self._generate_base(n_sims, rng)
+
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        n_vars = self.correlation_matrix.shape[0]
+        normal_samples = rng.standard_normal(size=(n_vars, n_sims))
+        return self._chol.dot(normal_samples)
+
+
+class StudentsTCopula(EllipticalCopula):
+    r"""Student's T Copula.
+
+    The cumulative distribution function (CDF) is:
+
+    .. math::
+
+        C(u_1, \ldots, u_d) = t_{\nu,R}\left(t_{\nu}^{-1}(u_1), \ldots, t_{\nu}^{-1}(u_d)\right)
+
+    where :math:`t_\nu` is the univariate Student's t CDF with :math:`\nu` degrees of freedom,
+    :math:`t_\nu^{-1}` is its inverse, and :math:`t_{\nu,R}` is the multivariate Student's t
+    CDF with :math:`\nu` degrees of freedom and correlation matrix :math:`R`.
+
+    The Student's t copula exhibits symmetric tail dependence, making it useful for
+    modeling joint extreme events. The upper and lower tail dependence coefficients are given by:
+
+    .. math::
+
+        \lambda_U = \lambda_L = 2t_{\nu+1}\left(-\sqrt{\frac{(\nu+1)(1-\rho)}{1+\rho}}\right)
+
+    where :math:`\nu` is the degrees of freedom and :math:`\rho` is the correlation parameter.
+    """
+
+    def __init__(
+        self,
+        matrix: npt.NDArray[np.float64] | list[list[float]],
+        dof: float,
+        matrix_type: str = "linear",
+    ) -> None:
+        """Initialize a Student's T copula.
+
+        Args:
+            matrix: Correlation matrix.
+            dof: Degrees of freedom.
+            matrix_type: Type of matrix - "linear" or "chol".
+        """
+        super().__init__(matrix, matrix_type=matrix_type)
+        if dof <= 0:
+            raise ValueError("Degrees of Freedom must be positive")
+        self.dof = dof
+
+    def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
+        """Transform t-distributed samples to uniform using CDF."""
+        return _student_t_cdf(unnormalised_samples, self.dof)
+
+    def generate(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate samples from the Student's T copula."""
+        return self._generate_base(n_sims, rng)
+
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        n_vars = self.correlation_matrix.shape[0]
+        normal_samples = self._chol.dot(rng.standard_normal(size=(n_vars, n_sims)))
+        chi_samples = np.sqrt(rng.gamma(self.dof / 2, 2 / self.dof, size=n_sims))
+        return normal_samples / chi_samples[np.newaxis, :]
+
+
+class ArchimedeanCopula(Copula, ABC):
+    """A base class to represent an Archimedean copula."""
+
+    @abstractmethod
+    def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
+        """The inverse generator function of the copula."""
+        pass
+
+    @abstractmethod
+    def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Generate samples from the latent distribution of the copula."""
+        pass
+
+    def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
+        """Transform using inverse generator function."""
+        return self.generator_inv(-unnormalised_samples)
+
+    def generate(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate samples from the Archimedean copula."""
+        return self._generate_base(n_sims, rng)
+
+    def _generate_unnormalised(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> npt.NDArray[np.floating]:
+        if n_sims is None:
+            n_sims = config.n_sims
+        if rng is None:
+            rng = config.rng
+        if rng is None:
+            raise RuntimeError("No random number generator is configured")
+        if self.dimension is None:
+            raise RuntimeError("Subclasses of ArchimedeanCopula must set self.dimension to the number of variables")
+        n_vars = self.dimension
+        # Generate samples from a uniform distribution
+        u = rng.uniform(size=(n_vars, n_sims))
+        # Generate samples from the latent distribution
+        latent_samples = self.generate_latent_distribution(n_sims, rng)
+
+        # Add shape validation
+        if not (latent_samples.shape == (n_sims,)):
+            raise AssertionError(f"Expected latent_samples shape ({n_sims},), got {latent_samples.shape}")
+
+        # Calculate the copula samples
+        return np.log(u) / latent_samples[np.newaxis]
+
+
+class ClaytonCopula(ArchimedeanCopula):
+    r"""Clayton Copula.
+
+    The Clayton copula has the cumulative distribution function:
+
+    .. math::
+
+        C(u_1, \ldots, u_d) = \left(\sum_{i=1}^d u_i^{-\theta} - d + 1\right)^{-1/\theta}
+
+    where :math:`\theta \geq 0` is the dependence parameter. The Clayton copula
+    exhibits lower tail dependence and is part of the Archimedean family.
+
+    The lower tail dependence coefficient between any pair of variables in the Clayton copula is given by:
+
+    .. math::
+
+        \lambda_L = 2^{-1/\theta}
+
+    The upper tail dependence coefficient is zero for all :math:`\theta > 0`,
+    and the copula reduces to the independence copula when :math:`\theta = 0`.
+
+    The generator function is:
+
+    .. math::
+
+        \phi(t) = \frac{1}{\theta}(t^{-\theta} - 1)
+
+    For :math:`\theta = 0`, the copula reduces to the independence copula.
+    """
+
+    def __init__(self, theta: float, dimension: int | None = None) -> None:
+        """Initialize a Clayton copula.
+
+        Args:
+            theta: Copula parameter (must be >= 0). When theta=0, represents
+                   the independence copula.
+            dimension: Number of variables. (Optional)
+        """
+        if theta < 0:
+            raise ValueError("Theta cannot be negative")
+        self.theta = theta
+        if dimension is not None:
+            self.dimension = dimension
+
+    def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
+        """Inverse generator function for Clayton copula.
+
+        Args:
+            t: Input array values.
+
+        Returns:
+            Array of inverse generator values. When theta=0, returns exp(-t),
+            corresponding to the independence copula.
+        """
+        if self.theta == 0:
+            return np.exp(-t)
+        return (1 + t) ** (-1 / self.theta)
+
+    def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Generate samples from the latent distribution.
+
+        For Clayton copula, when theta=0, the copula reduces to the independence
+        copula, and the latent distribution returns a constant value of 1.0 for
+        all simulations.
+
+        Returns:
+            Array of shape (n_sims,) containing latent distribution samples.
+        """
+        if self.theta == 0:
+            return np.ones(n_sims)
+        return rng.gamma(1 / self.theta, size=n_sims)
+
+
+def levy_stable(
+    alpha: float,
+    beta: float,
+    size: int | tuple[int, ...],
+    rng: RandomGenerator,
+) -> npt.NDArray[np.floating]:
+    """Simulate samples from a Lévy stable distribution using Chambers-Mallows-Stuck.
+
+    Parameters:
+        alpha (float): Stability parameter in (0, 2].
+        beta (float): Skewness parameter in [-1, 1].
+        size (int or tuple of ints): Output shape.
+        rng (RandomGenerator): Random number generator.
+
+    Returns:
+        np.ndarray: Samples from the Lévy stable distribution.
+    """
+    uniform_samples = rng.uniform(-np.pi / 2, np.pi / 2, size)
+    exponential_samples = rng.exponential(1, size)
+
+    if alpha != 1:
+        theta = np.arctan(beta * np.tan(np.pi * alpha / 2)) / alpha
+        factor = (1 + beta**2 * np.tan(np.pi * alpha / 2) ** 2) ** (1 / (2 * alpha))
+        part1 = np.sin(alpha * (uniform_samples + theta)) / (np.cos(uniform_samples)) ** (1 / alpha)
+        part2 = (np.cos(uniform_samples - alpha * (uniform_samples + theta)) / exponential_samples) ** (
+            (1 - alpha) / alpha
+        )
+        samples = factor * part1 * part2
+    else:
+        samples = (2 / np.pi) * (
+            (np.pi / 2 + beta * uniform_samples) * np.tan(uniform_samples)
+            - beta
+            * np.log((np.pi / 2 * exponential_samples * np.cos(uniform_samples)) / (np.pi / 2 + beta * uniform_samples))
+        )
+    return samples
+
+
+class GumbelCopula(ArchimedeanCopula):
+    r"""Gumbel Copula.
+
+    The Gumbel copula has the cumulative distribution function:
+
+    .. math::
+
+        C(u_1, \ldots, u_d) = \exp\left[-\left(\sum_{i=1}^d (-\ln u_i)^\theta\right)^{1/\theta}\right]
+
+    where :math:`\theta \geq 1` is the dependence parameter. The Gumbel copula
+    exhibits upper tail dependence and is part of the Archimedean family. The upper
+    tail dependence coefficient between any pair of variables is given by:
+
+    .. math::
+
+        \lambda_U = 2 - 2^{1/\theta}
+
+    The generator function is:
+
+    .. math::
+
+        \phi(t) = (-\ln t)^\theta
+    """
+
+    def __init__(self, theta: float, dimension: int | None = None) -> None:
+        """Initialize a Gumbel copula.
+
+        Args:
+            theta: Copula parameter (must be >= 1).
+            dimension: Number of variables.
+        """
+        if theta < 1:
+            raise ValueError("Theta must be at least 1")
+        self.theta = theta
+        if dimension is not None:
+            self.dimension = dimension
+
+    def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
+        """Inverse generator function for Gumbel copula."""
+        return np.exp(-(t ** (1 / self.theta)))
+
+    def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Generate samples from the latent distribution."""
+        if self.theta == 1:
+            return np.ones(n_sims)
+        return levy_stable(1 / self.theta, 1, n_sims, rng) * (np.cos(np.pi / (2 * self.theta)) ** self.theta)
+
+
+class FrankCopula(ArchimedeanCopula):
+    r"""Frank Copula.
+
+    The Frank copula has the cumulative distribution function:
+
+    .. math::
+
+        C(u_1, \ldots, u_d) = -\frac{1}{\theta} \ln\left(1 +
+            \frac{\prod_{i=1}^d (e^{-\theta u_i} - 1)}{(e^{-\theta} - 1)^{d-1}}
+            \right)
+
+    where :math:`\theta \in \mathbb{R} \setminus \{0\}` is the dependence parameter.
+    The Frank copula is symmetric and does not exhibit tail dependence.
+
+    The generator function is:
+
+    .. math::
+
+        \phi(t) = -\ln\left(\frac{e^{-\theta t} - 1}{e^{-\theta} - 1}\right)
+    """
+
+    def __init__(self, theta: float, dimension: int | None = None) -> None:
+        """Initialize a Frank copula.
+
+        Args:
+            theta: Copula parameter.
+            dimension: Number of variables. (Optional)
+        """
+        self.theta = theta
+        if dimension is not None:
+            self.dimension = dimension
+
+    def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
+        """Inverse generator function for Frank copula."""
+        return -np.log1p(np.exp(-t) * (np.expm1(-self.theta))) / self.theta
+
+    def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Generate samples from the latent distribution."""
+        return rng.logseries(1 - np.exp(-self.theta), size=n_sims).astype(np.float64)
+
+
+class JoeCopula(ArchimedeanCopula):
+    r"""A class to represent a Joe copula.
+
+    The Joe copula has the cumulative distribution function:
+
+    .. math::
+
+        \begin{aligned}
+        C(u_1, \ldots, u_d)
+          &= 1 - \left\{
+              1 - \prod_{i=1}^d \left[1 - (1-u_i)^\theta\right]
+            \right\}^{1/\theta}
+        \end{aligned}
+
+    where :math:`\theta \geq 1` is the dependence parameter.
+
+    The Joe copula is an Archimedean copula with generator function:
+
+    .. math::
+
+        \psi(t) = 1 - (1 - e^{-t})^{1/\theta}
+
+    where :math:`\theta \geq 1` is the dependence parameter. The copula exhibits
+    upper tail dependence with coefficient :math:`2 - 2^{1/\theta}`.
+    """
+
+    def __init__(self, theta: float, dimension: int | None = None) -> None:
+        """Initialize a Joe copula.
+
+        Args:
+            theta: Copula parameter (must be >= 1).
+            dimension: Number of variables.
+        """
+        if theta < 1:
+            raise ValueError("Theta must be in the range [1, inf)")
+        self.theta = theta
+        if dimension is not None:
+            self.dimension = dimension
+
+    def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
+        """Inverse generator function for Joe copula."""
+        return 1 - (1 - np.exp(-t)) ** (1 / self.theta)
+
+    def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Generate samples from the latent distribution."""
+        return _sibuya_gen(1 / self.theta, n_sims, rng)
+
+
+class MM1Copula(Copula):
+    r"""A multivariate max-mixture copula, denoted MM1 by Joe.
+
+    The MM1 copula is a multivariate copula which allows for different upper tail
+    dependence structures between each pair of dimensions. It can be regarded as an
+    extension of the Gumbel copula to more flexible dependence.
+
+    The cumulative distribution function of the MM1 copula is given by:
+
+    .. math::
+
+        \begin{aligned}
+        C(u_1, \ldots, u_d)
+          &= \exp\left\{
+              -\left[
+                  \sum_{i<j}\left\{
+                      \begin{aligned}
+                      &\left(\frac{(-\ln u_i)^\theta}{d-1}\right)^{\delta_{ij}} \\
+                      &\quad+ \left(\frac{(-\ln u_j)^\theta}{d-1}\right)^{\delta_{ij}}
+                      \end{aligned}
+                  \right\}^{1/\delta_{ij}}
+              \right]^{1/\theta}
+            \right\}
+        \end{aligned}
+
+    for a symmetric matrix :math:`\delta_{ij} \geq 1` and
+    :math:`\theta \geq 1`. The MM1 copula reduces to the Gumbel copula when all
+    :math:`\delta_{ij} = 1`.
+
+    The upper tail dependence coefficient between any pair of variables :math:`i`
+    and :math:`j` in the MM1 copula is given by:
+
+    .. math::
+
+        \lambda_{ij} = 2 - \left(\frac{2^{1/\delta_{ij}}}{d-1}
+        + \frac{2(d-2)}{d-1}\right)^{1/\theta}
+
+    where :math:`\delta_{ij}` is the pairwise parameter from the delta_matrix,
+    :math:`d` is the dimension of the copula, and :math:`\theta` is the overall
+    mixing parameter.
+
+    The simulation approach uses the max-mixture representation of the MM1 copula,
+    detailed in Joe (2015, Chapter 6).
+
+    References:
+        Joe, H. (1997). Multivariate Models and Dependence Concepts. Chapman and Hall.
+        Joe, H. (2015). Dependence Modeling with Copulas. Chapman and Hall.
+    """
+
+    delta_matrix: list[list[float]]
+    """The matrix of pairwise parameters of the underlying Gumbel copulas"""
+    theta: float
+    """The theta parameter of the overall mixing variable"""
+
+    def __init__(self, delta_matrix: list[list[float]], theta: float):
+        """Initialise the MM1 Copula.
+
+        Args:
+            delta_matrix: A matrix of coefficients controlling the tail dependence
+                between each pair of dimensions. Must be >= 1. Note that only
+                the lower diagonal of this matrix is used.
+            theta: Mixing parameter. Controls the overall dependence level.
+                Must be greater than one.
+        """
+        self.dimension = len(delta_matrix)
+        for i in range(1, self.dimension):
+            if len(delta_matrix[i]) != self.dimension:
+                raise ValueError("delta_matrix must be square")
+            if min(delta_matrix[i][:i]) < 1:
+                raise ValueError("delta_matrix must be greater than or equal to 1")
+        self.delta_matrix = delta_matrix
+        if theta < 1:
+            raise ValueError("Theta must be in the range [1, inf)")
+        self.theta = theta
+
+    def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
+        """Transform max-mixture samples to uniform."""
+        return np.exp(-((-np.log(unnormalised_samples)) ** (1 / self.theta)))
+
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        n = self.dimension
+        theta = self.theta
+        delta_matrix = self.delta_matrix
+        max_u = np.zeros((n, n_sims))
+        mixing_variable = levy_stable(alpha=1 / theta, beta=1.0, size=n_sims, rng=rng) * (
+            np.cos(np.pi / (2 * theta)) ** theta
+        )
+        # generate the pairwise Gumbel copulas
+        for j in range(n):
+            for i in range(j + 1, n):
+                uv = GumbelCopula(delta_matrix[i][j], 2).generate(n_sims, rng)
+                u = uv[0].values
+                v = uv[1].values
+                max_u[i] = np.maximum(max_u[i], u)
+                max_u[j] = np.maximum(max_u[j], v)
+        v = max_u ** ((n - 1) / mixing_variable)
+        return v
+
+    def generate(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate samples from a multivariate max-mixture copula, denoted MM1 by Joe.
+
+        The MM1 copula is a multivariate copula which allows for different tail
+        dependence structures between each pair of dimensions. It can be regarded as an
+        extension of the Gumbel copula to more general tail dependence.
+
+        The simulation approach uses the max-mixture representation of the MM1 copula,
+        detailed in Joe (2015, Chapter 6).
+
+        References:
+        Joe, H. (1997). Multivariate Models and Dependence Concepts. Chapman and Hall.
+        Joe, H. (2015). Dependence Modeling with Copulas. Chapman and Hall.
+
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+
+        Returns:
+            ProteusVariable containing VectorLike values (typically StochasticScalar)
+                with uniform marginal distributions on [0,1] and the copula's
+                dependency structure.
+        """
+        return self._generate_base(n_sims, rng)
+
+
+class GalambosCopula(Copula):
+    r"""A class to represent a Galambos copula.
+
+    The Galambos copula is an example of a multivariate extreme value copula,
+    which is particularly suited for modeling upper tail dependence between
+    random variables.
+
+    The bivariate cumulative distribution function (CDF) of the Galambos copula is given by:
+
+    .. math::
+
+        \begin{aligned}
+        C(u, v)
+          &= uv\exp\!\left\{
+              \left[(-\ln u)^{-\theta} + (-\ln v)^{-\theta}\right]^{-1/\theta}
+            \right\}
+        \end{aligned}
+
+    Its dependence structure is characterized by a single parameter,
+    :math:`\theta > 0`, which controls the strength of the upper tail dependence.
+
+    The upper tail dependence coefficient between any pair of variables in the
+    Galambos copula is given by:
+
+    .. math::
+
+        \lambda_U = 2^{-1/\theta}
+
+    where :math:`\theta > 0` is the copula parameter.
+
+    The multivariate extension to :math:`d` dimensions is a complicated expression
+    given in Joe (1997, Chapter 5), but it can be simulated using the max stable / reciprocal
+    Archimedean representation detailed in Mai (2018).
+
+
+    References:
+        Galambos, János. The Asymptotic Theory of Extreme Order Statistics. New York:
+        John Wiley & Sons, 1978.
+        Joe, H. (1997). Multivariate Models and Dependence Concepts. Chapman and Hall.
+        Mai, Jan-Frederik. "Exact Simulation of Reciprocal Archimedean Copulas."
+        Statistical Probability Letters (2018). arXiv preprint arXiv:1802.09996
+    """
+
+    def __init__(self, theta: float, dimension: int | None = None) -> None:
+        """Initialize a Galambos copula.
+
+        Args:
+            theta: Copula parameter (must be > 0).
+            dimension: Number of variables.
+        """
+        if theta <= 0:
+            raise ValueError("Theta must be in the range (0, inf)")
+        self.theta = theta
+        if dimension is not None:
+            self.dimension = dimension
+
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Vectorised simulation from the d-dimensional Galambos copula.
+
+        Exact algorithm based on the max stable / reciprocal Archimedean
+        representation in Mai (2018).
+
+        References:
+        Mai, Jan-Frederik. "Exact Simulation of Reciprocal Archimedean Copulas."
+        Statistical Probability Letters (2018). arXiv preprint arXiv:1802.09996
+
+
+        Args:
+            n_sims: Number of samples.
+            rng : RandomGenerator, optional
+            Random generator.
+
+        Returns:
+        u : ndarray, shape (d, n)
+            Samples on (0, 1)^d with Galambos copula.
+        """
+        d = self.dimension
+        # Independence shortcut if needed
+        if self.theta < 1e-4:
+            return rng.uniform(0, 1, size=(d, n_sims))
+        num = gamma(d) * gamma(1.0 / self.theta)
+        den = gamma(d + 1.0 / self.theta) * self.theta
+        # Compute c_theta for the Galambos copula in dimension d.
+        # S^{-1}(t) = c_theta * t^{-theta}.
+        c_theta = (num / den) ** (-self.theta)
+
+        inv_theta = 1.0 / self.theta
+        c_th = c_theta
+
+        # Y holds the max stable representation for all samples
+        y = np.zeros((d, n_sims))
+
+        # Each row has its own Poisson process time T and radius R
+        # First jump times T ~ Exp(1)
+        t = rng.exponential(scale=1.0, size=n_sims)
+        r = c_th * (t ** (-self.theta))
+
+        # Loop over series terms, updating all active samples together
+        while True:
+            # For each sample, check whether the current radius still matters
+            y_min = y.min(axis=0)
+            active = r > y_min
+
+            if not np.any(active):
+                break  # all series truncated
+
+            # ``size`` arguments require a host integer. Transfer only this
+            # scalar count; all simulation arrays remain on the device.
+            m = int(active.sum().item())
+
+            # Directions on simplex for active samples: iid exponentials
+            e = rng.exponential(scale=1.0, size=(d, m))
+            e_sum = e.sum(axis=0, keepdims=True)
+
+            # Candidate contribution for Y on active rows
+            val = r[active] * e / e_sum
+
+            # Update Y on active rows with elementwise max
+            y_active = y[:, active]
+            np.maximum(y_active, val, out=y_active)
+            y[:, active] = y_active
+
+            # Advance the Poisson times and radii for active rows only
+            t[active] += rng.exponential(scale=1.0, size=m)
+            r[active] = c_th * (t[active] ** (-self.theta))
+
+        # Map max stable representation to uniforms:
+        # U_i = exp( - Y_i^{-1/theta} )
+        u = np.exp(-(y ** (-inv_theta)))
+        return u
+
+    def generate(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate samples from the Galambos copula.
+
+        Exact algorithm based on the max stable / reciprocal Archimedean
+        representation in Mai (2018).
+
+        Mai, Jan-Frederik. "Exact Simulation of Reciprocal Archimedean Copulas."
+        Statistical Probability Letters (2018). arXiv preprint arXiv:1802.09996
+
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+
+        Returns:
+            ProteusVariable with StochasticScalar values representing samples from the
+            Galambos copula.
+        """
+        return self._generate_base(n_sims, rng)
+
+
+class PlackettCopula(Copula):
+    r"""A class to represent a Plackett copula.
+
+    The Plackett copula is a bivariate copula that can model both positive and
+    negative dependence between two random variables. It is characterized by a
+    single parameter, :math:`\delta > 0`, which controls the strength and
+    direction of the dependence.
+
+    The bivariate cumulative distribution function is:
+
+    .. math::
+
+        C(u, v) = \frac{S - \sqrt{S^2 - 4uv\delta(\delta-1)}}{2(\delta-1)}
+
+    where :math:`S = 1 + (u+v)(\delta-1)` and :math:`\delta \neq 1`. When
+    :math:`\delta = 1`, the copula reduces to the independence copula.
+
+    Currently, only the bivariate case is implemented for the Plackett copula.
+
+    References:
+        Plackett, R. L. (1965). A class of bivariate distributions. Journal of the
+        American Statistical Association, 60(310), 516-522.
+    """
+
+    dimension: int = 2
+
+    def __init__(self, delta: float) -> None:
+        """Initialize a Plackett copula.
+
+        Args:
+            delta: Copula parameter (must be > 0).
+        """
+        if delta <= 0:
+            raise ValueError("Delta must be in the range (0, inf)")
+        self.delta = delta
+
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Generate samples from the Plackett copula.
+
+        Args:
+            n_sims: Number of samples.
+            rng : RandomGenerator, optional
+            Random generator.
+
+        Returns:
+        u : ndarray, shape (2, n)
+            Samples on (0, 1)^2 with Plackett copula.
+        """
+        u = rng.uniform(0, 1, size=(n_sims))
+        w = rng.uniform(0, 1, size=(n_sims))
+        if self.delta == 1:
+            v = w
+            return np.vstack((u, v))
+        a = w * (1 - w)
+        delta = self.delta
+        b = delta + a * (delta - 1) ** 2
+        c = 2 * a * (u * delta**2 + 1 - u) + delta * (1 - 2 * a)
+        d = np.sqrt(delta * (delta + 4 * a * u * (1 - u) * (1 - delta) ** 2))
+        v = (c - (1 - 2 * w) * d) / (2 * b)
+
+        return np.vstack((u, v))
+
+    def generate(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate samples from the Plackett copula.
+
+        This uses the exact simulation algorithm for the Plackett copula from Johnson
+        (1987).
+
+        References:
+        Johnson ME (1987) Multivariate Statistical Simulation. J. Wiley & Sons, New York
+
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+
+        Returns:
+            ProteusVariable with StochasticScalar values representing samples from the
+            Plackett copula.
+        """
+        return self._generate_base(n_sims, rng)
+
+
+def _sibuya_gen(alpha: float, size: int | tuple[int, ...], rng: RandomGenerator) -> npt.NDArray[np.floating]:
+    """Generate samples from a Sibuya distribution.
+
+    Parameters:
+        alpha (float): Parameter for the Sibuya distribution.
+        size (int or tuple): Output shape.
+        rng (RandomGenerator): Random number generator.
+
+    Returns:
+        np.ndarray: Samples from a Sibuya distribution.
+    """
+    g1 = rng.gamma(alpha, 1, size=size)
+    g2 = rng.gamma(1 - alpha, 1, size=size)
+    r = g2 / g1
+    e = rng.exponential(1, size=size)
+    u = r * e
+    return (1 + rng.poisson(u, size=size)).astype(np.float64)
+
+
+class HuslerReissCopula(Copula):
+    r"""A class to represent a Hüsler-Reiss copula.
+
+    The Hüsler-Reiss copula is an example of a multivariate extreme value copula,
+    which is suited for modeling upper tail dependence between
+    random variables and allows for a flexible specification of tail dependency
+    for each bivariate pair of variables.
+
+    The bivariate cumulative distribution function (CDF) of the Hüsler-Reiss
+    copula is given by:
+
+    .. math::
+
+        \begin{aligned}
+        C(u_i, u_j)
+          &= \exp\Bigg\{
+              \ln u_i \, \Phi\!\left(
+                  \lambda_{ij}
+                  + \frac{1}{2\lambda_{ij}}
+                    \ln\!\left(\frac{-\ln u_i}{-\ln u_j}\right)
+              \right) \\
+          &\qquad\quad +
+              \ln u_j \, \Phi\!\left(
+                  \lambda_{ij}
+                  + \frac{1}{2\lambda_{ij}}
+                    \ln\!\left(\frac{-\ln u_j}{-\ln u_i}\right)
+              \right)
+            \Bigg\}
+        \end{aligned}
+
+    where :math:`\Phi` is the standard normal CDF and :math:`\lambda_{ij}` is the parameter
+    controlling the dependence between the two variables.
+
+    Its dependence structure is characterized by a matrix :math:`\lambda_{ij}`
+    which controls the strength of the upper tail dependence between each pair
+    of variables. Lower values in the matrix correspond to stronger dependence.
+
+    The upper tail dependence coefficient between any pair of variables
+    :math:`i` and :math:`j` in the Hüsler-Reiss copula is given by:
+
+    .. math::
+
+        \chi_{ij} = 2\left(1 - \Phi(\lambda_{ij})\right)
+
+    where :math:`\Phi` is the standard normal CDF and :math:`\lambda_{ij}` are
+    the elements of the lambda matrix.
+
+    References:
+        Hüsler, J., & Reiss, R. D. (1989). Maxima of normal random vectors: between
+        independence and complete dependence. Statistics & Probability Letters,
+        7(4), 283-286.
+    """
+
+    is_adjusted: bool = False
+    """Indicates whether the provided lambda matrix was adjusted to ensure validity."""
+    dimension: int
+    """The dimension of the copula."""
+    adjusted_lambda_matrix: npt.NDArray[np.floating]
+    """The adjusted lambda matrix after ensuring validity."""
+
+    def __init__(
+        self,
+        lambda_matrix: npt.NDArray[np.floating] | list[list[float]],
+    ) -> None:
+        r"""Initialize a Hüsler-Reiss copula.
+
+        Its dependence structure is characterized by a matrix :math:`\Lambda_{ij}`
+        which controls the strength of the upper tail dependence between each pair
+        of variables. Lower values in the matrix correspond to stronger dependence.
+
+        The upper tail dependence coefficient between any pair of variables
+        :math:`i` and :math:`j` in the Hüsler-Reiss copula is given by:
+
+        .. math::
+
+            \chi_{ij} = 2\left(1 - \Phi(\lambda_{ij})\right)
+
+        where :math:`\Phi` is the standard normal CDF.
+
+        The parameters :math:`\lambda_{ij}` must be non-negative, and the matrix
+        must be symmetric. The diagonal elements :math:`\lambda_{ij}` must always
+        be zero. Values of :math:`\lambda_{ij}` are capped at 100 to avoid
+        numerical issues during simulation.
+
+        The matrix :math:`\lambda_{ij}` must satisfy certain conditions to ensure
+        it corresponds to a valid Hüsler-Reiss copula. In particular, the matrix
+        must be conditionally negative definite. That is, its square must correspond
+        to a valid variogram of a random field :math:`Z_j`:
+
+        .. math::
+
+            \lambda_{ij}^2 = \frac{1}{4}\left(
+                \operatorname{Var}(Z_i) + \operatorname{Var}(Z_j)
+                - 2\operatorname{Cov}(Z_i, Z_j)
+            \right)
+
+        This is checked during initialization by attempting to construct a valid
+        covariance matrix for the random process :math:`Z_i` from the provided
+        :math:`\lambda_{ij}` matrix.
+
+        If the provided matrix does not satisfy these conditions, it is adjusted
+        to the nearest valid matrix by modifying the eigenvalues of the corresponding
+        covariance matrix. The `is_adjusted` attribute will be set to True in this
+        case.
+
+        References:
+            Hüsler, J., & Reiss, R. D. (1989). Maxima of normal random vectors: between
+            independence and complete dependence. Statistics & Probability Letters,
+            7(4), 283-286.
+
+        Args:
+            lambda_matrix: Symmetric matrix :math:`\lambda_{ij}` determining the
+                pairwise dependency between variables.
+        """
+        lambda_matrix = t.cast(npt.NDArray[np.floating], np.asarray(lambda_matrix))
+        if lambda_matrix.ndim != 2 or lambda_matrix.shape[0] != lambda_matrix.shape[1]:  # type: ignore[union-attr]
+            raise ValueError("Parameter matrix must be square")
+        if lambda_matrix.min() < 0.0:  # type: ignore[union-attr]
+            raise ValueError("Matrix values must be non-negative")
+        if not np.allclose(lambda_matrix, lambda_matrix.T):  # type: ignore[union-attr]
+            raise ValueError("Matrix must be symmetric")
+        if not np.allclose(np.diag(lambda_matrix), 0.0):  # type: ignore[union-attr]
+            raise ValueError("Matrix diagonal must be zero")
+
+        # calculate the covariance matrix from the lambda matrix
+        d = lambda_matrix.shape[0]  # type: ignore[union-attr]
+        np.clip(lambda_matrix, a_min=0, a_max=100, out=lambda_matrix)  # type: ignore[arg-type]
+        # pivot on the first variable to construct a covariance matrix
+        # consistent with the variogram defined by lambda_matrix squared
+        covariance_matrix = 2 * (lambda_matrix[0] ** 2 + lambda_matrix[:, 0, None] ** 2 - lambda_matrix**2)  # type: ignore[index,operator]
+        covariance_sub = covariance_matrix[1:, 1:]
+        vals, vecs = np.linalg.eigh(covariance_sub)
+        if vals.min() < 1e-6:
+            covariance_sub = vecs @ np.diag(np.clip(vals, a_min=1e-6, a_max=None)) @ vecs.T
+            self.is_adjusted = True
+        try:
+            chol_sub = np.linalg.cholesky(covariance_sub)
+            self._chol = np.zeros((d, d))
+            self._chol[1:, 1:] = chol_sub
+        except np.linalg.LinAlgError as e:
+            raise ValueError("Could not construct a valid correlation matrix") from e
+        covariance_matrix = self._chol @ self._chol.T
+        self.dimension = d
+        self.adjusted_lambda_matrix = (
+            np.sqrt(np.diag(covariance_matrix) + np.diag(covariance_matrix)[:, None] - 2 * covariance_matrix) / 2
+        )
+
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Exact simulation from a d-dimensional Hüsler-Reiss copula.
+
+        See Dombry-Engelke-Oesting (2016), Algorithm 2 (spectral measure on the
+        L1-sphere; numbered Algorithm 1 in arXiv:1506.04430v1).
+
+        References:
+        Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
+        processes. Biometrika 103, no. 2 (2016): 303-17.
+
+        Args:
+            n_sims : int
+                Number of samples to generate.
+            rng : RandomGenerator.
+
+        Returns:
+            u : (d,n) ndarray
+                Samples from the Hüsler–Reiss copula.
+        """
+        d = self.dimension
+
+        # Cholesky for Gaussian simulation
+        chol = self._chol
+        # Precompute variogram appearing in Proposition 4 / Remark 2
+        h = 2 * (self.adjusted_lambda_matrix**2)
+
+        # Z will hold the unit Fréchet max-stable vector
+        z = np.zeros((n_sims, d), dtype=float)
+
+        # Poisson process in 1/zeta with rate = d (Alg. 2 in Biometrika: Exp(N))
+        # So scale = 1 / rate = 1/d
+        zeta_inv = rng.exponential(scale=1.0 / d, size=n_sims)
+        zeta = 1.0 / zeta_inv
+
+        # Track which simulations are still active (have not met stopping criterion)
+        active = np.ones(n_sims, dtype=bool)
+
+        while np.any(active):
+            # Active indices
+            idx = np.where(active)[0]
+
+            # Stopping rule: while zeta > min_j Z_j for each simulation
+            min_z = z[idx].min(axis=1)
+            still_active = zeta[idx] > min_z
+
+            if not np.any(still_active):
+                break
+
+            idx = idx[still_active]
+            na = idx.size
+
+            # 1. Sample anchor indices T ~ Uniform{0,...,d-1}
+            integers = getattr(rng, "integers", getattr(rng, "randint", None))
+            if integers is None:
+                raise TypeError("Random number generator must provide integers or randint")
+            t = integers(low=0, high=d, size=na)
+
+            # 2. Sample Gaussian W ~ N(0, sigma^2 * R) for active sims
+            g = rng.standard_normal(size=(na, d))
+            w = g @ chol.T  # shape (na, d)
+
+            # 3. Construct Y according to P_{x_T} (Proposition 4 / Remark 2):
+            #  Y_j = exp( W_j - W_T - H_{j,T} ) with H_{j,T} = sigma^2 * (1 - R_{j,T}).
+            w_anchor = w[np.arange(na), t]  # (na,)
+            h_for_t = h[:, t].T  # (na, d), row r: H_{j, T_r}
+
+            logy = w - w_anchor[:, None] - h_for_t
+            y = np.exp(logy)  # shape (na, d)
+
+            # 4. Normalize onto the L1-sphere
+            y_sum = y.sum(axis=1, keepdims=True)
+            y /= y_sum
+
+            # 5. Update max-stable vector Z = max(Z, zeta * Y)
+            contrib = zeta[idx][:, None] * y
+            z[idx] = np.maximum(z[idx], contrib)
+
+            # 6. Next Poisson point: zeta^{-1} += Exp(rate = d)
+            e = rng.exponential(scale=1.0 / d, size=na)
+            zeta_inv[idx] += e
+            zeta[idx] = 1.0 / zeta_inv[idx]
+
+            # Update active mask for next round
+            min_z_new = z[idx].min(axis=1)
+            active[idx] = zeta[idx] > min_z_new
+
+        # Transform to unit uniform margins: U = exp(-1/Z)
+        u = np.exp(-1.0 / z)
+        return u.T
+
+    @property
+    def tail_dependence_matrix(self) -> npt.NDArray[np.floating]:
+        r"""Calculate the upper tail dependence matrix for the Hüsler-Reiss copula.
+
+        The upper tail dependence coefficient between any pair of variables
+        :math:`i` and :math:`j` in the Hüsler-Reiss copula is given by:
+
+        .. math::
+
+            \chi_{ij} = 2\left(1 - \Phi(\lambda_{ij})\right)
+
+        where :math:`\Phi` is the standard normal CDF.
+
+        Returns:
+            npt.NDArray[np.floating]: A 2D array representing the upper tail dependence
+            coefficients between each pair of variables.
+        """
+        lambda_matrix = self.adjusted_lambda_matrix
+        tail_dependence_matrix = np.asarray(2.0 * (1.0 - scipy.stats.norm.cdf(asnumpy(lambda_matrix))))
+
+        return tail_dependence_matrix
+
+    @staticmethod
+    def calculate_lambda_from_tail_dependence(
+        tail_dependence_matrix: npt.NDArray[np.floating],
+    ) -> npt.NDArray[np.floating]:
+        r"""Calculate the lambda matrix from a given upper tail dependence matrix.
+
+        The upper tail dependence coefficient between any pair of variables
+        :math:`i` and :math:`j` in the Hüsler-Reiss copula is given by:
+
+        .. math::
+
+            \chi_{ij} = 2\left(1 - \Phi(\lambda_{ij})\right)
+
+        where :math:`\Phi` is the standard normal CDF.
+
+        This method inverts the above relationship to compute the lambda matrix from
+        the provided upper tail dependence coefficients.
+
+        .. math::
+
+            \lambda_{ij} = \Phi^{-1}\left(1 - \frac{\chi_{ij}}{2}\right)
+
+        where :math:`\Phi^{-1}` is the inverse standard normal CDF.
+
+        Args:
+            tail_dependence_matrix (npt.NDArray[np.floating]): A 2D array
+                representing the upper tail dependence coefficients between
+                each pair of variables.
+
+        Returns:
+            npt.NDArray[np.floating]: A 2D array representing the lambda matrix
+            corresponding to the given upper tail dependence coefficients.
+        """
+        chi_ij = tail_dependence_matrix
+        lambda_matrix = np.asarray(scipy.stats.norm.ppf(1.0 - asnumpy(chi_ij) / 2.0))
+
+        return lambda_matrix
+
+    @classmethod
+    def from_tail_dependence_matrix(cls, tail_dependence_matrix: npt.NDArray[np.floating]) -> HuslerReissCopula:
+        r"""Create a Hüsler-Reiss copula from a given upper tail dependence matrix.
+
+        The upper tail dependence coefficient between any pair of variables
+        :math:`i` and :math:`j` in the Hüsler-Reiss copula is given by:
+
+        .. math::
+
+            \chi_{ij} = 2\left(1 - \Phi(\lambda_{ij})\right)
+
+        where :math:`\Phi` is the standard normal CDF.
+
+        Args:
+            tail_dependence_matrix (npt.NDArray[np.floating]): A 2D array
+                representing the upper tail dependence coefficients between
+                each pair of variables.
+
+        Returns:
+            HuslerReissCopula: An instance of the Hüsler-Reiss copula initialized
+            with the lambda matrix corresponding to the given upper tail
+            dependence coefficients.
+        """
+        lambda_matrix = cls.calculate_lambda_from_tail_dependence(tail_dependence_matrix)
+        return cls(lambda_matrix)
+
+    def generate(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate samples from the Hüsler-Reiss copula.
+
+        The simulation uses the exact algorithm from Dombry-Engelke-Oesting (2016)
+
+        References:
+        Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
+        processes. Biometrika 103, no. 2 (2016): 303-17.
+
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+
+        Returns:
+            ProteusVariable with StochasticScalar values representing samples from the
+            Hüsler-Reiss copula.
+        """
+        return self._generate_base(n_sims, rng)
+
+
+class ExtremalTCopula(Copula):
+    r"""A class to represent an Extremal-t copula.
+
+    The Extremal-t copula, also known as the t-EV copula, is an example of a
+    multivariate extreme value copula, which is suited for modeling upper tail
+    dependence between random variables.
+
+    The bivariate cumulative distribution function (CDF) of the Extremal-t copula is
+    given by:
+
+    .. math::
+
+        \begin{aligned}
+        C(u_i, u_j)
+          &= \exp\Bigg\{
+              \ln u_i \, t_{\nu+1}\!\left(
+                  \sqrt{\frac{\nu+1}{1-\rho_{ij}^2}}
+                  \left[
+                      \left(\frac{-\ln u_i}{-\ln u_j}\right)^{1/\nu}
+                      - \rho_{ij}
+                  \right]
+              \right) \\
+          &\qquad\quad +
+              \ln u_j \, t_{\nu+1}\!\left(
+                  \sqrt{\frac{\nu+1}{1-\rho_{ij}^2}}
+                  \left[
+                      \left(\frac{-\ln u_j}{-\ln u_i}\right)^{1/\nu}
+                      - \rho_{ij}
+                  \right]
+              \right)
+            \Bigg\}.
+        \end{aligned}
+
+    Its dependence structure is characterized by a correlation matrix and a degrees
+    of freedom parameter :math:`\nu > 0`, which controls the strength of the
+    upper tail dependence.
+
+    The upper tail dependence coefficient between any pair of variables :math:`i`
+    and :math:`j` in the Extremal-t copula is given by:
+
+    .. math::
+
+        \lambda_{ij} = 2 \, t_{\nu+1}\left(-\sqrt{
+        \frac{(\nu+1)(1-\rho_{ij})}{1+\rho_{ij}}}\right)
+
+    where :math:`t_{\nu+1}` is the CDF of a univariate t-distribution with
+    :math:`\nu+1` degrees of freedom and :math:`\rho_{ij}` is the correlation
+    between variables :math:`i` and :math:`j`.
+
+    The lower tail dependence coefficient is zero for all pairs of variables.
+
+    References:
+        Nikoloulopoulos, A. K., Joe, H., & Li, H. (2009). Extreme value properties of
+        multivariate t copulas. Extremes, 12(2), 129-148.
+    """
+
+    def __init__(
+        self,
+        correlation_matrix: npt.NDArray[np.floating],
+        nu: float,
+    ) -> None:
+        """Initialize an Extremal-t copula.
+
+        Args:
+            correlation_matrix: Correlation matrix determining the pairwise
+                dependency between variables. Must be positive
+                semi-definite. Note that only the lower diagonal of this matrix is used.
+            nu: Degrees of freedom parameter (must be > 0).
+        """
+        if nu <= 0:
+            raise ValueError("Degrees of freedom nu must be in the range (0, inf)")
+        self.correlation_matrix = np.asarray(correlation_matrix)
+        # validate correlation matrix
+        if self.correlation_matrix.ndim != 2 or (self.correlation_matrix.shape[0] != self.correlation_matrix.shape[1]):
+            raise ValueError("Correlation matrix must be square")
+        if self.correlation_matrix.min() < -1.0 or self.correlation_matrix.max() > 1.0:
+            raise ValueError("Correlation matrix values must be in the range [-1, 1]")
+        if not np.allclose(np.diag(self.correlation_matrix), 1.0):
+            raise ValueError("Correlation matrix diagonal must be all ones")
+        self.nu = nu
+        self.dimension = correlation_matrix.shape[0]
+
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Exact simulation of the t-EV copula.
+
+        See Dombry-Engle-Oesting (2016).
+
+        References:
+        Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
+        processes. Biometrika 103, no. 2 (2016): 303-17.
+
+        """
+        d = self.correlation_matrix.shape[0]
+
+        conditional_cholesky: list[npt.NDArray[np.floating]] = []
+        conditional_mu: list[npt.NDArray[np.floating]] = []
+        conditional_mask: list[npt.NDArray[np.bool_]] = []
+        rho = self.correlation_matrix
+        nu = self.nu
+
+        for j in range(d):
+            rho_j = rho[:, j]
+
+            # Schur Complement: Sigma_cond = rho - rho_j * rho_j^T
+            sigma_cond_full = rho - np.outer(rho_j, rho_j)
+
+            # Drop j-th row/col to avoid singularity
+            mask = np.ones(d, dtype=bool)
+            mask[j] = False
+
+            sigma_cond_sub = sigma_cond_full[mask][:, mask]
+
+            # Scale by (nu + 1)
+            covar_scaled = sigma_cond_sub / (nu + 1.0)
+
+            try:
+                l_sub = np.linalg.cholesky(covar_scaled)
+            except np.linalg.LinAlgError as e:
+                raise ValueError(
+                    "Could not compute Cholesky decomposition of "
+                    "conditional covariance matrix. "
+                    "Check that the correlation matrix is valid."
+                ) from e
+
+            conditional_cholesky.append(l_sub)
+            conditional_mu.append(rho_j)
+            conditional_mask.append(mask)
+
+        zeta = rng.exponential(1.0, size=n_sims)
+        chi_sq = rng.chisquare(df=nu + 1.0, size=(1, n_sims))
+
+        # Gaussian: Shape (d-1, n)
+        z_sub = rng.normal(size=(d - 1, n_sims))
+        normal_dev_sub = conditional_cholesky[0] @ z_sub
+
+        # Scale deviations
+        scale_factor = np.sqrt((nu + 1.0) / chi_sq)
+        x_sub = normal_dev_sub * scale_factor
+        x = np.zeros((d, n_sims))
+        x[0, :] = 1.0
+
+        # Broadcasting mu (d-1, 1) against x_sub (d-1, n)
+        mu_sub_0 = conditional_mu[0][conditional_mask[0]][:, np.newaxis]
+        x[conditional_mask[0], :] = mu_sub_0 + x_sub
+
+        y = np.maximum(0, x) ** nu
+        samp = y / zeta
+        for j in range(1, d):
+            # Boolean mask for active samples
+            active_mask = np.ones(n_sims, dtype=bool)
+            current_zeta = rng.exponential(1.0, size=n_sims)
+
+            # Unpack parameters for speed
+            l_sub = conditional_cholesky[j]
+            mask_j = conditional_mask[j]
+            # Prepare mu as column vector (d-1, 1)
+            mu_sub = conditional_mu[j][mask_j][:, np.newaxis]
+
+            while True:  # 'active_mask' check is done inside via indices
+                # Find running samples: (1/zeta > samp[j])
+                # Subset active arrays
+                # We work with indices to avoid copying the whole big mask
+                active_idx = np.flatnonzero(active_mask)
+
+                if active_idx.size == 0:
+                    break
+
+                # Check thresholds
+                thresholds = samp[j, active_idx]
+                intensities = 1.0 / current_zeta[active_idx]
+
+                still_running_mask = intensities > thresholds
+
+                # Identify samples to process in this batch
+                process_idx = active_idx[still_running_mask]
+
+                # Samples that stopped are removed from active_mask
+                finished_idx = active_idx[~still_running_mask]
+                active_mask[finished_idx] = False
+
+                n_proc = process_idx.size
+                if n_proc == 0:
+                    break
+
+                # --- Generate Y anchored at j ---
+
+                # 1. Chi-Square & Normal
+                chi_sq_j = rng.chisquare(df=nu + 1.0, size=(1, n_proc))
+                z_sub_j = rng.normal(size=(d - 1, n_proc))
+
+                # 2. Cholesky & Scale
+                normal_dev = l_sub @ z_sub_j
+                scale_j = np.sqrt((nu + 1.0) / chi_sq_j)
+                x_sub_j = normal_dev * scale_j
+
+                # 3. Construct X_j (d, n_proc)
+                x_j = np.zeros((d, n_proc))
+                x_j[j, :] = 1.0
+                x_j[mask_j, :] = mu_sub + x_sub_j
+
+                # 4. Spectral Function Y
+                y_j = np.maximum(0, x_j) ** nu
+
+                # --- Acceptance Check (0...j-1) ---
+
+                # Candidates: Y_j / zeta
+                zeta_proc = current_zeta[process_idx]
+                candidates = y_j / zeta_proc
+
+                # Current values for indices 0 to j-1
+                currents = samp[0:j, process_idx]
+                cand_check = candidates[0:j, :]
+
+                # Violation: any(candidate > current) along dim 0
+                violation = np.any(cand_check >= currents, axis=0)
+
+                accepted_batch_mask = ~violation
+
+                if np.any(accepted_batch_mask):
+                    # Indices in the full array
+                    final_acc_idx = process_idx[accepted_batch_mask]
+
+                    # Accepted values
+                    acc_cand = candidates[:, accepted_batch_mask]
+                    acc_curr = samp[:, final_acc_idx]
+
+                    # Update Maxima (all dimensions 0..d)
+                    samp[:, final_acc_idx] = np.maximum(acc_curr, acc_cand)
+
+                # Increment Poisson Process
+                current_zeta[process_idx] += rng.exponential(1.0, size=n_proc)
+
+        # --- 5. Final Transform ---
+        # Transpose back to (n_samples, d) for standard format
+        # exp(-1/z)
+        return np.exp(-1.0 / samp)
+
+    def generate(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate samples from the Extremal-t copula.
+
+        The simulation uses the exact algorithm from Dombry et al. (2016).
+
+        References:
+        Nikoloulopoulos, A. K., Joe, H., & Li, H. (2009). Extreme value properties of
+        multivariate t copulas. Extremes, 12(2), 129-148.
+        Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
+        processes. Biometrika 103, no. 2 (2016): 303-17.
+
+
+        Args:
+            n_sims: Number of simulations to generate. Uses config.n_sims if None.
+            rng: Random number generator. Uses config.rng if None.
+
+        Returns:
+            ProteusVariable with StochasticScalar values representing samples from the
+            Extremal-t copula.
+        """
+        return self._generate_base(n_sims, rng)
+
+    @classmethod
+    def from_tail_dependence_matrix(
+        cls,
+        tail_dependence_matrix: npt.NDArray[np.floating],
+        nu: float,
+    ) -> ExtremalTCopula:
+        r"""Create an Extremal-t copula from a given upper tail dependence matrix.
+
+        The upper tail dependence coefficient between any pair of variables
+        :math:`i` and :math:`j` in the Extremal-t copula is given by:
+
+        .. math::
+
+            \chi_{ij} = 2 \, t_{\nu+1}\left(-\sqrt{
+            \frac{(\nu+1)(1-\rho_{ij})}{1+\rho_{ij}}}\right)
+
+        where :math:`t_{\nu+1}` is the CDF of a univariate t-distribution with
+        :math:`\nu+1` degrees of freedom and :math:`\rho_{ij}` is the correlation
+        between variables :math:`i` and :math:`j`.
+
+        This method inverts the above relationship to compute the correlation matrix
+        from the provided upper tail dependence coefficients.
+
+        Args:
+            tail_dependence_matrix (npt.NDArray[np.floating]): A 2D array
+                representing the upper tail dependence coefficients between
+                each pair of variables.
+            nu: Degrees of freedom parameter (must be > 0).
+
+        Returns:
+            ExtremalTCopula: An instance of the Extremal-t copula initialized
+            with the correlation matrix corresponding to the given upper tail
+            dependence coefficients.
+        """
+        chi_ij = tail_dependence_matrix
+        inv_t = np.asarray(scipy.stats.t.ppf(1 - asnumpy(chi_ij) / 2.0, df=nu + 1.0))
+        rho_matrix = -((inv_t**2) / (nu + 1.0) - 1) / ((inv_t**2) / (nu + 1.0) + 1)
+        np.fill_diagonal(rho_matrix, 1.0)
+        return cls(rho_matrix, nu)
+
+
+def apply_copula(
+    variables: ProteusVariable[StochasticScalar] | list[StochasticScalar],
+    copula_samples: ProteusVariable[StochasticScalar] | list[StochasticScalar],
+) -> None:
+    """Apply a reordering from a copula to a list of variables.
+
+    Parameters:
+        variables: List of StochasticScalar variables.
+        copula_samples: List of StochasticScalar samples from the copula.
+    """
+    if len(variables) != len(copula_samples):
+        raise ValueError("Number of variables and copula samples do not match.")
+    variables_list = list(variables)
+
+    # Check independence of variables
+    for i, var1 in enumerate(variables_list):
+        for j, var2 in enumerate(variables_list[i + 1 :]):
+            if var1.coupled_variable_group is var2.coupled_variable_group:
+                raise ValueError(
+                    f"Cannot apply copula as the variables at positions {i} and {j + i + 1} are not independent"
+                )
+
+    # Get sort indices and ranks
+    copula_sort_indices = np.argsort(np.array([cs.values for cs in copula_samples]), axis=1, kind="stable")
+    copula_ranks = np.empty_like(copula_sort_indices)
+    copula_ranks[np.arange(len(copula_samples))[:, np.newaxis], copula_sort_indices] = np.arange(
+        copula_sort_indices.shape[1]
+    )
+    variable_sort_indices = np.argsort(np.array([var.values for var in variables]), axis=1)
+    first_variable_rank = np.empty_like(variable_sort_indices[0])
+    first_variable_rank[variable_sort_indices[0]] = np.arange(variable_sort_indices.shape[1])
+    copula_ranks = copula_ranks[:, copula_sort_indices[0, first_variable_rank]]
+
+    # Apply reordering
+    for i, var in enumerate(variables):
+        if i == 0:
+            continue
+        re_ordering = variable_sort_indices[i, copula_ranks[i]]
+        for var2 in var.coupled_variable_group:
+            # FIXME: _reorder_sims is a protected method but we need to access it here
+            # for copula reordering functionality. Consider making this method public
+            # or providing a public interface for reordering simulations across
+            # coupled variable groups.
+            var2._reorder_sims(re_ordering)  # type: ignore[misc]
+
+    # Merge coupling groups
+    for var in variables:
+        var.coupled_variable_group.merge(variables[0].coupled_variable_group)

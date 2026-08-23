@@ -1,0 +1,23 @@
+{% extends "!layout.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  <style>
+    /*
+     * Furo right-aligns its fixed-width sidebar container inside a wider
+     * sidebar drawer on desktop.  The search box therefore looks shifted to
+     * the right if it is sized only against the inner container.  Make the
+     * drawer a size container, then let the search area span the drawer while
+     * retaining the existing 1rem horizontal padding from proteus.css.
+     */
+    .sidebar-drawer {
+      container-type: inline-size;
+    }
+
+    .sidebar-search-container {
+      position: relative;
+      left: calc(100% - 100cqw);
+      width: 100cqw;
+    }
+  </style>
+{% endblock %}

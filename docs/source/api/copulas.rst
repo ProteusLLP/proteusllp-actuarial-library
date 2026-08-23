@@ -1,38 +1,61 @@
 Copulas
 =======
 
-The copulas module provides copula functions for modeling dependencies between stochastic variables.
+The copulas module provides copula models for dependence between stochastic variables. Each concrete copula has its own reference page.
 
-.. automodule:: pal.copulas
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Available Copulas
+Elliptical copulas
 -----------------
 
-The following copulas are available for modeling dependencies:
+.. autosummary::
+   :toctree: copulas
+   :nosignatures:
 
-- **GaussianCopula**: Gaussian (Normal) copula for modeling linear correlations
-- **GumbelCopula**: Gumbel copula for modeling upper tail dependence
-- **ClaytonCopula**: Clayton copula for modeling lower tail dependence
-- **FrankCopula**: Frank copula for symmetric dependence
-- **JoeCopula**: Joe copula for modeling upper tail dependence
-- **PlackettCopula**: Plackett copula for modeling symmetric dependencies
-- **GalambosCopula**: Galambos copula for modeling upper tail dependence
-- **HuslerReissCopula**: Hüsler-Reiss copula for flexible upper tail dependence structures
-- **MM1Copula**: Mixture of max-id copulas for flexible upper tail dependence structures
+   pal.copulas.GaussianCopula
+   pal.copulas.StudentsTCopula
 
-Usage Example
+Archimedean copulas
+-------------------
+
+.. autosummary::
+   :toctree: copulas
+   :nosignatures:
+
+   pal.copulas.ClaytonCopula
+   pal.copulas.GumbelCopula
+   pal.copulas.FrankCopula
+   pal.copulas.JoeCopula
+
+Extreme-value and other copulas
+-------------------------------
+
+.. autosummary::
+   :toctree: copulas
+   :nosignatures:
+
+   pal.copulas.GalambosCopula
+   pal.copulas.HuslerReissCopula
+   pal.copulas.ExtremalTCopula
+   pal.copulas.MM1Copula
+   pal.copulas.PlackettCopula
+
+Supporting API
+--------------
+
+.. autosummary::
+   :nosignatures:
+
+   pal.copulas.Copula
+   pal.copulas.EllipticalCopula
+   pal.copulas.ArchimedeanCopula
+
+Usage example
 -------------
 
 .. code-block:: python
 
-   from pal import distributions, copulas
+   from pal import copulas, distributions
 
-   # Create independent variables
    var1 = distributions.Gamma(alpha=2.5, theta=2).generate()
    var2 = distributions.LogNormal(mu=1, sigma=0.5).generate()
 
-   # Apply Gumbel copula to create dependency
-   copulas.GumbelCopula(theta=1.2, n=2).apply([var1, var2])
+   copulas.GumbelCopula(theta=1.2).apply([var1, var2])

@@ -13,6 +13,7 @@ Proteus Actuarial Library.
 """
 
 import numpy as np
+
 from pal import ProteusVariable, StochasticScalar, config, distributions
 from pal import maths as pnp
 
@@ -42,8 +43,7 @@ class ODPModel:
         self.origin_periods = [str(i) for i in range(1, self.n + 1)]
         self.dev_periods = [str(j) for j in range(1, self.n + 1)]
         self.future_dev_periods = {
-            str(op): [str(j) for j in range(self.n - op + 2, self.n + 1)]
-            for op in range(1, self.n + 1)
+            str(op): [str(j) for j in range(self.n - op + 2, self.n + 1)] for op in range(1, self.n + 1)
         }
 
     # ---------------------------------------------------------
@@ -73,9 +73,7 @@ class ODPModel:
         cumulative_beta_hat = 1 / tail
 
         beta_hat = np.diff(cumulative_beta_hat, prepend=0)
-        mu_hat = np.array(
-            [cumtri[i, n - i - 1] / (cumulative_beta_hat[n - i - 1]) for i in range(n)]
-        )
+        mu_hat = np.array([cumtri[i, n - i - 1] / (cumulative_beta_hat[n - i - 1]) for i in range(n)])
         m_hat = np.outer(mu_hat, beta_hat)
 
         num = np.sum(((m_hat - self.triangle) ** 2 / m_hat)[self.obs_mask])
@@ -91,9 +89,7 @@ class ODPModel:
         n, phi = self.n, self.phi
         cumtri = self.cumtri
         d_i = np.nansum(self.triangle, axis=1) / phi  # the scaled origin period totals
-        c_j = (
-            np.nansum(self.triangle, axis=0) / phi
-        )  # the scaled development period totals
+        c_j = np.nansum(self.triangle, axis=0) / phi  # the scaled development period totals
         d_ij = cumtri / phi
         # column sums of d_ij not including the diagonal
         sum_dij = [np.sum(d_ij[: n - j, j - 1]) for j in range(1, n)]
@@ -104,11 +100,7 @@ class ODPModel:
         psi_vars = [StochasticScalar([1])]  # ψ₁ = 1
         for j in range(1, n):
             a_j, b_j = 0.0, 1.0
-            psi_vars.append(
-                distributions.Beta(
-                    a_j + float(c_j[j]), b_j + float(sum_dij[j - 1])
-                ).generate()
-            )
+            psi_vars.append(distributions.Beta(a_j + float(c_j[j]), b_j + float(sum_dij[j - 1])).generate())
         psi = ProteusVariable("dp", {str(dp + 1): psi_vars[dp] for dp in range(n)})
 
         # β_j recursively from ψ
@@ -214,9 +206,7 @@ if __name__ == "__main__":
     import pandas as pd
     import plotly.graph_objects as go
 
-    triangle = pd.read_csv(
-        "data/reserve_risk/claims_triangle.csv", index_col=0
-    ).to_numpy()
+    triangle = pd.read_csv("data/reserve_risk/claims_triangle.csv", index_col=0).to_numpy()
 
     model = ODPModel(triangle)
     model.simulate_reserves()

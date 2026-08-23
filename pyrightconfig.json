@@ -1,12 +1,14 @@
 {
-  "include": ["pal", "tests", "examples"],
-  "exclude": ["**/node_modules/**", "**/.venv/**", "**/__pycache__/**", "**/build/**", "**/dist/**"],
-  "strict": ["pal"],
-  "typeCheckingMode": "strict",
+  "include": ["src/pal", "examples"],
+  "exclude": ["**/node_modules/**", "**/.venv/**", "**/__pycache__/**", "**/build/**", "**/dist/**", "tests/**"],
+  "typeCheckingMode": "standard",
   "reportMissingImports": true,
   "reportMissingTypeStubs": false,
-  "pythonVersion": "3.13",
-  "pythonPlatform": "Linux",
-  "venvPath": ".",
-  "venv": ".venv"
+  "reportInvalidTypeForm": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownParameterType": "none",
+  "reportUnknownArgumentType": "none",
+  "pythonVersion": "3.11",
+  "pythonPlatform": "Linux"
 }

@@ -2,6 +2,8 @@ import math
 
 import numpy as np
 import pandas as pd  # type: ignore
+
+import pal.maths as pnp
 from pal import config, distributions
 from pal.variables import FreqSevSims, ProteusVariable
 
@@ -30,10 +32,8 @@ inflation_rate = distributions.Normal(0.05, 0.02).generate()
 
 scaled_cat_losses_by_lob = cat_losses * (1 + inflation_rate)
 
-scaled_cat_losses = sum(scaled_cat_losses_by_lob)
+scaled_cat_losses = scaled_cat_losses_by_lob.sum()
 
-recoveries: FreqSevSims = np.minimum(
-    np.maximum(scaled_cat_losses - 10000000, 0), 10000000
-)  # type: ignore[misc]
+recoveries = pnp.minimum(pnp.maximum(scaled_cat_losses - 10000000, 0), 10000000)
 
 recoveries.aggregate().show_cdf()
