@@ -15,6 +15,7 @@ Discrete distributions
    pal.distributions.Binomial
    pal.distributions.HyperGeometric
    pal.distributions.Bernoulli
+   pal.distributions.Empirical
 
 Continuous distributions
 ------------------------
@@ -44,6 +45,7 @@ Continuous distributions
    pal.distributions.InverseGaussian
    pal.distributions.GeneralizedInverseGaussian
    pal.distributions.Exponential
+   pal.distributions.HyperExponential
    pal.distributions.Uniform
    pal.distributions.InverseExponential
 
