@@ -138,7 +138,7 @@ print("=" * 70)
 
 def rank_corr(a: StochasticScalar, b: StochasticScalar) -> float:  # noqa: ANN001, ANN201
     """Compute rank correlation between two variables."""
-    return np.corrcoef(a.ranks.values, b.ranks.values)[0, 1]
+    return np.corrcoef(a.ranks, b.ranks)[0, 1]
 
 
 # --- 3a: Independent variables (no copula) ---
@@ -226,8 +226,8 @@ pairs = [
 for x_var, y_var, name, row, col in pairs:
     fig.add_trace(  # type: ignore[misc]
         go.Scattergl(
-            x=x_var.ranks.values.tolist(),
-            y=y_var.ranks.values.tolist(),
+            x=x_var.ranks,
+            y=y_var.ranks,
             name=name,
             **scatter_kwargs,
         ),
@@ -372,7 +372,7 @@ copulas.GaussianCopula(corr_matrix).apply(lob_list)
 # Check the resulting rank correlations.
 print("\n--- Rank correlation matrix after Gaussian copula ---")
 names = list(lobs.keys())
-ranks = np.array([lobs[name].ranks.values for name in names])
+ranks = np.array([lobs[name].ranks for name in names])
 rank_corr_matrix = np.corrcoef(ranks)
 print(f"{'':>12}", end="")
 for name in names:
