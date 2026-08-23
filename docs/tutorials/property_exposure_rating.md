@@ -110,7 +110,7 @@ There is no need for a custom severity class:
 
 ```python
 row_distribution = Empirical(
-    samples=xp.arange(len(exposures)),
+    samples=np.arange(len(exposures)),
     weights=frequencies,
 )
 
@@ -129,23 +129,25 @@ This is the only use of the empirical distribution. The claim severity itself is
 
 ## 4. Draw each severity from the selected row's MBBEFD distribution
 
-The row numbers select the MBBEFD parameter and policy terms for every simulated
-claim:
+The sampled row numbers are themselves claim-level stochastic values. PAL's
+`StochasticScalar` supports indexing one stochastic vector with another, so the
+row selection can be used directly to pick the policy terms and MBBEFD parameter:
 
 <!--pytest.mark.skip-->
 
 ```python
-row_index = claim_rows.values.astype(int)
+row_index = StochasticScalar(claim_rows.values)
 
-maximum_loss = xp.asarray(exposures["maximum_loss"].to_numpy())[row_index]
-policy_limit = xp.asarray(exposures["policy_limit"].to_numpy())[row_index]
-deductible = xp.asarray(exposures["policy_deductible"].to_numpy())[row_index]
-c = xp.asarray(exposures["mbbefd_c"].to_numpy())[row_index]
+maximum_loss = StochasticScalar(exposures["maximum_loss"].values)[row_index]
+policy_limit = StochasticScalar(exposures["policy_limit"].values)[row_index]
+deductible = StochasticScalar(exposures["policy_deductible"].values)[row_index]
+c = StochasticScalar(exposures["mbbefd_c"].values)[row_index]
 ```
 
-`MBBEFD` is vectorised, so the selected \(c\) values can be passed directly to
-`MBBEFD.from_c`. Each event therefore gets the correct row-specific distribution
-without any custom class or intermediate stochastic-parameter wrapper:
+`StochasticScalar` takes care of the active CPU or GPU backend and preserves the
+coupling created by the sampled row index. The selected \(c\) values can therefore
+be passed directly to `MBBEFD.from_c`, giving every event its row-specific damage
+ratio distribution:
 
 <!--pytest.mark.skip-->
 
