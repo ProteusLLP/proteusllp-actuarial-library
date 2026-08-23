@@ -157,6 +157,7 @@ copulas.GaussianCopula([[1.0, 0.8], [0.8, 1.0]]).apply([x_gauss, y_gauss])
 
 print("\n--- Gaussian copula (rho=0.8) ---")
 print(f"Rank correlation: {rank_corr(x_gauss, y_gauss):.4f}")
+
 # --- 3c: Gumbel copula (upper tail dependence) ---
 set_random_seed(42)
 x_gumbel = distributions.LogNormal(mu=10, sigma=1.0).generate()
