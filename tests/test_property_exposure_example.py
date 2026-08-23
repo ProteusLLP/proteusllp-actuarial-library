@@ -54,9 +54,7 @@ def test_property_exposure_row_selection_and_mbbefd_severity_workflow() -> None:
     )
 
     policy_losses = simulate_policy_losses(exposures, claim_rows)
-    selected_limits = xp.asarray(exposures["policy_limit"].to_numpy(dtype=float))[
-        row_index
-    ]
+    selected_limits = xp.asarray(exposures["policy_limit"].to_numpy(dtype=float))[row_index]
 
     assert policy_losses.n_sims == claim_rows.n_sims
     assert bool(xp.array_equal(policy_losses.sim_index, claim_rows.sim_index))
@@ -101,11 +99,13 @@ def test_property_exposure_row_selection_and_mbbefd_severity_workflow() -> None:
         rel=1e-8,
     )
 
-    layer_burn_rates = make_layer_burn_rates(tower, total_subject_premium)
-    assert set(layer_burn_rates) == {"5m xs 5m", "10m xs 10m", "20m xs 20m"}
-    assert all(
-        len(burn_rate) == claim_rows.n_sims for burn_rate in layer_burn_rates.values()
+    layer_burn_rates = make_layer_burn_rates(
+        tower,
+        policy_losses,
+        total_subject_premium,
     )
+    assert set(layer_burn_rates) == {"5m xs 5m", "10m xs 10m", "20m xs 20m"}
+    assert all(len(burn_rate) == claim_rows.n_sims for burn_rate in layer_burn_rates.values())
 
     severity_figure = make_claim_severity_figure(policy_losses)
     gross_burn_figure = make_gross_burn_rate_figure(
