@@ -1,7 +1,7 @@
 diff --git a/src/pal/stochastic_scalar.pyi b/src/pal/stochastic_scalar.pyi
 --- a/src/pal/stochastic_scalar.pyi
 +++ b/src/pal/stochastic_scalar.pyi
-@@ -5,6 +5,7 @@
+@@ -5,7 +5,8 @@
  import typing as t
  
  import numpy as np
@@ -10,7 +10,7 @@ diff --git a/src/pal/stochastic_scalar.pyi b/src/pal/stochastic_scalar.pyi
  
  from ._compat import Self
  from .couplings import CouplingGroup, ProteusStochasticVariable
-@@ -178,8 +179,10 @@
+@@ -170,7 +171,9 @@
      @t.overload
      def tvar(self, p: list[Numeric]) -> list[float]: ...
      def upsample(self, n_sims: int) -> Self: ...
