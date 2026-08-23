@@ -140,17 +140,16 @@ row_index = claim_rows.values.astype(int)
 maximum_loss = xp.asarray(exposures["maximum_loss"].to_numpy())[row_index]
 policy_limit = xp.asarray(exposures["policy_limit"].to_numpy())[row_index]
 deductible = xp.asarray(exposures["policy_deductible"].to_numpy())[row_index]
-c = StochasticScalar(xp.asarray(exposures["mbbefd_c"].to_numpy())[row_index])
+c = xp.asarray(exposures["mbbefd_c"].to_numpy())[row_index]
 ```
 
-The selected \(c\) values form an event-level stochastic parameter. PAL can pass
-that vector directly to `MBBEFD.from_c`, so a genuine MBBEFD damage ratio is
-drawn for every claim:
+`MBBEFD` is vectorised, so the selected \(c\) values can be passed directly to
+`MBBEFD.from_c`. Each event therefore gets the correct row-specific distribution
+without any custom class or intermediate stochastic-parameter wrapper:
 
 <!--pytest.mark.skip-->
 
 ```python
-c.coupled_variable_group.merge(claim_rows.coupled_variable_group)
 damage_ratio = MBBEFD.from_c(c).generate(len(row_index))
 
 policy_loss = np.minimum(
