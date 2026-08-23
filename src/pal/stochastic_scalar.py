@@ -69,7 +69,7 @@ class StochasticScalar(ProteusStochasticVariable):
                     values,
                     dtype=values.dtype,  # type: ignore
                 )
-                # Type ignore: Generic ArrayLike type inference limitation
+                # Type ignore: Generic array type inference limitation
                 self.n_sims = len(values)  # type: ignore[misc]
                 return
             raise ValueError("Values must be a 1D array.")
