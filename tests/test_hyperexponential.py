@@ -2,10 +2,10 @@
 
 import math
 
+import numpy as np
 import pytest
 
 from pal import HyperExponential, distributions
-from pal._maths import xp as np
 from pal.config import set_random_seed
 from pal.stochastic_scalar import StochasticScalar
 from tests._assertions import allclose
