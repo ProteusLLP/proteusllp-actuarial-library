@@ -208,7 +208,7 @@ All development work is done inside the devcontainer. VS Code provides native Ju
 
 - **Native VS Code integration** - No separate Jupyter server needed
 - **Live plots** displayed inline within VS Code
-- **Interactive debugging** - Full VS Code debugging support
+- **Interactive debugging** - Full VS Code debugging support in notebooks
 - **Integrated development** - IntelliSense, linting, and formatting work seamlessly
 - **GitHub rendering** - notebooks display with plots when viewed on GitHub
 
