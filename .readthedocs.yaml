@@ -18,28 +18,10 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.13"
-  apt_packages:
-    # Kaleido v1 uses a real Chromium process for Plotly image export. Read the
-    # Docs images are intentionally minimal, so install Chromium's runtime
-    # libraries explicitly rather than relying on packages present on GitHub's
-    # fuller Ubuntu runners.
-    - libasound2
-    - libatk-bridge2.0-0
-    - libcairo2
-    - libcups2
-    - libgbm1
-    - libnss3
-    - libpango-1.0-0
-    - libxcomposite1
-    - libxdamage1
-    - libxfixes3
-    - libxkbcommon0
-    - libxrandr2
   jobs:
     post_install:
       # Install the package itself to make autodoc work
       - pip install .
-      - plotly_get_chrome -y
 
 # Install Python dependencies
 python:
