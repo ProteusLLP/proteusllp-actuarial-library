@@ -19,7 +19,11 @@ jobs:
 
       - name: Reconstruct and apply patch
         run: |
+          wc -c .tmp/plot_patch_*.b64
+          sha256sum .tmp/plot_patch_*.b64
           cat .tmp/plot_patch_*.b64 | base64 --decode > /tmp/plot-api-docs-svg.patch
+          wc -c /tmp/plot-api-docs-svg.patch
+          sha256sum /tmp/plot-api-docs-svg.patch
           git apply --check /tmp/plot-api-docs-svg.patch
           git apply /tmp/plot-api-docs-svg.patch
 
