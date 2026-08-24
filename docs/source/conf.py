@@ -6,7 +6,8 @@
 import os
 import sys
 
-# Add the parent directory to the path so we can import the package
+# Add the source directories to the path so we can import PAL and local docs helpers.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.abspath("../../src"))
 
 # -- Project information -----------------------------------------------------
