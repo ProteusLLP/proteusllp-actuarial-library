@@ -22,7 +22,6 @@ build:
     post_install:
       # Install the package itself to make autodoc work
       - pip install .
-      - plotly_get_chrome -y
 
 # Install Python dependencies
 python:

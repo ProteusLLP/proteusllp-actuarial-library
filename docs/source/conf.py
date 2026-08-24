@@ -6,8 +6,7 @@
 import os
 import sys
 
-# Add the source directories to the path so we can import PAL and local docs helpers.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add the parent directory to the path so we can import the package
 sys.path.insert(0, os.path.abspath("../../src"))
 
 # -- Project information -----------------------------------------------------
@@ -150,18 +149,3 @@ autosummary_imported_members = True
 
 # Master document (for older Sphinx/RTD compatibility)
 master_doc = "index"
-
-
-def _generate_plot_assets(app):
-    """Generate static Plotly SVGs for HTML documentation builds."""
-    if app.builder.format != "html":
-        return
-
-    from _plot_assets import generate_all_plot_assets
-
-    generate_all_plot_assets()
-
-
-def setup(app):
-    """Register documentation build hooks."""
-    app.connect("builder-inited", _generate_plot_assets)
