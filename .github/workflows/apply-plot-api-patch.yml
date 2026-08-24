@@ -19,7 +19,20 @@ jobs:
 
       - name: Reconstruct and apply patch
         run: |
-          cat \
+          echo "1b4ed0915cf325e8c154210c59647a749de46b588c5eb348953784a83d340a8f  .tmp/plot_patch_00.b64" | sha256sum --check -
+          echo "2383df5569bac3246656d2343d24fbfaf6aec857105e48f67016c8b6c35fb963  .tmp/plot_patch_01.b64" | sha256sum --check -
+          echo "f5aa9217d757adaecf520970344151d015181921ccad76bd00e03bc5155f02e3  .tmp/plot_patch_02a.b64" | sha256sum --check -
+          echo "2ab4e7d59e5178e52c0b007bbd37f5cecc73d740ed36f9e378ca41563e733efd  .tmp/plot_patch_02b.b64" | sha256sum --check -
+          echo "20297cf5f67621d670dea0698660cee22cb7335d1e819efd8645c4584aade590  .tmp/plot_patch_02c.b64" | sha256sum --check -
+          echo "01382704c79ce66909ade13fa2f4bdbd6236244259f4ed91096fbfad6b22fe06  .tmp/plot_patch_03a.b64" | sha256sum --check -
+          echo "481aab98cff5b44fb427af07ebe11848290011ae2ba0284e7df57e99b61d0b12  .tmp/plot_patch_03b.b64" | sha256sum --check -
+          echo "4856f539586e7432ed98d34e405ff2776d9fb1bee6be5fb881fec68a4202a32e  .tmp/plot_patch_03c.b64" | sha256sum --check -
+          echo "59d428cffce23783f45ef0b182b793601f5a28d4322b070d3f43474d3c0bb94e  .tmp/plot_patch_04.b64" | sha256sum --check -
+          echo "d45956125b6b50cf0fae73f0bc6db61df8dbf148d915f4f9fea1b0866ebc69b3  .tmp/plot_patch_05.b64" | sha256sum --check -
+          echo "b02edc486edc9067fbbba467fe8174e62427bb202994755aa5045590e03bfadf  .tmp/plot_patch_06.b64" | sha256sum --check -
+
+          : > /tmp/plot-api-docs-svg.patch
+          for part in \
             .tmp/plot_patch_00.b64 \
             .tmp/plot_patch_01.b64 \
             .tmp/plot_patch_02a.b64 \
@@ -30,8 +43,10 @@ jobs:
             .tmp/plot_patch_03c.b64 \
             .tmp/plot_patch_04.b64 \
             .tmp/plot_patch_05.b64 \
-            .tmp/plot_patch_06.b64 \
-            | base64 --decode > /tmp/plot-api-docs-svg.patch
+            .tmp/plot_patch_06.b64; do
+            base64 --decode "$part" >> /tmp/plot-api-docs-svg.patch
+          done
+
           echo "b46417f948ddb2fc7cb08bba9f5791154b56368afc50f111d6b53d94512de42a  /tmp/plot-api-docs-svg.patch" | sha256sum --check -
           git apply --check /tmp/plot-api-docs-svg.patch
           git apply /tmp/plot-api-docs-svg.patch
