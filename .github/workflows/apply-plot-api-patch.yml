@@ -1,16 +1,15 @@
 name: Apply plotting API patch
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/plot-api-docs-svg
+      - main
 
 permissions:
   contents: write
 
 jobs:
   apply-patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
