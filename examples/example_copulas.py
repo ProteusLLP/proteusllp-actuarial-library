@@ -59,6 +59,4 @@ print("TVAR:", total_inflated_losses.tvar(99))
 
 total_inflated_losses.cdf_plot().show()
 
-inflated_total_losses_by_lob.rank_scatter_plot(
-    title="Rank scatter plots of losses by line of business"
-).show()
+inflated_total_losses_by_lob.rank_scatter_plot(title="Rank scatter plots of losses by line of business").show()
