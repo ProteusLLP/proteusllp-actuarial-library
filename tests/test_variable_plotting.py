@@ -22,8 +22,8 @@ def variables() -> ProteusVariable[StochasticScalar]:
     )
 
 
-def test_rank_scatter_returns_all_pairs(variables: ProteusVariable[StochasticScalar]) -> None:
-    fig = variables.rank_scatter(title="Ranks")
+def test_rank_scatter_plot_returns_all_pairs(variables: ProteusVariable[StochasticScalar]) -> None:
+    fig = variables.rank_scatter_plot(title="Ranks")
 
     assert isinstance(fig, go.Figure)
     assert fig.layout.title.text == "Ranks"
@@ -35,8 +35,8 @@ def test_rank_scatter_returns_all_pairs(variables: ProteusVariable[StochasticSca
     fig.to_json()
 
 
-def test_value_scatter_returns_all_pairs(variables: ProteusVariable[StochasticScalar]) -> None:
-    fig = variables.value_scatter()
+def test_value_scatter_plot_returns_all_pairs(variables: ProteusVariable[StochasticScalar]) -> None:
+    fig = variables.value_scatter_plot()
 
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 3
@@ -45,7 +45,7 @@ def test_value_scatter_returns_all_pairs(variables: ProteusVariable[StochasticSc
     fig.to_json()
 
 
-@pytest.mark.parametrize("method_name", ["rank_scatter", "value_scatter"])
+@pytest.mark.parametrize("method_name", ["rank_scatter_plot", "value_scatter_plot"])
 def test_pair_scatter_can_use_frames(variables: ProteusVariable[StochasticScalar], method_name: str) -> None:
     fig = getattr(variables, method_name)(frames=True)
 
@@ -61,14 +61,14 @@ def test_pair_scatter_requires_two_variables() -> None:
     variable = ProteusVariable("factor", {"A": StochasticScalar([1.0, 2.0])})
 
     with pytest.raises(ValueError, match="at least two variables"):
-        variable.rank_scatter()
+        variable.rank_scatter_plot()
 
 
-def test_stochastic_scalar_histogram_and_cdf_return_figures() -> None:
+def test_stochastic_scalar_histogram_and_cdf_plots_return_figures() -> None:
     values = StochasticScalar([4.0, 5.0, 2.0, 1.0, 3.0])
 
-    histogram = values.histogram(title="Histogram")
-    cdf = values.cdf(title="CDF")
+    histogram = values.histogram_plot(title="Histogram")
+    cdf = values.cdf_plot(title="CDF")
 
     assert isinstance(histogram, go.Figure)
     assert isinstance(cdf, go.Figure)
@@ -92,11 +92,11 @@ def test_show_helpers_return_figures_without_showing(
     assert isinstance(variables.show_cdf(), go.Figure)
 
 
-def test_proteus_variable_histogram_and_cdf_return_figures(
+def test_proteus_variable_histogram_and_cdf_plots_return_figures(
     variables: ProteusVariable[StochasticScalar],
 ) -> None:
-    histogram = variables.histogram()
-    cdf = variables.cdf()
+    histogram = variables.histogram_plot()
+    cdf = variables.cdf_plot()
 
     assert isinstance(histogram, go.Figure)
     assert isinstance(cdf, go.Figure)
@@ -107,9 +107,22 @@ def test_proteus_variable_histogram_and_cdf_return_figures(
 
 
 def test_returned_figure_can_be_saved(tmp_path: Path, variables: ProteusVariable[StochasticScalar]) -> None:
-    fig = variables.rank_scatter()
+    fig = variables.rank_scatter_plot()
     output = tmp_path / "rank-scatter.html"
 
     fig.write_html(output)
 
     assert output.exists()
+
+
+def test_ambiguous_plot_method_names_are_not_exposed(
+    variables: ProteusVariable[StochasticScalar],
+) -> None:
+    values = StochasticScalar([1.0, 2.0, 3.0])
+
+    for obj in (values, variables):
+        assert not hasattr(obj, "histogram")
+        assert not hasattr(obj, "cdf")
+
+    assert not hasattr(variables, "rank_scatter")
+    assert not hasattr(variables, "value_scatter")

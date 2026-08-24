@@ -314,7 +314,7 @@ class StochasticScalar(ProteusStochasticVariable):
             return self
         return type(self)(self.values[xp.arange(n_sims) % self.n_sims])
 
-    def histogram(self, title: str | None = None) -> go.Figure:
+    def histogram_plot(self, title: str | None = None) -> go.Figure:
         """Return a Plotly histogram of the simulated values.
 
         Args:
@@ -330,7 +330,7 @@ class StochasticScalar(ProteusStochasticVariable):
         """Show and return a histogram of the simulated values.
 
         This method is retained for backwards compatibility. New code can use
-        :meth:`histogram` and explicitly call ``.show()`` when required.
+        :meth:`histogram_plot` and explicitly call ``.show()`` when required.
 
         Args:
             title: Optional title for the histogram.
@@ -338,13 +338,13 @@ class StochasticScalar(ProteusStochasticVariable):
         Returns:
             The Plotly figure that was displayed.
         """
-        fig = self.histogram(title=title)
+        fig = self.histogram_plot(title=title)
         if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
             # Type ignore: plotly-stubs has incomplete type information
             fig.show()  # type: ignore[misc]
         return fig
 
-    def cdf(self, title: str | None = None) -> go.Figure:
+    def cdf_plot(self, title: str | None = None) -> go.Figure:
         """Return a Plotly empirical cumulative distribution function plot.
 
         Args:
@@ -372,7 +372,7 @@ class StochasticScalar(ProteusStochasticVariable):
         """Show and return the empirical cumulative distribution function.
 
         This method is retained for backwards compatibility. New code can use
-        :meth:`cdf` and explicitly call ``.show()`` when required.
+        :meth:`cdf_plot` and explicitly call ``.show()`` when required.
 
         Args:
             title: Optional title for the CDF plot.
@@ -380,7 +380,7 @@ class StochasticScalar(ProteusStochasticVariable):
         Returns:
             The Plotly figure that was displayed.
         """
-        fig = self.cdf(title=title)
+        fig = self.cdf_plot(title=title)
         if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
             # Type ignore: plotly-stubs has incomplete type information
             fig.show()  # type: ignore[misc]

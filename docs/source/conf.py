@@ -149,3 +149,18 @@ autosummary_imported_members = True
 
 # Master document (for older Sphinx/RTD compatibility)
 master_doc = "index"
+
+
+def _generate_plot_assets(app):
+    """Generate static Plotly SVGs for HTML documentation builds."""
+    if app.builder.format != "html":
+        return
+
+    from _plot_assets import generate_all_plot_assets
+
+    generate_all_plot_assets()
+
+
+def setup(app):
+    """Register documentation build hooks."""
+    app.connect("builder-inited", _generate_plot_assets)

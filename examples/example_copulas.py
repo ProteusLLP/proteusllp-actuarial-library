@@ -3,8 +3,6 @@
 This notebook demonstrates the use of copulas in the Proteus Actuarial Library
 to model dependencies between different lines of business in insurance."""
 
-import plotly.graph_objects as go
-
 from pal import config, copulas, distributions
 from pal.frequency_severity import FrequencySeverityModel
 from pal.variables import ProteusVariable
@@ -59,18 +57,8 @@ total_inflated_losses = inflated_total_losses_by_lob.sum()
 
 print("TVAR:", total_inflated_losses.tvar(99))
 
-total_inflated_losses.show_cdf()
+total_inflated_losses.cdf_plot().show()
 
-fig = go.Figure(
-    go.Scattergl(
-        x=inflated_total_losses_by_lob["Motor"].ranks,
-        y=inflated_total_losses_by_lob["Property"].ranks,
-        mode="markers",
-    ),
-    layout={
-        "xaxis_title": "Motor - Rank",
-        "yaxis_title": "Property - Rank",
-        "title": "Scatter plot of Motor and Property losses",
-    },
-)
-fig.show()  # type: ignore[misc]
+inflated_total_losses_by_lob.rank_scatter_plot(
+    title="Rank scatter plots of losses by line of business"
+).show()

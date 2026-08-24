@@ -108,6 +108,9 @@ jobs:
       - name: Install documentation dependencies
         run: pip install -e ".[docs]"
 
+      - name: Install Chrome for Plotly static export
+        run: plotly_get_chrome -y
+
       - name: Validate math directive structure
         run: python scripts/check_rst_math.py src docs
 

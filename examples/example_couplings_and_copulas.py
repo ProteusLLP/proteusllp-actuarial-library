@@ -19,6 +19,7 @@ from pal import (  # isort: skip
     distributions,
     set_random_seed,
     StochasticScalar,
+    ProteusVariable,
 )
 
 SUPPRESS_PLOTS = os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true"
@@ -249,6 +250,16 @@ for _, (_, _, _, row, col) in enumerate(pairs):
 if not SUPPRESS_PLOTS:
     fig.show()  # type: ignore[misc]
 print("Scatter plots generated showing rank-space dependencies.")
+
+# The built-in pair-plot API is the simpler option when visualising one
+# multivariate variable rather than comparing several copula families.
+student_t_pair = ProteusVariable("variable", {"X": x_t, "Y": y_t})
+rank_scatter_fig = student_t_pair.rank_scatter_plot(title="Student's T copula - rank space")
+value_scatter_fig = student_t_pair.value_scatter_plot(title="Student's T copula - value space")
+
+if not SUPPRESS_PLOTS:
+    rank_scatter_fig.show()  # type: ignore[misc]
+    value_scatter_fig.show()  # type: ignore[misc]
 
 # ============================================================================
 # Part 5: Variable Reordering in Detail
