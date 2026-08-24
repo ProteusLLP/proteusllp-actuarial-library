@@ -36,4 +36,4 @@ scaled_cat_losses = scaled_cat_losses_by_lob.sum()
 
 recoveries = pnp.minimum(pnp.maximum(scaled_cat_losses - 10000000, 0), 10000000)
 
-recoveries.aggregate().show_cdf()
+recoveries.aggregate().cdf_plot().show()

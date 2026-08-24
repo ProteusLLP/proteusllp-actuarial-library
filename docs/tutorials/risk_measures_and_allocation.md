@@ -410,6 +410,10 @@ fig.update_layout(
 fig.show()
 ```
 
+```{only} html
+![Risk measure weights by percentile](../_static/generated/risk_measure_weights.svg)
+```
+
 The chart shows how each risk measure distributes emphasis across
 the loss distribution:
 
@@ -563,6 +567,10 @@ fig.update_layout(
 fig.update_yaxes(title_text="% of Limit", secondary_y=False)
 fig.update_yaxes(title_text="Loading %", secondary_y=True)
 fig.show()
+```
+
+```{only} html
+![XoL pricing by attachment point](../_static/generated/xol_pricing_curve.svg)
 ```
 
 The chart shows loss on line and rate on line as bars (both

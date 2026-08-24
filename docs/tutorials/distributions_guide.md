@@ -238,9 +238,23 @@ loss.mean()
 loss.std()
 loss.percentile([25, 50, 75, 95, 99, 99.5])
 
-# Visualisation
-loss.show_cdf("Loss Distribution")
+# Visualisation of generated simulations
+cdf_fig = loss.cdf_plot("Loss Distribution")
+cdf_fig.show()
+
+histogram_fig = loss.histogram_plot("Loss Distribution")
+histogram_fig.show()
 ```
+
+```{only} html
+![Empirical CDF of the simulated loss](../_static/generated/distributions_guide_cdf.svg)
+
+![Histogram of the simulated loss](../_static/generated/distributions_guide_histogram.svg)
+```
+
+The naming deliberately distinguishes analytical distribution methods such as
+`ln.cdf(x)`, which calculate probabilities, from simulation plotting methods
+such as `loss.cdf_plot()`, which return Plotly figures.
 
 ## See Also
 

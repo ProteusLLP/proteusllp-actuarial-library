@@ -255,7 +255,9 @@ The best way to understand how copulas differ is to plot the variables in
 removes the effect of the marginal distributions and isolates the
 dependency structure.
 
-![Copula dependency structures in rank space](copula_scatter_plots.png)
+```{only} html
+![Copula dependency structures in rank space](../_static/generated/copula_scatter_plots.svg)
+```
 
 - **Independent**: uniform scatter with no pattern
 - **Gaussian**: elliptical concentration along the diagonal
@@ -264,8 +266,28 @@ dependency structure.
 - **Student's T**: similar to Gaussian but with heavier concentration in
   both corners (both tails)
 
-The interactive version of this chart (with plotly) is available in
-`examples/example_couplings_and_copulas.ipynb`.
+PAL can also generate all pairwise scatter plots directly from a
+`ProteusVariable`:
+
+<!--pytest.mark.skip-->
+
+```python
+from pal import ProteusVariable
+
+dependency = ProteusVariable("variable", {"X": x, "Y": y})
+dependency.rank_scatter_plot(title="Dependency in rank space").show()
+dependency.value_scatter_plot(title="Dependency in value space").show()
+```
+
+```{only} html
+![Pairwise dependency in rank space](../_static/generated/copula_rank_scatter.svg)
+
+![Pairwise dependency in value space](../_static/generated/copula_value_scatter.svg)
+```
+
+For multivariate variables these methods plot every unordered pair. By default
+pairs are shown in subplots; pass `frames=True` to show one pair at a time with
+a Plotly slider.
 
 ## 3. Variable Reordering
 

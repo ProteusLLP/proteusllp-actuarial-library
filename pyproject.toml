@@ -41,6 +41,8 @@ docs = [
     "sphinx-autodoc-typehints>=3.5.2",
     "sphinx-copybutton>=0.5.2",
     "sphinx-design>=0.6.1",
+    "plotly>=6.1.1",
+    "kaleido>=1.0",
 ]
 test = [
     "pytest>=8.0",

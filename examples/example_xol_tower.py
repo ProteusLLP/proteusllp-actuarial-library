@@ -34,4 +34,4 @@ prog_results = prog.apply(gross_losses)
 
 prog.print_summary()
 
-prog_results.recoveries.aggregate().show_cdf("Recoveries")
+prog_results.recoveries.aggregate().cdf_plot("Recoveries").show()
