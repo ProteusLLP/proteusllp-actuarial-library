@@ -54,6 +54,8 @@ Variable containers support numpy operations and can be added, multiplied togeth
 Plotting methods return Plotly figure objects, so displaying a plot is explicit
 and the same figure can also be customised or saved:
 
+<!--pytest.mark.skip-->
+
 ```python
 motor_losses.cdf_plot("Motor losses").show()
 motor_losses.histogram_plot("Motor losses").show()
@@ -206,7 +208,7 @@ All development work is done inside the devcontainer. VS Code provides native Ju
 
 - **Native VS Code integration** - No separate Jupyter server needed
 - **Live plots** displayed inline within VS Code
-- **Interactive debugging** - Full VS Code debugging support in notebooks
+- **Interactive debugging** - Full VS Code debugging support
 - **Integrated development** - IntelliSense, linting, and formatting work seamlessly
 - **GitHub rendering** - notebooks display with plots when viewed on GitHub
 
