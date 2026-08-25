@@ -128,6 +128,12 @@ A small model, end to end
    tutorials/distributions_guide
    tutorials/frequency_severity_modelling
    tutorials/coupling_groups_and_copulas
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Examples
+   :hidden:
+
    tutorials/xol_reinsurance
    tutorials/property_exposure_rating
    tutorials/reinstatement_pricing
