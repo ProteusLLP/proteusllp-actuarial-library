@@ -46,6 +46,7 @@ Example:
 # standard library imports
 from __future__ import annotations
 
+import itertools
 import os
 import typing as t
 from numbers import Number
@@ -57,11 +58,13 @@ import pandas as pd
 import plotly.graph_objects as go  # type: ignore
 import plotly.io as pio  # type: ignore
 import scipy.stats
+from plotly.subplots import make_subplots  # type: ignore
 
 from . import maths as pnp
 
 # local imports
 from ._compat import Self
+from ._maths import asnumpy, xp
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
@@ -170,10 +173,12 @@ class ProteusVariable(t.Generic[T]):
             self.values.values() if isinstance(self.values, dict) else self.values  # type: ignore[reportUnknownMemberType]
         ):
             if isinstance(value, ProteusVariable):
-                if self._dimension_set.intersection(value._dimension_set) or self.dim_name == value.dim_name:
+                if self.dim_name in value._dimension_set:
                     raise ValueError("Duplicate dimension names in ProteusVariable hierarchy.")
-                self._dimension_set.intersection_update(value.dimensions)
-                self.dimensions.extend(value.dimensions)
+                for dimension in value.dimensions:
+                    if dimension not in self._dimension_set:
+                        self._dimension_set.add(dimension)
+                        self.dimensions.append(dimension)
 
             if self.n_sims is None:
                 if isinstance(value, ProteusStochasticVariable):
@@ -191,7 +196,7 @@ class ProteusVariable(t.Generic[T]):
         """Return the number of elements in the variable."""
         return len(self.values)
 
-    def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:
+    def __array__(self, dtype: t.Any = None, copy: bool | None = None) -> npt.NDArray[t.Any]:
         """Convert ProteusVariable to numpy array for basic operations.
 
         This method enables ProteusVariable to work with numpy functions like
@@ -205,6 +210,7 @@ class ProteusVariable(t.Generic[T]):
 
         Args:
             dtype: Optional data type for the resulting array.
+            copy: Whether NumPy requires a copy of the resulting host array.
 
         Returns:
             A numpy array created by concatenating all values.
@@ -239,6 +245,9 @@ class ProteusVariable(t.Generic[T]):
 
         if dtype is not None:
             result = result.astype(dtype)
+
+        if copy is True:
+            return result.copy()
 
         return result
 
@@ -363,8 +372,11 @@ class ProteusVariable(t.Generic[T]):
         for arg in args:
             if arg is self:
                 # For the ProteusVariable itself, stack its dictionary values as columns
-                value_arrays = [np.asarray(value) for value in self.values.values()]
-                parsed_args.append(np.column_stack(value_arrays))
+                value_arrays = [
+                    value.values if isinstance(value, ProteusStochasticVariable) else xp.atleast_1d(xp.asarray(value))
+                    for value in self.values.values()
+                ]
+                parsed_args.append(xp.column_stack(value_arrays))
             else:
                 parsed_args.append(arg)
 
@@ -834,7 +846,9 @@ class ProteusVariable(t.Generic[T]):
             raise TypeError(f"First element must have 'values' attribute, got {type(self[0]).__name__}")
         n = len(self.values)
         result: list[list[float]] = [[0.0] * n] * n
-        values: list[npt.NDArray[t.Any]] = [t.cast(npt.NDArray[t.Any], self[i]) for i in range(len(self.values))]
+        values: list[npt.NDArray[t.Any]] = [
+            asnumpy(getattr(self[i], "values", self[i])) for i in range(len(self.values))
+        ]
         if correlation_type.lower() in ["spearman", "kendall"]:
             # rank the variables first
             for i, value in enumerate(values):
@@ -851,48 +865,68 @@ class ProteusVariable(t.Generic[T]):
 
         return result
 
-    def show_histogram(self, title: str | None = None) -> None:
-        """Show a histogram of the variable values.
+    def histogram_plot(self, title: str | None = None) -> go.Figure:
+        """Return overlaid Plotly histograms for the contained variables.
 
         Args:
-            title (str | None): The title of the histogram. If None, no title is set.
+            title: Optional title for the histogram.
 
+        Returns:
+            A Plotly figure.
+
+        Raises:
+            TypeError: If the variable does not contain ``StochasticScalar`` values.
         """
-        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
-            return
+        items = self._stochastic_scalar_items()
         fig = go.Figure(layout=go.Layout(title=title))
-        for label, value in self.values.items():
-            try:
-                # Type ignore: plotly-stubs has incomplete type information
-                fig.add_trace(go.Histogram(x=value.values(), name=label))  # type: ignore[union-attr,misc]
-            except AttributeError:
-                # not all values are ProteusVariable or StochasticScalar and therefore
-                # do not have a values() method.
-                pass
-        # Type ignore: plotly-stubs has incomplete type information
-        fig.show()  # type: ignore[misc]
+        for label, value in items:
+            # Passing the PAL object directly preserves Plotly's backend-neutral
+            # array serialization, including GPU-backed stochastic scalars.
+            fig.add_trace(go.Histogram(x=value, name=label))
+        return fig
 
-    def show_cdf(self, title: str | None = None) -> None:
-        """Plot the cumulative distribution function (cdf) of the variable values.
+    def show_histogram(self, title: str | None = None) -> go.Figure:
+        """Show and return histograms for the contained variables.
+
+        This method is retained for backwards compatibility. New code can use
+        :meth:`histogram_plot` and explicitly call ``.show()`` when required.
 
         Args:
-            title: Optional title for the cdf. If None, no title is set.
+            title: Optional title for the histogram.
+
+        Returns:
+            The Plotly figure that was displayed.
         """
-        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
-            return
-        fig = go.Figure(layout=go.Layout(title=title))
-        for label, value in self.values.items():
-            if not isinstance(value, (ProteusVariable, ProteusStochasticVariable)):
-                raise TypeError(f"{type(value).__name__} does not support CDF plotting. ")
-            if value.n_sims is None or value.n_sims <= 1:
-                raise ValueError("CDF can only be plotted for variables with multiple simulations.")
+        fig = self.histogram_plot(title=title)
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
             # Type ignore: plotly-stubs has incomplete type information
-            fig.add_trace(  # type: ignore[misc]
+            fig.show()  # type: ignore[misc]
+        return fig
+
+    def cdf_plot(self, title: str | None = None) -> go.Figure:
+        """Return empirical CDF plots for the contained variables.
+
+        Args:
+            title: Optional title for the CDF plot.
+
+        Returns:
+            A Plotly figure.
+
+        Raises:
+            TypeError: If the variable does not contain ``StochasticScalar`` values.
+            ValueError: If a contained variable has fewer than two simulations.
+        """
+        items = self._stochastic_scalar_items()
+        fig = go.Figure(layout=go.Layout(title=title))
+        for label, value in items:
+            if value.n_sims <= 1:
+                raise ValueError("CDF can only be plotted for variables with multiple simulations.")
+            sorted_values = StochasticScalar(xp.sort(value.values))
+            cumulative_probabilities = StochasticScalar(xp.arange(value.n_sims) / value.n_sims)
+            fig.add_trace(
                 go.Scatter(
-                    # Type ignore: value.values is known to exist due to isinstance
-                    # check
-                    x=np.sort(np.array(value.values)),  # type: ignore[attr-defined]
-                    y=np.arange(value.n_sims) / value.n_sims,
+                    x=sorted_values,
+                    y=cumulative_probabilities,
                     name=label,
                 )
             )
@@ -900,8 +934,161 @@ class ProteusVariable(t.Generic[T]):
         fig.update_xaxes(title_text="Value")  # type: ignore[misc]
         # Type ignore: plotly-stubs has incomplete type information
         fig.update_yaxes(title_text="Cumulative Probability")  # type: ignore[misc]
-        # Type ignore: plotly-stubs has incomplete type information
-        fig.show()  # type: ignore[misc]
+        return fig
+
+    def show_cdf(self, title: str | None = None) -> go.Figure:
+        """Show and return empirical CDFs for the contained variables.
+
+        This method is retained for backwards compatibility. New code can use
+        :meth:`cdf_plot` and explicitly call ``.show()`` when required.
+
+        Args:
+            title: Optional title for the CDF plot.
+
+        Returns:
+            The Plotly figure that was displayed.
+        """
+        fig = self.cdf_plot(title=title)
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
+            # Type ignore: plotly-stubs has incomplete type information
+            fig.show()  # type: ignore[misc]
+        return fig
+
+    def rank_scatter_plot(self, frames: bool = False, title: str | None = None) -> go.Figure:
+        """Return pairwise scatter plots of simulation ranks.
+
+        Each unordered pair of contained ``StochasticScalar`` variables is plotted.
+        By default the pairs are shown together as a triangular subplot matrix. When
+        ``frames=True``, one pair is shown at a time using Plotly frames with a slider.
+
+        Args:
+            frames: Show one variable pair per Plotly frame instead of subplots.
+            title: Optional figure title.
+
+        Returns:
+            A Plotly figure.
+        """
+        return self._pair_scatter(use_ranks=True, frames=frames, title=title)
+
+    def value_scatter_plot(self, frames: bool = False, title: str | None = None) -> go.Figure:
+        """Return pairwise scatter plots of simulated values.
+
+        Each unordered pair of contained ``StochasticScalar`` variables is plotted.
+        By default the pairs are shown together as a triangular subplot matrix. When
+        ``frames=True``, one pair is shown at a time using Plotly frames with a slider.
+
+        Args:
+            frames: Show one variable pair per Plotly frame instead of subplots.
+            title: Optional figure title.
+
+        Returns:
+            A Plotly figure.
+        """
+        return self._pair_scatter(use_ranks=False, frames=frames, title=title)
+
+    def _stochastic_scalar_items(self) -> list[tuple[str, StochasticScalar]]:
+        """Return the top-level values after validating their plotting type."""
+        items: list[tuple[str, StochasticScalar]] = []
+        for label, value in self.values.items():
+            if not isinstance(value, StochasticScalar):
+                raise TypeError(
+                    "Plotting requires a ProteusVariable containing StochasticScalar "
+                    f"values; {label!r} contains {type(value).__name__}."
+                )
+            items.append((label, value))
+        return items
+
+    def _pair_scatter(self, use_ranks: bool, frames: bool, title: str | None) -> go.Figure:
+        """Build a pairwise rank or value scatter figure."""
+        items = self._stochastic_scalar_items()
+        if len(items) < 2:
+            raise ValueError("Pairwise scatter plots require at least two variables.")
+
+        pairs = list(itertools.combinations(range(len(items)), 2))
+
+        def axis_title(label: str) -> str:
+            return f"Rank - {label}" if use_ranks else label
+
+        def scatter_trace(i: int, j: int) -> go.Scattergl:
+            label_x, value_x = items[i]
+            label_y, value_y = items[j]
+            x = value_x.ranks if use_ranks else value_x
+            y = value_y.ranks if use_ranks else value_y
+            return go.Scattergl(
+                x=x,
+                y=y,
+                mode="markers",
+                marker={"size": 4, "opacity": 0.5},
+                name=f"{label_x} vs {label_y}",
+                showlegend=False,
+            )
+
+        if frames:
+            frame_objects: list[go.Frame] = []
+            for i, j in pairs:
+                label_x, _ = items[i]
+                label_y, _ = items[j]
+                pair_name = f"{label_x} vs {label_y}"
+                frame_objects.append(
+                    go.Frame(
+                        name=pair_name,
+                        data=[scatter_trace(i, j)],
+                        layout=go.Layout(
+                            xaxis={"title": axis_title(label_x)},
+                            yaxis={"title": axis_title(label_y)},
+                        ),
+                    )
+                )
+
+            first_i, first_j = pairs[0]
+            first_x, _ = items[first_i]
+            first_y, _ = items[first_j]
+            slider_steps = [
+                {
+                    "args": [
+                        [frame.name],
+                        {
+                            "frame": {"duration": 0, "redraw": True},
+                            "mode": "immediate",
+                            "transition": {"duration": 0},
+                        },
+                    ],
+                    "label": frame.name,
+                    "method": "animate",
+                }
+                for frame in frame_objects
+            ]
+            return go.Figure(
+                data=[scatter_trace(first_i, first_j)],
+                frames=frame_objects,
+                layout=go.Layout(
+                    title=title,
+                    xaxis={"title": axis_title(first_x)},
+                    yaxis={"title": axis_title(first_y)},
+                    sliders=[{"active": 0, "steps": slider_steps}],
+                ),
+            )
+
+        grid_size = len(items) - 1
+        subplot_titles = [""] * (grid_size * grid_size)
+        for i, j in pairs:
+            label_x, _ = items[i]
+            label_y, _ = items[j]
+            subplot_titles[i * grid_size + (j - 1)] = f"{label_x} vs {label_y}"
+
+        fig = make_subplots(rows=grid_size, cols=grid_size, subplot_titles=subplot_titles)
+        for i, j in pairs:
+            label_x, _ = items[i]
+            label_y, _ = items[j]
+            row = i + 1
+            col = j
+            fig.add_trace(scatter_trace(i, j), row=row, col=col)
+            # Type ignore: plotly-stubs has incomplete type information
+            fig.update_xaxes(title_text=axis_title(label_x), row=row, col=col)  # type: ignore[misc]
+            fig.update_yaxes(title_text=axis_title(label_y), row=row, col=col)  # type: ignore[misc]
+
+        fig.update_layout(title=title, showlegend=False)
+        return fig
 
     def _binary_operation(
         self,

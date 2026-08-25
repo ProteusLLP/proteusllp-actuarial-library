@@ -6,6 +6,7 @@ import pytest
 
 import pal.maths as pnp
 from pal.variables import ProteusVariable, StochasticScalar
+from tests._assertions import allclose
 
 
 def test_comparison_lt():
@@ -162,7 +163,7 @@ def test_correlation_matrix():
     corr = x.correlation_matrix()
     # Returns list[list[float]]
     assert isinstance(corr, list)
-    assert np.allclose(corr, [[1.0, 1.0], [1.0, 1.0]])  # Perfect correlation
+    assert allclose(corr, [[1.0, 1.0], [1.0, 1.0]])  # Perfect correlation
     assert len(corr) == 2
 
 
@@ -211,6 +212,15 @@ def test_init_duplicate_dimensions():
     nested = ProteusVariable("inner", {"x": 1, "y": 2})
     with pytest.raises(ValueError, match="Duplicate dimension"):
         ProteusVariable("inner", {"a": nested, "b": 3})
+
+
+def test_init_repeated_nested_dimensions_are_recorded_once():
+    """Record a shared child dimension once across sibling variables."""
+    first = ProteusVariable("column", {"x": 1, "y": 2})
+    second = ProteusVariable("column", {"x": 3, "y": 4})
+    matrix = ProteusVariable("row", {"a": first, "b": second})
+
+    assert matrix.dimensions == ["row", "column"]
 
 
 def test_init_mismatched_n_sims():

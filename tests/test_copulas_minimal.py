@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from pal import config, copulas, distributions, set_random_seed
+from tests._assertions import host_values
 
 # =============================================================================
 # EllipticalCopula Error Handling (lines 191, 197-202)
@@ -117,7 +118,7 @@ def check_copula_independence(samples):
     assert len(samples) == 2
     assert len(samples[0]) == len(samples[1])
     # Check that the correlation is close to zero
-    corr = np.corrcoef(samples[0].values, samples[1].values)[0, 1]
+    corr = np.corrcoef(host_values(samples[0]), host_values(samples[1]))[0, 1]
     assert abs(corr) < 0.05
 
 
@@ -176,7 +177,7 @@ def test_gaussian_copula_perfect_correlation():
     samples = gaussian.generate(1000)
     assert len(samples) == 2
     # Should be nearly perfectly correlated
-    corr = np.corrcoef(samples[0].values, samples[1].values)[0, 1]
+    corr = np.corrcoef(host_values(samples[0]), host_values(samples[1]))[0, 1]
     assert corr > 0.95
 
 
@@ -186,7 +187,7 @@ def test_gaussian_copula_perfect_negative_correlation():
     samples = gaussian.generate(1000)
     assert len(samples) == 2
     # Should be nearly perfectly negatively correlated
-    corr = np.corrcoef(samples[0].values, samples[1].values)[0, 1]
+    corr = np.corrcoef(host_values(samples[0]), host_values(samples[1]))[0, 1]
     assert corr < -0.95
 
 
@@ -196,7 +197,7 @@ def test_studentst_copula_high_dof():
     samples = studentst.generate(10000)
     assert len(samples) == 2
     # Should behave like Gaussian copula
-    corr = np.corrcoef(samples[0].values, samples[1].values)[0, 1]
+    corr = np.corrcoef(host_values(samples[0]), host_values(samples[1]))[0, 1]
     assert 0.6 < corr < 0.8
 
 
@@ -225,7 +226,7 @@ def test_gaussian_copula_with_chol_matrix():
     assert len(samples) == 2
     assert len(samples[0]) == 1000
     # Verify correlation is approximately correct
-    corr = np.corrcoef(samples[0].values, samples[1].values)[0, 1]
+    corr = np.corrcoef(host_values(samples[0]), host_values(samples[1]))[0, 1]
     assert 0.6 < corr < 0.8
 
 
@@ -250,5 +251,5 @@ def test_gumbel_copula_high_theta():
     samples = gumbel.generate(1000)
     assert len(samples) == 2
     # Should have strong positive dependence
-    corr = np.corrcoef(samples[0].values, samples[1].values)[0, 1]
+    corr = np.corrcoef(host_values(samples[0]), host_values(samples[1]))[0, 1]
     assert corr > 0.9

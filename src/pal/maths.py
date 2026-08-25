@@ -14,6 +14,8 @@ import typing as t
 # third party
 import numpy as np
 
+from ._maths import xp
+
 
 def exp(x: t.Any) -> t.Any:
     """Exponential function that preserves custom PAL types."""
@@ -115,7 +117,7 @@ def cumsum(x: t.Any) -> t.Any:
     """
     if isinstance(x, list) and len(x) > 0 and hasattr(x[0], "values"):  # type: ignore[reportUnknownMemberType]
         return np.cumsum(  # type: ignore[reportUnknownVariableType]
-            np.stack([item.values for item in x], axis=0),  # type: ignore[reportUnknownMemberType, reportUnknownVariableType]
+            xp.stack([item.values for item in x], axis=0),  # type: ignore[reportUnknownMemberType, reportUnknownVariableType]
             axis=0,
         )
     return np.cumsum(x)  # type: ignore[reportUnknownVariableType]

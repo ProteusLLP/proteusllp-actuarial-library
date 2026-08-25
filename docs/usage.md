@@ -49,6 +49,31 @@ portfolio = ProteusVariable(
 
 Variable containers support numpy operations and can be added, multiplied together etc. Operations involving multiple variable containers will attempt to match on dictionary labels.
 
+## Plotting
+
+Plotting methods return Plotly figure objects, so displaying a plot is explicit
+and the same figure can also be customised or saved:
+
+<!--pytest.mark.skip-->
+
+```python
+motor_losses.cdf_plot("Motor losses").show()
+motor_losses.histogram_plot("Motor losses").show()
+
+portfolio.rank_scatter_plot().show()
+portfolio.value_scatter_plot(frames=True).show()
+
+fig = portfolio.rank_scatter_plot()
+fig.write_html("portfolio_rank_scatter.html")
+```
+
+For a `ProteusVariable`, the scatter methods include every unordered pair of
+contained stochastic variables. By default the pairs are shown in subplots;
+`frames=True` shows one pair at a time with a Plotly slider.
+
+The `_plot` suffix distinguishes figure-producing methods from mathematical
+methods such as `Distribution.cdf(x)`.
+
 ## Copulas and Dependencies
 
 Statistical dependencies between PAL variables can be modeled using copulas:
@@ -102,12 +127,12 @@ PAL supports several environment variables for configuration:
 
 #### GPU Acceleration
 
-For CUDA-compatible GPUs, install GPU dependencies:
+For CUDA-compatible GPUs, install PAL with the GPU extra:
 
 <!--pytest.mark.skip-->
 
 ```bash
-pdm install -G gpu
+pip install -e ".[gpu]"
 ```
 
 Enable GPU mode:
@@ -138,7 +163,11 @@ export PAL_SUPPRESS_PLOTS=true
 set PAL_SUPPRESS_PLOTS=true
 ```
 
-This prevents `show_cdf()` and other plotting methods from attempting to display plots in browsers or GUI windows.
+This prevents the legacy `show_cdf()` and `show_histogram()` convenience methods
+from attempting to display plots in browsers or GUI windows. The preferred
+`cdf_plot()`, `histogram_plot()`, `rank_scatter_plot()`, and
+`value_scatter_plot()` methods only return figures, so headless code can simply
+avoid calling `.show()`.
 
 ## Interactive Examples (Jupyter Notebooks)
 
@@ -157,7 +186,7 @@ All development work is done inside the devcontainer. VS Code provides native Ju
 5. **Select Kernel** when prompted:
    - Click "Select Kernel" in the top-right of the notebook
    - Choose "Python Environments"
-   - Select the PDM environment (should show `/workspace/.venv/bin/python`)
+   - Select the project virtual environment (normally `/workspace/.venv/bin/python`)
 6. **Run cells** using:
    - **Ctrl+Enter** - Run current cell
    - **Shift+Enter** - Run current cell and move to next

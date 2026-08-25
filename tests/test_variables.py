@@ -14,6 +14,7 @@ import pytest
 # project
 from pal import maths as pnp
 from pal.variables import FreqSevSims, ProteusVariable, StochasticScalar
+from tests._assertions import array_equal
 
 
 def test_empty():
@@ -791,7 +792,7 @@ def test_validate_freqsev_consistency_valid():
     assert is_valid is True
     assert msg == ""
     assert sim_idx is not None
-    assert np.array_equal(sim_idx, np.array([0, 1, 2]))
+    assert array_equal(sim_idx, np.array([0, 1, 2]))
 
 
 def test_validate_freqsev_consistency_mismatch_immediate():
@@ -849,7 +850,7 @@ def test_validate_freqsev_consistency_nested_valid():
     assert is_valid is True
     assert msg == ""
     assert sim_idx is not None
-    assert np.array_equal(sim_idx, np.array([0, 1, 2]))
+    assert array_equal(sim_idx, np.array([0, 1, 2]))
 
 
 def test_validate_freqsev_consistency_nested_mismatch():
@@ -899,4 +900,4 @@ def test_validate_freqsev_consistency_single():
     assert is_valid is True
     assert msg == ""
     assert sim_idx is not None
-    assert np.array_equal(sim_idx, np.array([0, 1, 2]))
+    assert array_equal(sim_idx, np.array([0, 1, 2]))

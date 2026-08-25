@@ -11,20 +11,12 @@ https://proteusllp-actuarial-library.readthedocs.io/
 
 ### Prerequisites
 
-Install the documentation dependencies:
+Install the documentation dependencies with pip:
 
 <!--pytest.mark.skip-->
 
 ```bash
-pdm install -G docs
-```
-
-Or with pip:
-
-<!--pytest.mark.skip-->
-
-```bash
-pip install -e .[docs]
+pip install -e ".[docs]"
 ```
 
 ### Build HTML Documentation
@@ -63,6 +55,16 @@ make help     # Show all available targets
   - `_templates/` - Custom Sphinx templates
 - `usage.md` - Original usage guide (copied to source/)
 - `development.md` - Original development guide (copied to source/)
+
+## Theme and Branding
+
+The HTML documentation uses the Furo theme with a small Proteus-specific layer:
+
+- `source/_static/css/proteus.css` contains the brand tokens and component styles.
+- `source/_static/logo/` contains the documentation wordmark and favicon.
+- `source/index.rst` contains the landing-page hero and navigation cards.
+
+Keep substantive styling in `proteus.css` rather than overriding Furo templates. This keeps theme upgrades straightforward and retains Furo's responsive navigation, accessibility features and dark mode.
 
 ## Read the Docs Configuration
 

@@ -14,9 +14,47 @@ numpy and ndarrays.
 See: http://github.com/ProteusLLP/proteus-actuarial-library
 """
 
+from . import distributions as distributions
 from .config import *
 from .contracts import *
 from .distributions import *
+from .empirical import Empirical
 from .frequency_severity import *
+from .hyperexponential import HyperExponential
+from .mbbefd import MBBEFD as MBBEFD
+from .multivariate_distributions import *
 from .stats import *
 from .variables import *
+
+# Empirical and HyperExponential have vector-valued parameters and are
+# implemented in separate modules. Expose them through the standard
+# distributions namespace and named-distribution generator APIs.
+distributions.__dict__["Empirical"] = Empirical
+distributions.AVAILABLE_DISCRETE_DISTRIBUTIONS["empirical"] = Empirical
+distributions.__dict__["HyperExponential"] = HyperExponential
+distributions.AVAILABLE_CONTINUOUS_DISTRIBUTIONS["hyperexponential"] = HyperExponential
+
+# Keep the canonical distributions namespace and named generator pointed at the
+# MBBEFD implementation with analytical moment methods.
+distributions.MBBEFD = MBBEFD
+distributions.AVAILABLE_CONTINUOUS_DISTRIBUTIONS["mbbefd"] = MBBEFD
+
+# ``variables`` depends on ``frequency_severity``, which in turn depends on the
+# univariate distributions module. Attach the multivariate API after those modules
+# have initialized to avoid making that established import cycle recursive.
+for _distribution_name in (
+    "Dirichlet",
+    "GeneralizedDirichlet",
+    "InverseWishart",
+    "InvertedDirichlet",
+    "InvertedGeneralizedDirichlet",
+    "MatrixDistributionBase",
+    "Multinomial",
+    "MultivariateDistributionBase",
+    "MultivariateNormal",
+    "MultivariateStudentsT",
+    "Wishart",
+):
+    setattr(distributions, _distribution_name, globals()[_distribution_name])
+
+del _distribution_name

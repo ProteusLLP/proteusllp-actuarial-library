@@ -19,6 +19,7 @@ from pal import (  # isort: skip
     distributions,
     set_random_seed,
     StochasticScalar,
+    ProteusVariable,
 )
 
 SUPPRESS_PLOTS = os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true"
@@ -138,7 +139,7 @@ print("=" * 70)
 
 def rank_corr(a: StochasticScalar, b: StochasticScalar) -> float:  # noqa: ANN001, ANN201
     """Compute rank correlation between two variables."""
-    return np.corrcoef(a.ranks.values, b.ranks.values)[0, 1]
+    return np.corrcoef(a.ranks, b.ranks)[0, 1]
 
 
 # --- 3a: Independent variables (no copula) ---
@@ -226,8 +227,8 @@ pairs = [
 for x_var, y_var, name, row, col in pairs:
     fig.add_trace(  # type: ignore[misc]
         go.Scattergl(
-            x=x_var.ranks.values.tolist(),
-            y=y_var.ranks.values.tolist(),
+            x=x_var.ranks,
+            y=y_var.ranks,
             name=name,
             **scatter_kwargs,
         ),
@@ -249,6 +250,16 @@ for _, (_, _, _, row, col) in enumerate(pairs):
 if not SUPPRESS_PLOTS:
     fig.show()  # type: ignore[misc]
 print("Scatter plots generated showing rank-space dependencies.")
+
+# The built-in pair-plot API is the simpler option when visualising one
+# multivariate variable rather than comparing several copula families.
+student_t_pair = ProteusVariable("variable", {"X": x_t, "Y": y_t})
+rank_scatter_fig = student_t_pair.rank_scatter_plot(title="Student's T copula - rank space")
+value_scatter_fig = student_t_pair.value_scatter_plot(title="Student's T copula - value space")
+
+if not SUPPRESS_PLOTS:
+    rank_scatter_fig.show()  # type: ignore[misc]
+    value_scatter_fig.show()  # type: ignore[misc]
 
 # ============================================================================
 # Part 5: Variable Reordering in Detail
@@ -372,7 +383,7 @@ copulas.GaussianCopula(corr_matrix).apply(lob_list)
 # Check the resulting rank correlations.
 print("\n--- Rank correlation matrix after Gaussian copula ---")
 names = list(lobs.keys())
-ranks = np.array([lobs[name].ranks.values for name in names])
+ranks = np.array([lobs[name].ranks for name in names])
 rank_corr_matrix = np.corrcoef(ranks)
 print(f"{'':>12}", end="")
 for name in names:

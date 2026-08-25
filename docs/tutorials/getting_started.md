@@ -36,7 +36,7 @@ You can inspect it immediately:
 loss.mean()       # => 1,358,389
 loss.std()        # =>   732,520
 np.median(loss.values)               # => 1,200,047
-np.percentile(loss.values, 99.5)     # => 4,443,841
+loss.percentile(99.5)                # => 4,443,841
 ```
 
 ## Arithmetic on Stochastic Variables
@@ -146,17 +146,23 @@ tutorial for more detail.
 
 ## Visualisation
 
-Every `StochasticScalar` has a `show_cdf()` method that displays an
-interactive CDF plot:
+Plotting methods return Plotly `Figure` objects. This keeps plotting separate
+from calculation and lets you display, customise, or save the same figure:
 
 <!--pytest.mark.skip-->
 
 ```python
-agg.show_cdf("Aggregate Loss")
+fig = agg.cdf_plot("Aggregate Loss")
+fig.show()
 ```
 
-Set the environment variable `PAL_SUPPRESS_PLOTS=true` to disable
-plot display in headless environments.
+```{only} html
+![Aggregate loss empirical CDF](../_static/generated/getting_started_aggregate_cdf.svg)
+```
+
+Because `cdf_plot()` does not display anything itself, headless code can simply
+avoid calling `.show()`. The older `show_cdf()` convenience method remains
+available for backwards compatibility.
 
 ## Configuration Summary
 

@@ -7,11 +7,11 @@ generation and GPU support are managed via configuration settings.
 It's expected that you construct distributions of distributions ie. a distribution can
 be created and passed to another distribution as a parameter.
 
-Note on Type Signatures:
-Distributions accept and return only primitives (int, float) or StochasticScalar.
-The DistributionParameter type alias is Union[int, float, StochasticScalar].
-Internally, scipy.special functions may operate on arrays extracted from
-StochasticScalar.values, but the public API never exposes raw numpy arrays.
+Univariate distributions accept and return only primitives (int, float) or
+StochasticScalar. Multivariate distributions return a ProteusVariable containing
+one StochasticScalar per named component, keeping the simulation dimension
+one-dimensional at each leaf. Matrix distributions return nested row and column
+ProteusVariable objects with a StochasticScalar at each named matrix entry.
 
 Type Definitions:
 - DistributionParameter: Union[int, float, StochasticScalar]
@@ -24,17 +24,53 @@ from __future__ import annotations
 import typing as t
 from abc import ABC
 
+import numpy as np
+import scipy.special as scipy_special
+from scipy.stats import geninvgauss
+
 # Local imports
 from ._compat import override
-from ._maths import special
-from ._maths import xp as np
+from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
 from .config import config
 from .stochastic_scalar import StochasticScalar
-from .types import DistributionParameter
+from .types import DistributionParameter, RandomGenerator
+
+if t.TYPE_CHECKING:
+    from .multivariate_distributions import Dirichlet as Dirichlet
+    from .multivariate_distributions import GeneralizedDirichlet as GeneralizedDirichlet
+    from .multivariate_distributions import InverseWishart as InverseWishart
+    from .multivariate_distributions import InvertedDirichlet as InvertedDirichlet
+    from .multivariate_distributions import InvertedGeneralizedDirichlet as InvertedGeneralizedDirichlet
+    from .multivariate_distributions import MatrixDistributionBase as MatrixDistributionBase
+    from .multivariate_distributions import Multinomial as Multinomial
+    from .multivariate_distributions import MultivariateDistributionBase as MultivariateDistributionBase
+    from .multivariate_distributions import MultivariateNormal as MultivariateNormal
+    from .multivariate_distributions import MultivariateStudentsT as MultivariateStudentsT
+    from .multivariate_distributions import Wishart as Wishart
 
 TOLERANCE = 1e-10  # Tolerance for numerical comparisons
 # FIXME: Consider replaching with VectorLike from types.py
 ReturnType = t.Union[int, float, StochasticScalar]
+
+
+def _special_call(function: t.Callable[..., t.Any], *args: t.Any) -> t.Any:
+    """Call a SciPy-compatible special function on active-backend values."""
+    stochastic_args = [arg for arg in args if isinstance(arg, StochasticScalar)]
+    processed_args = [arg.values if isinstance(arg, StochasticScalar) else to_backend(arg) for arg in args]
+    result = function(*processed_args)
+    if stochastic_args and getattr(result, "ndim", None) == 1:
+        wrapped = StochasticScalar(result)
+        for arg in stochastic_args:
+            wrapped.coupled_variable_group.merge(arg.coupled_variable_group)
+        return wrapped
+    return scalar_or_array(result)
+
+
+def _rng_value(value: t.Any, rng: t.Any) -> t.Any:
+    """Place a parameter on the array backend used by the supplied generator."""
+    if type(rng).__module__.startswith("numpy"):
+        return asnumpy(value) if isinstance(value, xp.ndarray) else value
+    return to_backend(value)
 
 
 class DistributionBase:
@@ -69,7 +105,7 @@ class DistributionBase:
         """
         raise NotImplementedError
 
-    def generate(self, n_sims: int | None = None, rng: np.random.Generator | None = None) -> StochasticScalar:
+    def generate(self, n_sims: int | None = None, rng: RandomGenerator | None = None) -> StochasticScalar:
         """Generate random samples from the distribution.
 
         Parameters:
@@ -84,6 +120,8 @@ class DistributionBase:
 
         if rng is None:
             rng = config.rng
+        if rng is None:
+            raise RuntimeError("No random number generator is configured")
 
         result = self._generate(n_sims, rng)
         # Merge coupled variable groups from parameters if applicable.
@@ -92,7 +130,7 @@ class DistributionBase:
                 result.coupled_variable_group.merge(param.coupled_variable_group)
         return result
 
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         """Generate random samples using the inverse CDF technique.
 
         Args:
@@ -111,8 +149,8 @@ class DistributionBase:
         # Generate uniform random numbers and transform via inverse CDF
         # When n_sims >= 1, rng.uniform(size=n_sims) returns an array,
         # so invcdf also returns an array (SequenceLike) due to overload typing
-        uniform_samples = StochasticScalar(rng.uniform(size=n_sims))
-        result = self.invcdf(uniform_samples)
+        uniform_samples = xp.asarray(rng.uniform(size=n_sims))
+        result = self.invcdf(StochasticScalar(uniform_samples))
         return StochasticScalar(result)
 
     @property
@@ -166,19 +204,28 @@ class Poisson(DiscreteDistributionBase):
         """Compute cumulative distribution function."""
         # scipy.special functions support array inputs despite restrictive type stubs
         (mean,) = self._param_values
-        return special.pdtr(x, mean)
+        return _special_call(special.pdtr, x, mean)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         # scipy.special functions support array inputs despite restrictive type stubs
         (mean,) = self._param_values
-        return special.pdtrik(u, mean)
+        # CuPy does not implement pdtrik. This uncommon inverse-CDF path uses
+        # SciPy explicitly and transfers the result back to the active backend.
+        u_values = u.values if isinstance(u, StochasticScalar) else u
+        mean_values = asnumpy(mean) if hasattr(mean, "ndim") else mean
+        result = xp.asarray(scipy_special.pdtrik(asnumpy(u_values), mean_values))
+        if isinstance(u, StochasticScalar):
+            wrapped = StochasticScalar(result)
+            wrapped.coupled_variable_group.merge(u.coupled_variable_group)
+            return wrapped
+        return scalar_or_array(result)
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         (mean,) = self._param_values
-        return StochasticScalar(rng.poisson(mean, n_sims))
+        return StochasticScalar(rng.poisson(_rng_value(mean, rng), n_sims))
 
 
 class NegBinomial(DiscreteDistributionBase):
@@ -213,18 +260,18 @@ class NegBinomial(DiscreteDistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
         n, p = self._param_values
-        return special.nbdtr(x, n, p)  # type: ignore[misc, arg-type]
+        return _special_call(special.nbdtr, x, n, p)  # type: ignore[misc, arg-type]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         n, p = self._param_values
-        return special.nbdtri(u, n, p)  # type: ignore[misc, arg-type]
+        return _special_call(special.nbdtri, u, n, p)  # type: ignore[misc, arg-type]
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         n, p = self._param_values
-        return StochasticScalar(rng.negative_binomial(n, p, size=n_sims))
+        return StochasticScalar(rng.negative_binomial(_rng_value(n, rng), _rng_value(p, rng), size=n_sims))
 
 
 class Binomial(DiscreteDistributionBase):
@@ -255,18 +302,18 @@ class Binomial(DiscreteDistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
         n, p = self._param_values
-        return special.bdtr(x, n, p)  # type: ignore[return-value]
+        return _special_call(special.bdtr, x, n, p)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         n, p = self._param_values
-        return special.bdtri(u, n, p)  # type: ignore[return-value]
+        return _special_call(special.bdtri, u, n, p)  # type: ignore[return-value]
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         n, p = self._param_values
-        return StochasticScalar(rng.binomial(n, p, n_sims))
+        return StochasticScalar(rng.binomial(_rng_value(n, rng), _rng_value(p, rng), n_sims))
 
 
 class HyperGeometric(DiscreteDistributionBase):
@@ -309,9 +356,6 @@ class HyperGeometric(DiscreteDistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        if np.__name__ == "cupy":
-            raise NotImplementedError("HyperGeometric CDF is not supported on GPU.")
-
         # Use scipy.stats because scipy.special does not expose hypergeom CDF directly
         from scipy.stats import hypergeom
 
@@ -319,23 +363,32 @@ class HyperGeometric(DiscreteDistributionBase):
         m = ngood + nbad
         n = ngood
         n_total = n_draws
-        return hypergeom.cdf(x, m, n, n_total)  # type: ignore[return-value]
+        x_values = x.values if isinstance(x, StochasticScalar) else x
+        result = xp.asarray(hypergeom.cdf(asnumpy(x_values), m, n, n_total))
+        if isinstance(x, StochasticScalar):
+            wrapped = StochasticScalar(result)
+            wrapped.coupled_variable_group.merge(x.coupled_variable_group)
+            return wrapped
+        return scalar_or_array(result)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        if np.__name__ == "cupy":
-            raise NotImplementedError("HyperGeometric inverse CDF is not supported on GPU.")
-
         from scipy.stats import hypergeom
 
         ngood, nbad, n_draws = self._param_values
         m = ngood + nbad
         n = ngood
-        return hypergeom.ppf(u, m, n, n_draws)  # type: ignore[return-value]
+        u_values = u.values if isinstance(u, StochasticScalar) else u
+        result = xp.asarray(hypergeom.ppf(asnumpy(u_values), m, n, n_draws))
+        if isinstance(u, StochasticScalar):
+            wrapped = StochasticScalar(result)
+            wrapped.coupled_variable_group.merge(u.coupled_variable_group)
+            return wrapped
+        return scalar_or_array(result)
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         ngood, nbad, n_draws = self._param_values
         return StochasticScalar(
             rng.hypergeometric(
@@ -513,18 +566,258 @@ class Beta(DistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
         alpha, beta, scale, loc = self._params.values()
-        return special.betainc(alpha, beta, (x - loc) / scale)  # type: ignore[return-type]
+        return _special_call(special.betainc, alpha, beta, (x - loc) / scale)  # type: ignore[return-type]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         alpha, beta, scale, loc = self._params.values()
-        return special.betaincinv(alpha, beta, u) * scale + loc  # type: ignore[return-type]
+        return _special_call(special.betaincinv, alpha, beta, u) * scale + loc  # type: ignore[return-type]
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         alpha, beta, scale, loc = self._param_values
-        return StochasticScalar(rng.beta(alpha, beta, n_sims) * scale + loc)
+        return StochasticScalar(
+            rng.beta(_rng_value(alpha, rng), _rng_value(beta, rng), n_sims) * _rng_value(scale, rng)
+            + _rng_value(loc, rng)
+        )
+
+
+class MBBEFD(DistributionBase):
+    r"""Bernegger's MBBEFD distribution on the interval :math:`[0,1]`.
+
+    This is the :math:`(g,b)` parameterisation of the Maxwell-Boltzmann,
+    Bose-Einstein and Fermi-Dirac distribution class introduced by Bernegger
+    for exposure rating. For finite :math:`g>1`, :math:`b>0`, :math:`b\ne1`
+    and :math:`gb\ne1`, its cumulative distribution function is
+
+    .. math::
+
+        F(x) =
+        \begin{cases}
+        0, & x \leq 0, \\
+        1 - \dfrac{(1-b)b^x}
+        {(g-1)b + (1-gb)b^x}, & 0 < x < 1, \\
+        1, & x \geq 1.
+        \end{cases}
+
+    The density of the continuous part on :math:`(0,1)` is
+
+    .. math::
+
+        f(x) = -\frac{(1-b)(g-1)\log(b)b^{1+x}}
+        {\left((g-1)b+(1-gb)b^x\right)^2}.
+
+    There is also an atom at total loss:
+
+    .. math::
+
+        \Pr(X=1)=\frac{1}{g},
+        \qquad F(1^-)=1-\frac{1}{g}.
+
+    Consequently, the quantile function in the main parameter region is
+
+    .. math::
+
+        F^{-1}(u) =
+        \begin{cases}
+        1 - \dfrac{\log\left(
+        \dfrac{gb-1}{g-1}+
+        \dfrac{1-b}{(1-u)(g-1)}
+        \right)}{\log(b)}, & 0 \leq u < 1-1/g, \\
+        1, & 1-1/g \leq u \leq 1.
+        \end{cases}
+
+    The limiting CDFs used when the main expression is indeterminate are
+
+    .. math::
+
+        F(x) = \frac{(g-1)x}{1+(g-1)x}
+        \quad (b=1),
+        \qquad
+        F(x) = 1-b^x
+        \quad (gb=1),
+
+    for :math:`0<x<1`. If :math:`g=1` or :math:`b=0`, the distribution is a
+    point mass at one.
+
+    Its exposure curve is the normalized limited expected value
+
+    .. math::
+
+        G(x) = \frac{E[\min(X,x)]}{E[X]}
+        = \frac{\log\left(
+        \dfrac{(g-1)b+(1-gb)b^x}{1-b}
+        \right)}{\log(gb)},
+        \qquad 0 \leq x \leq 1.
+
+    The corresponding mean is
+
+    .. math::
+
+        E[X] = \frac{(1-b)\log(gb)}{(1-gb)\log(b)}.
+
+    The parameters satisfy :math:`g \geq 1` and :math:`b \geq 0` and are
+    required to be finite by this implementation.
+
+    Parameters:
+        g: Reciprocal of the total-loss probability.
+        b: Shape parameter.
+
+    References:
+        Bernegger, S. (1997). The Swiss Re Exposure Curves and the MBBEFD
+        Distribution Class. ASTIN Bulletin 27(1), 99--111.
+    """
+
+    def __init__(
+        self,
+        g: DistributionParameter,
+        b: DistributionParameter,
+    ) -> None:
+        """Initialize the MBBEFD distribution.
+
+        Args:
+            g: Reciprocal of the total-loss probability.
+            b: Shape parameter.
+        """
+        super().__init__(g=g, b=b)
+
+    @classmethod
+    def from_c(cls, c: DistributionParameter) -> MBBEFD:
+        r"""Construct the one-parameter Swiss Re curve associated with :math:`c`.
+
+        The conversion is :math:`g=\exp((0.78+0.12c)c)` and
+        :math:`b=\exp(3.1-0.15(1+c)c)`.
+
+        Args:
+            c: Swiss Re curve parameter.
+
+        Returns:
+            MBBEFD distribution with the corresponding ``g`` and ``b`` values.
+        """
+        g = t.cast(DistributionParameter, np.exp((0.78 + 0.12 * c) * c))
+        b = t.cast(DistributionParameter, np.exp(3.1 - 0.15 * (1 + c) * c))
+        return cls(g=g, b=b)
+
+    def _validated_params(self) -> tuple[t.Any, t.Any]:
+        """Return parameters after checking the admissible region."""
+        g, b = self._param_values
+        g = xp.asarray(g)
+        b = xp.asarray(b)
+        if bool(xp.any(~xp.isfinite(g))) or bool(xp.any(g < 1)):
+            raise ValueError("g must be finite and greater than or equal to 1.")
+        if bool(xp.any(~xp.isfinite(b))) or bool(xp.any(b < 0)):
+            raise ValueError("b must be finite and greater than or equal to 0.")
+        return g, b
+
+    def _wrap_result(
+        self,
+        result: t.Any,
+        argument: DistributionParameter,
+    ) -> ReturnType:
+        """Preserve stochastic coupling for array-valued results."""
+        candidates = (argument, *self._params.values())
+        stochastic_inputs = [value for value in candidates if isinstance(value, StochasticScalar)]
+        if not stochastic_inputs:
+            return float(result)
+
+        wrapped = StochasticScalar(result)
+        for value in stochastic_inputs:
+            wrapped.coupled_variable_group.merge(value.coupled_variable_group)
+        return wrapped
+
+    @override
+    def cdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the cumulative distribution function, including the atom at one."""
+        g, b = self._validated_params()
+        values = xp.asarray(x.values if isinstance(x, StochasticScalar) else x)
+        degenerate = (g == 1) | (b == 0)
+        b_one = xp.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
+        bg_one = xp.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
+
+        safe_g = xp.where(degenerate, 2.0, g)
+        safe_b = xp.where(degenerate | b_one | bg_one, 2.0, b)
+        limit_b = xp.where(degenerate | b_one, 0.5, b)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            main = 1 - (1 - safe_b) * safe_b**values / ((safe_g - 1) * safe_b + (1 - safe_g * safe_b) * safe_b**values)
+            b_limit = 1 - 1 / (1 + (g - 1) * values)
+            bg_limit = 1 - limit_b**values
+
+        interior = xp.where(
+            degenerate,
+            0.0,
+            xp.where(b_one, b_limit, xp.where(bg_one, bg_limit, main)),
+        )
+        result = xp.where(values <= 0, 0.0, xp.where(values >= 1, 1.0, interior))
+        return self._wrap_result(result, x)
+
+    @override
+    def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Compute the inverse CDF, returning one across the total-loss atom."""
+        g, b = self._validated_params()
+        probabilities = xp.asarray(u.values if isinstance(u, StochasticScalar) else u)
+        degenerate = (g == 1) | (b == 0)
+        b_one = xp.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
+        bg_one = xp.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
+
+        safe_g = xp.where(degenerate, 2.0, g)
+        safe_b = xp.where(degenerate | b_one | bg_one, 2.0, b)
+        limit_b = xp.where(degenerate | b_one, 0.5, b)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            main_argument = (safe_g * safe_b - 1) / (safe_g - 1) + ((1 - safe_b) / ((1 - probabilities) * (safe_g - 1)))
+            main = 1 - xp.log(main_argument) / xp.log(safe_b)
+            b_limit = probabilities / ((1 - probabilities) * (safe_g - 1))
+            bg_limit = xp.log1p(-probabilities) / xp.log(limit_b)
+
+        below_atom = xp.where(
+            degenerate,
+            1.0,
+            xp.where(b_one, b_limit, xp.where(bg_one, bg_limit, main)),
+        )
+        result = xp.where(
+            (probabilities < 0) | (probabilities > 1),
+            xp.nan,
+            xp.where(
+                degenerate | (probabilities >= 1 - 1 / g),
+                1.0,
+                xp.where(probabilities == 0, 0.0, below_atom),
+            ),
+        )
+        return self._wrap_result(result, u)
+
+    def exposure_curve(self, x: DistributionParameter) -> ReturnType:
+        r"""Compute the normalized limited expected value curve.
+
+        The exposure curve is :math:`G(x)=E[\min(X,x)]/E[X]`.
+
+        Args:
+            x: Policy limit as a proportion of the maximum loss.
+
+        Returns:
+            Proportion of expected loss below the policy limit.
+        """
+        g, b = self._validated_params()
+        values = xp.asarray(x.values if isinstance(x, StochasticScalar) else x)
+        degenerate = (g == 1) | (b == 0)
+        b_one = xp.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
+        bg_one = xp.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
+
+        safe_g = xp.where(degenerate, 2.0, g)
+        safe_b = xp.where(degenerate | b_one | bg_one, 2.0, b)
+        limit_b = xp.where(degenerate | b_one, 0.5, b)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            numerator = (safe_g - 1) * safe_b + (1 - safe_g * safe_b) * safe_b**values
+            main = xp.log(numerator / (1 - safe_b)) / xp.log(safe_g * safe_b)
+            b_limit = xp.log1p((safe_g - 1) * values) / xp.log(safe_g)
+            bg_limit = (1 - limit_b**values) / (1 - limit_b)
+
+        interior = xp.where(
+            degenerate,
+            values,
+            xp.where(b_one, b_limit, xp.where(bg_one, bg_limit, main)),
+        )
+        result = xp.where(values <= 0, 0.0, xp.where(values >= 1, 1.0, interior))
+        return self._wrap_result(result, x)
 
 
 class LogLogistic(DistributionBase):
@@ -609,13 +902,13 @@ class Normal(DistributionBase):
         """Compute cumulative distribution function."""
         mu, sigma = self._params.values()
         arg = (x - mu) / sigma
-        return special.ndtr(arg)  # type: ignore[return-value]
+        return _special_call(special.ndtr, arg)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         mu, sigma = self._param_values
-        return special.ndtri(u) * sigma + mu
+        return _special_call(special.ndtri, u) * sigma + mu
 
 
 class Logistic(DistributionBase):
@@ -685,14 +978,14 @@ class LogNormal(DistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
         mu, sigma = self._param_values
-        result = special.ndtr((np.log(x) - mu) / sigma)
+        result = _special_call(special.ndtr, (np.log(x) - mu) / sigma)
         return result
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         mu, sigma = self._param_values
-        return np.exp(special.ndtri(u) * sigma + mu)
+        return np.exp(_special_call(special.ndtri, u) * sigma + mu)
 
 
 class Gamma(DistributionBase):
@@ -728,20 +1021,121 @@ class Gamma(DistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
         alpha, theta, loc = self._param_values
-        return special.gammainc(alpha, (x - loc) / theta)  # type: ignore[return-value]
+        return _special_call(special.gammainc, alpha, (x - loc) / theta)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         alpha, theta, loc = self._param_values
-        result = special.gammaincinv(alpha, u) * theta + loc
+        result = _special_call(special.gammaincinv, alpha, u) * theta + loc
         return result
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         alpha, theta, loc = self._param_values
-        result = StochasticScalar(rng.gamma(alpha, theta, size=n_sims) + loc)
+        result = StochasticScalar(
+            rng.gamma(_rng_value(alpha, rng), _rng_value(theta, rng), size=n_sims) + _rng_value(loc, rng)
+        )
         return result
+
+
+class NonCentralChiSquared(DistributionBase):
+    r"""Noncentral chi-squared distribution.
+
+    The noncentral chi-squared distribution with degrees of freedom
+    :math:`\nu>0` and noncentrality parameter :math:`\lambda\geq0` has density
+
+    .. math::
+
+        f(x) = \frac{1}{2}\exp\left(-\frac{x+\lambda}{2}\right)
+        \left(\frac{x}{\lambda}\right)^{\nu/4-1/2}
+        I_{\nu/2-1}\left(\sqrt{\lambda x}\right),
+        \qquad x>0,
+
+    for :math:`\lambda>0`, where :math:`I_a` is the modified Bessel function
+    of the first kind. Equivalently, its CDF can be written as the Poisson
+    mixture
+
+    .. math::
+
+        F(x) = \exp\left(-\frac{\lambda}{2}\right)
+        \sum_{j=0}^{\infty}
+        \frac{(\lambda/2)^j}{j!}
+        P\left(\frac{\nu}{2}+j,\frac{x}{2}\right),
+
+    where :math:`P(a,z)` is the regularized lower incomplete gamma function.
+    When :math:`\lambda=0`, this reduces to the central chi-squared
+    distribution. Its first two moments are
+
+    .. math::
+
+        E[X]=\nu+\lambda,
+        \qquad
+        \operatorname{Var}(X)=2(\nu+2\lambda).
+
+    Parameters:
+        df: Degrees of freedom :math:`\nu>0`.
+        nonc: Noncentrality parameter :math:`\lambda\geq0`.
+
+    Notes:
+        Random generation supports both CPU and GPU execution. CDF and inverse
+        CDF evaluation are currently supported on the CPU only.
+    """
+
+    def __init__(
+        self,
+        df: DistributionParameter,
+        nonc: DistributionParameter,
+    ) -> None:
+        """Initialize a noncentral chi-squared distribution.
+
+        Args:
+            df: Positive degrees of freedom.
+            nonc: Non-negative noncentrality parameter.
+        """
+        super().__init__(df=df, nonc=nonc)
+
+    def _validated_params(self) -> tuple[t.Any, t.Any]:
+        """Return parameters after checking the admissible region."""
+        df, nonc = self._param_values
+        if bool(xp.any(xp.asarray(df) <= 0)):
+            raise ValueError("df must be strictly positive.")
+        if bool(xp.any(xp.asarray(nonc) < 0)):
+            raise ValueError("nonc must be greater than or equal to 0.")
+        return df, nonc
+
+    @override
+    def cdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the cumulative distribution function."""
+        if xp.__name__ == "cupy":
+            raise NotImplementedError("NonCentralChiSquared CDF is not supported on GPU.")
+        self._validated_params()
+        return _special_call(
+            special.chndtr,
+            x,
+            self._params["df"],
+            self._params["nonc"],
+        )  # type: ignore[return-value]
+
+    @override
+    def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Compute the inverse cumulative distribution function."""
+        if xp.__name__ == "cupy":
+            raise NotImplementedError("NonCentralChiSquared inverse CDF is not supported on GPU.")
+        self._validated_params()
+        return _special_call(
+            special.chndtrix,
+            u,
+            self._params["df"],
+            self._params["nonc"],
+        )  # type: ignore[return-value]
+
+    @override
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
+        """Generate random samples on the backend used by the random generator."""
+        df, nonc = self._validated_params()
+        result = rng.noncentral_chisquare(_rng_value(df, rng), _rng_value(nonc, rng), size=n_sims)
+        return StochasticScalar(result)
 
 
 class InverseGamma(DistributionBase):
@@ -779,13 +1173,13 @@ class InverseGamma(DistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
         alpha, theta, loc = self._param_values
-        return special.gammaincc(alpha, np.divide(theta, (x - loc)))
+        return _special_call(special.gammaincc, alpha, np.divide(theta, (x - loc)))  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         alpha, theta, loc = self._param_values
-        return np.divide(theta, special.gammainccinv(alpha, u)) + loc
+        return np.divide(theta, _special_call(special.gammainccinv, alpha, u)) + loc
 
 
 class Pareto(DistributionBase):
@@ -1188,7 +1582,7 @@ class StudentsT(DistributionBase):
         # F(t; ν) = 1/2 + t * Γ((ν+1)/2) / (√(νπ) * Γ(ν/2)) * 2F1(...)
         # Or equivalently: F(t; ν) = 1 - 1/2 * I_{ν/(ν+t²)}(ν/2, 1/2) for t > 0
         x_pos = np.abs(z)
-        p = special.betainc(nu / 2, 0.5, nu / (nu + x_pos**2)) / 2
+        p = _special_call(special.betainc, nu / 2, 0.5, nu / (nu + x_pos**2)) / 2
         result = np.where(z >= 0, 1 - p, p)
         return result  # type: ignore[return-value]
 
@@ -1205,12 +1599,22 @@ class StudentsT(DistributionBase):
 
         p_tilde = np.minimum(u, 1 - u)
         y = 2 * p_tilde
-        x_beta = special.betaincinv(nu / 2, 0.5, y)
+        x_beta = _special_call(special.betaincinv, nu / 2, 0.5, y)
         x_sq = nu * (1 / x_beta - 1)
         x = np.sqrt(x_sq)
         sign = np.sign(u - 0.5)
 
         return mu + sigma * sign * x
+
+    @override
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
+        """Generate samples using the active backend's Student's t sampler."""
+        nu, mu, sigma = self._param_values
+        nu = _rng_value(nu, rng)
+        mu = _rng_value(mu, rng)
+        sigma = _rng_value(sigma, rng)
+        samples = rng.standard_t(nu, size=n_sims)
+        return StochasticScalar(mu + sigma * samples)
 
 
 class InverseGaussian(DistributionBase):
@@ -1255,8 +1659,8 @@ class InverseGaussian(DistributionBase):
         """Compute cumulative distribution function."""
         mu, lambda_ = self._param_values
         sqrt_lambda_x = np.sqrt(lambda_ / x)
-        term1 = special.ndtr(sqrt_lambda_x * (x / mu - 1))
-        term2 = np.exp(2 * lambda_ / mu) * special.ndtr(-sqrt_lambda_x * (x / mu + 1))
+        term1 = _special_call(special.ndtr, sqrt_lambda_x * (x / mu - 1))
+        term2 = np.exp(2 * lambda_ / mu) * _special_call(special.ndtr, -sqrt_lambda_x * (x / mu + 1))
         return term1 + term2
 
     @override
@@ -1274,7 +1678,7 @@ class InverseGaussian(DistributionBase):
         )
 
     @override
-    def _generate(self, n_sims: int, rng: np.random.Generator) -> StochasticScalar:
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         """Generate samples using the algorithm from Michael, Schucany, and Haas.
 
         Reference:
@@ -1284,14 +1688,178 @@ class InverseGaussian(DistributionBase):
         """
         mu, lambda_ = self._param_values
         # Generate chi-squared(1) samples
-        nu = rng.normal(0, 1, n_sims) ** 2
+        nu = xp.asarray(rng.normal(0, 1, n_sims) ** 2)
         y = mu + (mu**2 * nu) / (2 * lambda_) - (mu / (2 * lambda_)) * np.sqrt(4 * mu * lambda_ * nu + mu**2 * nu**2)
 
         # Random selection step
-        u = rng.uniform(0, 1, n_sims)
+        u = xp.asarray(rng.uniform(0, 1, n_sims))
         x = np.where(u <= mu / (mu + y), y, mu**2 / y)
 
         return StochasticScalar(x)
+
+
+class GeneralizedInverseGaussian(DistributionBase):
+    r"""Generalized inverse Gaussian distribution.
+
+    Let :math:`Y=X-\mu`, where :math:`\mu` is the location parameter. The
+    probability density function is
+
+    .. math::
+
+        f_X(x) =
+        \begin{cases}
+        \dfrac{(\psi / \chi)^{p / 2}}
+        {2K_p(\sqrt{\chi\psi})}
+        y^{p-1}
+        \exp\left[-\dfrac{1}{2}\left(
+        \dfrac{\chi}{y}+\psi y
+        \right)\right], & y>0, \\
+        0, & y\leq0,
+        \end{cases}
+
+    where :math:`p\in\mathbb{R}`, :math:`\chi>0`, :math:`\psi>0`, and
+    :math:`K_\nu` is the modified Bessel function of the second kind. All
+    power moments of :math:`Y` exist and satisfy
+
+    .. math::
+
+        E[Y^r] =
+        \left(\frac{\chi}{\psi}\right)^{r/2}
+        \frac{K_{p+r}(\sqrt{\chi\psi})}
+        {K_p(\sqrt{\chi\psi})}.
+
+    In particular,
+
+    .. math::
+
+        E[X] = \mu +
+        \sqrt{\frac{\chi}{\psi}}
+        \frac{K_{p+1}(\sqrt{\chi\psi})}
+        {K_p(\sqrt{\chi\psi})},
+
+    and
+
+    .. math::
+
+        \operatorname{Var}(X) = \frac{\chi}{\psi}
+        \left[
+        \frac{K_{p+2}(\sqrt{\chi\psi})}
+        {K_p(\sqrt{\chi\psi})}
+        -
+        \left(
+        \frac{K_{p+1}(\sqrt{\chi\psi})}
+        {K_p(\sqrt{\chi\psi})}
+        \right)^2
+        \right].
+
+    This parameterisation includes the inverse Gaussian distribution with
+    mean :math:`m` and shape :math:`\lambda_{IG}` when
+
+    .. math::
+
+        p=-\frac{1}{2},
+        \qquad \chi=\lambda_{IG},
+        \qquad \psi=\frac{\lambda_{IG}}{m^2}.
+
+    Parameters:
+        p: Index parameter :math:`p`.
+        chi: Reciprocal scale parameter :math:`\chi`.
+        psi: Scale parameter :math:`\psi`.
+        loc: Location parameter :math:`\mu` (default 0).
+
+    Notes:
+        CDF evaluation, inverse CDF evaluation, and random generation are
+        currently supported on the CPU only.
+    """
+
+    def __init__(
+        self,
+        p: DistributionParameter,
+        chi: DistributionParameter,
+        psi: DistributionParameter,
+        loc: DistributionParameter = 0.0,
+    ) -> None:
+        """Initialize generalized inverse Gaussian distribution.
+
+        Args:
+            p: Index parameter.
+            chi: Positive reciprocal scale parameter.
+            psi: Positive scale parameter.
+            loc: Location parameter.
+        """
+        super().__init__(p=p, chi=chi, psi=psi, loc=loc)
+
+    def _scipy_params(self) -> tuple[t.Any, t.Any, t.Any, t.Any]:
+        """Convert the GIG parameters to SciPy's parameterisation."""
+        if xp.__name__ == "cupy":
+            raise NotImplementedError("GeneralizedInverseGaussian is not supported on GPU.")
+
+        p, chi, psi, loc = self._param_values
+        if bool(np.any(chi <= 0)):
+            raise ValueError("chi must be strictly positive.")
+        if bool(np.any(psi <= 0)):
+            raise ValueError("psi must be strictly positive.")
+        scipy_shape = np.sqrt(chi * psi)
+        scipy_scale = np.sqrt(chi / psi)
+        return p, scipy_shape, scipy_scale, loc
+
+    def _wrap_result(
+        self,
+        result: t.Any,
+        argument: DistributionParameter,
+    ) -> ReturnType:
+        """Preserve stochastic coupling when SciPy returns an array."""
+        candidates = (argument, *self._params.values())
+        stochastic_inputs = [value for value in candidates if isinstance(value, StochasticScalar)]
+        if not stochastic_inputs:
+            return float(result)
+
+        wrapped = StochasticScalar(result)
+        for value in stochastic_inputs:
+            wrapped.coupled_variable_group.merge(value.coupled_variable_group)
+        return wrapped
+
+    @override
+    def cdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute cumulative distribution function."""
+        p, scipy_shape, scipy_scale, loc = self._scipy_params()
+        values = x.values if isinstance(x, StochasticScalar) else x
+        result = geninvgauss.cdf(
+            values,
+            p,
+            scipy_shape,
+            loc=loc,
+            scale=scipy_scale,
+        )
+        return self._wrap_result(result, x)
+
+    @override
+    def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Compute inverse cumulative distribution function."""
+        p, scipy_shape, scipy_scale, loc = self._scipy_params()
+        values = u.values if isinstance(u, StochasticScalar) else u
+        result = geninvgauss.ppf(
+            values,
+            p,
+            scipy_shape,
+            loc=loc,
+            scale=scipy_scale,
+        )
+        return self._wrap_result(result, u)
+
+    @override
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
+        """Generate random samples using SciPy's GIG sampler."""
+        p, scipy_shape, scipy_scale, loc = self._scipy_params()
+        result = geninvgauss.rvs(
+            p,
+            scipy_shape,
+            loc=loc,
+            scale=scipy_scale,
+            size=n_sims,
+            random_state=rng,
+        )
+        return StochasticScalar(result)
 
 
 class Exponential(DistributionBase):
@@ -1339,7 +1907,10 @@ class Uniform(DistributionBase):
     r"""Uniform Distribution.
 
     Defined by:
-        F(x) = (x - a) / (b - a), for a <= x <= b
+
+    .. math::
+
+        F(x) = \frac{x-a}{b-a}, \qquad a \leq x \leq b
 
     Parameters:
         a (float): Lower bound.
@@ -1423,10 +1994,13 @@ AVAILABLE_CONTINUOUS_DISTRIBUTIONS: dict[str, t.Any] = {
     "gamma": Gamma,
     "gev": GEV,
     "gpd": GPD,
+    "generalizedinversegaussian": GeneralizedInverseGaussian,
     "inversegaussian": InverseGaussian,
     "logistic": Logistic,
     "lognormal": LogNormal,
     "loglogistic": LogLogistic,
+    "mbbefd": MBBEFD,
+    "noncentralchisquared": NonCentralChiSquared,
     "normal": Normal,
     "paralogistic": Paralogistic,
     "pareto": Pareto,
@@ -1466,7 +2040,7 @@ class DistributionGeneratorBase:
     def generate(
         self,
         n_sims: int | None = None,
-        rng: np.random.Generator | None = None,
+        rng: RandomGenerator | None = None,
     ) -> StochasticScalar:
         """Delegate to wrapped distribution.
 

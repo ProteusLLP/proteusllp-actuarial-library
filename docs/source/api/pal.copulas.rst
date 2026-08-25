@@ -1,7 +1,6 @@
+:orphan:
+
 pal.copulas module
 ==================
 
-.. automodule:: pal.copulas
-   :members:
-   :show-inheritance:
-   :undoc-members:
+The copula reference is organised by concrete copula on :doc:`copulas`.

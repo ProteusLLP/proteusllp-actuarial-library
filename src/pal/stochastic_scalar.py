@@ -17,7 +17,7 @@ import plotly.graph_objects as go  # type: ignore
 from pal import stats  # type: ignore
 
 from ._compat import Self
-from ._maths import xp
+from ._maths import asnumpy, scalar_or_array, to_backend, xp
 from .couplings import CouplingGroup, ProteusStochasticVariable
 from .stats import NumberOrList
 from .types import Numeric, NumericLike, ScipyNumeric
@@ -27,7 +27,7 @@ class StochasticScalar(ProteusStochasticVariable):
     """A class to represent a single scalar variable in a simulation."""
 
     coupled_variable_group: CouplingGroup
-    n_sims: int
+    n_sims: int  # pyright: ignore[reportIncompatibleVariableOverride]
     """The number of simulations in the variable."""
 
     # ===================
@@ -38,8 +38,8 @@ class StochasticScalar(ProteusStochasticVariable):
         """Initialize a stochastic scalar.
 
         Args:
-            values: An array of values that describe the distribution for the scalar
-                variable.
+            values: An array-like sequence of values that describe the distribution
+                for the scalar variable.
         """
         super().__init__()
 
@@ -49,33 +49,20 @@ class StochasticScalar(ProteusStochasticVariable):
             self.coupled_variable_group.merge(values.coupled_variable_group)
             return
 
-        if isinstance(values, list):
-            # Type ignore: Generic list type inference limitation
-            self.values = xp.array(values)  # type: ignore[misc]
-            self.n_sims = len(values)  # type: ignore[misc]
-            return
+        invalid_type_message = f"Type of values must be a sequence or array. Found {type(values).__name__}"
+        if isinstance(values, (str, dict, set)):
+            raise TypeError(invalid_type_message)
 
-        if isinstance(values, xp.ndarray):
-            if values.ndim == 1:
-                self.values = values
-                # Type ignore: Generic array type inference limitation
-                self.n_sims = len(values)  # type: ignore[misc]
-                return
+        try:
+            array = xp.asarray(values)
+        except (TypeError, ValueError) as exc:
+            raise TypeError(invalid_type_message) from exc
+
+        if array.ndim != 1:
             raise ValueError("Values must be a 1D array.")
 
-        if isinstance(values, np.ndarray):
-            if values.ndim == 1:
-                self.values = xp.asarray(
-                    values,
-                    dtype=values.dtype,  # type: ignore
-                )
-                # Type ignore: Generic array type inference limitation
-                self.n_sims = len(values)  # type: ignore[misc]
-                return
-            raise ValueError("Values must be a 1D array.")
-
-        # Type ignore: Generic ArrayLike type inference limitation
-        raise TypeError("Type of values must be a sequence or array. Found " + type(values).__name__)  # type: ignore[misc]
+        self.values = array
+        self.n_sims = len(array)
 
     def __repr__(self) -> str:
         try:
@@ -115,17 +102,10 @@ class StochasticScalar(ProteusStochasticVariable):
             #
             var_pos = var_not_stochastic_scalar.index(True)
             return inputs[var_pos].__array_ufunc__(ufunc, method, *inputs, **kwargs)
-        _inputs = tuple(
-            (
-                x.values
-                if isinstance(x, StochasticScalar)
-                else x  # promote an input ndarray to match the simulation index
-            )
-            for x in inputs
-        )
+        _inputs = tuple(x.values if isinstance(x, StochasticScalar) else to_backend(x) for x in inputs)
         out = kwargs.get("out", ())
         if out:
-            kwargs["out"] = tuple(x.values for x in out)
+            kwargs["out"] = tuple(x.values if isinstance(x, StochasticScalar) else x for x in out)
 
         # Handle reduction operations - return scalars directly
         if method == "reduce":
@@ -139,7 +119,7 @@ class StochasticScalar(ProteusStochasticVariable):
                 return self._wrap_result_with_coupling(result, inputs)
 
             # Standard reduction returns scalar directly
-            return result
+            return scalar_or_array(result)
 
         # Handle reduceat/accumulate operations - return wrapped arrays
         if method in ("reduceat", "accumulate"):
@@ -167,30 +147,38 @@ class StochasticScalar(ProteusStochasticVariable):
         Raises:
             NotImplementedError: If the function is not supported
         """
-        # Extract values from StochasticScalar objects, leave others as-is
-        processed_args = tuple(x.values if isinstance(x, StochasticScalar) else x for x in args)
+        # Extract PAL values and move any NumPy operands to the active backend.
+        processed_args = tuple(x.values if isinstance(x, StochasticScalar) else to_backend(x) for x in args)
+        if func is np.where:
+            processed_args = (xp.asarray(processed_args[0]), *processed_args[1:])
         result = func(*processed_args, **kwargs)
 
-        # If result is a scalar, return it directly
-        # Type ignore: Pyright can't infer the exact numpy scalar type
+        scalar_result = scalar_or_array(result)
+        if scalar_result is not result:
+            return scalar_result  # type: ignore[return-value]
         if isinstance(result, (np.number, np.bool_, bool)) or np.isscalar(result):
-            return result  # type: ignore[misc]
+            return result  # type: ignore[return-value]
 
-        # Otherwise create a new StochasticScalar object with the result
+        # A StochasticScalar is one-dimensional. Functions such as stack return
+        # higher-dimensional backend arrays and should remain arrays.
+        if getattr(result, "ndim", None) != 1:
+            return result
         return self._wrap_result_with_coupling(result, args)
 
-    def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:
+    def __array__(self, dtype: t.Any = None, copy: bool | None = None) -> npt.NDArray[t.Any]:
         """Convert the StochasticScalar to a numpy array.
 
         Args:
             dtype: The desired data type of the output array.
+            copy: Whether NumPy requires a copy of the host array.
 
         Returns:
             A numpy array representation of the StochasticScalar values.
         """
-        if dtype:
-            return self.values.astype(dtype)
-        return self.values
+        result = asnumpy(self.values, dtype=dtype)
+        if copy is True:
+            return result.copy()
+        return result
 
     def __getitem__(self, index: ScipyNumeric | StochasticScalar) -> StochasticScalar:
         # FIXME: Type signature inconsistent with SequenceLike protocol and runtime
@@ -249,17 +237,51 @@ class StochasticScalar(ProteusStochasticVariable):
         """Convert the values to a Python list."""
         return t.cast(list[Numeric], self.values.tolist())
 
-    def mean(self) -> float:
-        """Return the mean of the variable across the simulation dimension."""
-        return float(xp.mean(self.values))
+    def mean(
+        self,
+        axis: int | tuple[int, ...] | None = None,
+        dtype: t.Any = None,
+        out: t.Any = None,
+        keepdims: bool = False,
+    ) -> t.Any:
+        """Return the mean across the simulations."""
+        result = xp.mean(self.values, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
+        return self._wrap_reduction_result(result)
 
-    def sum(self) -> float:
-        """Return the sum of the variable across the simulation dimension."""
-        return float(xp.sum(self.values))
+    def sum(
+        self,
+        axis: int | tuple[int, ...] | None = None,
+        dtype: t.Any = None,
+        out: t.Any = None,
+        keepdims: bool = False,
+    ) -> t.Any:
+        """Return the sum across the simulations."""
+        result = xp.sum(self.values, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
+        return self._wrap_reduction_result(result)
 
-    def std(self) -> float:
-        """Return the standard deviation across the simulation dimension."""
-        return float(xp.std(self.values))
+    def std(
+        self,
+        axis: int | tuple[int, ...] | None = None,
+        dtype: t.Any = None,
+        out: t.Any = None,
+        ddof: int = 0,
+        keepdims: bool = False,
+    ) -> t.Any:
+        """Return the standard deviation across the simulations."""
+        result = xp.std(self.values, axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
+        return self._wrap_reduction_result(result)
+
+    def var(
+        self,
+        axis: int | tuple[int, ...] | None = None,
+        dtype: t.Any = None,
+        out: t.Any = None,
+        ddof: int = 0,
+        keepdims: bool = False,
+    ) -> t.Any:
+        """Return the variance across the simulations."""
+        result = xp.var(self.values, axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
+        return self._wrap_reduction_result(result)
 
     def percentile(self, p: NumberOrList) -> NumberOrList:
         """Return the percentile of the variable across the simulation dimension.
@@ -292,38 +314,77 @@ class StochasticScalar(ProteusStochasticVariable):
             return self
         return type(self)(self.values[xp.arange(n_sims) % self.n_sims])
 
-    def show_histogram(self, title: str | None = None) -> None:
-        """Show a histogram of the variable.
+    def histogram_plot(self, title: str | None = None) -> go.Figure:
+        """Return a Plotly histogram of the simulated values.
 
         Args:
-            title (optional): Title of the histogram plot. Defaults to None.
-        """
-        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
-            return
-        fig = go.Figure(go.Histogram(x=self.values), layout={"title": title})
-        # Type ignore: plotly-stubs has incomplete type information
-        fig.show()  # type: ignore[misc]
+            title: Optional title for the histogram.
 
-    def show_cdf(self, title: str | None = None) -> None:
-        """Show a plot of the cumulative distribution function (cdf) of the variable.
+        Returns:
+            A Plotly figure. Call ``.show()`` to display it, or use any of
+            Plotly's figure export methods to save it.
+        """
+        return go.Figure(go.Histogram(x=self), layout={"title": title})
+
+    def show_histogram(self, title: str | None = None) -> go.Figure:
+        """Show and return a histogram of the simulated values.
+
+        This method is retained for backwards compatibility. New code can use
+        :meth:`histogram_plot` and explicitly call ``.show()`` when required.
 
         Args:
-            title (optional): Title of the cdf plot. Defaults to None.
-        """
-        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
-            return
+            title: Optional title for the histogram.
 
+        Returns:
+            The Plotly figure that was displayed.
+        """
+        fig = self.histogram_plot(title=title)
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
+            # Type ignore: plotly-stubs has incomplete type information
+            fig.show()  # type: ignore[misc]
+        return fig
+
+    def cdf_plot(self, title: str | None = None) -> go.Figure:
+        """Return a Plotly empirical cumulative distribution function plot.
+
+        Args:
+            title: Optional title for the CDF plot.
+
+        Returns:
+            A Plotly figure. Call ``.show()`` to display it, or use any of
+            Plotly's figure export methods to save it.
+        """
+        sorted_values = StochasticScalar(xp.sort(self.values))
+        cumulative_probabilities = StochasticScalar(xp.arange(self.n_sims) / self.n_sims)
         fig = go.Figure(
             go.Scatter(
-                x=xp.sort(self.values).tolist(),
-                y=(xp.arange(self.n_sims) / self.n_sims).tolist(),
+                x=sorted_values,
+                y=cumulative_probabilities,
             ),
             layout={"title": title},
         )
         # Type ignore: plotly-stubs has incomplete type information
         fig.update_xaxes({"title": "Value"})  # type: ignore[misc]
         fig.update_yaxes({"title": "Cumulative Probability"})  # type: ignore[misc]
-        fig.show()  # type: ignore[misc]
+        return fig
+
+    def show_cdf(self, title: str | None = None) -> go.Figure:
+        """Show and return the empirical cumulative distribution function.
+
+        This method is retained for backwards compatibility. New code can use
+        :meth:`cdf_plot` and explicitly call ``.show()`` when required.
+
+        Args:
+            title: Optional title for the CDF plot.
+
+        Returns:
+            The Plotly figure that was displayed.
+        """
+        fig = self.cdf_plot(title=title)
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
+            # Type ignore: plotly-stubs has incomplete type information
+            fig.show()  # type: ignore[misc]
+        return fig
 
     # ===================
     # PRIVATE METHODS
@@ -333,7 +394,18 @@ class StochasticScalar(ProteusStochasticVariable):
         """Reorder the simulations in the variable."""
         self.values = self.values[new_order]
 
-    def _wrap_result_with_coupling(self, result_array: t.Any, inputs: tuple[t.Any, ...]) -> StochasticScalar:
+    def _wrap_reduction_result(self, result: t.Any) -> t.Any:
+        """Return scalar reductions directly and preserve one-dimensional results."""
+        scalar_result = scalar_or_array(result)
+        if scalar_result is not result:
+            return scalar_result
+        if getattr(result, "ndim", None) == 1:
+            wrapped = StochasticScalar(result)
+            wrapped.coupled_variable_group.merge(self.coupled_variable_group)
+            return wrapped
+        return result
+
+    def _wrap_result_with_coupling(self, result_array: t.Any, inputs: tuple[t.Any, ...]) -> t.Any:
         """Wrap result in StochasticScalar and merge coupling groups.
 
         Args:
@@ -343,6 +415,14 @@ class StochasticScalar(ProteusStochasticVariable):
         Returns:
             A new StochasticScalar with proper coupling group merging.
         """
+        if isinstance(result_array, tuple):
+            return tuple(self._wrap_result_with_coupling(item, inputs) for item in result_array)
+        scalar_result = scalar_or_array(result_array)
+        if scalar_result is not result_array:
+            return scalar_result
+        if getattr(result_array, "ndim", None) != 1:
+            return result_array
+
         wrapped_result = StochasticScalar(result_array)
         for input in inputs:
             if isinstance(input, ProteusStochasticVariable):

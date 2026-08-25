@@ -17,6 +17,7 @@ import numpy.typing as npt
 from numpy.lib.mixins import NDArrayOperatorsMixin
 
 from pal._compat import Self
+from pal._maths import asnumpy, to_backend
 from pal.config import Config
 
 
@@ -69,7 +70,7 @@ class CouplingGroup:
 class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
     """A class to represent a stochastic variable in a simulation."""
 
-    n_sims: int | None = None
+    n_sims: int
     values: npt.NDArray[np.number[t.Any]]
     _uid: int
 
@@ -82,9 +83,12 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
         self._uid = next(Config._uid_counter)  # type: ignore[misc]
         self.coupled_variable_group = CouplingGroup(self)
 
-    def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:
+    def __array__(self, dtype: t.Any = None, copy: bool | None = None) -> npt.NDArray[t.Any]:
         """Return the underlying numpy array for compatibility with numpy functions."""
-        return self.values if dtype is None else np.asarray(self.values, dtype=dtype)
+        result = asnumpy(self.values, dtype=dtype)
+        if copy is True:
+            return result.copy()
+        return result
 
     # Override NDArrayOperatorsMixin comparison operators with proper return
     # type annotations.
@@ -176,7 +180,7 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
     def __divmod__(self, other: t.Any) -> tuple[Self, Self]:
         """Combined quotient and remainder returning tuple of same types."""
         # Extract values from other if it's a stochastic variable
-        other_values = other.values if hasattr(other, "values") else other
+        other_values = other.values if hasattr(other, "values") else to_backend(other)
         q_values, r_values = np.divmod(self.values, other_values)
 
         # Create result objects
@@ -195,7 +199,7 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
     def __rdivmod__(self, other: t.Any) -> tuple[Self, Self]:
         """Right combined quotient and remainder returning tuple of same types."""
         # Extract values from other if it's a stochastic variable
-        other_values = other.values if hasattr(other, "values") else other
+        other_values = other.values if hasattr(other, "values") else to_backend(other)
         q_values, r_values = np.divmod(other_values, self.values)
 
         # Create result objects

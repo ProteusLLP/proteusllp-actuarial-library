@@ -42,9 +42,9 @@ Acerbi (2002) showed that within the class of coherent risk measures,
 spectral risk measures are those that can be written as a weighted
 average of quantiles:
 
-$$
-ρ(X) = E[φ(F(X))  X]
-$$
+```{math}
+\rho(X) = \mathbb{E}\!\left[\phi(F(X))\,X\right]
+```
 
 where φ is a non-negative, non-decreasing weight function (the "risk
 spectrum") that integrates to 1. The non-decreasing condition ensures
@@ -58,9 +58,9 @@ to individual lines of business. The Euler (gradient) allocation
 splits the total so that each line's share equals its marginal
 contribution:
 
-$$
-C_k = E[X_k · w]
-$$
+```{math}
+C_k = \mathbb{E}\!\left[X_k \cdot w\right]
+```
 
 where w are the per-simulation weights derived from the risk measure.
 The key property is that allocations are additive: Σ C_k = ρ(X).
@@ -282,7 +282,7 @@ the simulations that reach it:
 <!--pytest-codeblocks:cont-->
 
 ```python
-capital = float(np.percentile(total.values, 99.5))
+capital = float(total.percentile(99.5))
 rm_pl = percentile_layer(total, capital)
 print(f"Capital (VaR 99.5%): {capital:,.0f}")
 print(f"Allocated total:     {rm_pl.value:,.0f}")
@@ -408,6 +408,10 @@ fig.update_layout(
     yaxis=dict(range=[0, 10]),
 )
 fig.show()
+```
+
+```{only} html
+![Risk measure weights by percentile](../_static/generated/risk_measure_weights.svg)
 ```
 
 The chart shows how each risk measure distributes emphasis across
@@ -563,6 +567,10 @@ fig.update_layout(
 fig.update_yaxes(title_text="% of Limit", secondary_y=False)
 fig.update_yaxes(title_text="Loading %", secondary_y=True)
 fig.show()
+```
+
+```{only} html
+![XoL pricing by attachment point](../_static/generated/xol_pricing_curve.svg)
 ```
 
 The chart shows loss on line and rate on line as bars (both
