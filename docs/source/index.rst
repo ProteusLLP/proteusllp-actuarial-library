@@ -147,4 +147,5 @@ A small model, end to end
 
    development
    contributing
+   development
    license

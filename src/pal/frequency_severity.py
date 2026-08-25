@@ -116,7 +116,7 @@ class FrequencySeverityModel:
             config.rng if None.
 
         Returns:
-        - FreqSevSims: Object containing the generated simulations.
+            Object containing the generated simulations.
         """
         if n_sims is None:
             n_sims = config.n_sims

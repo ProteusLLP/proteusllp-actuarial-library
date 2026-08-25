@@ -90,26 +90,15 @@ def _format_number(val: int | float) -> str:
 class ProteusVariable(t.Generic[T]):
     """A generic, homogeneous container for multivariate variables in simulations.
 
-    ProteusVariable is a hierarchical structure that holds multiple variables of
-    the SAME type (homogeneous container). Each instance must contain either all
-    scalars, all vectors (like StochasticScalar), or all nested ProteusVariables
-    - but never a mix of different types.
+        ProteusVariable is a hierarchical structure that holds multiple variables of
+        the same type (homogeneous container). Each instance must contain either all
+        scalars, all vectors (like StochasticScalar), or all nested ProteusVariable
+        instances.
 
-    Type Parameter:
-        T: The type of values stored. By convention, T should be a ScalarOrVector
-           type (NumericLike | VectorLike), though the parameter is unconstrained
-           to allow flexible type inference. Usage with non-ScalarOrVector types
-           may not be fully supported by all operations.
-
-    Key Features:
-    - **Homogeneous**: All values in a single instance must be the same type.
-      Like List[T], you cannot mix types within one container.
-    - **Type Safety**: Operations like mean() return type T, preserving type
-      information through the computation.
-    - **Nesting**: ProteusVariable containing ProteusVariable enables hierarchical
-      data structures (e.g., risks by region by peril)
-    - **Dictionary Access**: Sub-elements accessed via [] notation with
-      string keys or integer indices
+    Notes:
+                - All values in a single instance must be the same type.
+                - Nested ProteusVariable instances enable hierarchical structures.
+                - Prefer NumPy/SciPy functions for statistics, e.g. ``np.mean(var)``.
 
     Examples:
         >>> # Homogeneous scalar container
@@ -140,11 +129,12 @@ class ProteusVariable(t.Generic[T]):
         >>> # mixed = ProteusVariable(values={"a": 100, "b": StochasticScalar([1])})
         >>> # This would violate homogeneity and cause type errors
 
-    Note: Statistical operations should be performed using numpy and scipy functions
-    directly on ProteusVariable instances. For example:
-    - Use np.percentile(variable, p)
-    - Use np.mean(variable)
-    - Use pal.stats.tvar(variable, p)
+    Statistical operations should be performed using NumPy and SciPy functions
+    directly on ProteusVariable instances. For example::
+
+        np.percentile(variable, p)
+        np.mean(variable)
+        pal.stats.tvar(variable, p)
     """
 
     dim_name: str
