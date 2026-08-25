@@ -89,7 +89,7 @@ def main() -> None:
         claim_rows.n_sims,
     )
 
-    tower_result = tower.apply(policy_losses)
+    tower.apply(policy_losses)
 
     target_expected_loss = expected_policy_loss.sum()
     simulated_expected_loss = policy_losses.aggregate().mean()
