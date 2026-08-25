@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -138,24 +137,19 @@ def _generate_risk_measure_weights() -> None:
         ("Wang (α=1)", wang_transform(total, alpha=1.0)),
         ("Std dev (k=2)", standard_deviation_principle(total, k=2.0)),
     ]
-    order = np.argsort(total.values)
-    percentiles = np.arange(len(order)) / len(order) * 100
-    fig = go.Figure()
-    for name, measure in measures:
-        fig.add_trace(
-            go.Scatter(
-                x=percentiles,
-                y=measure.weights.values[order],
-                mode="lines",
-                name=name,
-            )
-        )
-    fig.update_layout(
-        title="Risk Measure Weights by Percentile",
-        xaxis_title="Percentile of Total Loss",
-        yaxis_title="Weight",
-        yaxis={"range": [0, 10]},
+    weights = ProteusVariable(
+        dim_name="measure",
+        values={name: measure.weights for name, measure in measures},
     )
+    fig = weights.cdf_plot()
+    for trace in fig.data:
+        trace.x, trace.y = trace.y, trace.x  # type: ignore
+    fig.update_layout(
+        title="Risk Measure Weights by Quantile",
+        xaxis_title="Quantile of Total Loss",
+        yaxis_title="Weight",
+    )
+    fig.update_layout()
     _write_svg(fig, "risk_measure_weights.svg")
 
 
@@ -210,7 +204,16 @@ def _generate_xol_pricing_curve() -> None:
 def generate_all_plot_assets() -> None:
     """Generate every static SVG used by the HTML tutorials."""
     _generate_getting_started()
+    print("Generated getting started plots.")
     _generate_distributions_guide()
+    print("Generated distributions guide plots.")
     _generate_copula_plots()
+    print("Generated copula plots.")
     _generate_risk_measure_weights()
+    print("Generated risk measure weights plots.")
     _generate_xol_pricing_curve()
+    print("Generated XoL pricing curve plots.")
+
+
+if __name__ == "__main__":
+    generate_all_plot_assets()
