@@ -6,7 +6,8 @@ import numpy as np
 import plotly.graph_objects as go  # type: ignore
 import pytest
 
-from pal import ProteusVariable, StochasticScalar
+from pal.stochastic_scalar import StochasticScalar
+from pal.variables import ProteusVariable
 
 
 @pytest.fixture
