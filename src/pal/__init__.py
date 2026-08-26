@@ -34,10 +34,11 @@ from .variables import ProteusVariable as _ProteusVariable
 
 # Empirical and HyperExponential have vector-valued parameters and are
 # implemented in separate modules. Expose them through the standard
-# distributions namespace and named-distribution generator APIs.
-distributions.Empirical = _Empirical
+# distributions namespace and named-distribution generator APIs. ``setattr``
+# is deliberate here: these are runtime aliases on the distributions module.
+setattr(distributions, "Empirical", _Empirical)
 distributions.AVAILABLE_DISCRETE_DISTRIBUTIONS["empirical"] = _Empirical
-distributions.HyperExponential = _HyperExponential
+setattr(distributions, "HyperExponential", _HyperExponential)
 distributions.AVAILABLE_CONTINUOUS_DISTRIBUTIONS["hyperexponential"] = _HyperExponential
 
 # Attach multivariate classes to the standard distributions namespace without
@@ -56,8 +57,6 @@ for _distribution_name, _distribution in {
     "Wishart": _Wishart,
 }.items():
     setattr(distributions, _distribution_name, _distribution)
-
-del _distribution_name, _distribution
 
 # ``copulas`` historically imports these two classes from the package root.
 # Make them available only while the module initialises, then remove them again
