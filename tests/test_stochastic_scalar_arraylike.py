@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from pal import StochasticScalar
+from pal.stochastic_scalar import StochasticScalar
 from tests._assertions import array_equal
 
 
