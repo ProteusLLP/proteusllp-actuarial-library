@@ -18,28 +18,26 @@ from . import distributions as distributions
 from .config import config, set_default_n_sims, set_random_seed
 from .empirical import Empirical as _Empirical
 from .hyperexponential import HyperExponential as _HyperExponential
-from .multivariate_distributions import (
-    Dirichlet as _Dirichlet,
-    GeneralizedDirichlet as _GeneralizedDirichlet,
-    InverseWishart as _InverseWishart,
-    InvertedDirichlet as _InvertedDirichlet,
-    InvertedGeneralizedDirichlet as _InvertedGeneralizedDirichlet,
-    MatrixDistributionBase as _MatrixDistributionBase,
-    Multinomial as _Multinomial,
-    MultivariateDistributionBase as _MultivariateDistributionBase,
-    MultivariateNormal as _MultivariateNormal,
-    MultivariateStudentsT as _MultivariateStudentsT,
-    Wishart as _Wishart,
-)
+from .multivariate_distributions import Dirichlet as _Dirichlet
+from .multivariate_distributions import GeneralizedDirichlet as _GeneralizedDirichlet
+from .multivariate_distributions import InverseWishart as _InverseWishart
+from .multivariate_distributions import InvertedDirichlet as _InvertedDirichlet
+from .multivariate_distributions import InvertedGeneralizedDirichlet as _InvertedGeneralizedDirichlet
+from .multivariate_distributions import MatrixDistributionBase as _MatrixDistributionBase
+from .multivariate_distributions import Multinomial as _Multinomial
+from .multivariate_distributions import MultivariateDistributionBase as _MultivariateDistributionBase
+from .multivariate_distributions import MultivariateNormal as _MultivariateNormal
+from .multivariate_distributions import MultivariateStudentsT as _MultivariateStudentsT
+from .multivariate_distributions import Wishart as _Wishart
 from .stochastic_scalar import StochasticScalar as _StochasticScalar
 from .variables import ProteusVariable as _ProteusVariable
 
 # Empirical and HyperExponential have vector-valued parameters and are
 # implemented in separate modules. Expose them through the standard
 # distributions namespace and named-distribution generator APIs.
-setattr(distributions, "Empirical", _Empirical)
+distributions.Empirical = _Empirical
 distributions.AVAILABLE_DISCRETE_DISTRIBUTIONS["empirical"] = _Empirical
-setattr(distributions, "HyperExponential", _HyperExponential)
+distributions.HyperExponential = _HyperExponential
 distributions.AVAILABLE_CONTINUOUS_DISTRIBUTIONS["hyperexponential"] = _HyperExponential
 
 # Attach multivariate classes to the standard distributions namespace without
@@ -72,6 +70,9 @@ del ProteusVariable, StochasticScalar
 
 # Import the public module namespaces explicitly so ``import pal; pal.contracts``
 # and ``from pal import contracts`` are both reliable and discoverable.
+# Runtime API discovery is imported last conceptually; it is independent of the
+# ordering within this late-import block once the aliases above are installed.
+from . import api as api  # noqa: E402
 from . import contracts as contracts  # noqa: E402
 from . import couplings as couplings  # noqa: E402
 from . import frequency_severity as frequency_severity  # noqa: E402
@@ -81,10 +82,6 @@ from . import risk_measures as risk_measures  # noqa: E402
 from . import stats as stats  # noqa: E402
 from . import stochastic_scalar as stochastic_scalar  # noqa: E402
 from . import variables as variables  # noqa: E402
-
-# Runtime API discovery is imported last so it sees the complete public module
-# and distributions namespaces.
-from . import api as api  # noqa: E402
 
 __all__ = [
     "api",
