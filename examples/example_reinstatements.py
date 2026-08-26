@@ -15,8 +15,7 @@ Model:
 
 import pandas as pd
 
-from pal import contracts, distributions, frequency_severity, risk_measures
-from pal import set_default_n_sims, set_random_seed
+from pal import contracts, distributions, frequency_severity, risk_measures, set_default_n_sims, set_random_seed
 
 # ── Setup ───────────────────────────────────────────────────────────
 
