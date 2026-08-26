@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-from pal import ProteusVariable, StochasticScalar, XoLTower, distributions, set_random_seed
+import pal.maths as pnp
+from pal import Empirical, MBBEFD, ProteusVariable, StochasticScalar, XoLTower, distributions, set_random_seed
 from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
 
 N_SIMS = 100_000
@@ -24,10 +25,10 @@ def main() -> None:
     maximum_loss = exposure["maximum_loss"]
     policy_limit = exposure["policy_limit"]
     deductible = exposure["policy_deductible"]
-    mbbefd = distributions.MBBEFD.from_c(exposure["mbbefd_c"])
+    mbbefd = MBBEFD.from_c(exposure["mbbefd_c"])
 
-    lower = np.minimum(deductible / maximum_loss, 1.0)
-    upper = np.minimum((deductible + policy_limit) / maximum_loss, 1.0)
+    lower = pnp.minimum(1.0, deductible / maximum_loss)
+    upper = pnp.minimum(1.0, (deductible + policy_limit) / maximum_loss)
     policy_share = mbbefd.exposure_curve(upper) - mbbefd.exposure_curve(lower)
 
     expected_policy_severity = maximum_loss * mbbefd.mean() * policy_share
@@ -45,13 +46,13 @@ def main() -> None:
     analytical_rates: list[float] = []
     layer_names: list[str] = []
     for layer in tower.layers:
-        layer_lower = np.minimum(
-            (deductible + np.minimum(layer.excess, policy_limit)) / maximum_loss,
+        layer_lower = pnp.minimum(
             1.0,
+            (deductible + pnp.minimum(layer.excess, policy_limit)) / maximum_loss,
         )
-        layer_upper = np.minimum(
-            (deductible + np.minimum(layer.excess + layer.limit, policy_limit)) / maximum_loss,
+        layer_upper = pnp.minimum(
             1.0,
+            (deductible + pnp.minimum(layer.excess + layer.limit, policy_limit)) / maximum_loss,
         )
         layer_share = mbbefd.exposure_curve(layer_upper) - mbbefd.exposure_curve(layer_lower)
         analytical_expected_loss = (expected_policy_loss * layer_share / policy_share).sum()
@@ -59,7 +60,7 @@ def main() -> None:
         analytical_rates.append(analytical_expected_loss / total_subject_premium)
 
     set_random_seed(42)
-    row_distribution = distributions.Empirical(
+    row_distribution = Empirical(
         samples=np.arange(len(exposure_df)),
         weights=frequencies,
     )
@@ -74,10 +75,10 @@ def main() -> None:
     selected_deductible = exposure["policy_deductible"][row_index]
     selected_c = exposure["mbbefd_c"][row_index]
 
-    damage_ratio = distributions.MBBEFD.from_c(selected_c).generate(len(row_index))
-    policy_loss = np.minimum(
-        np.maximum(damage_ratio * selected_maximum_loss - selected_deductible, 0.0),
+    damage_ratio = MBBEFD.from_c(selected_c).generate(len(row_index))
+    policy_loss = pnp.minimum(
         selected_policy_limit,
+        pnp.maximum(damage_ratio * selected_maximum_loss - selected_deductible, 0.0),
     )
     policy_losses = FreqSevSims(
         claim_rows.sim_index,
