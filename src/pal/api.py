@@ -123,10 +123,7 @@ def catalog(module: str | None = None) -> list[dict[str, t.Any]]:
     else:
         module_name = module.removeprefix("pal.")
         if module_name not in _PUBLIC_MODULES:
-            raise ValueError(
-                f"Unknown PAL API module {module!r}. Available modules: "
-                f"{', '.join(_PUBLIC_MODULES)}"
-            )
+            raise ValueError(f"Unknown PAL API module {module!r}. Available modules: {', '.join(_PUBLIC_MODULES)}")
         module_names = (module_name,)
 
     entries: list[dict[str, t.Any]] = []
@@ -155,9 +152,7 @@ def _resolve_name(name: str) -> tuple[str, str, t.Any]:
             raise ValueError(f"{name!r} is not part of the discoverable public API")
         return module_name, member_name, obj
 
-    matches = [
-        entry for entry in catalog() if t.cast(str, entry["name"]).lower() == normalised.lower()
-    ]
+    matches = [entry for entry in catalog() if t.cast(str, entry["name"]).lower() == normalised.lower()]
     if not matches:
         raise ValueError(f"No public PAL API object named {name!r}")
     if len(matches) > 1:
@@ -182,15 +177,10 @@ def _parameters(obj: t.Any) -> list[dict[str, t.Any]]:
             {
                 "name": parameter.name,
                 "kind": parameter.kind.name.lower(),
-                "annotation": None
-                if parameter.annotation is inspect.Parameter.empty
-                else repr(parameter.annotation),
-                "default": None
-                if parameter.default is inspect.Parameter.empty
-                else repr(parameter.default),
+                "annotation": None if parameter.annotation is inspect.Parameter.empty else repr(parameter.annotation),
+                "default": None if parameter.default is inspect.Parameter.empty else repr(parameter.default),
                 "required": parameter.default is inspect.Parameter.empty
-                and parameter.kind
-                not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD),
+                and parameter.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD),
             }
         )
     return parameters
@@ -267,9 +257,7 @@ def search(query: str, limit: int = 20) -> list[dict[str, t.Any]]:
         module_name = t.cast(str, entry["module"]).removeprefix("pal.")
         name = t.cast(str, entry["name"])
         obj = getattr(_module(module_name), name)
-        method_text = " ".join(
-            f"{method['name']} {method['summary']}" for method in _methods(obj)
-        )
+        method_text = " ".join(f"{method['name']} {method['summary']}" for method in _methods(obj))
         signature = t.cast(str | None, entry["signature"]) or ""
         haystack = " ".join(
             [
