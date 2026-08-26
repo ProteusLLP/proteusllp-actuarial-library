@@ -5,6 +5,7 @@ import json
 import pytest
 
 from pal import api, distributions
+from pal.variables import StochasticScalar
 
 
 def test_api_module_is_exposed_at_top_level() -> None:
@@ -12,7 +13,8 @@ def test_api_module_is_exposed_at_top_level() -> None:
 
     assert pal.api is api
     assert "pal.distributions" in api.modules()
-    assert "pal.stochastic_scalar" in api.modules()
+    assert "pal.variables" in api.modules()
+    assert "pal.stochastic_scalar" not in api.modules()
 
 
 def test_distribution_catalog_contains_supported_aliases() -> None:
@@ -23,6 +25,16 @@ def test_distribution_catalog_contains_supported_aliases() -> None:
     assert "Empirical" in names
     assert "HyperExponential" in names
     assert "MultivariateNormal" in names
+
+
+def test_variables_catalog_exposes_stochastic_scalar() -> None:
+    entries = api.catalog("variables")
+    names = {entry["name"] for entry in entries}
+
+    assert "ProteusVariable" in names
+    assert "StochasticScalar" in names
+    assert api.describe("StochasticScalar")["qualified_name"] == "pal.variables.StochasticScalar"
+    assert api.describe(StochasticScalar)["qualified_name"] == "pal.variables.StochasticScalar"
 
 
 def test_catalog_excludes_imported_implementation_names() -> None:
@@ -60,7 +72,8 @@ def test_search_finds_names_and_methods() -> None:
     percentile_results = api.search("percentile")
 
     assert gamma_results[0]["name"] == "Gamma"
-    assert any(entry["name"] == "StochasticScalar" for entry in percentile_results)
+    stochastic_scalar = next(entry for entry in percentile_results if entry["name"] == "StochasticScalar")
+    assert stochastic_scalar["qualified_name"] == "pal.variables.StochasticScalar"
 
 
 def test_search_supports_multiple_terms_and_limits() -> None:
