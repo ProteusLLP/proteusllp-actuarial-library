@@ -49,14 +49,15 @@ The Proteus Actuarial Library (PAL) is a fast, lightweight framework for buildin
 ## Quick Start
 
 ```python
-from pal import distributions, copulas
+from pal.copulas import GumbelCopula
+from pal.distributions import Gamma, LogNormal
 
 # Create stochastic variables
-losses = distributions.Gamma(alpha=2.5, theta=2).generate()
-expenses = distributions.LogNormal(mu=1, sigma=0.5).generate()
+losses = Gamma(alpha=2.5, theta=2).generate()
+expenses = LogNormal(mu=1, sigma=0.5).generate()
 
 # Apply statistical dependencies
-copulas.GumbelCopula(theta=1.2).apply([losses, expenses])
+GumbelCopula(theta=1.2).apply([losses, expenses])
 
 # Variables are now correlated
 total = losses + expenses
