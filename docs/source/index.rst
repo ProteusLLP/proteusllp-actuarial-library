@@ -117,6 +117,7 @@ A small model, end to end
    :hidden:
 
    usage
+   ai_assistants
 
 .. toctree::
    :maxdepth: 2
@@ -153,5 +154,4 @@ A small model, end to end
 
    development
    contributing
-   development
    license
