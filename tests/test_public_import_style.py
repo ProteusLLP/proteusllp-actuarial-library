@@ -1,7 +1,7 @@
 """Tests for the documented module-oriented PAL import style."""
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 
