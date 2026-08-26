@@ -1,34 +1,28 @@
-"""Static type-checking guardrail for PAL's public module namespaces.
+"""Static type-checking guardrail for PAL's documented public imports.
 
-This file exists purely so pyright verifies the documented imports that users
-and examples should rely on from the installed package.
+This file exists purely so pyright verifies the imports that users and examples
+should rely on from the installed package.
 """
 
 # pyright: reportUnusedImport=false
 
-from pal import (  # noqa: F401
+from pal import config, set_default_n_sims, set_random_seed
+from pal.contracts import XoL, XoLTower
+from pal.copulas import GaussianCopula
+from pal.distributions import Gamma
+from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
+from pal.variables import ProteusVariable, StochasticScalar
+
+_ = (
     config,
-    contracts,
-    copulas,
-    distributions,
-    frequency_severity,
-    maths,
-    risk_measures,
     set_default_n_sims,
     set_random_seed,
-    stats,
-    variables,
-)
-from pal.variables import StochasticScalar
-
-# Domain objects are accessed through module namespaces; core variable types are
-# imported directly from pal.variables.
-_ = (
-    contracts.XoL,
-    contracts.XoLTower,
-    frequency_severity.FreqSevSims,
+    XoL,
+    XoLTower,
+    GaussianCopula,
+    Gamma,
+    FreqSevSims,
+    FrequencySeverityModel,
+    ProteusVariable,
     StochasticScalar,
-    variables.ProteusVariable,
-    distributions.Gamma,
-    copulas.GaussianCopula,
 )
