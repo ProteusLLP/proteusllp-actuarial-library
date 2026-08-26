@@ -38,11 +38,7 @@ The paper models an insurance portfolio with:
 ```python
 import pandas as pd
 
-from pal.config import set_default_n_sims, set_random_seed
-from pal.contracts import XoLTower
-from pal.distributions import Pareto, Poisson
-from pal.frequency_severity import FrequencySeverityModel
-from pal.risk_measures import proportional_hazards_transform
+from pal import contracts, distributions, frequency_severity, risk_measures, set_default_n_sims, set_random_seed
 
 set_random_seed(42)
 set_default_n_sims(100_000)
@@ -55,8 +51,8 @@ subtracting the scale parameter:
 <!--pytest-codeblocks:cont-->
 
 ```python
-model = FrequencySeverityModel(
-    Poisson(10.0), Pareto(shape=3, scale=10)
+model = frequency_severity.FrequencySeverityModel(
+    distributions.Poisson(10.0), distributions.Pareto(shape=3, scale=10)
 )
 claims = model.generate() - 10.0
 ```
@@ -73,7 +69,7 @@ occurrence limit and the reinstatement cost is zero:
 <!--pytest-codeblocks:cont-->
 
 ```python
-tower_k1 = XoLTower(
+tower_k1 = contracts.XoLTower(
     name=["10 xs 10", "10 xs 20", "20 xs 10"],
     limit=[10, 10, 20],
     excess=[10, 20, 10],
@@ -88,7 +84,7 @@ For unlimited reinstatements we omit the aggregate limit:
 <!--pytest-codeblocks:cont-->
 
 ```python
-tower_inf = XoLTower(
+tower_inf = contracts.XoLTower(
     name=["10 xs 10", "10 xs 20", "20 xs 10"],
     limit=[10, 10, 20],
     excess=[10, 20, 10],
@@ -176,7 +172,7 @@ Mata (2000) shows that for free reinstatements with λ = 10:
 1. **Sub-additivity**: π_p(S₁* + S₂*) ≤ π_p(S₁*) + π_p(S₂*)
 2. **Combined ≥ sum**: π_p(S₁*) + π_p(S₂*) ≤ π_p(S_c*)
 
-PAL's `proportional_hazards_transform` uses alpha = 1/p:
+PAL's `risk_measures.proportional_hazards_transform` uses alpha = 1/p:
 
 <!--pytest-codeblocks:cont-->
 
@@ -188,12 +184,12 @@ aggc = tower_k1.layers[2].apply(claims).recoveries.aggregate()
 rows = []
 for p in [1.0, 1.2, 1.4, 1.6, 1.8, 2.0]:
     alpha = 1.0 / p
-    ph1 = proportional_hazards_transform(agg1, alpha=alpha)
-    ph2 = proportional_hazards_transform(agg2, alpha=alpha)
-    ph_sum = proportional_hazards_transform(
+    ph1 = risk_measures.proportional_hazards_transform(agg1, alpha=alpha)
+    ph2 = risk_measures.proportional_hazards_transform(agg2, alpha=alpha)
+    ph_sum = risk_measures.proportional_hazards_transform(
         agg1 + agg2, alpha=alpha
     )
-    phc = proportional_hazards_transform(aggc, alpha=alpha)
+    phc = risk_measures.proportional_hazards_transform(aggc, alpha=alpha)
     rows.append({
         "p": p,
         "pi_p(S1*+S2*)": ph_sum.value,
@@ -221,13 +217,13 @@ Expected values from the paper (Table 5, λ = 10, K = 1 free):
 ## Summary
 
 - **Reinstatements** are modelled via `aggregate_limit` and
-  `reinstatement_cost` on `XoL` layers (or `XoLTower`).
+  `reinstatement_cost` on `contracts.XoL` layers (or `contracts.XoLTower`).
 - For **free** reinstatements, `reinstatement_cost=[0.0]` with
   `aggregate_limit = (K+1) * limit`.
 - The **pure premium** with limited reinstatements is simply the
   mean aggregate recovery.
 - The **PH transform** premium is computed via
-  `proportional_hazards_transform` with `alpha = 1/p`.
+  `risk_measures.proportional_hazards_transform` with `alpha = 1/p`.
 
 ## References
 
