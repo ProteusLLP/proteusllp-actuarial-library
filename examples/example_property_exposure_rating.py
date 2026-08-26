@@ -8,7 +8,11 @@ import pandas as pd
 import plotly.graph_objects as go
 
 import pal.maths as pnp
-from pal import contracts, distributions, frequency_severity, set_random_seed
+from pal import set_random_seed
+from pal.contracts import XoLTower
+from pal.distributions import MBBEFD, Poisson
+from pal.empirical import Empirical
+from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
 from pal.variables import ProteusVariable, StochasticScalar
 
 N_SIMS = 100_000
@@ -25,7 +29,7 @@ def main() -> None:
     maximum_loss = exposure["maximum_loss"]
     policy_limit = exposure["policy_limit"]
     deductible = exposure["policy_deductible"]
-    mbbefd = distributions.MBBEFD.from_c(exposure["mbbefd_c"])
+    mbbefd = MBBEFD.from_c(exposure["mbbefd_c"])
 
     lower = pnp.minimum(1.0, deductible / maximum_loss)
     upper = pnp.minimum(1.0, (deductible + policy_limit) / maximum_loss)
@@ -36,7 +40,7 @@ def main() -> None:
     frequencies = expected_policy_loss / expected_policy_severity
     total_subject_premium = exposure["subject_premium"].sum()
 
-    tower = contracts.XoLTower(
+    tower = XoLTower(
         name=["5m xs 5m", "10m xs 10m", "20m xs 20m"],
         limit=[5_000_000, 10_000_000, 20_000_000],
         excess=[5_000_000, 10_000_000, 20_000_000],
@@ -60,12 +64,12 @@ def main() -> None:
         analytical_rates.append(analytical_expected_loss / total_subject_premium)
 
     set_random_seed(42)
-    row_distribution = distributions.Empirical(  # pyright: ignore[reportAttributeAccessIssue]
+    row_distribution = Empirical(
         samples=np.arange(len(exposure_df)),
         weights=frequencies,
     )
-    claim_rows = frequency_severity.FrequencySeverityModel(
-        distributions.Poisson(frequencies.sum()),
+    claim_rows = FrequencySeverityModel(
+        Poisson(frequencies.sum()),
         row_distribution,
     ).generate(N_SIMS)
 
@@ -75,12 +79,12 @@ def main() -> None:
     selected_deductible = exposure["policy_deductible"][row_index]
     selected_c = exposure["mbbefd_c"][row_index]
 
-    damage_ratio = distributions.MBBEFD.from_c(selected_c).generate(len(row_index))
+    damage_ratio = MBBEFD.from_c(selected_c).generate(len(row_index))
     policy_loss = pnp.minimum(
         selected_policy_limit,
         pnp.maximum(damage_ratio * selected_maximum_loss - selected_deductible, 0.0),
     )
-    policy_losses = frequency_severity.FreqSevSims(
+    policy_losses = FreqSevSims(
         claim_rows.sim_index,
         policy_loss.values,
         claim_rows.n_sims,
@@ -117,7 +121,7 @@ def main() -> None:
     paid_severity = severity[severity > 0]
     severity_figure = paid_severity.histogram_plot(title="Portfolio Paid-Claim Severity")
 
-    aggregate_tower = contracts.XoLTower(
+    aggregate_tower = XoLTower(
         name=layer_names,
         limit=[5_000_000, 10_000_000, 20_000_000],
         excess=[5_000_000, 10_000_000, 20_000_000],
