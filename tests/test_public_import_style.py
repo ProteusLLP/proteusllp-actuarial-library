@@ -14,6 +14,10 @@ _ALLOWED_TOP_LEVEL_IMPORTS = {
 }
 
 _TOP_LEVEL_IMPORT = re.compile(r"from\s+pal\s+import\s+(\([^)]*\)|[^\n]+)", re.MULTILINE | re.DOTALL)
+_DOMAIN_MODULE_IMPORT = re.compile(
+    r"^\s*import\s+pal\.(?:contracts|copulas|distributions|frequency_severity|multivariate_distributions|risk_measures|variables)\b",
+    re.MULTILINE,
+)
 _FORBIDDEN_IMPLEMENTATION_IMPORT = re.compile(r"from\s+pal\.stochastic_scalar\s+import\s+")
 
 
@@ -62,6 +66,9 @@ def test_user_examples_use_documented_pal_imports() -> None:
                 violations.append(
                     f"{relative}: import {', '.join(forbidden)} from their owning `pal.<module>` submodule"
                 )
+
+        if _DOMAIN_MODULE_IMPORT.search(text):
+            violations.append(f"{relative}: import modelling classes/functions directly from their `pal.<module>` submodule")
 
         if _FORBIDDEN_IMPLEMENTATION_IMPORT.search(text) or "stochastic_scalar.StochasticScalar" in text:
             violations.append(f"{relative}: import StochasticScalar with `from pal.variables import StochasticScalar`")
