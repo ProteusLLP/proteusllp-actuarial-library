@@ -9,10 +9,12 @@ pip install proteusllp-actuarial-library
 ```
 
 ```python
-from pal import config, copulas, distributions, set_random_seed
+from pal import config, copulas, distributions, frequency_severity, set_random_seed
 ```
 
 The PyPI distribution is `proteusllp-actuarial-library`; the installed Python package is `pal`.
+
+PAL uses module-oriented imports for modelling functionality. Prefer `distributions.Gamma`, `copulas.GaussianCopula`, `frequency_severity.FrequencySeverityModel`, and analogous module-qualified names rather than importing domain classes directly from `pal`.
 
 ## Configure simulations
 
@@ -87,9 +89,7 @@ For a random number of random-sized claims:
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal.frequency_severity import FrequencySeverityModel
-
-model = FrequencySeverityModel(
+model = frequency_severity.FrequencySeverityModel(
     freq_dist=distributions.Poisson(mean=100),
     sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
 )
@@ -126,7 +126,17 @@ Avoid converting PAL/CuPy data to NumPy merely to perform an operation that PAL 
 
 ## How to discover an unfamiliar API
 
-Prefer the public API and introspection before guessing a class or parameter name:
+Prefer PAL's runtime discovery helpers before guessing a class or parameter name:
+
+```python
+from pal import api
+
+api.search("gamma")
+api.search("tail dependence")
+api.describe("pal.distributions.Gamma")
+```
+
+For ordinary Python introspection, module-qualified objects also work naturally:
 
 ```python
 import inspect
@@ -150,6 +160,7 @@ Useful conceptual guides are:
 
 ## Common mistakes to avoid
 
+- Do not import modelling classes directly from `pal`; import their module and use the module-qualified class or function.
 - Do not assume similarly named distributions use the same parameterisation as SciPy or another library; inspect PAL's signature and docstring.
 - Do not discard coupling relationships by extracting and rebuilding raw arrays without a reason.
 - Do not assume two generated risks are dependent until a dependence structure has been applied; derived variables, however, remain aligned with their inputs.
