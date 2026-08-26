@@ -80,6 +80,8 @@ def test_user_examples_use_documented_pal_imports() -> None:
                 violations.append(f"{relative}: top-level PAL imports are not allowed for {', '.join(forbidden)}")
 
         if "stochastic_scalar.StochasticScalar" in text or "from pal import stochastic_scalar" in text:
-            violations.append(f"{relative}: import StochasticScalar with `from pal.variables import StochasticScalar`")
+            violations.append(
+                f"{relative}: import StochasticScalar with `from pal.variables import StochasticScalar`"
+            )
 
     assert not violations, "\n" + "\n".join(violations)
