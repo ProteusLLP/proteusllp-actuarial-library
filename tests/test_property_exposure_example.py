@@ -21,9 +21,7 @@ def test_property_exposure_example_runs_end_to_end(
         "mbbefd_c",
     ]
     assert float(exposures["subject_premium"].sum()) == 2_150_000
-    assert float(
-        (exposures["subject_premium"] * exposures["expected_loss_ratio"]).sum()
-    ) == 1_422_100
+    assert float((exposures["subject_premium"] * exposures["expected_loss_ratio"]).sum()) == 1_422_100
 
     monkeypatch.setattr(example, "N_SIMS", 5_000)
     monkeypatch.setenv("PAL_SUPPRESS_PLOTS", "true")
