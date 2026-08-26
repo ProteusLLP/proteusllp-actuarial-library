@@ -1,4 +1,4 @@
-"""Tests for the documented module-oriented PAL import style."""
+"""Tests for the documented PAL import style."""
 
 import json
 import re
@@ -20,14 +20,13 @@ _ALLOWED_TOP_LEVEL_IMPORTS = {
     "set_default_n_sims",
     "set_random_seed",
     "stats",
-    "stochastic_scalar",
     "variables",
 }
 
 _TOP_LEVEL_IMPORT = re.compile(r"from\s+pal\s+import\s+(\([^)]*\)|[^\n]+)", re.MULTILINE | re.DOTALL)
 _SUBMODULE_IMPORT = re.compile(
     r"from\s+pal\.(?:contracts|copulas|couplings|distributions|frequency_severity|maths|"
-    r"multivariate_distributions|risk_measures|stats|stochastic_scalar|variables)\s+import\s+"
+    r"multivariate_distributions|risk_measures|stats|stochastic_scalar)\s+import\s+"
 )
 
 
@@ -62,7 +61,7 @@ def _normalise_import_names(import_text: str) -> set[str]:
     return names
 
 
-def test_user_examples_use_module_oriented_pal_imports() -> None:
+def test_user_examples_use_documented_pal_imports() -> None:
     violations: list[str] = []
 
     for path in _user_facing_files():
@@ -71,7 +70,7 @@ def test_user_examples_use_module_oriented_pal_imports() -> None:
 
         if _SUBMODULE_IMPORT.search(text):
             violations.append(
-                f"{relative}: import the PAL module from `pal` and access domain objects through that namespace"
+                f"{relative}: import PAL domain modules from `pal`; StochasticScalar and ProteusVariable belong in `pal.variables`"
             )
 
         for match in _TOP_LEVEL_IMPORT.finditer(text):
@@ -79,5 +78,8 @@ def test_user_examples_use_module_oriented_pal_imports() -> None:
             forbidden = sorted(imported - _ALLOWED_TOP_LEVEL_IMPORTS)
             if forbidden:
                 violations.append(f"{relative}: top-level PAL imports are not allowed for {', '.join(forbidden)}")
+
+        if "stochastic_scalar.StochasticScalar" in text or "from pal import stochastic_scalar" in text:
+            violations.append(f"{relative}: import StochasticScalar with `from pal.variables import StochasticScalar`")
 
     assert not violations, "\n" + "\n".join(violations)
