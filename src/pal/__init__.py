@@ -34,11 +34,12 @@ from .variables import ProteusVariable as _ProteusVariable
 
 # Empirical and HyperExponential have vector-valued parameters and are
 # implemented in separate modules. Expose them through the standard
-# distributions namespace and named-distribution generator APIs. ``setattr``
-# is deliberate here: these are runtime aliases on the distributions module.
-setattr(distributions, "Empirical", _Empirical)
+# distributions namespace and named-distribution generator APIs. Pyright does
+# not infer attributes added to another module at runtime, hence the narrow
+# ignores on these two deliberate aliases.
+distributions.Empirical = _Empirical  # pyright: ignore[reportAttributeAccessIssue]
 distributions.AVAILABLE_DISCRETE_DISTRIBUTIONS["empirical"] = _Empirical
-setattr(distributions, "HyperExponential", _HyperExponential)
+distributions.HyperExponential = _HyperExponential  # pyright: ignore[reportAttributeAccessIssue]
 distributions.AVAILABLE_CONTINUOUS_DISTRIBUTIONS["hyperexponential"] = _HyperExponential
 
 # Attach multivariate classes to the standard distributions namespace without
