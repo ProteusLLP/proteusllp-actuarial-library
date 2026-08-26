@@ -113,7 +113,9 @@ class ODPModel:
         self.estimate_phi()
         self.build_posterior()
         phi = self.phi
-        total_by_origin: variables.ProteusVariable[stochastic_scalar.StochasticScalar] = variables.ProteusVariable("op", {})
+        total_by_origin: variables.ProteusVariable[stochastic_scalar.StochasticScalar] = (
+            variables.ProteusVariable("op", {})
+        )
 
         for op in self.origin_periods:
             total_by_origin[op] = 0.0
