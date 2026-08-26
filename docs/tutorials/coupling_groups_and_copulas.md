@@ -20,13 +20,17 @@ independent variable, it gets its own coupling group. When you combine
 variables in arithmetic, their coupling groups merge.
 
 ```python
-from pal import config, copulas, distributions, frequency_severity, set_random_seed, variables
+from pal import config, set_random_seed
+from pal.copulas import GaussianCopula, GumbelCopula
+from pal.distributions import Gamma, LogNormal, Normal, Pareto, Poisson
+from pal.frequency_severity import FrequencySeverityModel
+from pal.variables import ProteusVariable
 
 config.n_sims = 10_000
 set_random_seed(42)
 
-motor = distributions.LogNormal(mu=14, sigma=0.5).generate()
-prop = distributions.LogNormal(mu=15, sigma=0.8).generate()
+motor = LogNormal(mu=14, sigma=0.5).generate()
+prop = LogNormal(mu=15, sigma=0.8).generate()
 
 # Each starts in its own group
 motor.coupled_variable_group is prop.coupled_variable_group
@@ -74,8 +78,8 @@ Consider this scenario:
 
 ```python
 set_random_seed(42)
-loss_a = distributions.LogNormal(mu=14, sigma=0.5).generate()
-loss_b = distributions.LogNormal(mu=15, sigma=0.8).generate()
+loss_a = LogNormal(mu=14, sigma=0.5).generate()
+loss_b = LogNormal(mu=15, sigma=0.8).generate()
 
 # Derive a variable from loss_a
 loss_a_expenses = loss_a * 1.15  # 15% expense loading
@@ -90,7 +94,7 @@ Now apply a copula to correlate `loss_a` with `loss_b`:
 <!--pytest-codeblocks:cont-->
 
 ```python
-copulas.GaussianCopula([[1.0, 0.7], [0.7, 1.0]]).apply([loss_a, loss_b])
+GaussianCopula([[1.0, 0.7], [0.7, 1.0]]).apply([loss_a, loss_b])
 ```
 
 After the copula reorders `loss_a`, the 1.15× ratio is preserved because
@@ -132,9 +136,9 @@ import numpy as np
 
 config.n_sims = 10_000
 set_random_seed(42)
-x = distributions.LogNormal(mu=10, sigma=1.0).generate()
-y = distributions.LogNormal(mu=10, sigma=1.0).generate()
-copulas.GaussianCopula([[1.0, 0.8], [0.8, 1.0]]).apply([x, y])
+x = LogNormal(mu=10, sigma=1.0).generate()
+y = LogNormal(mu=10, sigma=1.0).generate()
+GaussianCopula([[1.0, 0.8], [0.8, 1.0]]).apply([x, y])
 np.corrcoef(x.ranks, y.ranks)[0, 1]
 ```
 
@@ -144,7 +148,7 @@ PAL can also generate all pairwise scatter plots directly from a
 <!--pytest.mark.skip-->
 
 ```python
-dependency = variables.ProteusVariable("variable", {"X": x, "Y": y})
+dependency = ProteusVariable("variable", {"X": x, "Y": y})
 dependency.rank_scatter_plot(title="Dependency in rank space").show()
 dependency.value_scatter_plot(title="Dependency in value space").show()
 ```
@@ -161,13 +165,13 @@ coupling groups.
 ```python
 config.n_sims = 10_000
 set_random_seed(42)
-var_x = distributions.Normal(0, 1).generate()
-var_y = distributions.Normal(0, 1).generate()
+var_x = Normal(0, 1).generate()
+var_y = Normal(0, 1).generate()
 
 sorted_x = np.sort(var_x.values)
 sorted_y = np.sort(var_y.values)
 
-copulas.GaussianCopula([[1.0, 0.9], [0.9, 1.0]]).apply([var_x, var_y])
+GaussianCopula([[1.0, 0.9], [0.9, 1.0]]).apply([var_x, var_y])
 
 np.allclose(np.sort(var_x.values), sorted_x)  # => True
 np.allclose(np.sort(var_y.values), sorted_y)  # => True
@@ -182,14 +186,14 @@ variables:
 
 ```python
 set_random_seed(42)
-base_loss = distributions.LogNormal(mu=14, sigma=0.5).generate()
+base_loss = LogNormal(mu=14, sigma=0.5).generate()
 gross_loss = base_loss * 1.0
 expense_loaded = gross_loss * 1.10
 tax = expense_loaded * 0.21
 net_loss = expense_loaded - tax
 
-cat_loss = distributions.LogNormal(mu=16, sigma=1.2).generate()
-copulas.GumbelCopula(theta=1.5).apply([base_loss, cat_loss])
+cat_loss = LogNormal(mu=16, sigma=1.2).generate()
+GumbelCopula(theta=1.5).apply([base_loss, cat_loss])
 ```
 
 All variables derived from `base_loss` are reordered together, so their
@@ -205,10 +209,10 @@ Elliptical copulas naturally extend to any number of dimensions:
 set_random_seed(42)
 
 lobs = {
-    "Motor": distributions.LogNormal(mu=14, sigma=0.4).generate(),
-    "Property": distributions.LogNormal(mu=15, sigma=0.6).generate(),
-    "Liability": distributions.LogNormal(mu=13, sigma=0.5).generate(),
-    "Marine": distributions.LogNormal(mu=12, sigma=0.7).generate(),
+    "Motor": LogNormal(mu=14, sigma=0.4).generate(),
+    "Property": LogNormal(mu=15, sigma=0.6).generate(),
+    "Liability": LogNormal(mu=13, sigma=0.5).generate(),
+    "Marine": LogNormal(mu=12, sigma=0.7).generate(),
 }
 
 corr_matrix = [
@@ -218,7 +222,7 @@ corr_matrix = [
     [0.2, 0.3, 0.5, 1.0],
 ]
 
-copulas.GaussianCopula(corr_matrix).apply(list(lobs.values()))
+GaussianCopula(corr_matrix).apply(list(lobs.values()))
 ```
 
 For a Gaussian copula, Spearman's rank correlation is related to the
@@ -237,11 +241,11 @@ have already been generated.
 <!--pytest-codeblocks:cont-->
 
 ```python
-samples = copulas.GaussianCopula([[1.0, 0.8], [0.8, 1.0]]).generate()
+samples = GaussianCopula([[1.0, 0.8], [0.8, 1.0]]).generate()
 
-v1 = distributions.Gamma(alpha=5, theta=1000).generate()
-v2 = distributions.Pareto(shape=2, scale=10000).generate()
-copulas.GaussianCopula([[1.0, 0.8], [0.8, 1.0]]).apply([v1, v2])
+v1 = Gamma(alpha=5, theta=1000).generate()
+v2 = Pareto(shape=2, scale=10000).generate()
+GaussianCopula([[1.0, 0.8], [0.8, 1.0]]).apply([v1, v2])
 ```
 
 ## 6. Frequency-Severity Models with Copulas
@@ -255,21 +259,21 @@ totals and use a copula to impose dependencies between lines of business.
 config.n_sims = 10_000
 set_random_seed(42)
 
-motor_model = frequency_severity.FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=50),
-    sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
+motor_model = FrequencySeverityModel(
+    freq_dist=Poisson(mean=50),
+    sev_dist=LogNormal(mu=10, sigma=1.5),
 )
 motor_events = motor_model.generate()
 
-property_model = frequency_severity.FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=20),
-    sev_dist=distributions.Pareto(shape=2.5, scale=50_000),
+property_model = FrequencySeverityModel(
+    freq_dist=Poisson(mean=20),
+    sev_dist=Pareto(shape=2.5, scale=50_000),
 )
 property_events = property_model.generate()
 
 motor_agg = motor_events.aggregate()
 property_agg = property_events.aggregate()
-copulas.GaussianCopula([[1, 0.6], [0.6, 1]]).apply([motor_agg, property_agg])
+GaussianCopula([[1, 0.6], [0.6, 1]]).apply([motor_agg, property_agg])
 ```
 
 Because `aggregate()` and `occurrence()` share a coupling group with the
