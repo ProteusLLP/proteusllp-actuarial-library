@@ -78,10 +78,19 @@ pip install proteusllp-actuarial-library[gpu]
 
 **[Read the full documentation on Read the Docs](https://proteusllp-actuarial-library.readthedocs.io/)**
 
-
 - [Usage Guide](docs/usage.md) - Comprehensive examples and API documentation
 - [Development Guide](docs/development.md) - Setting up the development environment and running tests
 - [Examples](examples/) - Example scripts showing how to use the library
+
+## AI and coding assistants
+
+PAL provides dedicated entry points for AI tools as well as human-readable documentation:
+
+- [PAL quick reference for coding assistants](docs/source/ai_assistants.md) maps common modelling intentions to the public Python API.
+- [AGENTS.md](AGENTS.md) contains canonical repository instructions for coding agents, with more-specific guidance under `src/pal/`, `tests/` and `docs/`.
+- The documentation build publishes `llms.txt` and `llms-full.txt` at the documentation root for model-friendly retrieval.
+
+AI-generated PAL code should prefer documented public APIs and inspect signatures/docstrings rather than guessing parameterisations or relying on internal helpers.
 
 ## Project Status
 
@@ -103,4 +112,3 @@ Please log issues on our github [page](https://github.com/ProteusLLP/proteusllp-
 You are welcome to contribute pull requests. Please see the [Contributer License Agreement](./CLA.md)
 
 📚 **[Development Guide](docs/development.md)** - Get started with development setup and testing
-
