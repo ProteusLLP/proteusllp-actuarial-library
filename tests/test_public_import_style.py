@@ -1,5 +1,6 @@
 """Tests for the documented module-oriented PAL import style."""
 
+import json
 import re
 from pathlib import Path
 
@@ -31,22 +32,29 @@ _SUBMODULE_IMPORT = re.compile(
 
 
 def _user_facing_files() -> list[Path]:
-    files = [ROOT / "README.md"]
+    files = [ROOT / "README.md", ROOT / "mirror-package" / "README.md"]
     files.extend(sorted((ROOT / "examples").glob("*.py")))
     files.extend(sorted((ROOT / "examples").glob("*.ipynb")))
     files.extend(sorted((ROOT / "docs" / "tutorials").rglob("*.md")))
-    files.extend(
-        path
-        for path in sorted((ROOT / "docs" / "source").glob("*.md"))
-        if path.name != "development.md"
-    )
+    files.extend(path for path in sorted((ROOT / "docs" / "source").glob("*.md")) if path.name != "development.md")
     files.extend([ROOT / "docs" / "usage.md", ROOT / "docs" / "source" / "usage.md"])
     return [path for path in files if path.exists()]
 
 
+def _source_text(path: Path) -> str:
+    if path.suffix != ".ipynb":
+        return path.read_text(encoding="utf-8")
+
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    return "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook.get("cells", [])
+        if cell.get("cell_type") == "code"
+    )
+
+
 def _normalise_import_names(import_text: str) -> set[str]:
     text = import_text.strip().removeprefix("(").removesuffix(")")
-    text = text.replace("\\n", "\n")
     names: set[str] = set()
     for item in text.split(","):
         name = item.strip().split(" as ", 1)[0].strip()
@@ -60,7 +68,7 @@ def test_user_examples_use_module_oriented_pal_imports() -> None:
     violations: list[str] = []
 
     for path in _user_facing_files():
-        text = path.read_text(encoding="utf-8")
+        text = _source_text(path)
         relative = path.relative_to(ROOT)
 
         if _SUBMODULE_IMPORT.search(text):
@@ -72,8 +80,6 @@ def test_user_examples_use_module_oriented_pal_imports() -> None:
             imported = _normalise_import_names(match.group(1))
             forbidden = sorted(imported - _ALLOWED_TOP_LEVEL_IMPORTS)
             if forbidden:
-                violations.append(
-                    f"{relative}: top-level PAL imports are not allowed for {', '.join(forbidden)}"
-                )
+                violations.append(f"{relative}: top-level PAL imports are not allowed for {', '.join(forbidden)}")
 
     assert not violations, "\n" + "\n".join(violations)
