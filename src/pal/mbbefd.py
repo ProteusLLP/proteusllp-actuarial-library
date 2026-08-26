@@ -13,6 +13,8 @@ from .types import DistributionParameter
 
 
 class MBBEFD(_MBBEFD):
+    """MBBEFD distribution with analytical moment methods."""
+
     # Keep the public wrapper's documentation identical to the canonical
     # mathematical description defined on the base implementation.
     __doc__ = _MBBEFD.__doc__
