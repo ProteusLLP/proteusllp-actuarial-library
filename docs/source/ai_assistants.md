@@ -16,6 +16,8 @@ The PyPI distribution is `proteusllp-actuarial-library`; the installed Python pa
 
 ## Configure simulations
 
+<!--pytest-codeblocks:cont-->
+
 ```python
 config.n_sims = 10_000
 set_random_seed(42)
@@ -25,6 +27,8 @@ set_random_seed(42)
 
 ## Generate a stochastic variable
 
+<!--pytest-codeblocks:cont-->
+
 ```python
 loss = distributions.LogNormal(mu=14, sigma=0.5).generate()
 ```
@@ -32,6 +36,8 @@ loss = distributions.LogNormal(mu=14, sigma=0.5).generate()
 `generate()` returns a `StochasticScalar` for an ordinary univariate distribution. A `StochasticScalar` represents one simulated value per simulation.
 
 Use PAL's methods for common simulation statistics:
+
+<!--pytest-codeblocks:cont-->
 
 ```python
 mean_loss = loss.mean()
@@ -45,6 +51,8 @@ Prefer `loss.percentile(99.5)` to reaching into `loss.values` and calling `numpy
 
 Arithmetic is element-wise across simulations:
 
+<!--pytest-codeblocks:cont-->
+
 ```python
 expenses = 0.10 * loss
 gross = loss + expenses
@@ -55,6 +63,8 @@ Derived variables remain coupled to their inputs. This matters because PAL can l
 ## Add dependence with a copula
 
 Generate marginal variables first, then apply a copula:
+
+<!--pytest-codeblocks:cont-->
 
 ```python
 motor = distributions.LogNormal(mu=14, sigma=0.5).generate()
@@ -74,6 +84,8 @@ Do not manually reorder `.values` when PAL coupling groups should propagate the 
 
 For a random number of random-sized claims:
 
+<!--pytest-codeblocks:cont-->
+
 ```python
 from pal.frequency_severity import FrequencySeverityModel
 
@@ -91,6 +103,8 @@ Use the event-level result when claim-level information matters. Use `aggregate(
 ## Plot a stochastic result
 
 PAL plotting methods return Plotly figures rather than displaying them automatically:
+
+<!--pytest-codeblocks:cont-->
 
 ```python
 fig = aggregate_loss.cdf_plot("Aggregate Loss")
