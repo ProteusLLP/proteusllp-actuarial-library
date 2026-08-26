@@ -8,7 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 import pal.maths as pnp
-from pal import Empirical, MBBEFD, ProteusVariable, StochasticScalar, XoLTower, distributions, set_random_seed
+from pal import MBBEFD, Empirical, ProteusVariable, StochasticScalar, XoLTower, distributions, set_random_seed
 from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
 
 N_SIMS = 100_000
