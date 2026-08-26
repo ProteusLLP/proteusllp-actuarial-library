@@ -8,7 +8,8 @@ import pandas as pd
 import plotly.graph_objects as go
 
 import pal.maths as pnp
-from pal import contracts, distributions, frequency_severity, set_random_seed, stochastic_scalar, variables
+from pal import contracts, distributions, frequency_severity, set_random_seed
+from pal.variables import ProteusVariable, StochasticScalar
 
 N_SIMS = 100_000
 DATA_PATH = Path(__file__).parent / "data" / "property_exposures.csv"
@@ -16,9 +17,9 @@ DATA_PATH = Path(__file__).parent / "data" / "property_exposures.csv"
 
 def main() -> None:
     exposure_df = pd.read_csv(DATA_PATH)
-    exposure = variables.ProteusVariable(
+    exposure = ProteusVariable(
         dim_name="field",
-        values={column: stochastic_scalar.StochasticScalar(exposure_df[column]) for column in exposure_df.columns},
+        values={column: StochasticScalar(exposure_df[column]) for column in exposure_df.columns},
     )
 
     maximum_loss = exposure["maximum_loss"]
@@ -68,7 +69,7 @@ def main() -> None:
         row_distribution,
     ).generate(N_SIMS)
 
-    row_index = stochastic_scalar.StochasticScalar(claim_rows.values)
+    row_index = StochasticScalar(claim_rows.values)
     selected_maximum_loss = exposure["maximum_loss"][row_index]
     selected_policy_limit = exposure["policy_limit"][row_index]
     selected_deductible = exposure["policy_deductible"][row_index]
@@ -112,7 +113,7 @@ def main() -> None:
     print(calibration)
     print()
 
-    severity = stochastic_scalar.StochasticScalar(policy_losses.values)
+    severity = StochasticScalar(policy_losses.values)
     paid_severity = severity[severity > 0]
     severity_figure = paid_severity.histogram_plot(title="Portfolio Paid-Claim Severity")
 
