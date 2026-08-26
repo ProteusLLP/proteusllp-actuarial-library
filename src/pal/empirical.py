@@ -45,10 +45,9 @@ class Empirical(DiscreteDistributionBase):
 
     Generation resamples the observed values with replacement using the
     empirical probabilities. The observed samples may be supplied directly as
-    a :class:`~pal.stochastic_scalar.StochasticScalar`; they are treated as the
-    fixed empirical support rather than as scenario-varying distribution
-    parameters, so resampled values are independent of the source coupling
-    group.
+    a :class:`~pal.variables.StochasticScalar`; they are treated as the fixed
+    empirical support rather than as scenario-varying distribution parameters,
+    so resampled values are independent of the source coupling group.
 
     Parameters:
         samples: One-dimensional finite numeric observations.
