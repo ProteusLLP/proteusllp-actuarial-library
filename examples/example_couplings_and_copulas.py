@@ -13,7 +13,8 @@ import numpy as np
 import plotly.graph_objects as go  # type: ignore[import-untyped]
 from plotly.subplots import make_subplots  # type: ignore[import-untyped]
 
-from pal import config, copulas, distributions, set_random_seed, stochastic_scalar, variables
+from pal import config, copulas, distributions, set_random_seed, variables
+from pal.variables import StochasticScalar
 
 SUPPRESS_PLOTS = os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true"
 
@@ -95,10 +96,7 @@ print("PART 3: COPULAS - CREATING DEPENDENCY STRUCTURES")
 print("=" * 70)
 
 
-def rank_corr(
-    a: stochastic_scalar.StochasticScalar,
-    b: stochastic_scalar.StochasticScalar,
-) -> float:
+def rank_corr(a: StochasticScalar, b: StochasticScalar) -> float:
     """Compute rank correlation between two variables."""
     return np.corrcoef(a.ranks, b.ranks)[0, 1]
 
