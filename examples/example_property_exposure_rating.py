@@ -59,7 +59,7 @@ def main() -> None:
         analytical_rates.append(analytical_expected_loss / total_subject_premium)
 
     set_random_seed(42)
-    row_distribution = distributions.Empirical(
+    row_distribution = distributions.Empirical(  # pyright: ignore[reportAttributeAccessIssue]
         samples=np.arange(len(exposure_df)),
         weights=frequencies,
     )
