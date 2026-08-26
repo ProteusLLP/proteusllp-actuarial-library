@@ -77,7 +77,7 @@ jobs:
           python - <<'PY'
           import cupy
           import numpy
-          from pal import Normal, set_random_seed
+          from pal import distributions, set_random_seed
           from pal._maths import xp
           from pal.config import config
 
@@ -98,7 +98,7 @@ jobs:
           if isinstance(device_name, bytes):
               device_name = device_name.decode()
 
-          samples = Normal(0, 1).generate(1024)
+          samples = distributions.Normal(0, 1).generate(1024)
           if not isinstance(samples.values, cupy.ndarray):
               raise RuntimeError("PAL generated stochastic samples on the host")
 
