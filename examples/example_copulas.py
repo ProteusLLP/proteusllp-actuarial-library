@@ -3,37 +3,41 @@
 This notebook demonstrates the use of copulas in the Proteus Actuarial Library
 to model dependencies between different lines of business in insurance."""
 
-from pal import config, copulas, distributions, frequency_severity, variables
+from pal import config
+from pal.copulas import GumbelCopula, StudentsTCopula
+from pal.distributions import GPD, Gamma, Normal, Poisson
+from pal.frequency_severity import FrequencySeverityModel
+from pal.variables import ProteusVariable
 
 config.n_sims = 100000
 
 lobs = ["Motor", "Property", "Liability", "Marine", "Aviation"]
 # Generate the individual large losses by class
-individual_large_losses_by_lob = variables.ProteusVariable(
+individual_large_losses_by_lob = ProteusVariable(
     dim_name="class",
     values={
-        name: frequency_severity.FrequencySeverityModel(
-            distributions.Poisson(mean=5),
-            distributions.GPD(shape=0.33, scale=100000, loc=1000000),
+        name: FrequencySeverityModel(
+            Poisson(mean=5),
+            GPD(shape=0.33, scale=100000, loc=1000000),
         ).generate()
         for name in lobs
     },
 )
 # Generate the attritional losses by class
-attritional_losses_by_lob = variables.ProteusVariable(
+attritional_losses_by_lob = ProteusVariable(
     "class",
-    values={lob: distributions.Gamma(alpha=i + 1, theta=1000000).generate() for i, lob in enumerate(lobs)},
+    values={lob: Gamma(alpha=i + 1, theta=1000000).generate() for i, lob in enumerate(lobs)},
 )
 
 large_losses_with_lae = individual_large_losses_by_lob * 1.05
 
 # create the aggregate losses by class
-aggregate_large_losses_by_class = variables.ProteusVariable(
+aggregate_large_losses_by_class = ProteusVariable(
     "class", {name: large_losses_with_lae[name].aggregate() for name in lobs}
 )
 # correlate the attritional and large losses. Use a pairwise copula to do this
 for lob in lobs:
-    copulas.GumbelCopula(theta=1.2).apply([aggregate_large_losses_by_class[lob], attritional_losses_by_lob[lob]])
+    GumbelCopula(theta=1.2).apply([aggregate_large_losses_by_class[lob], attritional_losses_by_lob[lob]])
 # calculate the total losses
 total_losses_by_lob = aggregate_large_losses_by_class + attritional_losses_by_lob
 
@@ -45,9 +49,9 @@ correlation_matrix = [
     [0.2, 0.3, 0.5, 1.0, 0.6],
     [0.1, 0.2, 0.4, 0.6, 1.0],
 ]
-copulas.StudentsTCopula(correlation_matrix, 5, "linear").apply(total_losses_by_lob)
+StudentsTCopula(correlation_matrix, 5, "linear").apply(total_losses_by_lob)
 # apply stochastic inflation
-stochastic_inflation = distributions.Normal(0.05, 0.02).generate()
+stochastic_inflation = Normal(0.05, 0.02).generate()
 inflated_total_losses_by_lob = total_losses_by_lob * (1 + stochastic_inflation)
 
 # create the total losses
