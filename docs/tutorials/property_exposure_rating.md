@@ -26,7 +26,11 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-from pal import contracts, distributions, frequency_severity, set_random_seed
+from pal import set_random_seed
+from pal.contracts import XoLTower
+from pal.distributions import MBBEFD, Poisson
+from pal.empirical import Empirical
+from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
 from pal.variables import ProteusVariable, StochasticScalar
 
 N_SIMS = 100_000
@@ -102,7 +106,7 @@ maximum_loss = exposure["maximum_loss"]
 policy_limit = exposure["policy_limit"]
 deductible = exposure["policy_deductible"]
 
-mbbefd = distributions.MBBEFD.from_c(exposure["mbbefd_c"])
+mbbefd = MBBEFD.from_c(exposure["mbbefd_c"])
 
 lower = np.minimum(deductible / maximum_loss, 1.0)
 upper = np.minimum((deductible + policy_limit) / maximum_loss, 1.0)
@@ -134,7 +138,7 @@ Suppose the reinsurance programme contains three occurrence layers:
 <!--pytest-codeblocks:cont-->
 
 ```python
-tower = contracts.XoLTower(
+tower = XoLTower(
     name=["5m xs 5m", "10m xs 10m", "20m xs 20m"],
     limit=[5_000_000, 10_000_000, 20_000_000],
     excess=[5_000_000, 10_000_000, 20_000_000],
@@ -222,13 +226,13 @@ A weighted empirical distribution over exposure-row numbers represents this sele
 ```python
 set_random_seed(42)
 
-row_distribution = distributions.Empirical(
+row_distribution = Empirical(
     samples=np.arange(len(exposure_df)),
     weights=frequencies,
 )
 
-claim_rows = frequency_severity.FrequencySeverityModel(
-    distributions.Poisson(frequencies.sum()),
+claim_rows = FrequencySeverityModel(
+    Poisson(frequencies.sum()),
     row_distribution,
 ).generate(N_SIMS)
 ```
@@ -247,7 +251,7 @@ selected_policy_limit = exposure["policy_limit"][row_index]
 selected_deductible = exposure["policy_deductible"][row_index]
 selected_c = exposure["mbbefd_c"][row_index]
 
-damage_ratio = distributions.MBBEFD.from_c(selected_c).generate(len(row_index))
+damage_ratio = MBBEFD.from_c(selected_c).generate(len(row_index))
 
 policy_loss = np.minimum(
     np.maximum(
@@ -257,7 +261,7 @@ policy_loss = np.minimum(
     selected_policy_limit,
 )
 
-policy_losses = frequency_severity.FreqSevSims(
+policy_losses = FreqSevSims(
     claim_rows.sim_index,
     policy_loss.values,
     claim_rows.n_sims,
@@ -338,7 +342,7 @@ Now suppose each reinsurance layer has a £1m annual aggregate deductible. The o
 <!--pytest-codeblocks:cont-->
 
 ```python
-aggregate_tower = contracts.XoLTower(
+aggregate_tower = XoLTower(
     name=layer_names,
     limit=[5_000_000, 10_000_000, 20_000_000],
     excess=[5_000_000, 10_000_000, 20_000_000],
