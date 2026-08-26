@@ -3,18 +3,16 @@
 This notebook demonstrates the use of copulas in the Proteus Actuarial Library
 to model dependencies between different lines of business in insurance."""
 
-from pal import config, copulas, distributions
-from pal.frequency_severity import FrequencySeverityModel
-from pal.variables import ProteusVariable
+from pal import config, copulas, distributions, frequency_severity, variables
 
 config.n_sims = 100000
 
 lobs = ["Motor", "Property", "Liability", "Marine", "Aviation"]
 # Generate the individual large losses by class
-individual_large_losses_by_lob = ProteusVariable(
+individual_large_losses_by_lob = variables.ProteusVariable(
     dim_name="class",
     values={
-        name: FrequencySeverityModel(
+        name: frequency_severity.FrequencySeverityModel(
             distributions.Poisson(mean=5),
             distributions.GPD(shape=0.33, scale=100000, loc=1000000),
         ).generate()
@@ -22,7 +20,7 @@ individual_large_losses_by_lob = ProteusVariable(
     },
 )
 # Generate the attritional losses by class
-attritional_losses_by_lob = ProteusVariable(
+attritional_losses_by_lob = variables.ProteusVariable(
     "class",
     values={lob: distributions.Gamma(alpha=i + 1, theta=1000000).generate() for i, lob in enumerate(lobs)},
 )
@@ -30,7 +28,7 @@ attritional_losses_by_lob = ProteusVariable(
 large_losses_with_lae = individual_large_losses_by_lob * 1.05
 
 # create the aggregate losses by class
-aggregate_large_losses_by_class = ProteusVariable(
+aggregate_large_losses_by_class = variables.ProteusVariable(
     "class", {name: large_losses_with_lae[name].aggregate() for name in lobs}
 )
 # correlate the attritional and large losses. Use a pairwise copula to do this
