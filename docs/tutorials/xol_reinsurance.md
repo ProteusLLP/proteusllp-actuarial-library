@@ -9,7 +9,11 @@ full tower, including reinstatements and aggregate limits.
 ```python
 import numpy as np
 
-from pal import config, contracts, distributions, frequency_severity, set_random_seed
+from pal import config, set_random_seed
+from pal.contracts import XoL, XoLTower
+from pal.copulas import GumbelCopula
+from pal.distributions import GPD, LogNormal, Normal, Poisson
+from pal.frequency_severity import FrequencySeverityModel
 
 config.n_sims = 100_000
 set_random_seed(42)
@@ -24,12 +28,12 @@ above a threshold of 1,000,000, with roughly 2 large losses per year:
 <!--pytest-codeblocks:cont-->
 
 ```python
-sev_dist = distributions.GPD(
+sev_dist = GPD(
     shape=0.33, scale=100_000, loc=1_000_000
 )
-freq_dist = distributions.Poisson(mean=2)
+freq_dist = Poisson(mean=2)
 
-losses = frequency_severity.FrequencySeverityModel(freq_dist, sev_dist).generate()
+losses = FrequencySeverityModel(freq_dist, sev_dist).generate()
 ```
 
 ```
@@ -56,7 +60,7 @@ Recovery = min(max(loss - excess, 0), limit)
 <!--pytest-codeblocks:cont-->
 
 ```python
-layer = contracts.XoL(
+layer = XoL(
     name="1m xs 1m",
     limit=1_000_000,
     excess=1_000_000,
@@ -114,9 +118,9 @@ A tower stacks multiple layers to cover a range of loss severity.
 
 ```python
 set_random_seed(42)
-losses = frequency_severity.FrequencySeverityModel(freq_dist, sev_dist).generate()
+losses = FrequencySeverityModel(freq_dist, sev_dist).generate()
 
-tower = contracts.XoLTower(
+tower = XoLTower(
     limit=   [1_000_000, 1_000_000, 2_000_000, 5_000_000],
     excess=  [1_000_000, 2_000_000, 3_000_000, 5_000_000],
     premium= [   80_000,    40_000,    25_000,    10_000],
@@ -215,10 +219,10 @@ applying the tower:
 
 ```python
 set_random_seed(42)
-losses = frequency_severity.FrequencySeverityModel(freq_dist, sev_dist).generate()
+losses = FrequencySeverityModel(freq_dist, sev_dist).generate()
 
 # Stochastic inflation: mean 5%, sd 2%
-inflation = distributions.Normal(0.05, 0.02).generate()
+inflation = Normal(0.05, 0.02).generate()
 inflated_losses = losses * (1 + inflation)
 
 tower_result = tower.apply(inflated_losses)
@@ -250,17 +254,15 @@ catastrophe events, use a copula on the aggregate results:
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal import copulas
-
 set_random_seed(42)
-losses = frequency_severity.FrequencySeverityModel(freq_dist, sev_dist).generate()
+losses = FrequencySeverityModel(freq_dist, sev_dist).generate()
 tower_result = tower.apply(losses)
 
-cat_loss = distributions.LogNormal(mu=16, sigma=1.2).generate()
+cat_loss = LogNormal(mu=16, sigma=1.2).generate()
 
 # Correlate tower recoveries with cat losses
 tower_recoveries = tower_result.recoveries.aggregate()
-copulas.GumbelCopula(theta=1.5).apply(
+GumbelCopula(theta=1.5).apply(
     [tower_recoveries, cat_loss]
 )
 
