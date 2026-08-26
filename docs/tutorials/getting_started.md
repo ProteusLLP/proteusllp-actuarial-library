@@ -8,7 +8,7 @@ Library through a short, end-to-end example.
 ```python
 import numpy as np
 
-from pal import config, copulas, distributions, set_random_seed
+from pal import config, copulas, distributions, frequency_severity, set_random_seed
 
 config.n_sims = 10_000
 set_random_seed(42)
@@ -116,10 +116,8 @@ For compound distributions (random number of random-sized claims):
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal.frequency_severity import FrequencySeverityModel
-
 set_random_seed(42)
-model = FrequencySeverityModel(
+model = frequency_severity.FrequencySeverityModel(
     freq_dist=distributions.Poisson(mean=100),
     sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
 )
