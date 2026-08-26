@@ -5,8 +5,9 @@ import math
 import numpy as np
 import pytest
 
-from pal import HyperExponential, distributions
+from pal import distributions
 from pal.config import set_random_seed
+from pal.hyperexponential import HyperExponential
 from pal.stochastic_scalar import StochasticScalar
 from tests._assertions import allclose
 
