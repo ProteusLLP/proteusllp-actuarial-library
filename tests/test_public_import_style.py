@@ -68,7 +68,9 @@ def test_user_examples_use_documented_pal_imports() -> None:
                 )
 
         if _DOMAIN_MODULE_IMPORT.search(text):
-            violations.append(f"{relative}: import modelling classes/functions directly from their `pal.<module>` submodule")
+            violations.append(
+                f"{relative}: import modelling classes/functions directly from their `pal.<module>` submodule"
+            )
 
         if _FORBIDDEN_IMPLEMENTATION_IMPORT.search(text) or "stochastic_scalar.StochasticScalar" in text:
             violations.append(f"{relative}: import StochasticScalar with `from pal.variables import StochasticScalar`")
