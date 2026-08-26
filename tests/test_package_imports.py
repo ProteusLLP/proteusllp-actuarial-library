@@ -17,7 +17,6 @@ def test_pal_top_level_namespace_is_module_oriented() -> None:
         set_default_n_sims,
         set_random_seed,
         stats,
-        stochastic_scalar,
         variables,
     )
 
@@ -31,10 +30,17 @@ def test_pal_top_level_namespace_is_module_oriented() -> None:
     assert multivariate_distributions is not None
     assert risk_measures is not None
     assert stats is not None
-    assert stochastic_scalar is not None
     assert variables is not None
     assert set_default_n_sims is not None
     assert set_random_seed is not None
+    assert "stochastic_scalar" not in pal.__all__
+
+
+def test_variable_types_are_imported_from_pal_variables() -> None:
+    from pal.variables import ProteusVariable, StochasticScalar
+
+    assert ProteusVariable is pal.variables.ProteusVariable
+    assert StochasticScalar is pal.variables.StochasticScalar
 
 
 def test_domain_objects_are_not_reexported_at_top_level() -> None:
@@ -47,4 +53,4 @@ def test_domain_objects_are_not_reexported_at_top_level() -> None:
         "XoL",
         "XoLTower",
     ):
-        assert not hasattr(pal, name), f"pal.{name} should be accessed through its module namespace"
+        assert not hasattr(pal, name), f"pal.{name} should be accessed through its documented namespace"
