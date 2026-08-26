@@ -70,9 +70,6 @@ del ProteusVariable, StochasticScalar
 
 # Import the public module namespaces explicitly so ``import pal; pal.contracts``
 # and ``from pal import contracts`` are both reliable and discoverable.
-# Runtime API discovery is imported last conceptually; it is independent of the
-# ordering within this late-import block once the aliases above are installed.
-from . import api as api  # noqa: E402
 from . import contracts as contracts  # noqa: E402
 from . import couplings as couplings  # noqa: E402
 from . import frequency_severity as frequency_severity  # noqa: E402
@@ -80,8 +77,16 @@ from . import maths as maths  # noqa: E402
 from . import multivariate_distributions as multivariate_distributions  # noqa: E402
 from . import risk_measures as risk_measures  # noqa: E402
 from . import stats as stats  # noqa: E402
-from . import stochastic_scalar as stochastic_scalar  # noqa: E402
 from . import variables as variables  # noqa: E402
+
+# StochasticScalar is conceptually a PAL variable, even though its implementation
+# lives in a dedicated module. Make ``pal.variables`` its canonical public home.
+if "StochasticScalar" not in variables.__all__:
+    variables.__all__.append("StochasticScalar")
+
+# Runtime API discovery is imported after public aliases are installed so the
+# catalogue reflects the supported user-facing namespace.
+from . import api as api  # noqa: E402
 
 __all__ = [
     "api",
@@ -97,6 +102,5 @@ __all__ = [
     "set_default_n_sims",
     "set_random_seed",
     "stats",
-    "stochastic_scalar",
     "variables",
 ]
