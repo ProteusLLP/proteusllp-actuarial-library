@@ -22,9 +22,7 @@ from pal import contracts, distributions, frequency_severity, risk_measures, set
 set_random_seed(42)
 set_default_n_sims(100_000)
 
-model = frequency_severity.FrequencySeverityModel(
-    distributions.Poisson(10.0), distributions.Pareto(shape=3, scale=10)
-)
+model = frequency_severity.FrequencySeverityModel(distributions.Poisson(10.0), distributions.Pareto(shape=3, scale=10))
 claims = model.generate() - 10.0
 
 # Two separate layers + the combined layer, all in one tower
