@@ -3,11 +3,23 @@
 import numpy as np
 import pytest
 
-from pal import distributions, set_random_seed
+from pal import set_random_seed
 from pal._maths import xp
 from pal.config import config
 from pal.copulas import StudentsTCopula
-from pal.stochastic_scalar import StochasticScalar
+from pal.distributions import InverseGaussian, NegBinomial, Normal, StudentsT
+from pal.multivariate_distributions import (
+    Dirichlet,
+    GeneralizedDirichlet,
+    InverseWishart,
+    InvertedDirichlet,
+    InvertedGeneralizedDirichlet,
+    Multinomial,
+    MultivariateNormal,
+    MultivariateStudentsT,
+    Wishart,
+)
+from pal.variables import StochasticScalar
 
 pytestmark = pytest.mark.skipif(xp.__name__ != "cupy", reason="requires the CuPy backend")
 
@@ -31,20 +43,20 @@ def test_generation_and_numpy_dispatch_do_not_transfer_to_host(monkeypatch: pyte
 
     try:
         set_random_seed(123456789)
-        simulations = distributions.Normal(100, 15).generate(4096)
-        students_t = distributions.StudentsT(5, 100, 15).generate(4096)
+        simulations = Normal(100, 15).generate(4096)
+        students_t = StudentsT(5, 100, 15).generate(4096)
         students_t_copula = StudentsTCopula([[1, 0.5], [0.5, 1]], 5).generate(4096)
-        inverse_gaussian = distributions.InverseGaussian(2, 3).generate(256)
-        negative_binomial = distributions.NegBinomial(4, 0.5).generate(256)
-        multivariate_normal_distribution = distributions.MultivariateNormal([0, 0], [[1, 0.5], [0.5, 1]])
-        multivariate_students_t_distribution = distributions.MultivariateStudentsT(5, [0, 0], [[1, 0.5], [0.5, 1]])
-        dirichlet_distribution = distributions.Dirichlet([2, 3, 4])
-        inverted_dirichlet_distribution = distributions.InvertedDirichlet([2, 3, 8])
-        generalized_dirichlet_distribution = distributions.GeneralizedDirichlet([2, 3], [4, 5])
-        inverted_generalized_dirichlet_distribution = distributions.InvertedGeneralizedDirichlet([2, 3], [6, 8])
-        multinomial_distribution = distributions.Multinomial(20, [0.2, 0.3, 0.5])
-        wishart_distribution = distributions.Wishart(8, [[1, 0.2], [0.2, 0.7]])
-        inverse_wishart_distribution = distributions.InverseWishart(10, [[1, 0.2], [0.2, 0.7]])
+        inverse_gaussian = InverseGaussian(2, 3).generate(256)
+        negative_binomial = NegBinomial(4, 0.5).generate(256)
+        multivariate_normal_distribution = MultivariateNormal([0, 0], [[1, 0.5], [0.5, 1]])
+        multivariate_students_t_distribution = MultivariateStudentsT(5, [0, 0], [[1, 0.5], [0.5, 1]])
+        dirichlet_distribution = Dirichlet([2, 3, 4])
+        inverted_dirichlet_distribution = InvertedDirichlet([2, 3, 8])
+        generalized_dirichlet_distribution = GeneralizedDirichlet([2, 3], [4, 5])
+        inverted_generalized_dirichlet_distribution = InvertedGeneralizedDirichlet([2, 3], [6, 8])
+        multinomial_distribution = Multinomial(20, [0.2, 0.3, 0.5])
+        wishart_distribution = Wishart(8, [[1, 0.2], [0.2, 0.7]])
+        inverse_wishart_distribution = InverseWishart(10, [[1, 0.2], [0.2, 0.7]])
         multivariate_normal = multivariate_normal_distribution.generate(256)
         multivariate_students_t = multivariate_students_t_distribution.generate(256)
         dirichlet = dirichlet_distribution.generate(256)
