@@ -308,7 +308,7 @@ consistency across derived variables.
 |-------|-------------|
 | `frequency_severity.FrequencySeverityModel` | Creates compound models from freq + sev distributions |
 | `frequency_severity.FreqSevSims` | Container for event-level simulations with sim indices |
-| `stochastic_scalar.StochasticScalar` | Simulation-level vector returned by `aggregate()` / `occurrence()` |
+| `StochasticScalar` (`from pal.variables import StochasticScalar`) | Simulation-level vector returned by `aggregate()` / `occurrence()` |
 
 ## See Also
 
