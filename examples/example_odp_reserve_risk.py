@@ -14,8 +14,9 @@ Proteus Actuarial Library.
 
 import numpy as np
 
-from pal import config, distributions
-from pal import maths as pnp
+import pal.maths as pnp
+from pal import config
+from pal.distributions import Beta, Gamma, Poisson
 from pal.variables import ProteusVariable, StochasticScalar
 
 config.n_sims = 100_000
@@ -87,7 +88,7 @@ class ODPModel:
         psi_vars = [StochasticScalar([1])]
         for j in range(1, n):
             a_j, b_j = 0.0, 1.0
-            psi_vars.append(distributions.Beta(a_j + float(c_j[j]), b_j + float(sum_dij[j - 1])).generate())
+            psi_vars.append(Beta(a_j + float(c_j[j]), b_j + float(sum_dij[j - 1])).generate())
         psi = ProteusVariable("dp", {str(dp + 1): psi_vars[dp] for dp in range(n)})
 
         betas = [StochasticScalar([])] * n
@@ -103,7 +104,7 @@ class ODPModel:
             values={
                 str(i + 1): phi
                 * np.maximum(1 / cumulative_payment_pattern[n - i - 1], 0)
-                * distributions.Gamma(float(d_i[i]), 1).generate()
+                * Gamma(float(d_i[i]), 1).generate()
                 for i in range(n)
             },
         )
@@ -119,7 +120,7 @@ class ODPModel:
         for op in self.origin_periods:
             total_by_origin[op] = 0.0
             for dp in self.future_dev_periods[op]:
-                x_ij = distributions.Poisson(self.mu[op] * self.betas[dp] / phi).generate()
+                x_ij = Poisson(self.mu[op] * self.betas[dp] / phi).generate()
                 total_by_origin[op] = total_by_origin[op] + phi * x_ij
 
         total = total_by_origin.sum()
