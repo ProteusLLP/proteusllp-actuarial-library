@@ -1,6 +1,7 @@
 """Generate model-friendly documentation entry points for the HTML build."""
 
 from pathlib import Path
+from typing import Any, Optional
 
 DOCS_URL = "https://proteusllp-actuarial-library.readthedocs.io/en/latest/"
 
@@ -37,22 +38,20 @@ Prefer documented public APIs and inspect signatures/docstrings rather than gues
 """
 
 
-def _write_llms_files(app: object, exception: Exception | None) -> None:
+def _write_llms_files(app: Any, exception: Optional[Exception]) -> None:
     """Write llms.txt and a concatenated source-document view after a successful build."""
     if exception is not None:
         return
 
-    builder = getattr(app, "builder")
-    if getattr(builder, "format", None) != "html":
+    if getattr(app.builder, "format", None) != "html":
         return
 
-    outdir = Path(getattr(app, "outdir"))
+    outdir = Path(app.outdir)
     (outdir / "llms.txt").write_text(LLMS_INDEX, encoding="utf-8")
 
-    env = getattr(app, "env")
     sections = [LLMS_INDEX, "\n# Full documentation source\n"]
-    for docname in sorted(env.found_docs):
-        source_path = Path(env.doc2path(docname))
+    for docname in sorted(app.env.found_docs):
+        source_path = Path(app.env.doc2path(docname))
         if not source_path.exists() or source_path.suffix not in {".md", ".rst"}:
             continue
         source = source_path.read_text(encoding="utf-8")
@@ -61,7 +60,7 @@ def _write_llms_files(app: object, exception: Exception | None) -> None:
     (outdir / "llms-full.txt").write_text("".join(sections), encoding="utf-8")
 
 
-def setup(app: object) -> dict[str, bool]:
+def setup(app: Any) -> dict[str, bool]:
     """Register the build-finished hook with Sphinx."""
     app.connect("build-finished", _write_llms_files)
     return {"parallel_read_safe": True, "parallel_write_safe": True}
