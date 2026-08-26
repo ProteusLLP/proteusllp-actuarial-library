@@ -1,9 +1,9 @@
 import numpy as np
 
-from pal import ProteusVariable, copulas, distributions
+from pal import copulas, distributions, variables
 
 lobs = ["Motor", "Property", "Liability", "Specialty"]
-losses = ProteusVariable(
+losses = variables.ProteusVariable(
     "lob",
     {
         lob: distributions.Gamma(alpha=alpha, theta=theta).generate()
