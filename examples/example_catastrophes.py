@@ -4,8 +4,7 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 import pal.maths as pnp
-from pal import config, distributions
-from pal.variables import FreqSevSims, ProteusVariable
+from pal import config, distributions, variables
 
 n_sims = 100_000
 config.n_sims = n_sims
@@ -16,10 +15,10 @@ df = pd.read_csv("data/catastrophes/cat_ylt.csv", index_col=0)  # type: ignore[m
 ylt_sims = 10000
 up_sample_factor = math.ceil(n_sims / ylt_sims)
 sim_index = np.array(df["sim"].values).repeat(up_sample_factor)
-cat_losses = ProteusVariable(
+cat_losses = variables.ProteusVariable(
     "lob",
     {
-        lob: FreqSevSims(
+        lob: variables.FreqSevSims(
             sim_index,
             df[lob].values.repeat(up_sample_factor),  # type: ignore[misc]
             n_sims=config.n_sims,
