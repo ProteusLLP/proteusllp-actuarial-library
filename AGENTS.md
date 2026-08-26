@@ -37,6 +37,8 @@ PAL uses standard Python packaging and also provides CPU/GPU devcontainers.
 
 A fresh environment can be prepared with:
 
+<!--pytest-codeblocks:skip-->
+
 ```bash
 pip install -e ".[test,dev,docs]"
 ```
@@ -49,6 +51,8 @@ When the `pal-devcontainer` container is already running, commands may be run th
 
 Prefer the narrowest useful check while iterating, then run the full relevant checks before finishing.
 
+<!--pytest-codeblocks:skip-->
+
 ```bash
 make lint
 make format-check
@@ -59,6 +63,8 @@ make check
 ```
 
 Run focused tests with `pytest path/to/test.py` or a specific test node. Documentation examples are executable and should remain valid.
+
+For documentation, remember that `pytest-codeblocks` treats fenced code blocks as independent by default. Use `<!--pytest-codeblocks:cont-->` before a block that intentionally depends on state created by an earlier block. Use `<!--pytest-codeblocks:skip-->` for illustrative shell commands or examples that should not execute in CI; do not use skips merely to hide a broken executable example. See `docs/AGENTS.md` for the documentation-specific rule.
 
 For GPU changes, also validate the GPU workflow or equivalent CUDA tests. CPU success alone is not sufficient for code that changes backend-sensitive behaviour.
 
