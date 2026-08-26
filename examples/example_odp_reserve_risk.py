@@ -14,8 +14,9 @@ Proteus Actuarial Library.
 
 import numpy as np
 
-from pal import config, distributions, stochastic_scalar, variables
+from pal import config, distributions
 from pal import maths as pnp
+from pal.variables import ProteusVariable, StochasticScalar
 
 config.n_sims = 100_000
 
@@ -29,9 +30,9 @@ class ODPModel:
     """Number of development periods."""
     triangle: np.ndarray
     """Incremental claims triangle."""
-    mu: variables.ProteusVariable[stochastic_scalar.StochasticScalar]
+    mu: ProteusVariable[StochasticScalar]
     """Stochastic variables for origin period means."""
-    betas: variables.ProteusVariable[stochastic_scalar.StochasticScalar]
+    betas: ProteusVariable[StochasticScalar]
     """Stochastic variables for development period payment pattern."""
 
     def __init__(self, incremental_triangle: np.ndarray):
@@ -83,13 +84,13 @@ class ODPModel:
         d_ij = cumtri / phi
         sum_dij = [np.sum(d_ij[: n - j, j - 1]) for j in range(1, n)]
 
-        psi_vars = [stochastic_scalar.StochasticScalar([1])]
+        psi_vars = [StochasticScalar([1])]
         for j in range(1, n):
             a_j, b_j = 0.0, 1.0
             psi_vars.append(distributions.Beta(a_j + float(c_j[j]), b_j + float(sum_dij[j - 1])).generate())
-        psi = variables.ProteusVariable("dp", {str(dp + 1): psi_vars[dp] for dp in range(n)})
+        psi = ProteusVariable("dp", {str(dp + 1): psi_vars[dp] for dp in range(n)})
 
-        betas = [stochastic_scalar.StochasticScalar([])] * n
+        betas = [StochasticScalar([])] * n
         betas[-1] = psi[-1]
         future_sum_beta = psi[-1]
         for j in range(n - 2, -1, -1):
@@ -97,7 +98,7 @@ class ODPModel:
             future_sum_beta = future_sum_beta + betas[j]
         cumulative_payment_pattern = pnp.cumsum(betas)
 
-        self.mu = variables.ProteusVariable(
+        self.mu = ProteusVariable(
             dim_name="op",
             values={
                 str(i + 1): phi
@@ -106,16 +107,14 @@ class ODPModel:
                 for i in range(n)
             },
         )
-        self.betas = variables.ProteusVariable("dp", {str(dp + 1): betas[dp] for dp in range(n)})
+        self.betas = ProteusVariable("dp", {str(dp + 1): betas[dp] for dp in range(n)})
 
-    def simulate_reserves(self) -> stochastic_scalar.StochasticScalar:
+    def simulate_reserves(self) -> StochasticScalar:
         """Simulate the predictive distribution of future claims."""
         self.estimate_phi()
         self.build_posterior()
         phi = self.phi
-        total_by_origin: variables.ProteusVariable[stochastic_scalar.StochasticScalar] = variables.ProteusVariable(
-            "op", {}
-        )
+        total_by_origin: ProteusVariable[StochasticScalar] = ProteusVariable("op", {})
 
         for op in self.origin_periods:
             total_by_origin[op] = 0.0
