@@ -1,12 +1,11 @@
 """An example of loading an inflation series from the Proteus Scenario Generator."""
 
-from pal import config
-from pal.variables import ProteusVariable
+from pal import config, variables
 
 n_sims = 100000
 config.n_sims = n_sims
 
-inflation_index = ProteusVariable.from_csv(
+inflation_index = variables.ProteusVariable.from_csv(
     "data/proteus_scenario_generator/Economics_USD_Inflation_Inflation Index.csv",
     "Time",
     "Index",
