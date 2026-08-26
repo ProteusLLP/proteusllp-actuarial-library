@@ -70,7 +70,8 @@ def test_user_examples_use_documented_pal_imports() -> None:
 
         if _SUBMODULE_IMPORT.search(text):
             violations.append(
-                f"{relative}: import PAL domain modules from `pal`; StochasticScalar and ProteusVariable belong in `pal.variables`"
+                f"{relative}: import PAL domain modules from `pal`; "
+                "StochasticScalar and ProteusVariable belong in `pal.variables`"
             )
 
         for match in _TOP_LEVEL_IMPORT.finditer(text):
