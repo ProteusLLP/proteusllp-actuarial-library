@@ -2,13 +2,14 @@
 
 import time
 
-from pal import config, contracts, copulas, distributions, frequency_severity, stochastic_scalar, variables
+from pal import config, contracts, copulas, distributions, frequency_severity
+from pal.variables import ProteusVariable, StochasticScalar
 
 config.n_sims = 100000
 
 start = time.time()
 lobs = [f"lob{i}" for i in range(100)]
-individual_large_losses_by_lob = variables.ProteusVariable(
+individual_large_losses_by_lob = ProteusVariable(
     dim_name="class",
     values={
         name: frequency_severity.FrequencySeverityModel(
@@ -19,7 +20,7 @@ individual_large_losses_by_lob = variables.ProteusVariable(
     },
 )
 # Generate the attritional losses by class
-attritional_losses_by_lob = variables.ProteusVariable(
+attritional_losses_by_lob = ProteusVariable(
     "class",
     values={lob: distributions.Gamma(alpha=i + 1, theta=1000000).generate() for i, lob in enumerate(lobs)},
 )
@@ -27,7 +28,7 @@ attritional_losses_by_lob = variables.ProteusVariable(
 losses_with_lae = individual_large_losses_by_lob * 1.05
 
 # create the aggregate losses by class
-aggregate_large_losses_by_class = variables.ProteusVariable(
+aggregate_large_losses_by_class = ProteusVariable(
     "class", {name: losses_with_lae[name].aggregate() for name in lobs}
 )
 # correlate the attritional and large losses. Use a pairwise copula to do this
@@ -43,7 +44,7 @@ inflated_total_losses_by_lob = total_losses_by_lob * (1 + stochastic_inflation)
 inflated_large_losses = individual_large_losses_by_lob * (1 + stochastic_inflation)
 
 # reinsurance
-net_aggregate_large_losses_dict: dict[str, stochastic_scalar.StochasticScalar] = {}
+net_aggregate_large_losses_dict: dict[str, StochasticScalar] = {}
 for lob in lobs:
     prog = contracts.XoLTower(
         limit=[1000000, 1000000, 1000000, 1000000, 10000000],
@@ -55,7 +56,7 @@ for lob in lobs:
     aggregate_recoveries = result.recoveries.aggregate()
     net_aggregate_large_losses_dict[lob] = aggregate_large_losses_by_class[lob] - aggregate_recoveries
 
-net_aggregate_large_losses = variables.ProteusVariable("class", net_aggregate_large_losses_dict)
+net_aggregate_large_losses = ProteusVariable("class", net_aggregate_large_losses_dict)
 total_net_losses_by_lob = net_aggregate_large_losses + attritional_losses_by_lob
 
 total_net_losses = total_net_losses_by_lob.sum()
