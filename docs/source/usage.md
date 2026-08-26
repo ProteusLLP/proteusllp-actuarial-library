@@ -6,13 +6,13 @@ This guide provides comprehensive examples of using the Proteus Actuarial Librar
 
 ### Basic Stochastic Variables
 
-Stochastic variables can be created with the `StochasticScalar` class from the `stochastic_scalar` module:
+Stochastic variables can be created with the `StochasticScalar` class from `pal.variables`:
 
 ```python
-from pal import stochastic_scalar
+from pal.variables import StochasticScalar
 
 # Create from array
-svariable = stochastic_scalar.StochasticScalar([1, 2, 3, 4])
+svariable = StochasticScalar([1, 2, 3, 4])
 ```
 
 ### Statistical Distributions
@@ -31,17 +31,18 @@ lognormal_var = distributions.LogNormal(mu=1, sigma=0.5).generate()
 
 ## Variable Containers
 
-Variables can be grouped into containers with the `ProteusVariable` class from the `variables` module:
+Variables can be grouped into containers with the `ProteusVariable` class from `pal.variables`:
 
 ```python
-from pal import distributions, variables
+from pal import distributions
+from pal.variables import ProteusVariable
 
 # Create individual variables
 motor_losses = distributions.Gamma(alpha=2.5, theta=2).generate()
 property_losses = distributions.LogNormal(mu=1, sigma=0.5).generate()
 
 # Group into container
-portfolio = variables.ProteusVariable(
+portfolio = ProteusVariable(
     dim_name="line",
     values={"Motor": motor_losses, "Property": property_losses}
 )
@@ -117,21 +118,3 @@ export PAL_USE_GPU=1
 # Windows
 set PAL_USE_GPU=1
 ```
-
-Set to any other value to revert to CPU mode.
-
-## Advanced Examples
-
-For more complex examples including reinsurance modeling and catastrophe simulations, see the examples directory in the GitHub repository.
-
-## See Also
-
-- [Development Guide](development.md) - Setting up the development environment
-- [Main README](https://github.com/ProteusLLP/proteusllp-actuarial-library) - Project overview and quick start
-
-## Performance Tips
-
-1. **Use appropriate simulation counts** - Start with smaller counts for development
-2. **Leverage GPU acceleration** for large simulations if available
-3. **Consider memory usage** when working with very large portfolios
-4. **Use vectorized operations** where possible for better performance
