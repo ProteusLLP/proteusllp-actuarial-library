@@ -11,7 +11,7 @@ from pal.stochastic_scalar import StochasticScalar
 
 
 def test_mbbefd_public_docstring_contains_mathematical_description() -> None:
-    """The public wrapper should retain the canonical MBBEFD documentation."""
+    """The public MBBEFD class should retain its mathematical documentation."""
     assert MBBEFD.__doc__ is not None
     assert "Bernegger's MBBEFD distribution" in MBBEFD.__doc__
     assert ".. math::" in MBBEFD.__doc__
