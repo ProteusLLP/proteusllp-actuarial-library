@@ -26,8 +26,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-from pal import ProteusVariable, StochasticScalar, XoLTower, distributions, set_random_seed
-from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
+from pal import contracts, distributions, frequency_severity, set_random_seed, stochastic_scalar, variables
 
 N_SIMS = 100_000
 DATA_PATH = Path("examples/data/property_exposures.csv")
@@ -51,10 +50,10 @@ The dataframe is converted into PAL objects straight away. Each field becomes a 
 <!--pytest-codeblocks:cont-->
 
 ```python
-exposure = ProteusVariable(
+exposure = variables.ProteusVariable(
     dim_name="field",
     values={
-        column: StochasticScalar(exposure_df[column])
+        column: stochastic_scalar.StochasticScalar(exposure_df[column])
         for column in exposure_df.columns
     },
 )
@@ -134,7 +133,7 @@ Suppose the reinsurance programme contains three occurrence layers:
 <!--pytest-codeblocks:cont-->
 
 ```python
-tower = XoLTower(
+tower = contracts.XoLTower(
     name=["5m xs 5m", "10m xs 10m", "20m xs 20m"],
     limit=[5_000_000, 10_000_000, 20_000_000],
     excess=[5_000_000, 10_000_000, 20_000_000],
@@ -227,7 +226,7 @@ row_distribution = distributions.Empirical(
     weights=frequencies,
 )
 
-claim_rows = FrequencySeverityModel(
+claim_rows = frequency_severity.FrequencySeverityModel(
     distributions.Poisson(frequencies.sum()),
     row_distribution,
 ).generate(N_SIMS)
@@ -240,7 +239,7 @@ The sampled row numbers then select the corresponding policy terms and MBBEFD pa
 <!--pytest-codeblocks:cont-->
 
 ```python
-row_index = StochasticScalar(claim_rows.values)
+row_index = stochastic_scalar.StochasticScalar(claim_rows.values)
 
 selected_maximum_loss = exposure["maximum_loss"][row_index]
 selected_policy_limit = exposure["policy_limit"][row_index]
@@ -257,7 +256,7 @@ policy_loss = np.minimum(
     selected_policy_limit,
 )
 
-policy_losses = FreqSevSims(
+policy_losses = frequency_severity.FreqSevSims(
     claim_rows.sim_index,
     policy_loss.values,
     claim_rows.n_sims,
@@ -320,7 +319,7 @@ The paid-claim severity distribution is available directly from PAL:
 <!--pytest-codeblocks:cont-->
 
 ```python
-severity = StochasticScalar(policy_losses.values)
+severity = stochastic_scalar.StochasticScalar(policy_losses.values)
 paid_severity = severity[severity > 0]
 severity_figure = paid_severity.show_histogram(
     title="Portfolio Paid-Claim Severity"
@@ -338,7 +337,7 @@ Now suppose each reinsurance layer has a £1m annual aggregate deductible. The o
 <!--pytest-codeblocks:cont-->
 
 ```python
-aggregate_tower = XoLTower(
+aggregate_tower = contracts.XoLTower(
     name=layer_names,
     limit=[5_000_000, 10_000_000, 20_000_000],
     excess=[5_000_000, 10_000_000, 20_000_000],
