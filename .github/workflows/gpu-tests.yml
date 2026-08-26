@@ -77,9 +77,10 @@ jobs:
           python - <<'PY'
           import cupy
           import numpy
-          from pal import distributions, set_random_seed
+          from pal import set_random_seed
           from pal._maths import xp
           from pal.config import config
+          from pal.distributions import Normal
 
           if xp is not cupy:
               raise RuntimeError("PAL did not select the CuPy backend")
@@ -98,7 +99,7 @@ jobs:
           if isinstance(device_name, bytes):
               device_name = device_name.decode()
 
-          samples = distributions.Normal(0, 1).generate(1024)
+          samples = Normal(0, 1).generate(1024)
           if not isinstance(samples.values, cupy.ndarray):
               raise RuntimeError("PAL generated stochastic samples on the host")
 
