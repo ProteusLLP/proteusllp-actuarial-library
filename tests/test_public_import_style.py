@@ -47,9 +47,7 @@ def _source_text(path: Path) -> str:
 
     notebook = json.loads(path.read_text(encoding="utf-8"))
     return "\n".join(
-        "".join(cell.get("source", []))
-        for cell in notebook.get("cells", [])
-        if cell.get("cell_type") == "code"
+        "".join(cell.get("source", [])) for cell in notebook.get("cells", []) if cell.get("cell_type") == "code"
     )
 
 
