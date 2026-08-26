@@ -144,6 +144,7 @@ For ordinary Python introspection, documented public objects also work naturally
 import inspect
 
 from pal import distributions
+from pal.variables import StochasticScalar
 
 print(inspect.signature(distributions.Gamma))
 help(distributions.Gamma)
