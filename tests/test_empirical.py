@@ -4,10 +4,10 @@ import math
 
 import pytest
 
-from pal import distributions
-from pal.config import set_random_seed
+import pal.distributions as distributions
+from pal import set_random_seed
 from pal.empirical import Empirical
-from pal.stochastic_scalar import StochasticScalar
+from pal.variables import StochasticScalar
 from tests._assertions import allclose
 
 
