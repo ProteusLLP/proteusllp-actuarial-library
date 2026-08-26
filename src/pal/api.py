@@ -26,7 +26,6 @@ _PUBLIC_MODULES: tuple[str, ...] = (
     "multivariate_distributions",
     "risk_measures",
     "stats",
-    "stochastic_scalar",
     "types",
     "variables",
 )
