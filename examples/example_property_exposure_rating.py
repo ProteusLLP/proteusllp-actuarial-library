@@ -18,10 +18,7 @@ def main() -> None:
     exposure_df = pd.read_csv(DATA_PATH)
     exposure = ProteusVariable(
         dim_name="field",
-        values={
-            column: StochasticScalar(exposure_df[column])
-            for column in exposure_df.columns
-        },
+        values={column: StochasticScalar(exposure_df[column]) for column in exposure_df.columns},
     )
 
     maximum_loss = exposure["maximum_loss"]
@@ -53,8 +50,7 @@ def main() -> None:
             1.0,
         )
         layer_upper = np.minimum(
-            (deductible + np.minimum(layer.excess + layer.limit, policy_limit))
-            / maximum_loss,
+            (deductible + np.minimum(layer.excess + layer.limit, policy_limit)) / maximum_loss,
             1.0,
         )
         layer_share = mbbefd.exposure_curve(layer_upper) - mbbefd.exposure_curve(layer_lower)
@@ -118,7 +114,7 @@ def main() -> None:
 
     severity = StochasticScalar(policy_losses.values)
     paid_severity = severity[severity > 0]
-    severity_figure = paid_severity.histogram(title="Portfolio Paid-Claim Severity")
+    severity_figure = paid_severity.histogram_plot(title="Portfolio Paid-Claim Severity")
 
     aggregate_tower = XoLTower(
         name=layer_names,
@@ -129,12 +125,8 @@ def main() -> None:
     )
     aggregate_tower_result = aggregate_tower.apply(policy_losses)
 
-    occurrence_only_rates = [
-        layer.summary["mean"] / total_subject_premium for layer in tower.layers
-    ]
-    aggregate_rates = [
-        layer.summary["mean"] / total_subject_premium for layer in aggregate_tower.layers
-    ]
+    occurrence_only_rates = [layer.summary["mean"] / total_subject_premium for layer in tower.layers]
+    aggregate_rates = [layer.summary["mean"] / total_subject_premium for layer in aggregate_tower.layers]
     comparison = pd.DataFrame(
         {
             "Analytical exposure rate": analytical_rates,
