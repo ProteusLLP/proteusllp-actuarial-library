@@ -9,8 +9,7 @@ amounts (severity).
 ```python
 import numpy as np
 
-from pal import config, distributions, set_random_seed
-from pal.frequency_severity import FrequencySeverityModel
+from pal import config, contracts, copulas, distributions, frequency_severity, set_random_seed
 
 config.n_sims = 10_000
 set_random_seed(42)
@@ -24,7 +23,7 @@ events) with a severity distribution (how large each event is):
 <!--pytest-codeblocks:cont-->
 
 ```python
-model = FrequencySeverityModel(
+model = frequency_severity.FrequencySeverityModel(
     freq_dist=distributions.Poisson(mean=50),
     sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
 )
@@ -165,7 +164,7 @@ The standard choice for claim counts. Variance equals the mean:
 <!--pytest-codeblocks:cont-->
 
 ```python
-model = FrequencySeverityModel(
+model = frequency_severity.FrequencySeverityModel(
     freq_dist=distributions.Poisson(mean=25),
     sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
 )
@@ -186,7 +185,7 @@ heterogeneity across risk units:
 <!--pytest-codeblocks:cont-->
 
 ```python
-model = FrequencySeverityModel(
+model = frequency_severity.FrequencySeverityModel(
     freq_dist=distributions.NegBinomial(n=25, p=0.5),
     sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
 )
@@ -219,7 +218,7 @@ set_random_seed(42)
 attritional = distributions.Gamma(alpha=100, theta=150_000).generate()
 
 # Rare large claims modelled individually
-large = FrequencySeverityModel(
+large = frequency_severity.FrequencySeverityModel(
     freq_dist=distributions.Poisson(mean=3),
     sev_dist=distributions.Pareto(shape=1.5, scale=1_000_000),
 ).generate()
@@ -238,7 +237,7 @@ Apply multiplicative loadings after generating events:
 <!--pytest-codeblocks:cont-->
 
 ```python
-events = FrequencySeverityModel(
+events = frequency_severity.FrequencySeverityModel(
     freq_dist=distributions.Poisson(mean=50),
     sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
 ).generate()
@@ -260,9 +259,7 @@ net_agg = with_lae.aggregate()
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal.contracts import XoL
-
-layer = XoL(
+layer = contracts.XoL(
     name="1m xs 500k",
     limit=1_000_000,
     excess=500_000,
@@ -283,15 +280,13 @@ variables using copulas:
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal import copulas
-
 set_random_seed(42)
-motor = FrequencySeverityModel(
+motor = frequency_severity.FrequencySeverityModel(
     freq_dist=distributions.Poisson(mean=50),
     sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
 ).generate().aggregate()
 
-property_loss = FrequencySeverityModel(
+property_loss = frequency_severity.FrequencySeverityModel(
     freq_dist=distributions.Poisson(mean=20),
     sev_dist=distributions.Pareto(shape=2, scale=50_000),
 ).generate().aggregate()
@@ -311,9 +306,9 @@ consistency across derived variables.
 
 | Class | Description |
 |-------|-------------|
-| `FrequencySeverityModel` | Creates compound models from freq + sev distributions |
-| `FreqSevSims` | Container for event-level simulations with sim indices |
-| `StochasticScalar` | Simulation-level vector returned by `aggregate()` / `occurrence()` |
+| `frequency_severity.FrequencySeverityModel` | Creates compound models from freq + sev distributions |
+| `frequency_severity.FreqSevSims` | Container for event-level simulations with sim indices |
+| `stochastic_scalar.StochasticScalar` | Simulation-level vector returned by `aggregate()` / `occurrence()` |
 
 ## See Also
 
