@@ -2,21 +2,16 @@
 
 import time
 
-from pal import config, copulas, distributions
-from pal.contracts import XoLTower
-from pal.frequency_severity import FrequencySeverityModel
-from pal.stochastic_scalar import StochasticScalar
-from pal.variables import ProteusVariable
+from pal import config, contracts, copulas, distributions, frequency_severity, stochastic_scalar, variables
 
 config.n_sims = 100000
 
-
 start = time.time()
 lobs = [f"lob{i}" for i in range(100)]
-individual_large_losses_by_lob = ProteusVariable(
+individual_large_losses_by_lob = variables.ProteusVariable(
     dim_name="class",
     values={
-        name: FrequencySeverityModel(
+        name: frequency_severity.FrequencySeverityModel(
             distributions.Poisson(mean=5),
             distributions.GPD(shape=0.33, scale=100000, loc=1000000),
         ).generate()
@@ -24,7 +19,7 @@ individual_large_losses_by_lob = ProteusVariable(
     },
 )
 # Generate the attritional losses by class
-attritional_losses_by_lob = ProteusVariable(
+attritional_losses_by_lob = variables.ProteusVariable(
     "class",
     values={lob: distributions.Gamma(alpha=i + 1, theta=1000000).generate() for i, lob in enumerate(lobs)},
 )
@@ -32,7 +27,9 @@ attritional_losses_by_lob = ProteusVariable(
 losses_with_lae = individual_large_losses_by_lob * 1.05
 
 # create the aggregate losses by class
-aggregate_large_losses_by_class = ProteusVariable("class", {name: losses_with_lae[name].aggregate() for name in lobs})
+aggregate_large_losses_by_class = variables.ProteusVariable(
+    "class", {name: losses_with_lae[name].aggregate() for name in lobs}
+)
 # correlate the attritional and large losses. Use a pairwise copula to do this
 for lob in lobs:
     copulas.GumbelCopula(theta=1.2).apply([aggregate_large_losses_by_class[lob], attritional_losses_by_lob[lob]])
@@ -46,9 +43,9 @@ inflated_total_losses_by_lob = total_losses_by_lob * (1 + stochastic_inflation)
 inflated_large_losses = individual_large_losses_by_lob * (1 + stochastic_inflation)
 
 # reinsurance
-net_aggregate_large_losses_dict: dict[str, StochasticScalar] = {}
+net_aggregate_large_losses_dict: dict[str, stochastic_scalar.StochasticScalar] = {}
 for lob in lobs:
-    prog = XoLTower(
+    prog = contracts.XoLTower(
         limit=[1000000, 1000000, 1000000, 1000000, 10000000],
         excess=[1000000, 2000000, 3000000, 4000000, 5000000],
         premium=[100000, 50000, 30000, 20000, 10000],
@@ -58,13 +55,9 @@ for lob in lobs:
     aggregate_recoveries = result.recoveries.aggregate()
     net_aggregate_large_losses_dict[lob] = aggregate_large_losses_by_class[lob] - aggregate_recoveries
 
-
-net_aggregate_large_losses = ProteusVariable("class", net_aggregate_large_losses_dict)
-
+net_aggregate_large_losses = variables.ProteusVariable("class", net_aggregate_large_losses_dict)
 total_net_losses_by_lob = net_aggregate_large_losses + attritional_losses_by_lob
 
-
-# create the total losses
 total_net_losses = total_net_losses_by_lob.sum()
 
 print("TVAR: ", total_net_losses.tvar(99))
