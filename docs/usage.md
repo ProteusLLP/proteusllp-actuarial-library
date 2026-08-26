@@ -6,13 +6,13 @@ This guide provides comprehensive examples of using the Proteus Actuarial Librar
 
 ### Basic Stochastic Variables
 
-Stochastic variables can be created with the `StochasticScalar` class from the `stochastic_scalar` module:
+Stochastic variables can be created with the `StochasticScalar` class from `pal.variables`:
 
 ```python
-from pal import stochastic_scalar
+from pal.variables import StochasticScalar
 
 # Create from array
-svariable = stochastic_scalar.StochasticScalar([1, 2, 3, 4])
+svariable = StochasticScalar([1, 2, 3, 4])
 ```
 
 ### Statistical Distributions
@@ -31,17 +31,18 @@ lognormal_var = distributions.LogNormal(mu=1, sigma=0.5).generate()
 
 ## Variable Containers
 
-Variables can be grouped into containers with the `ProteusVariable` class from the `variables` module:
+Variables can be grouped into containers with the `ProteusVariable` class from `pal.variables`:
 
 ```python
-from pal import distributions, variables
+from pal import distributions
+from pal.variables import ProteusVariable
 
 # Create individual variables
 motor_losses = distributions.Gamma(alpha=2.5, theta=2).generate()
 property_losses = distributions.LogNormal(mu=1, sigma=0.5).generate()
 
 # Group into container
-portfolio = variables.ProteusVariable(
+portfolio = ProteusVariable(
     dim_name="line",
     values={"Motor": motor_losses, "Property": property_losses}
 )
@@ -208,7 +209,7 @@ All development work is done inside the devcontainer. VS Code provides native Ju
 
 - **Native VS Code integration** - No separate Jupyter server needed
 - **Live plots** displayed inline within VS Code
-- **Interactive debugging** - Full VS Code debugging support in notebooks
+- **Interactive debugging** - Full VS Code debugging support
 - **Integrated development** - IntelliSense, linting, and formatting work seamlessly
 - **GitHub rendering** - notebooks display with plots when viewed on GitHub
 
@@ -228,11 +229,11 @@ PAL provides rich type annotations using protocols for better type safety in you
 ### Using Protocol Types in Function Signatures
 
 ```python
-from pal import stochastic_scalar
-from pal.types import ProteusLike, VectorLike, DistributionLike
+from pal.types import DistributionLike, ProteusLike, VectorLike
+from pal.variables import StochasticScalar
 
 # Accept any ProteusLike container with StochasticScalar values
-def analyze_risk(variable: ProteusLike[stochastic_scalar.StochasticScalar]) -> float:
+def analyze_risk(variable: ProteusLike[StochasticScalar]) -> float:
     """Calculate risk metric from a multi-dimensional stochastic variable."""
     return variable.mean()  # Type-safe, returns StochasticScalar
 
@@ -257,43 +258,3 @@ def sample_from_dist(dist: DistributionLike[float], n: int) -> VectorLike:
 ### Understanding Structural Typing
 
 **Structural typing** (also called "duck typing" in dynamic languages) means that type compatibility is determined by the structure (methods and attributes) of an object, not by explicit inheritance relationships.
-
-In PAL's protocol system:
-- If your class has the methods a protocol requires, it automatically satisfies that protocol
-- No need to explicitly inherit or declare that you implement the protocol
-- The type checker verifies compatibility based on method signatures
-
-**Example**:
-```python
-from pal.types import VectorLike
-
-# This class automatically satisfies VectorLike protocol
-class MyCustomVariable:
-    def __add__(self, other): return self
-    def __array__(self): return np.array([1, 2, 3])
-    def __len__(self): return 3
-    # ... other VectorLike methods
-
-# Works automatically - no inheritance needed!
-def process(v: VectorLike) -> VectorLike:
-    return v + 1
-
-my_var = MyCustomVariable()
-result = process(my_var)  # Type checker accepts this!
-```
-
-**Learn More**: See [PEP 544](https://peps.python.org/pep-0544/) for the full specification of Python's Protocol system and structural subtyping.
-
-### Protocol Guidelines for Client Code
-
-- **Use protocols in function signatures** for maximum flexibility
-- **Don't inherit from protocols** - just implement the methods you need
-- **Let structural typing work** - if your object has the right methods, it works
-- **Leverage generics** like `ProteusLike[T]` to maintain type information
-
-## Performance Tips
-
-1. **Use appropriate simulation counts** - Start with smaller counts for development
-2. **Leverage GPU acceleration** for large simulations if available
-3. **Consider memory usage** when working with very large portfolios
-4. **Use vectorized operations** where possible for better performance
