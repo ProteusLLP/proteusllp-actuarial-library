@@ -4,10 +4,22 @@ import pal
 
 
 def test_pal_top_level_namespace_is_module_oriented() -> None:
-    from pal import config, distributions, set_default_n_sims, set_random_seed
-    from pal import contracts, copulas, couplings, frequency_severity
-    from pal import maths, multivariate_distributions, risk_measures, stats
-    from pal import stochastic_scalar, variables
+    from pal import (
+        config,
+        contracts,
+        copulas,
+        couplings,
+        distributions,
+        frequency_severity,
+        maths,
+        multivariate_distributions,
+        risk_measures,
+        set_default_n_sims,
+        set_random_seed,
+        stats,
+        stochastic_scalar,
+        variables,
+    )
 
     assert config is not None
     assert distributions is not None
