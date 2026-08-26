@@ -31,14 +31,8 @@ from .multivariate_distributions import (
     MultivariateStudentsT as _MultivariateStudentsT,
     Wishart as _Wishart,
 )
-
-__all__ = [
-    "api",
-    "config",
-    "distributions",
-    "set_default_n_sims",
-    "set_random_seed",
-]
+from .stochastic_scalar import StochasticScalar as _StochasticScalar
+from .variables import ProteusVariable as _ProteusVariable
 
 # Empirical and HyperExponential have vector-valued parameters and are
 # implemented in separate modules. Expose them through the standard
@@ -48,9 +42,8 @@ distributions.AVAILABLE_DISCRETE_DISTRIBUTIONS["empirical"] = _Empirical
 setattr(distributions, "HyperExponential", _HyperExponential)
 distributions.AVAILABLE_CONTINUOUS_DISTRIBUTIONS["hyperexponential"] = _HyperExponential
 
-# ``variables`` depends on ``frequency_severity``, which in turn depends on the
-# univariate distributions module. Attach the multivariate API after those modules
-# have initialized to avoid making that established import cycle recursive.
+# Attach multivariate classes to the standard distributions namespace without
+# also exporting them from the package root.
 for _distribution_name, _distribution in {
     "Dirichlet": _Dirichlet,
     "GeneralizedDirichlet": _GeneralizedDirichlet,
@@ -68,6 +61,45 @@ for _distribution_name, _distribution in {
 
 del _distribution_name, _distribution
 
-# Runtime API discovery is imported last so it sees the complete public
-# distributions namespace, including the aliases attached above.
+# ``copulas`` historically imports these two classes from the package root.
+# Make them available only while the module initialises, then remove them again
+# so users cannot rely on the old top-level shortcuts.
+ProteusVariable = _ProteusVariable
+StochasticScalar = _StochasticScalar
+from . import copulas as copulas  # noqa: E402
+
+del ProteusVariable, StochasticScalar
+
+# Import the public module namespaces explicitly so ``import pal; pal.contracts``
+# and ``from pal import contracts`` are both reliable and discoverable.
+from . import contracts as contracts  # noqa: E402
+from . import couplings as couplings  # noqa: E402
+from . import frequency_severity as frequency_severity  # noqa: E402
+from . import maths as maths  # noqa: E402
+from . import multivariate_distributions as multivariate_distributions  # noqa: E402
+from . import risk_measures as risk_measures  # noqa: E402
+from . import stats as stats  # noqa: E402
+from . import stochastic_scalar as stochastic_scalar  # noqa: E402
+from . import variables as variables  # noqa: E402
+
+# Runtime API discovery is imported last so it sees the complete public module
+# and distributions namespaces.
 from . import api as api  # noqa: E402
+
+__all__ = [
+    "api",
+    "config",
+    "contracts",
+    "copulas",
+    "couplings",
+    "distributions",
+    "frequency_severity",
+    "maths",
+    "multivariate_distributions",
+    "risk_measures",
+    "set_default_n_sims",
+    "set_random_seed",
+    "stats",
+    "stochastic_scalar",
+    "variables",
+]
