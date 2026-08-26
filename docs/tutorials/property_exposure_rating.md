@@ -419,3 +419,4 @@ comparison_figure.update_layout(
     barmode="group",
 )
 comparison_figure.show()
+```
