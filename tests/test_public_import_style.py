@@ -9,25 +9,12 @@ ROOT = Path(__file__).parents[1]
 _ALLOWED_TOP_LEVEL_IMPORTS = {
     "api",
     "config",
-    "contracts",
-    "copulas",
-    "couplings",
-    "distributions",
-    "frequency_severity",
-    "maths",
-    "multivariate_distributions",
-    "risk_measures",
     "set_default_n_sims",
     "set_random_seed",
-    "stats",
-    "variables",
 }
 
 _TOP_LEVEL_IMPORT = re.compile(r"from\s+pal\s+import\s+(\([^)]*\)|[^\n]+)", re.MULTILINE | re.DOTALL)
-_SUBMODULE_IMPORT = re.compile(
-    r"from\s+pal\.(?:contracts|copulas|couplings|distributions|frequency_severity|maths|"
-    r"multivariate_distributions|risk_measures|stats|stochastic_scalar)\s+import\s+"
-)
+_FORBIDDEN_IMPLEMENTATION_IMPORT = re.compile(r"from\s+pal\.stochastic_scalar\s+import\s+")
 
 
 def _user_facing_files() -> list[Path]:
@@ -68,19 +55,15 @@ def test_user_examples_use_documented_pal_imports() -> None:
         text = _source_text(path)
         relative = path.relative_to(ROOT)
 
-        if _SUBMODULE_IMPORT.search(text):
-            violations.append(
-                f"{relative}: import PAL domain modules from `pal`; "
-                "StochasticScalar and ProteusVariable belong in `pal.variables`"
-            )
-
         for match in _TOP_LEVEL_IMPORT.finditer(text):
             imported = _normalise_import_names(match.group(1))
             forbidden = sorted(imported - _ALLOWED_TOP_LEVEL_IMPORTS)
             if forbidden:
-                violations.append(f"{relative}: top-level PAL imports are not allowed for {', '.join(forbidden)}")
+                violations.append(
+                    f"{relative}: import {', '.join(forbidden)} from their owning `pal.<module>` submodule"
+                )
 
-        if "stochastic_scalar.StochasticScalar" in text or "from pal import stochastic_scalar" in text:
+        if _FORBIDDEN_IMPLEMENTATION_IMPORT.search(text) or "stochastic_scalar.StochasticScalar" in text:
             violations.append(f"{relative}: import StochasticScalar with `from pal.variables import StochasticScalar`")
 
     assert not violations, "\n" + "\n".join(violations)
