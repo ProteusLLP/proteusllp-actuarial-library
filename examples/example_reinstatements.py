@@ -15,18 +15,22 @@ Model:
 
 import pandas as pd
 
-from pal import contracts, distributions, frequency_severity, risk_measures, set_default_n_sims, set_random_seed
+from pal import set_default_n_sims, set_random_seed
+from pal.contracts import XoLTower
+from pal.distributions import Pareto, Poisson
+from pal.frequency_severity import FrequencySeverityModel
+from pal.risk_measures import proportional_hazards_transform
 
 # ── Setup ───────────────────────────────────────────────────────────
 
 set_random_seed(42)
 set_default_n_sims(100_000)
 
-model = frequency_severity.FrequencySeverityModel(distributions.Poisson(10.0), distributions.Pareto(shape=3, scale=10))
+model = FrequencySeverityModel(Poisson(10.0), Pareto(shape=3, scale=10))
 claims = model.generate() - 10.0
 
 # Two separate layers + the combined layer, all in one tower
-tower_one_reinst = contracts.XoLTower(
+tower_one_reinst = XoLTower(
     name=["10 xs 10", "10 xs 20", "20 xs 10"],
     limit=[10, 10, 20],
     excess=[10, 20, 10],
@@ -40,7 +44,7 @@ tower_one_reinst = contracts.XoLTower(
 print("Table 2 — Pure premiums (lambda=10)")
 print("=" * 55)
 
-tower_unlimited_reinst = contracts.XoLTower(
+tower_unlimited_reinst = XoLTower(
     name=["10 xs 10", "10 xs 20", "20 xs 10"],
     limit=[10, 10, 20],
     excess=[10, 20, 10],
@@ -91,10 +95,10 @@ aggc = tower_one_reinst.layers[2].apply(claims).recoveries.aggregate()
 rows = []
 for p in [1.0, 1.2, 1.4, 1.6, 1.8, 2.0]:
     alpha = 1.0 / p
-    ph1 = risk_measures.proportional_hazards_transform(agg1, alpha=alpha)
-    ph2 = risk_measures.proportional_hazards_transform(agg2, alpha=alpha)
-    ph_sum = risk_measures.proportional_hazards_transform(agg1 + agg2, alpha=alpha)
-    phc = risk_measures.proportional_hazards_transform(aggc, alpha=alpha)
+    ph1 = proportional_hazards_transform(agg1, alpha=alpha)
+    ph2 = proportional_hazards_transform(agg2, alpha=alpha)
+    ph_sum = proportional_hazards_transform(agg1 + agg2, alpha=alpha)
+    phc = proportional_hazards_transform(aggc, alpha=alpha)
     rows.append(
         {
             "p": p,
