@@ -96,7 +96,19 @@ up to the total `.value`. This is the Euler property described above.
 ```python
 import numpy as np
 
-from pal import config, copulas, distributions, risk_measures, set_random_seed, variables
+from pal import config, set_random_seed
+from pal.contracts import XoLTower
+from pal.copulas import GalambosCopula
+from pal.distributions import LogNormal, Poisson
+from pal.frequency_severity import FrequencySeverityModel
+from pal.risk_measures import (
+    percentile_layer,
+    proportional_hazards_transform,
+    standard_deviation_principle,
+    tvar,
+    wang_transform,
+)
+from pal.variables import ProteusVariable
 
 config.n_sims = 100_000
 set_random_seed(42)
@@ -110,16 +122,16 @@ introduce dependence via a copula:
 <!--pytest-codeblocks:cont-->
 
 ```python
-portfolio = variables.ProteusVariable(
+portfolio = ProteusVariable(
     dim_name="lob",
     values={
-        "property": distributions.LogNormal(mu=14, sigma=0.8).generate(),
-        "casualty": distributions.LogNormal(mu=13, sigma=0.5).generate(),
-        "marine": distributions.LogNormal(mu=12, sigma=0.6).generate(),
+        "property": LogNormal(mu=14, sigma=0.8).generate(),
+        "casualty": LogNormal(mu=13, sigma=0.5).generate(),
+        "marine": LogNormal(mu=12, sigma=0.6).generate(),
     },
 )
 
-copulas.GalambosCopula(2).apply(portfolio)
+GalambosCopula(2).apply(portfolio)
 
 total = portfolio.sum()
 ```
@@ -143,7 +155,7 @@ regulation:
 <!--pytest-codeblocks:cont-->
 
 ```python
-rm_tvar = risk_measures.tvar(total, percentile=99)
+rm_tvar = tvar(total, percentile=99)
 print(f"TVaR 99%:  {rm_tvar.value:,.0f}")
 ```
 
@@ -194,7 +206,7 @@ the tail:
 <!--pytest-codeblocks:cont-->
 
 ```python
-rm_ph = risk_measures.proportional_hazards_transform(total, alpha=0.5)
+rm_ph = proportional_hazards_transform(total, alpha=0.5)
 print(f"PH (α=0.5): {rm_ph.value:,.0f}")
 print(rm_ph.allocate(portfolio))
 ```
@@ -219,7 +231,7 @@ more heavily on the tail:
 <!--pytest-codeblocks:cont-->
 
 ```python
-rm_wang = risk_measures.wang_transform(total, alpha=1.0)
+rm_wang = wang_transform(total, alpha=1.0)
 print(f"Wang (α=1): {rm_wang.value:,.0f}")
 print(rm_wang.allocate(portfolio))
 ```
@@ -244,7 +256,7 @@ violate monotonicity), but it is simple and widely used:
 <!--pytest-codeblocks:cont-->
 
 ```python
-rm_sd = risk_measures.standard_deviation_principle(total, k=2.0)
+rm_sd = standard_deviation_principle(total, k=2.0)
 print(f"Std dev (k=2): {rm_sd.value:,.0f}")
 print(rm_sd.allocate(portfolio))
 ```
@@ -276,7 +288,7 @@ the simulations that reach it:
 
 ```python
 capital = float(total.percentile(99.5))
-rm_pl = risk_measures.percentile_layer(total, capital)
+rm_pl = percentile_layer(total, capital)
 print(f"Capital (VaR 99.5%): {capital:,.0f}")
 print(f"Allocated total:     {rm_pl.value:,.0f}")
 print(rm_pl.allocate(portfolio))
@@ -436,13 +448,11 @@ the expected loss.
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal import contracts, frequency_severity
-
 set_random_seed(42)
 
-losses = frequency_severity.FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=2),
-    sev_dist=distributions.LogNormal(mu=12, sigma=1.5),
+losses = FrequencySeverityModel(
+    freq_dist=Poisson(mean=2),
+    sev_dist=LogNormal(mu=12, sigma=1.5),
 ).generate()
 
 print(f"Mean aggregate loss: {losses.aggregate().mean():,.0f}")
@@ -460,7 +470,7 @@ stacked from £1m up to £11m:
 <!--pytest-codeblocks:cont-->
 
 ```python
-tower = contracts.XoLTower(
+tower = XoLTower(
     name=["2m xs 1m", "2m xs 3m", "2m xs 5m", "2m xs 7m", "2m xs 9m"],
     limit=  [2_000_000] * 5,
     excess= [1_000_000, 3_000_000, 5_000_000, 7_000_000, 9_000_000],
@@ -484,7 +494,7 @@ rows = []
 for layer in tower.layers:
     recoveries = layer.apply(losses).recoveries.aggregate()
     el = recoveries.mean()
-    rm = risk_measures.proportional_hazards_transform(recoveries, alpha=0.5)
+    rm = proportional_hazards_transform(recoveries, alpha=0.5)
     rows.append({
         "Layer": layer.name,
         "Expected": el,
@@ -534,7 +544,7 @@ excesses = [layer.excess / 1e6 for layer in tower.layers]
 els, prices, loadings = [], [], []
 for layer in tower.layers:
     rec = layer.apply(losses).recoveries.aggregate()
-    rm = risk_measures.proportional_hazards_transform(rec, alpha=0.5)
+    rm = proportional_hazards_transform(rec, alpha=0.5)
     els.append(rec.mean() / layer.limit * 100)
     prices.append(rm.value / layer.limit * 100)
     loadings.append((rm.value / rec.mean() - 1) * 100)
