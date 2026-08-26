@@ -13,8 +13,10 @@ import numpy as np
 import plotly.graph_objects as go  # type: ignore[import-untyped]
 from plotly.subplots import make_subplots  # type: ignore[import-untyped]
 
-from pal import config, copulas, distributions, set_random_seed, variables
-from pal.variables import StochasticScalar
+from pal import config, set_random_seed
+from pal.copulas import ClaytonCopula, GaussianCopula, GumbelCopula, StudentsTCopula
+from pal.distributions import Gamma, LogNormal, Normal, Pareto
+from pal.variables import ProteusVariable, StochasticScalar
 
 SUPPRESS_PLOTS = os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true"
 
@@ -25,8 +27,8 @@ print("=" * 70)
 print("PART 1: COUPLING GROUPS")
 print("=" * 70)
 
-motor_losses = distributions.LogNormal(mu=14, sigma=0.5).generate()
-property_losses = distributions.LogNormal(mu=15, sigma=0.8).generate()
+motor_losses = LogNormal(mu=14, sigma=0.5).generate()
+property_losses = LogNormal(mu=15, sigma=0.8).generate()
 
 print("\n--- Independent variables ---")
 motor_group = id(motor_losses.coupled_variable_group)
@@ -67,8 +69,8 @@ print("PART 2: WHY COUPLING GROUPS MATTER")
 print("=" * 70)
 
 set_random_seed(42)
-loss_a = distributions.LogNormal(mu=14, sigma=0.5).generate()
-loss_b = distributions.LogNormal(mu=15, sigma=0.8).generate()
+loss_a = LogNormal(mu=14, sigma=0.5).generate()
+loss_b = LogNormal(mu=15, sigma=0.8).generate()
 loss_a_expenses = loss_a * 1.15
 
 print("\n--- Before copula ---")
@@ -77,7 +79,7 @@ print(f"loss_a_expenses first 5: {loss_a_expenses.values[:5]}")
 ratio = loss_a_expenses.values[:5] / loss_a.values[:5]
 print(f"Ratio (should be 1.15):  {ratio}")
 
-copulas.GaussianCopula([[1.0, 0.7], [0.7, 1.0]]).apply([loss_a, loss_b])
+GaussianCopula([[1.0, 0.7], [0.7, 1.0]]).apply([loss_a, loss_b])
 
 print("\n--- After copula reordering ---")
 print(f"loss_a first 5:          {loss_a.values[:5]}")
@@ -102,38 +104,38 @@ def rank_corr(a: StochasticScalar, b: StochasticScalar) -> float:
 
 
 set_random_seed(42)
-x_indep = distributions.LogNormal(mu=10, sigma=1.0).generate()
-y_indep = distributions.LogNormal(mu=10, sigma=1.0).generate()
+x_indep = LogNormal(mu=10, sigma=1.0).generate()
+y_indep = LogNormal(mu=10, sigma=1.0).generate()
 print("\n--- Independent variables (no copula) ---")
 print(f"Rank correlation: {rank_corr(x_indep, y_indep):.4f}")
 
 set_random_seed(42)
-x_gauss = distributions.LogNormal(mu=10, sigma=1.0).generate()
-y_gauss = distributions.LogNormal(mu=10, sigma=1.0).generate()
-copulas.GaussianCopula([[1.0, 0.8], [0.8, 1.0]]).apply([x_gauss, y_gauss])
+x_gauss = LogNormal(mu=10, sigma=1.0).generate()
+y_gauss = LogNormal(mu=10, sigma=1.0).generate()
+GaussianCopula([[1.0, 0.8], [0.8, 1.0]]).apply([x_gauss, y_gauss])
 print("\n--- Gaussian copula (rho=0.8) ---")
 print(f"Rank correlation: {rank_corr(x_gauss, y_gauss):.4f}")
 
 set_random_seed(42)
-x_gumbel = distributions.LogNormal(mu=10, sigma=1.0).generate()
-y_gumbel = distributions.LogNormal(mu=10, sigma=1.0).generate()
-copulas.GumbelCopula(theta=3.0).apply([x_gumbel, y_gumbel])
+x_gumbel = LogNormal(mu=10, sigma=1.0).generate()
+y_gumbel = LogNormal(mu=10, sigma=1.0).generate()
+GumbelCopula(theta=3.0).apply([x_gumbel, y_gumbel])
 print("\n--- Gumbel copula (theta=3.0) ---")
 print(f"Rank correlation: {rank_corr(x_gumbel, y_gumbel):.4f}")
 print("Gumbel copulas have stronger UPPER tail dependence.")
 
 set_random_seed(42)
-x_clay = distributions.LogNormal(mu=10, sigma=1.0).generate()
-y_clay = distributions.LogNormal(mu=10, sigma=1.0).generate()
-copulas.ClaytonCopula(theta=4.0).apply([x_clay, y_clay])
+x_clay = LogNormal(mu=10, sigma=1.0).generate()
+y_clay = LogNormal(mu=10, sigma=1.0).generate()
+ClaytonCopula(theta=4.0).apply([x_clay, y_clay])
 print("\n--- Clayton copula (theta=4.0) ---")
 print(f"Rank correlation: {rank_corr(x_clay, y_clay):.4f}")
 print("Clayton copulas have stronger LOWER tail dependence.")
 
 set_random_seed(42)
-x_t = distributions.LogNormal(mu=10, sigma=1.0).generate()
-y_t = distributions.LogNormal(mu=10, sigma=1.0).generate()
-copulas.StudentsTCopula([[1.0, 0.7], [0.7, 1.0]], dof=3).apply([x_t, y_t])
+x_t = LogNormal(mu=10, sigma=1.0).generate()
+y_t = LogNormal(mu=10, sigma=1.0).generate()
+StudentsTCopula([[1.0, 0.7], [0.7, 1.0]], dof=3).apply([x_t, y_t])
 print("\n--- Student's T copula (rho=0.7, dof=3) ---")
 print(f"Rank correlation: {rank_corr(x_t, y_t):.4f}")
 print("Student's T copula has symmetric tail dependence, stronger with fewer dof.")
@@ -186,7 +188,7 @@ if not SUPPRESS_PLOTS:
     fig.show()
 print("Scatter plots generated showing rank-space dependencies.")
 
-student_t_pair = variables.ProteusVariable("variable", {"X": x_t, "Y": y_t})
+student_t_pair = ProteusVariable("variable", {"X": x_t, "Y": y_t})
 rank_scatter_fig = student_t_pair.rank_scatter_plot(title="Student's T copula - rank space")
 value_scatter_fig = student_t_pair.value_scatter_plot(title="Student's T copula - value space")
 if not SUPPRESS_PLOTS:
@@ -198,15 +200,15 @@ print("PART 5: VARIABLE REORDERING IN DETAIL")
 print("=" * 70)
 
 set_random_seed(42)
-var_x = distributions.Normal(0, 1).generate()
-var_y = distributions.Normal(0, 1).generate()
+var_x = Normal(0, 1).generate()
+var_y = Normal(0, 1).generate()
 sorted_x = np.sort(var_x.values)
 sorted_y = np.sort(var_y.values)
 print("\n--- Before copula ---")
 print(f"X mean: {var_x.mean():.4f}, std: {var_x.std():.4f}")
 print(f"Y mean: {var_y.mean():.4f}, std: {var_y.std():.4f}")
 
-copulas.GaussianCopula([[1.0, 0.9], [0.9, 1.0]]).apply([var_x, var_y])
+GaussianCopula([[1.0, 0.9], [0.9, 1.0]]).apply([var_x, var_y])
 print("\n--- After copula ---")
 print(f"X mean: {var_x.mean():.4f}, std: {var_x.std():.4f}")
 print(f"Y mean: {var_y.mean():.4f}, std: {var_y.std():.4f}")
@@ -222,7 +224,7 @@ print("PART 6: COUPLED VARIABLE REORDERING ACROSS A CHAIN")
 print("=" * 70)
 
 set_random_seed(42)
-base_loss = distributions.LogNormal(mu=14, sigma=0.5).generate()
+base_loss = LogNormal(mu=14, sigma=0.5).generate()
 gross_loss = base_loss * 1.0
 expense_loaded = gross_loss * 1.10
 tax = expense_loaded * 0.21
@@ -233,10 +235,10 @@ group_size = len(base_loss.coupled_variable_group)
 print(f"\nAll coupled? {all_coupled}")
 print(f"Coupling group size: {group_size}")
 
-cat_loss = distributions.LogNormal(mu=16, sigma=1.2).generate()
+cat_loss = LogNormal(mu=16, sigma=1.2).generate()
 cat_independent = cat_loss.coupled_variable_group is not base_loss.coupled_variable_group
 print(f"\nCat loss independent? {cat_independent}")
-copulas.GumbelCopula(theta=1.5).apply([base_loss, cat_loss])
+GumbelCopula(theta=1.5).apply([base_loss, cat_loss])
 
 print("\n--- After copula between base_loss and cat_loss ---")
 r1 = gross_loss.values[:3] / base_loss.values[:3]
@@ -255,10 +257,10 @@ print("=" * 70)
 
 set_random_seed(42)
 lobs = {
-    "Motor": distributions.LogNormal(mu=14, sigma=0.4).generate(),
-    "Property": distributions.LogNormal(mu=15, sigma=0.6).generate(),
-    "Liability": distributions.LogNormal(mu=13, sigma=0.5).generate(),
-    "Marine": distributions.LogNormal(mu=12, sigma=0.7).generate(),
+    "Motor": LogNormal(mu=14, sigma=0.4).generate(),
+    "Property": LogNormal(mu=15, sigma=0.6).generate(),
+    "Liability": LogNormal(mu=13, sigma=0.5).generate(),
+    "Marine": LogNormal(mu=12, sigma=0.7).generate(),
 }
 corr_matrix = [
     [1.0, 0.6, 0.3, 0.2],
@@ -267,7 +269,7 @@ corr_matrix = [
     [0.2, 0.3, 0.5, 1.0],
 ]
 lob_list = list(lobs.values())
-copulas.GaussianCopula(corr_matrix).apply(lob_list)
+GaussianCopula(corr_matrix).apply(lob_list)
 
 print("\n--- Rank correlation matrix after Gaussian copula ---")
 names = list(lobs.keys())
@@ -292,7 +294,7 @@ print("PART 8: GENERATE vs APPLY")
 print("=" * 70)
 
 set_random_seed(42)
-gauss_cop = copulas.GaussianCopula([[1.0, 0.8], [0.8, 1.0]])
+gauss_cop = GaussianCopula([[1.0, 0.8], [0.8, 1.0]])
 gauss_samples = gauss_cop.generate()
 print("\n--- generate() returns correlated uniform samples ---")
 print(f"Type: {type(gauss_samples)}")
@@ -305,11 +307,11 @@ rc = rank_corr(gauss_samples[0], gauss_samples[1])
 print(f"Rank correlation: {rc:.4f}")
 
 set_random_seed(42)
-v1 = distributions.Gamma(alpha=5, theta=1000).generate()
-v2 = distributions.Pareto(shape=2, scale=10000).generate()
+v1 = Gamma(alpha=5, theta=1000).generate()
+v2 = Pareto(shape=2, scale=10000).generate()
 print("\n--- apply() reorders existing variables ---")
 print(f"Before copula - V1 mean: {v1.mean():.0f}, V2 mean: {v2.mean():.0f}")
-copulas.GaussianCopula([[1.0, 0.8], [0.8, 1.0]]).apply([v1, v2])
+GaussianCopula([[1.0, 0.8], [0.8, 1.0]]).apply([v1, v2])
 print(f"After copula  - V1 mean: {v1.mean():.0f}, V2 mean: {v2.mean():.0f}")
 print("Means unchanged - only the ordering changed!")
 print(f"Rank correlation: {rank_corr(v1, v2):.4f}")
