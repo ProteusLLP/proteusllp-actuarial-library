@@ -424,3 +424,32 @@ comparison_figure.update_layout(
 )
 comparison_figure.show()
 ```
+
+<div id="property-layer-rate" style="width: 100%; height: 440px;"></div>
+
+## 8. Reuse the simulations in a capital model
+
+The simulation is also useful beyond pricing. Nothing needs to be resimulated to obtain annual gross, reinsurance and net property losses:
+
+<!--pytest-codeblocks:cont-->
+
+```python
+annual_gross_loss = policy_losses.aggregate()
+annual_reinsurance_recovery = aggregate_tower_result.recoveries.aggregate()
+annual_net_loss = annual_gross_loss - annual_reinsurance_recovery
+```
+
+These are `StochasticScalar` objects, so `annual_net_loss` can be used directly as the property underwriting-risk component of an internal capital model. It can be combined with casualty, market, credit or other simulated risks, dependence can be imposed with PAL copulas, and portfolio VaR, TVaR and capital allocations can then be calculated with the normal PAL risk-measure API.
+
+The important distinction is that the pricing model has retained the **full annual distribution**, not just the expected burn rate. The same model can therefore support both exposure pricing and downstream capital analysis.
+
+## 9. Extensions
+
+The same pattern works with richer exposure schedules. MBBEFD parameters can vary by occupancy or construction class, and the policy transformation can include coinsurance or additional terms. More advanced simulations can replace the independent row-selection model with catastrophe footprints or other location dependence, while the analytical occurrence exposure rate remains a useful expected-loss benchmark.
+
+## See also
+
+- [Distributions Guide](distributions_guide.md) — distribution construction and simulation
+- [Frequency-Severity Modelling](frequency_severity_modelling.md) — compound loss models and `FreqSevSims`
+- [Pricing an Excess-of-Loss Reinsurance Program](xol_reinsurance.md) — XoL contracts, towers and aggregate terms
+- [Risk Measures and Capital Allocation](risk_measures_and_allocation.md) — using annual simulations in a capital model
