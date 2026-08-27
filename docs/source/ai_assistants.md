@@ -120,6 +120,8 @@ Call `fig.show()` only in an interactive environment.
 
 Install PAL with the GPU extra in a compatible CUDA environment:
 
+<!--pytest-codeblocks:skip-->
+
 ```bash
 pip install "proteusllp-actuarial-library[gpu]"
 ```
