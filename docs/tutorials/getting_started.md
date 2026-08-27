@@ -176,17 +176,9 @@ fig.show()
 ![Aggregate loss empirical CDF](../_static/generated/getting_started_aggregate_cdf.svg)
 ```
 
-The plotting methods return ordinary Plotly `Figure` objects. You can therefore
-customise them using Plotly before displaying or exporting them:
-
-<!--pytest.mark.skip-->
-
-```python
-fig = agg.cdf_plot("Aggregate Loss")
-fig.update_xaxes(title="Aggregate loss")
-fig.update_layout(hovermode="x unified")
-fig.write_html("aggregate_loss.html")
-```
+The plotting methods return standard Plotly `Figure` objects. See the
+[Plotly Python documentation](https://plotly.com/python/) for the full range of
+interactive charting functionality.
 
 PAL also provides `rank_scatter_plot()` and `value_scatter_plot()` on
 `ProteusVariable` containers for visualising dependence between stochastic
