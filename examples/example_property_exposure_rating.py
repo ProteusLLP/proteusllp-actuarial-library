@@ -8,8 +8,12 @@ import pandas as pd
 import plotly.graph_objects as go
 
 import pal.maths as pnp
-from pal import MBBEFD, Empirical, ProteusVariable, StochasticScalar, XoLTower, distributions, set_random_seed
+from pal import set_random_seed
+from pal.contracts import XoLTower
+from pal.distributions import MBBEFD, Poisson
+from pal.empirical import Empirical
 from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
+from pal.variables import ProteusVariable, StochasticScalar
 
 N_SIMS = 100_000
 DATA_PATH = Path(__file__).parent / "data" / "property_exposures.csv"
@@ -65,7 +69,7 @@ def main() -> None:
         weights=frequencies,
     )
     claim_rows = FrequencySeverityModel(
-        distributions.Poisson(frequencies.sum()),
+        Poisson(frequencies.sum()),
         row_distribution,
     ).generate(N_SIMS)
 

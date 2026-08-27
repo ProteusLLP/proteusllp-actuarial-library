@@ -5,9 +5,11 @@ import math
 import numpy as np
 import pytest
 
-from pal import HyperExponential, distributions
-from pal.config import set_random_seed
-from pal.stochastic_scalar import StochasticScalar
+import pal.distributions as distributions
+from pal import set_random_seed
+from pal.distributions import Beta, Exponential, Gamma
+from pal.hyperexponential import HyperExponential
+from pal.variables import StochasticScalar
 from tests._assertions import allclose
 
 
@@ -34,7 +36,7 @@ def test_hyperexponential_reduces_to_exponential() -> None:
     rate = 0.4
     loc = 3.0
     hyperexponential = HyperExponential(weights=[1.0], rates=[rate], loc=loc)
-    exponential = distributions.Exponential(scale=1 / rate, loc=loc)
+    exponential = Exponential(scale=1 / rate, loc=loc)
     probabilities = StochasticScalar([0.01, 0.2, 0.5, 0.9, 0.999])
 
     assert allclose(hyperexponential.invcdf(probabilities), exponential.invcdf(probabilities), rtol=1e-11)
@@ -92,8 +94,8 @@ def test_hyperexponential_stochastic_sampling_preserves_coupling() -> None:
     """Sampling supports scenario-varying component parameters."""
     set_random_seed(12345678910)
     n_sims = 10_000
-    probability = distributions.Beta(2.0, 3.0).generate(n_sims)
-    rate = distributions.Gamma(2.0, 0.5).generate(n_sims)
+    probability = Beta(2.0, 3.0).generate(n_sims)
+    rate = Gamma(2.0, 0.5).generate(n_sims)
     dist = HyperExponential(weights=[probability, 1 - probability], rates=[rate, 3.0])
 
     sims = dist.generate(n_sims)

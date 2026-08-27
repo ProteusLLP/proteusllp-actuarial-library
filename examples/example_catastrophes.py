@@ -4,8 +4,10 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 import pal.maths as pnp
-from pal import config, distributions
-from pal.variables import FreqSevSims, ProteusVariable
+from pal import config
+from pal.distributions import Normal
+from pal.frequency_severity import FreqSevSims
+from pal.variables import ProteusVariable
 
 n_sims = 100_000
 config.n_sims = n_sims
@@ -28,7 +30,7 @@ cat_losses = ProteusVariable(
     },
 )
 
-inflation_rate = distributions.Normal(0.05, 0.02).generate()
+inflation_rate = Normal(0.05, 0.02).generate()
 
 scaled_cat_losses_by_lob = cat_losses * (1 + inflation_rate)
 

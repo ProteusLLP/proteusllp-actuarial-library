@@ -6,10 +6,10 @@ This guide provides comprehensive examples of using the Proteus Actuarial Librar
 
 ### Basic Stochastic Variables
 
-Stochastic variables can be created with the `StochasticScalar` class:
+Stochastic variables can be created with the `StochasticScalar` class from `pal.variables`:
 
 ```python
-from pal import StochasticScalar
+from pal.variables import StochasticScalar
 
 # Create from array
 svariable = StochasticScalar([1, 2, 3, 4])
@@ -17,28 +17,29 @@ svariable = StochasticScalar([1, 2, 3, 4])
 
 ### Statistical Distributions
 
-Statistical distributions are available in the distributions module:
+Statistical distributions are imported directly from `pal.distributions`:
 
 ```python
-from pal import distributions
+from pal.distributions import Gamma, LogNormal
 
 # Create gamma distribution
-gamma_var = distributions.Gamma(alpha=2.5, theta=2).generate()
+gamma_var = Gamma(alpha=2.5, theta=2).generate()
 
 # Create log-normal distribution
-lognormal_var = distributions.LogNormal(mu=1, sigma=0.5).generate()
+lognormal_var = LogNormal(mu=1, sigma=0.5).generate()
 ```
 
 ## Variable Containers
 
-Variables can be grouped into containers with the `ProteusVariable` class:
+Variables can be grouped into containers with the `ProteusVariable` class from `pal.variables`:
 
 ```python
-from pal import ProteusVariable, distributions
+from pal.distributions import Gamma, LogNormal
+from pal.variables import ProteusVariable
 
 # Create individual variables
-motor_losses = distributions.Gamma(alpha=2.5, theta=2).generate()
-property_losses = distributions.LogNormal(mu=1, sigma=0.5).generate()
+motor_losses = Gamma(alpha=2.5, theta=2).generate()
+property_losses = LogNormal(mu=1, sigma=0.5).generate()
 
 # Group into container
 portfolio = ProteusVariable(
@@ -54,14 +55,15 @@ Variable containers support numpy operations and can be added, multiplied togeth
 Statistical dependencies between PAL variables can be modeled using copulas:
 
 ```python
-from pal import copulas, distributions
+from pal.copulas import GumbelCopula
+from pal.distributions import Gamma, LogNormal
 
 # Create independent variables
-var1 = distributions.Gamma(alpha=2.5, theta=2).generate()
-var2 = distributions.LogNormal(mu=1, sigma=0.5).generate()
+var1 = Gamma(alpha=2.5, theta=2).generate()
+var2 = LogNormal(mu=1, sigma=0.5).generate()
 
 # Apply copula to create dependency
-copulas.GumbelCopula(theta=1.2).apply([var1, var2])
+GumbelCopula(theta=1.2).apply([var1, var2])
 ```
 
 ### Variable Coupling
@@ -69,10 +71,11 @@ copulas.GumbelCopula(theta=1.2).apply([var1, var2])
 PAL automatically tracks variables that have been used in formulas together (coupled variables):
 
 ```python
-from pal import distributions
+from pal.distributions import Gamma, LogNormal
+
 # These variables become coupled
-var1 = distributions.Gamma(alpha=2.5, theta=2).generate()
-var2 = distributions.LogNormal(mu=1, sigma=0.5).generate()
+var1 = Gamma(alpha=2.5, theta=2).generate()
+var2 = LogNormal(mu=1, sigma=0.5).generate()
 var3 = var1 + var2  # var1, var2, and var3 are now coupled
 
 # If a copula reorders var3, var1 and var2 are automatically reordered too
@@ -117,21 +120,3 @@ export PAL_USE_GPU=1
 # Windows
 set PAL_USE_GPU=1
 ```
-
-Set to any other value to revert to CPU mode.
-
-## Advanced Examples
-
-For more complex examples including reinsurance modeling and catastrophe simulations, see the examples directory in the GitHub repository.
-
-## See Also
-
-- [Development Guide](development.md) - Setting up the development environment
-- [Main README](https://github.com/ProteusLLP/proteusllp-actuarial-library) - Project overview and quick start
-
-## Performance Tips
-
-1. **Use appropriate simulation counts** - Start with smaller counts for development
-2. **Leverage GPU acceleration** for large simulations if available
-3. **Consider memory usage** when working with very large portfolios
-4. **Use vectorized operations** where possible for better performance

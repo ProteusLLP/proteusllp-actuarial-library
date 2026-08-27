@@ -9,7 +9,10 @@ amounts (severity).
 ```python
 import numpy as np
 
-from pal import config, distributions, set_random_seed
+from pal import config, set_random_seed
+from pal.contracts import XoL
+from pal.copulas import GaussianCopula
+from pal.distributions import Gamma, LogNormal, NegBinomial, Normal, Pareto, Poisson
 from pal.frequency_severity import FrequencySeverityModel
 
 config.n_sims = 10_000
@@ -25,8 +28,8 @@ events) with a severity distribution (how large each event is):
 
 ```python
 model = FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=50),
-    sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
+    freq_dist=Poisson(mean=50),
+    sev_dist=LogNormal(mu=10, sigma=1.5),
 )
 events = model.generate()
 ```
@@ -129,7 +132,7 @@ all events in that simulation:
 <!--pytest-codeblocks:cont-->
 
 ```python
-inflation = distributions.Normal(0.05, 0.02).generate()
+inflation = Normal(0.05, 0.02).generate()
 inflated = events * (1 + inflation)
 ```
 
@@ -166,8 +169,8 @@ The standard choice for claim counts. Variance equals the mean:
 
 ```python
 model = FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=25),
-    sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
+    freq_dist=Poisson(mean=25),
+    sev_dist=LogNormal(mu=10, sigma=1.5),
 )
 ```
 
@@ -187,8 +190,8 @@ heterogeneity across risk units:
 
 ```python
 model = FrequencySeverityModel(
-    freq_dist=distributions.NegBinomial(n=25, p=0.5),
-    sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
+    freq_dist=NegBinomial(n=25, p=0.5),
+    sev_dist=LogNormal(mu=10, sigma=1.5),
 )
 ```
 
@@ -216,12 +219,12 @@ large losses using a frequency-severity model:
 set_random_seed(42)
 
 # Aggregate annual attritional loss
-attritional = distributions.Gamma(alpha=100, theta=150_000).generate()
+attritional = Gamma(alpha=100, theta=150_000).generate()
 
 # Rare large claims modelled individually
 large = FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=3),
-    sev_dist=distributions.Pareto(shape=1.5, scale=1_000_000),
+    freq_dist=Poisson(mean=3),
+    sev_dist=Pareto(shape=1.5, scale=1_000_000),
 ).generate()
 
 total = attritional + large.aggregate()
@@ -239,8 +242,8 @@ Apply multiplicative loadings after generating events:
 
 ```python
 events = FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=50),
-    sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
+    freq_dist=Poisson(mean=50),
+    sev_dist=LogNormal(mu=10, sigma=1.5),
 ).generate()
 
 # Development factor
@@ -260,8 +263,6 @@ net_agg = with_lae.aggregate()
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal.contracts import XoL
-
 layer = XoL(
     name="1m xs 500k",
     limit=1_000_000,
@@ -283,22 +284,18 @@ variables using copulas:
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal import copulas
-
 set_random_seed(42)
 motor = FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=50),
-    sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
+    freq_dist=Poisson(mean=50),
+    sev_dist=LogNormal(mu=10, sigma=1.5),
 ).generate().aggregate()
 
 property_loss = FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=20),
-    sev_dist=distributions.Pareto(shape=2, scale=50_000),
+    freq_dist=Poisson(mean=20),
+    sev_dist=Pareto(shape=2, scale=50_000),
 ).generate().aggregate()
 
-copulas.GaussianCopula(
-    [[1, 0.6], [0.6, 1]]
-).apply([motor, property_loss])
+GaussianCopula([[1, 0.6], [0.6, 1]]).apply([motor, property_loss])
 
 combined = motor + property_loss
 ```
@@ -311,9 +308,9 @@ consistency across derived variables.
 
 | Class | Description |
 |-------|-------------|
-| `FrequencySeverityModel` | Creates compound models from freq + sev distributions |
-| `FreqSevSims` | Container for event-level simulations with sim indices |
-| `StochasticScalar` | Simulation-level vector returned by `aggregate()` / `occurrence()` |
+| `FrequencySeverityModel` (`from pal.frequency_severity import FrequencySeverityModel`) | Creates compound models from freq + sev distributions |
+| `FreqSevSims` (`from pal.frequency_severity import FreqSevSims`) | Container for event-level simulations with sim indices |
+| `StochasticScalar` (`from pal.variables import StochasticScalar`) | Simulation-level vector returned by `aggregate()` / `occurrence()` |
 
 ## See Also
 

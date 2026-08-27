@@ -8,7 +8,10 @@ Library through a short, end-to-end example.
 ```python
 import numpy as np
 
-from pal import config, copulas, distributions, set_random_seed
+from pal import config, set_random_seed
+from pal.copulas import GaussianCopula
+from pal.distributions import LogNormal, Poisson
+from pal.frequency_severity import FrequencySeverityModel
 
 config.n_sims = 10_000
 set_random_seed(42)
@@ -24,7 +27,7 @@ Create a loss variable from a LogNormal distribution:
 <!--pytest-codeblocks:cont-->
 
 ```python
-loss = distributions.LogNormal(mu=14, sigma=0.5).generate()
+loss = LogNormal(mu=14, sigma=0.5).generate()
 ```
 
 This returns a `StochasticScalar` — a vector of 10,000 simulated values.
@@ -63,8 +66,8 @@ lockstep.
 
 ```python
 set_random_seed(42)
-motor = distributions.LogNormal(mu=14, sigma=0.5).generate()
-prop = distributions.LogNormal(mu=15, sigma=0.8).generate()
+motor = LogNormal(mu=14, sigma=0.5).generate()
+prop = LogNormal(mu=15, sigma=0.8).generate()
 
 combined = motor + prop
 ```
@@ -88,10 +91,10 @@ economic conditions). Use a copula to introduce dependence:
 
 ```python
 set_random_seed(42)
-motor = distributions.LogNormal(mu=14, sigma=0.5).generate()
-prop = distributions.LogNormal(mu=15, sigma=0.8).generate()
+motor = LogNormal(mu=14, sigma=0.5).generate()
+prop = LogNormal(mu=15, sigma=0.8).generate()
 
-copulas.GaussianCopula([[1, 0.5], [0.5, 1]]).apply([motor, prop])
+GaussianCopula([[1, 0.5], [0.5, 1]]).apply([motor, prop])
 
 combined = motor + prop
 ```
@@ -116,12 +119,10 @@ For compound distributions (random number of random-sized claims):
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal.frequency_severity import FrequencySeverityModel
-
 set_random_seed(42)
 model = FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=100),
-    sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
+    freq_dist=Poisson(mean=100),
+    sev_dist=LogNormal(mu=10, sigma=1.5),
 )
 events = model.generate()
 ```

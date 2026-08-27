@@ -5,6 +5,10 @@ These rules apply to changes under `src/pal/` in addition to the root `AGENTS.md
 ## Public API
 
 - Treat documented public classes, functions, methods and import paths as compatibility-sensitive.
+- PAL's top-level namespace is intentionally small. Import modelling classes and functions directly from their documented submodules: use `from pal.distributions import Gamma`, `from pal.copulas import GaussianCopula`, `from pal.frequency_severity import FrequencySeverityModel`, and the equivalent pattern for contracts, risk measures and other modelling domains. Do not teach module-qualified forms such as `distributions.Gamma(...)` or `frequency_severity.FrequencySeverityModel(...)` in user-facing code.
+- Core variable types are imported directly from `pal.variables`. Use `from pal.variables import StochasticScalar, ProteusVariable`; do not teach `stochastic_scalar.StochasticScalar` or `from pal.stochastic_scalar import StochasticScalar` as public API.
+- Do not re-export domain classes or functions from `pal.__init__`. In particular, examples should not teach `from pal import Gamma`, `XoL`, `StochasticScalar`, `GaussianCopula`, or similar shortcuts.
+- The `config` singleton and its small configuration helpers are intentional top-level conveniences; do not generalise that exception to modelling classes.
 - User-facing docstrings should explain actuarial/statistical behaviour, not internal backend mechanics.
 - Prefer terminology a PAL user would recognise. For example, `StochasticScalar.mean()` takes the mean across simulations; users do not need implementation language such as "backend ndarray".
 - Keep signatures, type annotations and docstrings mutually consistent.

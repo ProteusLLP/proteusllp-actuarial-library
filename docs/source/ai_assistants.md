@@ -9,10 +9,16 @@ pip install proteusllp-actuarial-library
 ```
 
 ```python
-from pal import config, copulas, distributions, set_random_seed
+from pal import config, set_random_seed
+from pal.copulas import GaussianCopula
+from pal.distributions import Gamma, LogNormal, Poisson
+from pal.frequency_severity import FrequencySeverityModel
+from pal.variables import ProteusVariable, StochasticScalar
 ```
 
 The PyPI distribution is `proteusllp-actuarial-library`; the installed Python package is `pal`.
+
+PAL modelling classes are imported directly from their public submodules. Prefer `from pal.distributions import Gamma`, `from pal.copulas import GaussianCopula`, and `from pal.frequency_severity import FrequencySeverityModel`, then use `Gamma`, `GaussianCopula`, and `FrequencySeverityModel` directly. Core variable types are imported from `pal.variables`.
 
 ## Configure simulations
 
@@ -30,7 +36,7 @@ set_random_seed(42)
 <!--pytest-codeblocks:cont-->
 
 ```python
-loss = distributions.LogNormal(mu=14, sigma=0.5).generate()
+loss = LogNormal(mu=14, sigma=0.5).generate()
 ```
 
 `generate()` returns a `StochasticScalar` for an ordinary univariate distribution. A `StochasticScalar` represents one simulated value per simulation.
@@ -67,10 +73,10 @@ Generate marginal variables first, then apply a copula:
 <!--pytest-codeblocks:cont-->
 
 ```python
-motor = distributions.LogNormal(mu=14, sigma=0.5).generate()
-property_loss = distributions.LogNormal(mu=15, sigma=0.8).generate()
+motor = LogNormal(mu=14, sigma=0.5).generate()
+property_loss = LogNormal(mu=15, sigma=0.8).generate()
 
-copula = copulas.GaussianCopula([[1.0, 0.5], [0.5, 1.0]])
+copula = GaussianCopula([[1.0, 0.5], [0.5, 1.0]])
 copula.apply([motor, property_loss])
 
 portfolio = motor + property_loss
@@ -87,11 +93,9 @@ For a random number of random-sized claims:
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal.frequency_severity import FrequencySeverityModel
-
 model = FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=100),
-    sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
+    freq_dist=Poisson(mean=100),
+    sev_dist=LogNormal(mu=10, sigma=1.5),
 )
 
 events = model.generate()
@@ -126,15 +130,28 @@ Avoid converting PAL/CuPy data to NumPy merely to perform an operation that PAL 
 
 ## How to discover an unfamiliar API
 
-Prefer the public API and introspection before guessing a class or parameter name:
+Prefer PAL's runtime discovery helpers before guessing a class or parameter name:
+
+```python
+from pal import api
+
+api.search("gamma")
+api.search("tail dependence")
+api.describe("pal.distributions.Gamma")
+api.describe("pal.variables.StochasticScalar")
+```
+
+For ordinary Python introspection, documented public objects also work naturally:
 
 ```python
 import inspect
 
-from pal import distributions
+from pal.distributions import Gamma
+from pal.variables import StochasticScalar
 
-print(inspect.signature(distributions.Gamma))
-help(distributions.Gamma)
+print(inspect.signature(Gamma))
+help(Gamma)
+print(inspect.signature(StochasticScalar))
 ```
 
 The generated [API reference](api/modules.html) is the authoritative browsable catalogue of documented classes and methods.
@@ -150,6 +167,8 @@ Useful conceptual guides are:
 
 ## Common mistakes to avoid
 
+- Do not import modelling classes directly from `pal`, and do not import a modelling submodule just to qualify every class name. Import the class or function directly from its documented `pal.<module>` submodule.
+- Do not import `StochasticScalar` from `pal.stochastic_scalar`; `pal.variables` is its public home.
 - Do not assume similarly named distributions use the same parameterisation as SciPy or another library; inspect PAL's signature and docstring.
 - Do not discard coupling relationships by extracting and rebuilding raw arrays without a reason.
 - Do not assume two generated risks are dependent until a dependence structure has been applied; derived variables, however, remain aligned with their inputs.

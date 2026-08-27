@@ -77,9 +77,10 @@ jobs:
           python - <<'PY'
           import cupy
           import numpy
-          from pal import Normal, set_random_seed
+          from pal import set_random_seed
           from pal._maths import xp
           from pal.config import config
+          from pal.distributions import Normal
 
           if xp is not cupy:
               raise RuntimeError("PAL did not select the CuPy backend")

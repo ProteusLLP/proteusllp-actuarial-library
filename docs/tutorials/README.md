@@ -18,10 +18,13 @@ Library (PAL) with worked examples and outputs.
 
 ## Prerequisites
 
-The tutorials assume PAL is installed and importable:
+The tutorials assume PAL is installed and importable. Modelling classes are
+imported directly from their public submodules:
 
 ```python
-from pal import distributions, copulas, config
+from pal import config
+from pal.copulas import GaussianCopula
+from pal.distributions import Gamma
 ```
 
 All examples use `set_random_seed(42)` for reproducibility.

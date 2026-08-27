@@ -6,10 +6,10 @@ This guide provides comprehensive examples of using the Proteus Actuarial Librar
 
 ### Basic Stochastic Variables
 
-Stochastic variables can be created with the `StochasticScalar` class:
+Stochastic variables can be created with the `StochasticScalar` class from `pal.variables`:
 
 ```python
-from pal import StochasticScalar
+from pal.variables import StochasticScalar
 
 # Create from array
 svariable = StochasticScalar([1, 2, 3, 4])
@@ -17,28 +17,29 @@ svariable = StochasticScalar([1, 2, 3, 4])
 
 ### Statistical Distributions
 
-Statistical distributions are available in the distributions module:
+Statistical distributions are imported directly from `pal.distributions`:
 
 ```python
-from pal import distributions
+from pal.distributions import Gamma, LogNormal
 
 # Create gamma distribution
-gamma_var = distributions.Gamma(alpha=2.5, theta=2).generate()
+gamma_var = Gamma(alpha=2.5, theta=2).generate()
 
 # Create log-normal distribution
-lognormal_var = distributions.LogNormal(mu=1, sigma=0.5).generate()
+lognormal_var = LogNormal(mu=1, sigma=0.5).generate()
 ```
 
 ## Variable Containers
 
-Variables can be grouped into containers with the `ProteusVariable` class:
+Variables can be grouped into containers with the `ProteusVariable` class from `pal.variables`:
 
 ```python
-from pal import ProteusVariable, distributions
+from pal.distributions import Gamma, LogNormal
+from pal.variables import ProteusVariable
 
 # Create individual variables
-motor_losses = distributions.Gamma(alpha=2.5, theta=2).generate()
-property_losses = distributions.LogNormal(mu=1, sigma=0.5).generate()
+motor_losses = Gamma(alpha=2.5, theta=2).generate()
+property_losses = LogNormal(mu=1, sigma=0.5).generate()
 
 # Group into container
 portfolio = ProteusVariable(
@@ -79,14 +80,15 @@ methods such as `Distribution.cdf(x)`.
 Statistical dependencies between PAL variables can be modeled using copulas:
 
 ```python
-from pal import copulas, distributions
+from pal.copulas import GumbelCopula
+from pal.distributions import Gamma, LogNormal
 
 # Create independent variables
-var1 = distributions.Gamma(alpha=2.5, theta=2).generate()
-var2 = distributions.LogNormal(mu=1, sigma=0.5).generate()
+var1 = Gamma(alpha=2.5, theta=2).generate()
+var2 = LogNormal(mu=1, sigma=0.5).generate()
 
 # Apply copula to create dependency
-copulas.GumbelCopula(theta=1.2).apply([var1, var2])
+GumbelCopula(theta=1.2).apply([var1, var2])
 ```
 
 ### Variable Coupling
@@ -94,10 +96,11 @@ copulas.GumbelCopula(theta=1.2).apply([var1, var2])
 PAL automatically tracks variables that have been used in formulas together (coupled variables):
 
 ```python
-from pal import distributions
+from pal.distributions import Gamma, LogNormal
+
 # These variables become coupled
-var1 = distributions.Gamma(alpha=2.5, theta=2).generate()
-var2 = distributions.LogNormal(mu=1, sigma=0.5).generate()
+var1 = Gamma(alpha=2.5, theta=2).generate()
+var2 = LogNormal(mu=1, sigma=0.5).generate()
 var3 = var1 + var2  # var1, var2, and var3 are now coupled
 
 # If a copula reorders var3, var1 and var2 are automatically reordered too
@@ -208,7 +211,7 @@ All development work is done inside the devcontainer. VS Code provides native Ju
 
 - **Native VS Code integration** - No separate Jupyter server needed
 - **Live plots** displayed inline within VS Code
-- **Interactive debugging** - Full VS Code debugging support in notebooks
+- **Interactive debugging** - Full VS Code debugging support
 - **Integrated development** - IntelliSense, linting, and formatting work seamlessly
 - **GitHub rendering** - notebooks display with plots when viewed on GitHub
 
@@ -228,8 +231,8 @@ PAL provides rich type annotations using protocols for better type safety in you
 ### Using Protocol Types in Function Signatures
 
 ```python
-from pal import StochasticScalar
-from pal.types import ProteusLike, VectorLike, DistributionLike
+from pal.types import DistributionLike, ProteusLike, VectorLike
+from pal.variables import StochasticScalar
 
 # Accept any ProteusLike container with StochasticScalar values
 def analyze_risk(variable: ProteusLike[StochasticScalar]) -> float:
@@ -257,43 +260,3 @@ def sample_from_dist(dist: DistributionLike[float], n: int) -> VectorLike:
 ### Understanding Structural Typing
 
 **Structural typing** (also called "duck typing" in dynamic languages) means that type compatibility is determined by the structure (methods and attributes) of an object, not by explicit inheritance relationships.
-
-In PAL's protocol system:
-- If your class has the methods a protocol requires, it automatically satisfies that protocol
-- No need to explicitly inherit or declare that you implement the protocol
-- The type checker verifies compatibility based on method signatures
-
-**Example**:
-```python
-from pal.types import VectorLike
-
-# This class automatically satisfies VectorLike protocol
-class MyCustomVariable:
-    def __add__(self, other): return self
-    def __array__(self): return np.array([1, 2, 3])
-    def __len__(self): return 3
-    # ... other VectorLike methods
-
-# Works automatically - no inheritance needed!
-def process(v: VectorLike) -> VectorLike:
-    return v + 1
-
-my_var = MyCustomVariable()
-result = process(my_var)  # Type checker accepts this!
-```
-
-**Learn More**: See [PEP 544](https://peps.python.org/pep-0544/) for the full specification of Python's Protocol system and structural subtyping.
-
-### Protocol Guidelines for Client Code
-
-- **Use protocols in function signatures** for maximum flexibility
-- **Don't inherit from protocols** - just implement the methods you need
-- **Let structural typing work** - if your object has the right methods, it works
-- **Leverage generics** like `ProteusLike[T]` to maintain type information
-
-## Performance Tips
-
-1. **Use appropriate simulation counts** - Start with smaller counts for development
-2. **Leverage GPU acceleration** for large simulations if available
-3. **Consider memory usage** when working with very large portfolios
-4. **Use vectorized operations** where possible for better performance

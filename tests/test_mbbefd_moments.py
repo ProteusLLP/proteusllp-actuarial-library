@@ -4,9 +4,9 @@ import math
 
 import pytest
 
-from pal import MBBEFD
 from pal._maths import xp as np
 from pal.config import set_random_seed
+from pal.distributions import MBBEFD
 from pal.stochastic_scalar import StochasticScalar
 
 

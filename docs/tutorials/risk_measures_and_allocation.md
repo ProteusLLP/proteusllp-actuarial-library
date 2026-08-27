@@ -96,7 +96,11 @@ up to the total `.value`. This is the Euler property described above.
 ```python
 import numpy as np
 
-from pal import ProteusVariable, config, copulas, distributions, set_random_seed
+from pal import config, set_random_seed
+from pal.contracts import XoLTower
+from pal.copulas import GalambosCopula
+from pal.distributions import LogNormal, Poisson
+from pal.frequency_severity import FrequencySeverityModel
 from pal.risk_measures import (
     percentile_layer,
     proportional_hazards_transform,
@@ -104,6 +108,7 @@ from pal.risk_measures import (
     tvar,
     wang_transform,
 )
+from pal.variables import ProteusVariable
 
 config.n_sims = 100_000
 set_random_seed(42)
@@ -120,13 +125,13 @@ introduce dependence via a copula:
 portfolio = ProteusVariable(
     dim_name="lob",
     values={
-        "property": distributions.LogNormal(mu=14, sigma=0.8).generate(),
-        "casualty": distributions.LogNormal(mu=13, sigma=0.5).generate(),
-        "marine": distributions.LogNormal(mu=12, sigma=0.6).generate(),
+        "property": LogNormal(mu=14, sigma=0.8).generate(),
+        "casualty": LogNormal(mu=13, sigma=0.5).generate(),
+        "marine": LogNormal(mu=12, sigma=0.6).generate(),
     },
 )
 
-copulas.GalambosCopula(2).apply(portfolio)
+GalambosCopula(2).apply(portfolio)
 
 total = portfolio.sum()
 ```
@@ -443,14 +448,11 @@ the expected loss.
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal import XoLTower
-from pal.frequency_severity import FrequencySeverityModel
-
 set_random_seed(42)
 
 losses = FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=2),
-    sev_dist=distributions.LogNormal(mu=12, sigma=1.5),
+    freq_dist=Poisson(mean=2),
+    sev_dist=LogNormal(mu=12, sigma=1.5),
 ).generate()
 
 print(f"Mean aggregate loss: {losses.aggregate().mean():,.0f}")

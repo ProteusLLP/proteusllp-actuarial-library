@@ -26,8 +26,12 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-from pal import ProteusVariable, StochasticScalar, XoLTower, distributions, set_random_seed
+from pal import set_random_seed
+from pal.contracts import XoLTower
+from pal.distributions import MBBEFD, Poisson
+from pal.empirical import Empirical
 from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
+from pal.variables import ProteusVariable, StochasticScalar
 
 N_SIMS = 100_000
 DATA_PATH = Path("examples/data/property_exposures.csv")
@@ -102,7 +106,7 @@ maximum_loss = exposure["maximum_loss"]
 policy_limit = exposure["policy_limit"]
 deductible = exposure["policy_deductible"]
 
-mbbefd = distributions.MBBEFD.from_c(exposure["mbbefd_c"])
+mbbefd = MBBEFD.from_c(exposure["mbbefd_c"])
 
 lower = np.minimum(deductible / maximum_loss, 1.0)
 upper = np.minimum((deductible + policy_limit) / maximum_loss, 1.0)
@@ -222,13 +226,13 @@ A weighted empirical distribution over exposure-row numbers represents this sele
 ```python
 set_random_seed(42)
 
-row_distribution = distributions.Empirical(
+row_distribution = Empirical(
     samples=np.arange(len(exposure_df)),
     weights=frequencies,
 )
 
 claim_rows = FrequencySeverityModel(
-    distributions.Poisson(frequencies.sum()),
+    Poisson(frequencies.sum()),
     row_distribution,
 ).generate(N_SIMS)
 ```
@@ -247,7 +251,7 @@ selected_policy_limit = exposure["policy_limit"][row_index]
 selected_deductible = exposure["policy_deductible"][row_index]
 selected_c = exposure["mbbefd_c"][row_index]
 
-damage_ratio = distributions.MBBEFD.from_c(selected_c).generate(len(row_index))
+damage_ratio = MBBEFD.from_c(selected_c).generate(len(row_index))
 
 policy_loss = np.minimum(
     np.maximum(
