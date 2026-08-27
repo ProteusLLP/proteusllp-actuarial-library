@@ -147,8 +147,23 @@ tutorial for more detail.
 
 ## Visualisation
 
-Plotting methods return Plotly `Figure` objects. This keeps plotting separate
-from calculation and lets you display, customise, or save the same figure:
+PAL's stochastic variables include Plotly chart helpers, so a simulation can go
+straight from calculation to an interactive figure. For example, a histogram is
+a quick way to inspect the shape and skew of the individual loss distribution:
+
+<!--pytest.mark.skip-->
+
+```python
+fig = loss.histogram_plot("Loss Distribution")
+fig.show()
+```
+
+```{only} html
+![Histogram of simulated loss values](../_static/generated/distributions_guide_histogram.svg)
+```
+
+For aggregate losses, an empirical CDF makes probabilities and tail percentiles
+easy to inspect:
 
 <!--pytest.mark.skip-->
 
@@ -161,9 +176,28 @@ fig.show()
 ![Aggregate loss empirical CDF](../_static/generated/getting_started_aggregate_cdf.svg)
 ```
 
-Because `cdf_plot()` does not display anything itself, headless code can simply
-avoid calling `.show()`. The older `show_cdf()` convenience method remains
-available for backwards compatibility.
+The plotting methods return ordinary Plotly `Figure` objects. You can therefore
+customise them using Plotly before displaying or exporting them:
+
+<!--pytest.mark.skip-->
+
+```python
+fig = agg.cdf_plot("Aggregate Loss")
+fig.update_xaxes(title="Aggregate loss")
+fig.update_layout(hovermode="x unified")
+fig.write_html("aggregate_loss.html")
+```
+
+PAL also provides `rank_scatter_plot()` and `value_scatter_plot()` on
+`ProteusVariable` containers for visualising dependence between stochastic
+variables; these are particularly useful when working with copulas. See the
+[Coupling Groups, Copulas and Variable Reordering](coupling_groups_and_copulas.md)
+tutorial for examples.
+
+Because the plotting methods do not display anything themselves, headless code
+can simply avoid calling `.show()`. The older `show_cdf()` and
+`show_histogram()` convenience methods remain available for backwards
+compatibility.
 
 ## Configuration Summary
 
