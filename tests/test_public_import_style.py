@@ -7,6 +7,10 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 
 _ALLOWED_TOP_LEVEL_IMPORTS = {
+    "FreqSevSims",
+    "FrequencySeverityModel",
+    "ProteusVariable",
+    "StochasticScalar",
     "api",
     "config",
     "set_default_n_sims",
@@ -73,6 +77,6 @@ def test_user_examples_use_documented_pal_imports() -> None:
             )
 
         if _FORBIDDEN_IMPLEMENTATION_IMPORT.search(text) or "stochastic_scalar.StochasticScalar" in text:
-            violations.append(f"{relative}: import StochasticScalar with `from pal.variables import StochasticScalar`")
+            violations.append(f"{relative}: use the public `StochasticScalar` import path")
 
     assert not violations, "\n" + "\n".join(violations)
