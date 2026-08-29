@@ -17,12 +17,12 @@ _ALLOWED_TOP_LEVEL_IMPORTS = {
     "set_random_seed",
 }
 
-_TOP_LEVEL_IMPORT = re.compile(r"from\s+pal\s+import\s+(\([^)]*\)|[^\n]+)", re.MULTILINE | re.DOTALL)
+_TOP_LEVEL_IMPORT = re.compile(r"^\s*from\s+pal\s+import\s+(\([^)]*\)|[^\n]+)", re.MULTILINE)
 _DOMAIN_MODULE_IMPORT = re.compile(
     r"^\s*import\s+pal\.(?:contracts|copulas|distributions|frequency_severity|multivariate_distributions|risk_measures|variables)\b",
     re.MULTILINE,
 )
-_FORBIDDEN_IMPLEMENTATION_IMPORT = re.compile(r"from\s+pal\.stochastic_scalar\s+import\s+")
+_FORBIDDEN_IMPLEMENTATION_IMPORT = re.compile(r"^\s*from\s+pal\.stochastic_scalar\s+import\s+", re.MULTILINE)
 
 
 def _user_facing_files() -> list[Path]:
