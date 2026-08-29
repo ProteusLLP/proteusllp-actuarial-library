@@ -7,7 +7,7 @@ Tool-specific instruction files should point here rather than duplicate these ru
 
 PAL is a Python library for simulation-based actuarial and financial modelling. It provides stochastic variables, probability distributions, copulas, frequency-severity models, reinsurance contracts, risk measures and optional CuPy GPU acceleration.
 
-The installed package is `pal`; the PyPI distribution is `proteusllp-actuarial-library`.
+The installed package is `pal`; the PyPI distribution is `proteusllp-actuarial-library`. PAL intentionally exposes the four core modelling abstractions `ProteusVariable`, `StochasticScalar`, `FreqSevSims`, and `FrequencySeverityModel` at the package root; domain-specific modelling classes remain organised under their public submodules.
 
 ## Sources of Truth
 
