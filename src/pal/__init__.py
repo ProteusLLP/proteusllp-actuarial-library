@@ -29,8 +29,8 @@ from .multivariate_distributions import MultivariateDistributionBase as _Multiva
 from .multivariate_distributions import MultivariateNormal as _MultivariateNormal
 from .multivariate_distributions import MultivariateStudentsT as _MultivariateStudentsT
 from .multivariate_distributions import Wishart as _Wishart
-from .stochastic_scalar import StochasticScalar as _StochasticScalar
-from .variables import ProteusVariable as _ProteusVariable
+from .stochastic_scalar import StochasticScalar
+from .variables import ProteusVariable
 
 # Empirical and HyperExponential have vector-valued parameters and are
 # implemented in separate modules. Expose them through the standard
@@ -59,14 +59,9 @@ for _distribution_name, _distribution in {
 }.items():
     setattr(distributions, _distribution_name, _distribution)
 
-# ``copulas`` historically imports these two classes from the package root.
-# Make them available only while the module initialises, then remove them again
-# so users cannot rely on the old top-level shortcuts.
-ProteusVariable = _ProteusVariable
-StochasticScalar = _StochasticScalar
+# ``copulas`` historically imports these two classes from the package root, and
+# they are also part of PAL's intentionally small top-level public API.
 from . import copulas as copulas  # noqa: E402
-
-del ProteusVariable, StochasticScalar
 
 # Import the public module namespaces explicitly so ``import pal; pal.contracts``
 # and ``from pal import contracts`` are both reliable and discoverable.
@@ -78,9 +73,11 @@ from . import multivariate_distributions as multivariate_distributions  # noqa: 
 from . import risk_measures as risk_measures  # noqa: E402
 from . import stats as stats  # noqa: E402
 from . import variables as variables  # noqa: E402
+from .frequency_severity import FreqSevSims, FrequencySeverityModel  # noqa: E402
 
 # StochasticScalar is conceptually a PAL variable, even though its implementation
-# lives in a dedicated module. Make ``pal.variables`` its canonical public home.
+# lives in a dedicated module. Make ``pal.variables`` its canonical module home
+# as well as exposing it as a top-level core type.
 if "StochasticScalar" not in variables.__all__:
     variables.__all__.append("StochasticScalar")
 
@@ -89,6 +86,10 @@ if "StochasticScalar" not in variables.__all__:
 from . import api as api  # noqa: E402
 
 __all__ = [
+    "FreqSevSims",
+    "FrequencySeverityModel",
+    "ProteusVariable",
+    "StochasticScalar",
     "api",
     "config",
     "contracts",
