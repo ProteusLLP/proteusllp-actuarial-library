@@ -59,13 +59,12 @@ for _distribution_name, _distribution in {
 }.items():
     setattr(distributions, _distribution_name, _distribution)
 
-# ``copulas`` historically imports these two classes from the package root, and
-# they are also part of PAL's intentionally small top-level public API.
-from . import copulas as copulas  # noqa: E402
-
+# ``copulas`` historically imports the core variable classes from the package
+# root. They are now also part of PAL's intentionally small top-level public API.
 # Import the public module namespaces explicitly so ``import pal; pal.contracts``
 # and ``from pal import contracts`` are both reliable and discoverable.
 from . import contracts as contracts  # noqa: E402
+from . import copulas as copulas  # noqa: E402
 from . import couplings as couplings  # noqa: E402
 from . import frequency_severity as frequency_severity  # noqa: E402
 from . import maths as maths  # noqa: E402
