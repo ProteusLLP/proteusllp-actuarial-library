@@ -8,17 +8,19 @@ Library through a short, end-to-end example.
 ```python
 import numpy as np
 
-from pal import config, set_random_seed
+from pal import FrequencySeverityModel, config, set_random_seed
 from pal.copulas import GaussianCopula
 from pal.distributions import LogNormal, Poisson
-from pal.frequency_severity import FrequencySeverityModel
 
 config.n_sims = 10_000
 set_random_seed(42)
 ```
 
 `config.n_sims` controls how many Monte Carlo simulations are generated
-globally. `set_random_seed` makes results reproducible.
+globally. `set_random_seed` makes results reproducible. PAL's core modelling
+abstractions — `ProteusVariable`, `StochasticScalar`, `FreqSevSims`, and
+`FrequencySeverityModel` — are available directly from `pal`; domain-specific
+classes such as distributions and copulas remain in their public submodules.
 
 ## Generating Stochastic Variables
 
