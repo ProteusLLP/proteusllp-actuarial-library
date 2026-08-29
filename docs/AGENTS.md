@@ -19,6 +19,8 @@ Avoid exposing internal implementation language in user-facing descriptions when
 
 Prefer small canonical examples that demonstrate one concept clearly. Documentation code should use the public API a normal PAL user should copy.
 
+Use top-level imports for PAL's four core modelling abstractions: `from pal import ProteusVariable, StochasticScalar, FreqSevSims, FrequencySeverityModel`. Continue to import domain-specific classes such as distributions, copulas and contracts directly from their documented submodules rather than flattening them into `pal`.
+
 Executable code blocks should remain compatible with `pytest-codeblocks`. Each fenced block is executed independently by default. If a block deliberately relies on imports, variables or other state established by an earlier block, place `<!--pytest-codeblocks:cont-->` immediately before it so the sequence is tested in one shared namespace.
 
 Use `<!--pytest-codeblocks:skip-->` only when a block is intentionally non-executable in the test environment, such as illustrative development shell commands, external-resource examples, interactive display or unavailable hardware. Do not skip a user-facing example merely to make CI green; make executable examples self-contained or use `cont` as appropriate. Be especially careful with shell blocks in repository guidance because `pytest-codeblocks` can execute them and accidentally make the test suite slow or recursive.
