@@ -16,8 +16,6 @@ from pal.distributions import Gamma, LogNormal, Poisson
 
 The PyPI distribution is `proteusllp-actuarial-library`; the installed Python package is `pal`.
 
-PAL deliberately exposes four core modelling abstractions at the package root: `ProteusVariable`, `StochasticScalar`, `FreqSevSims`, and `FrequencySeverityModel`. Prefer `from pal import ...` for these types. Domain-specific modelling classes remain imported directly from their public submodules, for example `from pal.distributions import Gamma` and `from pal.copulas import GaussianCopula`.
-
 ## Configure simulations
 
 <!--pytest-codeblocks:cont-->
@@ -167,8 +165,6 @@ Useful conceptual guides are:
 
 ## Common mistakes to avoid
 
-- Do not flatten domain-specific modelling APIs into `pal`. The deliberate top-level modelling exports are `ProteusVariable`, `StochasticScalar`, `FreqSevSims`, and `FrequencySeverityModel`; distributions, copulas, contracts and other domain classes should still come from their documented submodules.
-- Prefer top-level imports for the four core abstractions in new user-facing code, while their existing submodule import paths remain supported.
 - Do not assume similarly named distributions use the same parameterisation as SciPy or another library; inspect PAL's signature and docstring.
 - Do not discard coupling relationships by extracting and rebuilding raw arrays without a reason.
 - Do not assume two generated risks are dependent until a dependence structure has been applied; derived variables, however, remain aligned with their inputs.
