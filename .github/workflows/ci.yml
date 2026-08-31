@@ -190,7 +190,7 @@ jobs:
   pypi-publish:
     runs-on: ubuntu-latest
     needs: build
-    # Only publish to PyPI using trusted publishing (release only)
+    # Only publish to PyPI when a GitHub Release is created
     if: github.event_name == 'release'
     permissions:
       id-token: write
