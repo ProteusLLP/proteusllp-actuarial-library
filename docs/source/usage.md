@@ -6,7 +6,7 @@ This guide provides comprehensive examples of using the Proteus Actuarial Librar
 
 ### Basic Stochastic Variables
 
-`StochasticScalar` is one of PAL's core top-level modelling types:
+A `StochasticScalar` represents one simulated scalar value in each Monte Carlo simulation. It is the basic simulation-level variable in PAL: arithmetic operates scenario by scenario, and methods such as `mean()`, `std()` and `percentile()` summarise the simulated distribution.
 
 ```python
 from pal import StochasticScalar
@@ -14,6 +14,8 @@ from pal import StochasticScalar
 # Create from array
 svariable = StochasticScalar([1, 2, 3, 4])
 ```
+
+In normal modelling code you will usually obtain a `StochasticScalar` by generating simulations from a distribution rather than constructing one directly.
 
 ### Statistical Distributions
 
@@ -31,7 +33,7 @@ lognormal_var = LogNormal(mu=1, sigma=0.5).generate()
 
 ## Variable Containers
 
-`ProteusVariable` is also exposed directly from `pal`:
+A `ProteusVariable` groups related values under a named dimension. It is useful for structures such as lines of business, regions or risk types, and PAL aligns labelled entries when containers are combined in calculations.
 
 ```python
 from pal import ProteusVariable
