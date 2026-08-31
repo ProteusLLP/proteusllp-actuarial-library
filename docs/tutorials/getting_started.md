@@ -29,11 +29,8 @@ Create a loss variable from a LogNormal distribution:
 loss = LogNormal(mu=14, sigma=0.5).generate()
 ```
 
-This returns a `StochasticScalar`. A `StochasticScalar` represents one value
-of a quantity in each Monte Carlo simulation, so here it represents 10,000
-possible simulated loss outcomes. Arithmetic is performed scenario by scenario,
-while methods such as `mean()`, `std()` and `percentile()` summarise the
-simulated distribution.
+This returns a `StochasticScalar` — a vector of simulated values.
+You can inspect it immediately:
 
 <!--pytest-codeblocks:cont-->
 
