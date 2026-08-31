@@ -17,10 +17,7 @@ set_random_seed(42)
 ```
 
 `config.n_sims` controls how many Monte Carlo simulations are generated
-globally. `set_random_seed` makes results reproducible. PAL's core modelling
-abstractions — `ProteusVariable`, `StochasticScalar`, `FreqSevSims`, and
-`FrequencySeverityModel` — are available directly from `pal`; domain-specific
-classes such as distributions and copulas remain in their public submodules.
+globally. `set_random_seed` makes results reproducible.
 
 ## Generating Stochastic Variables
 
@@ -32,8 +29,11 @@ Create a loss variable from a LogNormal distribution:
 loss = LogNormal(mu=14, sigma=0.5).generate()
 ```
 
-This returns a `StochasticScalar` — a vector of 10,000 simulated values.
-You can inspect it immediately:
+This returns a `StochasticScalar`. A `StochasticScalar` represents one value
+of a quantity in each Monte Carlo simulation, so here it represents 10,000
+possible simulated loss outcomes. Arithmetic is performed scenario by scenario,
+while methods such as `mean()`, `std()` and `percentile()` summarise the
+simulated distribution.
 
 <!--pytest-codeblocks:cont-->
 
