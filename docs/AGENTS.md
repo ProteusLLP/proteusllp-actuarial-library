@@ -19,7 +19,9 @@ Avoid exposing internal implementation language in user-facing descriptions when
 
 Prefer small canonical examples that demonstrate one concept clearly. Documentation code should use the public API a normal PAL user should copy.
 
-Use top-level imports for PAL's four core modelling abstractions: `from pal import ProteusVariable, StochasticScalar, FreqSevSims, FrequencySeverityModel`. Continue to import domain-specific classes such as distributions, copulas and contracts directly from their documented submodules rather than flattening them into `pal`.
+Introduce classes and modelling concepts by explaining what they represent and why a user would use them. Import-path guidance is secondary and should not replace the conceptual introduction.
+
+Use top-level imports for PAL's four core modelling abstractions: `from pal import ProteusVariable, StochasticScalar, FreqSevSims, FrequencySeverityModel`. Continue to import domain-specific classes such as distributions, copulas and contracts directly from their documented submodules rather than flattening them into `pal`. When an example uses top-level configuration helpers such as `config` or `set_random_seed`, make sure those names are imported in the executable block or in the continuation chain on which it relies.
 
 Executable code blocks should remain compatible with `pytest-codeblocks`. Each fenced block is executed independently by default. If a block deliberately relies on imports, variables or other state established by an earlier block, place `<!--pytest-codeblocks:cont-->` immediately before it so the sequence is tested in one shared namespace.
 
@@ -47,6 +49,6 @@ Public docstrings should cover:
 
 ## Validation
 
-Build documentation with warnings treated seriously. Also run relevant documentation code-block tests after changing examples or public API documentation.
+Build documentation with warnings treated seriously. Run `pytest docs --codeblocks` after changing examples or public API documentation; CI also runs this explicitly so executable examples across the documentation cannot silently fall out of the normal test suite.
 
 The AI quick reference at `docs/source/ai_assistants.md` is intentionally concise and should remain a high-density map from common user intentions to canonical PAL API usage.
