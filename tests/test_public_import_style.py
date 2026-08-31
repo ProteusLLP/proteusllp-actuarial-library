@@ -56,6 +56,24 @@ def _normalise_import_names(import_text: str) -> set[str]:
     return names
 
 
+def test_top_level_import_regex_matches_parenthesized_multiline_imports() -> None:
+    text = """from pal import (
+    FrequencySeverityModel,
+    ProteusVariable,
+    StochasticScalar,
+)
+"""
+
+    match = _TOP_LEVEL_IMPORT.search(text)
+
+    assert match is not None
+    assert _normalise_import_names(match.group(1)) == {
+        "FrequencySeverityModel",
+        "ProteusVariable",
+        "StochasticScalar",
+    }
+
+
 def test_user_examples_use_documented_pal_imports() -> None:
     violations: list[str] = []
 
