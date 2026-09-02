@@ -8,7 +8,6 @@ remove the charts while leaving the SVG files orphaned.
 
 from pathlib import Path
 
-
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _GENERATED = _REPO_ROOT / "docs" / "source" / "_static" / "generated"
 
