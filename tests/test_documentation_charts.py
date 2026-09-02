@@ -12,9 +12,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _GENERATED = _REPO_ROOT / "docs" / "source" / "_static" / "generated"
 
 _EXPECTED_CHARTS = {
-    "docs/tutorials/getting_started.md": (
-        "getting_started_aggregate_cdf.svg",
-    ),
+    "docs/tutorials/getting_started.md": ("getting_started_aggregate_cdf.svg",),
     "docs/tutorials/distributions_guide.md": (
         "distributions_guide_cdf.svg",
         "distributions_guide_histogram.svg",
