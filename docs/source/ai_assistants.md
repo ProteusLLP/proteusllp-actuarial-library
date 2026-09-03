@@ -9,16 +9,12 @@ pip install proteusllp-actuarial-library
 ```
 
 ```python
-from pal import config, set_random_seed
+from pal import FrequencySeverityModel, ProteusVariable, StochasticScalar, config, set_random_seed
 from pal.copulas import GaussianCopula
 from pal.distributions import Gamma, LogNormal, Poisson
-from pal.frequency_severity import FrequencySeverityModel
-from pal.variables import ProteusVariable, StochasticScalar
 ```
 
 The PyPI distribution is `proteusllp-actuarial-library`; the installed Python package is `pal`.
-
-PAL modelling classes are imported directly from their public submodules. Prefer `from pal.distributions import Gamma`, `from pal.copulas import GaussianCopula`, and `from pal.frequency_severity import FrequencySeverityModel`, then use `Gamma`, `GaussianCopula`, and `FrequencySeverityModel` directly. Core variable types are imported from `pal.variables`.
 
 ## Configure simulations
 
@@ -140,7 +136,7 @@ from pal import api
 api.search("gamma")
 api.search("tail dependence")
 api.describe("pal.distributions.Gamma")
-api.describe("pal.variables.StochasticScalar")
+api.describe("pal.StochasticScalar")
 ```
 
 For ordinary Python introspection, documented public objects also work naturally:
@@ -148,8 +144,8 @@ For ordinary Python introspection, documented public objects also work naturally
 ```python
 import inspect
 
+from pal import StochasticScalar
 from pal.distributions import Gamma
-from pal.variables import StochasticScalar
 
 print(inspect.signature(Gamma))
 help(Gamma)
@@ -169,8 +165,6 @@ Useful conceptual guides are:
 
 ## Common mistakes to avoid
 
-- Do not import modelling classes directly from `pal`, and do not import a modelling submodule just to qualify every class name. Import the class or function directly from its documented `pal.<module>` submodule.
-- Do not import `StochasticScalar` from `pal.stochastic_scalar`; `pal.variables` is its public home.
 - Do not assume similarly named distributions use the same parameterisation as SciPy or another library; inspect PAL's signature and docstring.
 - Do not discard coupling relationships by extracting and rebuilding raw arrays without a reason.
 - Do not assume two generated risks are dependent until a dependence structure has been applied; derived variables, however, remain aligned with their inputs.

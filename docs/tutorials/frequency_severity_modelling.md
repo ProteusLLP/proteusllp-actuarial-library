@@ -9,11 +9,10 @@ amounts (severity).
 ```python
 import numpy as np
 
-from pal import config, set_random_seed
+from pal import FrequencySeverityModel, config, set_random_seed
 from pal.contracts import XoL
 from pal.copulas import GaussianCopula
 from pal.distributions import Gamma, LogNormal, NegBinomial, Normal, Pareto, Poisson
-from pal.frequency_severity import FrequencySeverityModel
 
 config.n_sims = 10_000
 set_random_seed(42)
@@ -308,9 +307,9 @@ consistency across derived variables.
 
 | Class | Description |
 |-------|-------------|
-| `FrequencySeverityModel` (`from pal.frequency_severity import FrequencySeverityModel`) | Creates compound models from freq + sev distributions |
-| `FreqSevSims` (`from pal.frequency_severity import FreqSevSims`) | Container for event-level simulations with sim indices |
-| `StochasticScalar` (`from pal.variables import StochasticScalar`) | Simulation-level vector returned by `aggregate()` / `occurrence()` |
+| `FrequencySeverityModel` | Creates compound models from freq + sev distributions |
+| `FreqSevSims` | Container for event-level simulations with sim indices |
+| `StochasticScalar` | Simulation-level vector returned by `aggregate()` / `occurrence()` |
 
 ## See Also
 

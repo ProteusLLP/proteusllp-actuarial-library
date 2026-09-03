@@ -8,10 +8,9 @@ Library through a short, end-to-end example.
 ```python
 import numpy as np
 
-from pal import config, set_random_seed
+from pal import FrequencySeverityModel, config, set_random_seed
 from pal.copulas import GaussianCopula
 from pal.distributions import LogNormal, Poisson
-from pal.frequency_severity import FrequencySeverityModel
 
 config.n_sims = 10_000
 set_random_seed(42)
