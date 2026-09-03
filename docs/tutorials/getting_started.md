@@ -29,7 +29,7 @@ Create a loss variable from a LogNormal distribution:
 loss = LogNormal(mu=14, sigma=0.5).generate()
 ```
 
-This returns a `StochasticScalar` — a vector of simulated values.
+This returns a `StochasticScalar` — a vector of 10,000 simulated values.
 You can inspect it immediately:
 
 <!--pytest-codeblocks:cont-->
