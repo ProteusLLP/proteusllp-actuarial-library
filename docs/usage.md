@@ -6,7 +6,7 @@ This guide provides comprehensive examples of using the Proteus Actuarial Librar
 
 ### Basic Stochastic Variables
 
-`StochasticScalar` is one of PAL's core top-level modelling types:
+A `StochasticScalar` is a vector of simulated values:
 
 ```python
 from pal import StochasticScalar
@@ -31,7 +31,7 @@ lognormal_var = LogNormal(mu=1, sigma=0.5).generate()
 
 ## Variable Containers
 
-`ProteusVariable` is also exposed directly from `pal`:
+Variables can be grouped into containers with the `ProteusVariable` class:
 
 ```python
 from pal import ProteusVariable
