@@ -31,7 +31,7 @@ lognormal_var = LogNormal(mu=1, sigma=0.5).generate()
 
 ## Variable Containers
 
-A `ProteusVariable` groups related values under a named dimension. It is useful for structures such as lines of business, regions or risk types, and PAL aligns labelled entries when containers are combined in calculations.
+Variables can be grouped into containers with the `ProteusVariable` class:
 
 ```python
 from pal import ProteusVariable
