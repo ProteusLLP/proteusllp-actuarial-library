@@ -83,6 +83,8 @@ A change is complete when:
 
 - Preserve backwards compatibility unless the task explicitly changes the public API.
 - Prefer small, focused changes over broad rewrites.
+- Before changing existing prose, comments or examples, understand their purpose in the surrounding section and preserve that purpose unless the task genuinely requires it to change.
+- Review changes from the perspective of the eventual user or maintainer, not only from the perspective of the implementation task. Do not make surrounding text narrate a refactor or API move when that detail is not useful to its audience.
 - Do not leave comments describing deleted or superseded code.
 - Keep imports at module scope unless there is a documented architectural reason not to.
 - Use type annotations for public interfaces; do not duplicate type information in docstrings.
