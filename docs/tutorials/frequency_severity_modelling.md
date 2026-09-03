@@ -307,9 +307,9 @@ consistency across derived variables.
 
 | Class | Description |
 |-------|-------------|
-| `FrequencySeverityModel` (`from pal import FrequencySeverityModel`) | Creates compound models from freq + sev distributions |
-| `FreqSevSims` (`from pal import FreqSevSims`) | Container for event-level simulations with sim indices |
-| `StochasticScalar` (`from pal import StochasticScalar`) | Simulation-level vector returned by `aggregate()` / `occurrence()` |
+| `FrequencySeverityModel` | Creates compound models from freq + sev distributions |
+| `FreqSevSims` | Container for event-level simulations with sim indices |
+| `StochasticScalar` | Simulation-level vector returned by `aggregate()` / `occurrence()` |
 
 ## See Also
 
