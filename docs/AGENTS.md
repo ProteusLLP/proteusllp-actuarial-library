@@ -8,6 +8,10 @@ Write for actuaries, quantitative analysts and Python users. Explain what a publ
 
 Avoid exposing internal implementation language in user-facing descriptions when it does not help the user. In particular, do not describe ordinary operations in terms of "backend ndarrays", internal wrapper machinery or coupling metadata unless that mechanism is itself the topic of the documentation.
 
+When modifying existing documentation, first identify the purpose of the surrounding sentence, paragraph and section from the reader's perspective. Preserve useful existing explanations unless the task requires them to change. A change to an API, import path or implementation detail should not cause unrelated conceptual prose to be rewritten around that change.
+
+Review edited prose as part of the whole document, not only as a description of the current code change. Remove task-centric wording such as discussion of what is "exposed", "re-exported", "moved" or "now available" when a user only needs to know what an object represents and how to use it. Prefer the smallest wording change that keeps the document accurate and natural.
+
 ## Mathematical Documentation
 
 - Keep formulas consistent with the implemented parameterisation.
@@ -49,6 +53,6 @@ Public docstrings should cover:
 
 ## Validation
 
-Build documentation with warnings treated seriously. Run `pytest docs --codeblocks` after changing examples or public API documentation; CI also runs this explicitly so executable examples across the documentation cannot silently fall out of the normal test suite.
+Build documentation with warnings treated seriously. Run the documentation code-block tests after changing examples or public API documentation. The normal CI test matrix runs `pytest` with `--codeblocks`, so executable documentation examples are covered there.
 
 The AI quick reference at `docs/source/ai_assistants.md` is intentionally concise and should remain a high-density map from common user intentions to canonical PAL API usage.
