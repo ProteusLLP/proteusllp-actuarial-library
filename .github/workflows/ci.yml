@@ -8,7 +8,7 @@
 #
 # Jobs:
 # - static-analysis: Runs linting/type checking on Python 3.13
-# - test: Runs pytest with coverage on Python 3.11 through 3.15 (matrix), including documentation code blocks
+# - test: Runs pytest with coverage on Python 3.11 through 3.15 (matrix)
 # - docs-math: Builds the documentation and validates rendered mathematics
 # - build: Builds Python packages using standard build tool
 # - pypi-publish: Publishes to PyPI using trusted publishing (release only)
