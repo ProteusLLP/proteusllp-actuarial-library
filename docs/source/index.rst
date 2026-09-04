@@ -128,6 +128,7 @@ A small model, end to end
    tutorials/getting_started
    tutorials/distributions_guide
    tutorials/frequency_severity_modelling
+   tutorials/operational_risk_lda
    tutorials/coupling_groups_and_copulas
 
 .. toctree::
