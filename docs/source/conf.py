@@ -72,7 +72,7 @@ exclude_patterns = [
 
 html_theme = "furo"
 html_static_path = ["_static"]
-html_css_files = ["css/proteus.css", "css/sidebar-search-fix.css"]
+html_css_files = ["css/proteus.css"]
 html_logo = "_static/logo/proteus-white-horizontal.svg"
 html_favicon = "_static/logo/pal-favicon.svg"
 html_title = "PAL Documentation"
