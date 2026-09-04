@@ -3,8 +3,12 @@
 import pal
 
 
-def test_pal_top_level_namespace_is_module_oriented() -> None:
+def test_pal_top_level_namespace_exposes_core_types_and_modules() -> None:
     from pal import (
+        FreqSevSims,
+        FrequencySeverityModel,
+        ProteusVariable,
+        StochasticScalar,
         config,
         contracts,
         copulas,
@@ -20,6 +24,10 @@ def test_pal_top_level_namespace_is_module_oriented() -> None:
         variables,
     )
 
+    assert ProteusVariable is pal.variables.ProteusVariable
+    assert StochasticScalar is pal.variables.StochasticScalar
+    assert FreqSevSims is pal.frequency_severity.FreqSevSims
+    assert FrequencySeverityModel is pal.frequency_severity.FrequencySeverityModel
     assert config is not None
     assert distributions is not None
     assert contracts is not None
@@ -36,20 +44,20 @@ def test_pal_top_level_namespace_is_module_oriented() -> None:
     assert "stochastic_scalar" not in pal.__all__
 
 
-def test_variable_types_are_imported_from_pal_variables() -> None:
+def test_core_types_remain_available_from_domain_modules() -> None:
+    from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
     from pal.variables import ProteusVariable, StochasticScalar
 
-    assert ProteusVariable is pal.variables.ProteusVariable
-    assert StochasticScalar is pal.variables.StochasticScalar
+    assert ProteusVariable is pal.ProteusVariable
+    assert StochasticScalar is pal.StochasticScalar
+    assert FreqSevSims is pal.FreqSevSims
+    assert FrequencySeverityModel is pal.FrequencySeverityModel
 
 
-def test_domain_objects_are_not_reexported_at_top_level() -> None:
+def test_other_domain_objects_are_not_reexported_at_top_level() -> None:
     for name in (
         "Gamma",
         "GaussianCopula",
-        "FreqSevSims",
-        "ProteusVariable",
-        "StochasticScalar",
         "XoL",
         "XoLTower",
     ):

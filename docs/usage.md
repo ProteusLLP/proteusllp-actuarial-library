@@ -6,10 +6,10 @@ This guide provides comprehensive examples of using the Proteus Actuarial Librar
 
 ### Basic Stochastic Variables
 
-Stochastic variables can be created with the `StochasticScalar` class from `pal.variables`:
+A `StochasticScalar` is a vector of simulated values:
 
 ```python
-from pal.variables import StochasticScalar
+from pal import StochasticScalar
 
 # Create from array
 svariable = StochasticScalar([1, 2, 3, 4])
@@ -31,11 +31,11 @@ lognormal_var = LogNormal(mu=1, sigma=0.5).generate()
 
 ## Variable Containers
 
-Variables can be grouped into containers with the `ProteusVariable` class from `pal.variables`:
+Variables can be grouped into containers with the `ProteusVariable` class:
 
 ```python
+from pal import ProteusVariable
 from pal.distributions import Gamma, LogNormal
-from pal.variables import ProteusVariable
 
 # Create individual variables
 motor_losses = Gamma(alpha=2.5, theta=2).generate()
@@ -231,8 +231,8 @@ PAL provides rich type annotations using protocols for better type safety in you
 ### Using Protocol Types in Function Signatures
 
 ```python
+from pal import StochasticScalar
 from pal.types import DistributionLike, ProteusLike, VectorLike
-from pal.variables import StochasticScalar
 
 # Accept any ProteusLike container with StochasticScalar values
 def analyze_risk(variable: ProteusLike[StochasticScalar]) -> float:

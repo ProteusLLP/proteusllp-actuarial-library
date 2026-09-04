@@ -7,18 +7,22 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 
 _ALLOWED_TOP_LEVEL_IMPORTS = {
+    "FreqSevSims",
+    "FrequencySeverityModel",
+    "ProteusVariable",
+    "StochasticScalar",
     "api",
     "config",
     "set_default_n_sims",
     "set_random_seed",
 }
 
-_TOP_LEVEL_IMPORT = re.compile(r"from\s+pal\s+import\s+(\([^)]*\)|[^\n]+)", re.MULTILINE | re.DOTALL)
+_TOP_LEVEL_IMPORT = re.compile(r"^\s*from\s+pal\s+import\s+(\([^)]*\)|[^\n]+)", re.MULTILINE)
 _DOMAIN_MODULE_IMPORT = re.compile(
     r"^\s*import\s+pal\.(?:contracts|copulas|distributions|frequency_severity|multivariate_distributions|risk_measures|variables)\b",
     re.MULTILINE,
 )
-_FORBIDDEN_IMPLEMENTATION_IMPORT = re.compile(r"from\s+pal\.stochastic_scalar\s+import\s+")
+_FORBIDDEN_IMPLEMENTATION_IMPORT = re.compile(r"^\s*from\s+pal\.stochastic_scalar\s+import\s+", re.MULTILINE)
 
 
 def _user_facing_files() -> list[Path]:
@@ -52,6 +56,24 @@ def _normalise_import_names(import_text: str) -> set[str]:
     return names
 
 
+def test_top_level_import_regex_matches_parenthesized_multiline_imports() -> None:
+    text = """from pal import (
+    FrequencySeverityModel,
+    ProteusVariable,
+    StochasticScalar,
+)
+"""
+
+    match = _TOP_LEVEL_IMPORT.search(text)
+
+    assert match is not None
+    assert _normalise_import_names(match.group(1)) == {
+        "FrequencySeverityModel",
+        "ProteusVariable",
+        "StochasticScalar",
+    }
+
+
 def test_user_examples_use_documented_pal_imports() -> None:
     violations: list[str] = []
 
@@ -73,6 +95,6 @@ def test_user_examples_use_documented_pal_imports() -> None:
             )
 
         if _FORBIDDEN_IMPLEMENTATION_IMPORT.search(text) or "stochastic_scalar.StochasticScalar" in text:
-            violations.append(f"{relative}: import StochasticScalar with `from pal.variables import StochasticScalar`")
+            violations.append(f"{relative}: use the public `StochasticScalar` import path")
 
     assert not violations, "\n" + "\n".join(violations)
