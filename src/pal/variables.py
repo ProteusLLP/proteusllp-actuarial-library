@@ -87,6 +87,29 @@ def _format_number(val: int | float) -> str:
     return f"{val:.6g}"
 
 
+def _resample_freqsev(value: FreqSevSims, indices: StochasticScalar) -> FreqSevSims:
+    """Select complete frequency-severity simulations using positional indices."""
+    source_counts = xp.bincount(value.sim_index, minlength=value.n_sims)
+    source_starts = xp.cumsum(source_counts) - source_counts
+
+    target_indices = indices.values.astype(int)
+    target_counts = source_counts[target_indices]
+    target_starts = source_starts[target_indices]
+
+    new_sim_index = xp.repeat(xp.arange(indices.n_sims, dtype=int), target_counts)
+    target_event_starts = xp.cumsum(target_counts) - target_counts
+    within_target_offsets = xp.arange(new_sim_index.size, dtype=int) - xp.repeat(target_event_starts, target_counts)
+    source_positions = xp.repeat(target_starts, target_counts) + within_target_offsets
+
+    result = FreqSevSims(
+        sim_index=new_sim_index,
+        values=value.values[source_positions],
+        n_sims=indices.n_sims,
+    )
+    result.coupled_variable_group.merge(indices.coupled_variable_group)
+    return result
+
+
 class ProteusVariable(t.Generic[T]):
     """A generic, homogeneous container for multivariate variables in simulations.
 
@@ -623,16 +646,42 @@ class ProteusVariable(t.Generic[T]):
         )
 
     def upsample(self, n_sims: int) -> ProteusVariable[T]:
-        """Upsample the variable to the specified number of simulations."""
+        """Upsample stochastic leaves recursively while preserving coupling groups."""
         if self.n_sims == n_sims:
             return self
-        return ProteusVariable(
-            dim_name=self.dim_name,
-            values={
-                key: (value.upsample(n_sims) if isinstance(value, ProteusStochasticVariable) else value)
-                for key, value in self.values.items()
-            },
-        )
+        return self._upsample(n_sims, {})
+
+    def _upsample(
+        self,
+        n_sims: int,
+        group_indices: dict[int, StochasticScalar],
+    ) -> ProteusVariable[T]:
+        new_values: dict[str, t.Any] = {}
+
+        for key, value in self.values.items():
+            if isinstance(value, ProteusVariable):
+                new_values[key] = value._upsample(n_sims, group_indices)
+                continue
+
+            if isinstance(value, StochasticScalar):
+                if value.n_sims is None:
+                    raise ValueError(f"Variable {key} has None n_sims, cannot upsample")
+                group_id = id(value.coupled_variable_group)
+                if group_id not in group_indices:
+                    group_indices[group_id] = StochasticScalar(xp.arange(n_sims, dtype=int) % value.n_sims)
+                new_values[key] = value[group_indices[group_id]]
+                continue
+
+            if isinstance(value, FreqSevSims):
+                group_id = id(value.coupled_variable_group)
+                if group_id not in group_indices:
+                    group_indices[group_id] = StochasticScalar(xp.arange(n_sims, dtype=int) % value.n_sims)
+                new_values[key] = _resample_freqsev(value, group_indices[group_id])
+                continue
+
+            new_values[key] = value
+
+        return ProteusVariable(dim_name=self.dim_name, values=new_values)  # type: ignore[arg-type, return-value]
 
     def sum(self) -> T:
         """Return the sum across the outer dimension."""
