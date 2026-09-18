@@ -409,8 +409,8 @@ class FRA1Copula(Copula):
     r"""Full-range Archimedean type I (FRA1) copula.
 
     FRA1 is the two-parameter Archimedean family introduced by Hua (2026).
-    The parameter :math:`\\eta` controls lower-tail dependence and
-    :math:`\\theta` controls upper-tail dependence, with both parameters in
+    The parameter :math:`\eta` controls lower-tail dependence and
+    :math:`\theta` controls upper-tail dependence, with both parameters in
     :math:`[-1, 1)`. Positive values produce asymptotic dependence in the
     corresponding tail, while non-positive values give asymptotic independence
     with a continuously varying tail order.
@@ -424,23 +424,23 @@ class FRA1Copula(Copula):
 
     .. math::
 
-        \\lambda_U =
-        \\begin{cases}
-        0, & \\theta \\leq 0,\\\\
-        2 - 2^{1-\\theta}, & \\theta > 0,
-        \\end{cases}
+        \lambda_U =
+        \begin{cases}
+        0, & \theta \leq 0,\\
+        2 - 2^{1-\theta}, & \theta > 0,
+        \end{cases}
 
     and the lower-tail dependence coefficient is
 
     .. math::
 
-        \\lambda_L =
-        \\begin{cases}
-        0, & \\eta \\leq 0,\\\\
-        2^{-(1-\\eta)/\\eta}, & \\eta > 0.
-        \\end{cases}
+        \lambda_L =
+        \begin{cases}
+        0, & \eta \leq 0,\\
+        2^{-(1-\eta)/\eta}, & \eta > 0.
+        \end{cases}
 
-    The independence copula is obtained at :math:`\\eta=\\theta=-1`.
+    The independence copula is obtained at :math:`\eta=\theta=-1`.
 
     References:
         Hua, L. (2026). "A new tractable Archimedean copula for full-range
@@ -511,6 +511,7 @@ class FRA1Copula(Copula):
         probability = np.clip(uniforms[1], tiny, 1.0 - eps)
         dependent = _fra1.conditional_ppf(probability, conditioning, self.eta, self.theta)
         return np.stack((dependent, conditioning))
+
 
 class ClaytonCopula(ArchimedeanCopula):
     r"""Clayton Copula.
