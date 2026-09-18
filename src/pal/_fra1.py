@@ -78,40 +78,17 @@ def _log_f(log_s: t.Any, p: float) -> tuple[t.Any, t.Any, t.Any]:
     else:
         pa = p * a
         log_value = _log_cosh_minus_one(pa) - 2.0 * np.log(p)
-        log_first = (
-            pa
-            - _LOG_TWO
-            + np.log(-np.expm1(-2.0 * pa))
-            - np.log(p)
-            - log_delta
-        )
-        ratio = (
-            (1.0 - p)
-            + 2.0 / np.expm1(2.0 * a)
-            - 2.0 * p / np.expm1(2.0 * pa)
-        )
+        log_first = pa - _LOG_TWO + np.log(-np.expm1(-2.0 * pa)) - np.log(p) - log_delta
+        ratio = (1.0 - p) + 2.0 / np.expm1(2.0 * a) - 2.0 * p / np.expm1(2.0 * pa)
 
-    log_second_magnitude = (
-        log_first
-        + np.log(np.maximum(ratio, np.finfo(np.float64).tiny))
-        - log_delta
-    )
+    log_second_magnitude = log_first + np.log(np.maximum(ratio, np.finfo(np.float64).tiny)) - log_delta
 
     small = log_s < _LOG_SMALL
     series_s = np.exp(np.minimum(log_s, _LOG_SMALL))
     one_minus_p2 = 1.0 - p**2
-    value_series = log_s + np.log1p(
-        -one_minus_p2 * series_s / 6.0
-        + one_minus_p2 * (4.0 - p**2) * series_s**2 / 90.0
-    )
-    first_series = np.log1p(
-        -one_minus_p2 * series_s / 3.0
-        + one_minus_p2 * (4.0 - p**2) * series_s**2 / 30.0
-    )
-    second_series = (
-        np.log(one_minus_p2 / 3.0)
-        + np.log1p(-(4.0 - p**2) * series_s / 5.0)
-    )
+    value_series = log_s + np.log1p(-one_minus_p2 * series_s / 6.0 + one_minus_p2 * (4.0 - p**2) * series_s**2 / 90.0)
+    first_series = np.log1p(-one_minus_p2 * series_s / 3.0 + one_minus_p2 * (4.0 - p**2) * series_s**2 / 30.0)
+    second_series = np.log(one_minus_p2 / 3.0) + np.log1p(-(4.0 - p**2) * series_s / 5.0)
 
     return (
         np.where(small, value_series, log_value),
@@ -148,9 +125,7 @@ def _log_j(log_t: t.Any, p: float) -> tuple[t.Any, t.Any]:
     _, log_fp_transformed, _ = _log_f(log_transformed, p)
 
     gap = -np.expm1(log_d - log_transformed)
-    log_s = log_transformed + np.log(
-        np.maximum(gap, np.finfo(np.float64).tiny)
-    )
+    log_s = log_transformed + np.log(np.maximum(gap, np.finfo(np.float64).tiny))
     log_sp = log_fpx - log_fp_transformed
 
     small = log_x < _LOG_SMALL
@@ -163,14 +138,8 @@ def _log_j(log_t: t.Any, p: float) -> tuple[t.Any, t.Any]:
 
     x_for_series = np.where(small, np.exp(log_x), 0.0)
     s_ratio = second_at_zero / first_at_zero
-    log_s_series = (
-        log_x
-        + np.log(first_at_zero)
-        + np.log1p(0.5 * s_ratio * x_for_series)
-    )
-    log_sp_series = np.log(first_at_zero) + np.log1p(
-        s_ratio * x_for_series
-    )
+    log_s_series = log_x + np.log(first_at_zero) + np.log1p(0.5 * s_ratio * x_for_series)
+    log_sp_series = np.log(first_at_zero) + np.log1p(s_ratio * x_for_series)
     log_s = np.where(small, log_s_series, log_s)
     log_sp = np.where(small, log_sp_series, log_sp)
 
@@ -194,9 +163,7 @@ def _log_j_inv(log_y: t.Any, p: float) -> t.Any:
     _, log_fp_d, log_neg_fpp_d = _log_f(log_d, p)
     correction = 0.5 * np.exp(log_neg_fpp_d - log_fp_d + log_z)
     correction = np.minimum(correction, 1.0 - np.finfo(np.float64).eps)
-    approximation = (
-        log_fp_d + log_z + np.log1p(-correction)
-    )
+    approximation = log_fp_d + log_z + np.log1p(-correction)
     log_delta = np.where(small, approximation, log_delta)
     return -_log_f_inv(log_delta, p)
 
@@ -256,9 +223,7 @@ def log_inverse_generator(u: t.Any, eta: float, theta: float) -> t.Any:
     return _log_w_inv(log_g_inv, theta)
 
 
-def _log_generator_and_negative_prime(
-    log_t: t.Any, eta: float, theta: float
-) -> tuple[t.Any, t.Any]:
+def _log_generator_and_negative_prime(log_t: t.Any, eta: float, theta: float) -> tuple[t.Any, t.Any]:
     """Return log(psi(t)) and log(-psi'(t)) from log(t)."""
     log_w, log_wp = _log_w(log_t, theta)
     log_f_value, log_fp, _ = _log_f(log_w, abs(eta))
@@ -275,9 +240,7 @@ def _log_generator_and_negative_prime(
     return log_generator, log_negative_g_prime + log_wp
 
 
-def _log_negative_generator_prime(
-    log_t: t.Any, eta: float, theta: float
-) -> t.Any:
+def _log_negative_generator_prime(log_t: t.Any, eta: float, theta: float) -> t.Any:
     """Return log(-psi'(t)) from log(t)."""
     return _log_generator_and_negative_prime(log_t, eta, theta)[1]
 
@@ -293,16 +256,12 @@ def conditional_ppf(q: t.Any, v: t.Any, eta: float, theta: float) -> t.Any:
     # The inversion is monotone. Fixed-count vector operations avoid repeated
     # host/device synchronisation when PAL is using CuPy.
     for _ in range(64):
-        needs_expansion = (
-            _log_negative_generator_prime(upper, eta, theta) > target
-        )
+        needs_expansion = _log_negative_generator_prime(upper, eta, theta) > target
         upper = np.where(needs_expansion, upper + 4.0, upper)
 
     for _ in range(64):
         midpoint = 0.5 * (lower + upper)
-        needs_larger = (
-            _log_negative_generator_prime(midpoint, eta, theta) > target
-        )
+        needs_larger = _log_negative_generator_prime(midpoint, eta, theta) > target
         lower = np.where(needs_larger, midpoint, lower)
         upper = np.where(needs_larger, upper, midpoint)
 
@@ -310,8 +269,6 @@ def conditional_ppf(q: t.Any, v: t.Any, eta: float, theta: float) -> t.Any:
     log_argument = _logdiffexp(log_total, log_y)
     at_zero = ~np.isfinite(log_argument)
     safe_argument = np.where(at_zero, 0.0, log_argument)
-    log_generator = _log_generator_and_negative_prime(
-        safe_argument, eta, theta
-    )[0]
+    log_generator = _log_generator_and_negative_prime(safe_argument, eta, theta)[0]
     result = np.exp(log_generator)
     return np.where(at_zero, 1.0, result)
