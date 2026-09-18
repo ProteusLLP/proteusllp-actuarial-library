@@ -253,7 +253,11 @@ def test_fra1_parameter_errors(eta: float, theta: float):
 
 
 def test_fra1_apply_requires_two_variables():
-    variables = [distributions.Normal().generate(100), distributions.Normal().generate(100), distributions.Normal().generate(100)]
+    variables = [
+        distributions.Normal(0, 1).generate(100),
+        distributions.Normal(0, 1).generate(100),
+        distributions.Normal(0, 1).generate(100),
+    ]
     with pytest.raises(ValueError, match="FRA1Copula currently supports exactly two variables"):
         copulas.FRA1Copula(eta=0.2, theta=0.3).apply(variables)
 
