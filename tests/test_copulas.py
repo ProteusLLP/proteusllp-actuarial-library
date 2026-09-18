@@ -15,6 +15,7 @@ import scipy.stats  # ignore:import-untyped
 
 import pal.maths as pnp
 from pal import _fra1, config, copulas, distributions
+from pal._maths import to_backend
 from pal.variables import ProteusVariable, StochasticScalar
 from tests._assertions import allclose, host_values
 
@@ -263,9 +264,10 @@ def test_fra1_parameter_errors(eta: float, theta: float):
 
 
 def _fra1_joint_cdf(point: list[float], eta: float, theta: float) -> float:
-    log_phi = _fra1.log_inverse_generator(np.asarray(point), eta, theta)
+    log_phi = _fra1.log_inverse_generator(to_backend(point), eta, theta)
     phi = np.exp(host_values(log_phi))
-    return float(host_values(_fra1.generator_from_log_argument(np.log(phi.sum()), eta, theta)))
+    log_sum = to_backend(np.log(phi.sum()))
+    return float(host_values(_fra1.generator_from_log_argument(log_sum, eta, theta)))
 
 
 def test_fra1_multivariate_copula():
