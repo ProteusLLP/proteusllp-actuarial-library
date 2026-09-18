@@ -282,9 +282,7 @@ def test_fra1_multivariate_copula():
 
     triple_point = [0.35, 0.5, 0.65]
     triple_empirical = (
-        (samples[0] <= triple_point[0])
-        & (samples[1] <= triple_point[1])
-        & (samples[2] <= triple_point[2])
+        (samples[0] <= triple_point[0]) & (samples[1] <= triple_point[1]) & (samples[2] <= triple_point[2])
     ).mean()
     triple_expected = _fra1_joint_cdf(triple_point, eta, theta)
     assert np.isclose(triple_empirical, triple_expected, atol=5e-3)
