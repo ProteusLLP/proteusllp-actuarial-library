@@ -235,6 +235,15 @@ def test_fra1_copula_full_range_tail_dependence():
     copula_margins(samples)
 
 
+@pytest.mark.parametrize(
+    ("eta", "theta"),
+    [(0.95, 0.95), (0.95, -0.95), (-0.95, 0.95)],
+)
+def test_fra1_stable_near_parameter_boundaries(eta: float, theta: float):
+    config.rng = np.random.default_rng(98765)
+    samples = copulas.FRA1Copula(eta=eta, theta=theta).generate(20000)
+    copula_margins(samples)
+
 def test_fra1_independence_limit():
     config.rng = np.random.default_rng(24680)
     samples = copulas.FRA1Copula(eta=-1.0, theta=-1.0).generate(100000)
