@@ -244,6 +244,7 @@ def test_fra1_stable_near_parameter_boundaries(eta: float, theta: float):
     samples = copulas.FRA1Copula(eta=eta, theta=theta).generate(20000)
     copula_margins(samples)
 
+
 def test_fra1_independence_limit():
     config.rng = np.random.default_rng(24680)
     samples = copulas.FRA1Copula(eta=-1.0, theta=-1.0).generate(100000)
@@ -269,6 +270,7 @@ def test_fra1_apply_requires_two_variables():
     ]
     with pytest.raises(ValueError, match="FRA1Copula currently supports exactly two variables"):
         copulas.FRA1Copula(eta=0.2, theta=0.3).apply(variables)
+
 
 @pytest.mark.parametrize("theta", [0.00001, 0.1, 0.5, 2, 4])
 def test_galambos_copula(theta: float):
