@@ -415,10 +415,11 @@ class FRA1Copula(Copula):
     corresponding tail, while non-positive values give asymptotic independence
     with a continuously varying tail order.
 
-    The generator is completely monotone, so the copula construction itself is
-    valid in arbitrary finite dimension. PAL currently implements the bivariate
-    inverse-conditional sampler described by Hua (2026), so :meth:`generate` and
-    :meth:`apply` support exactly two variables.
+    The generator is completely monotone, so it defines an Archimedean copula in
+    every finite dimension. For two dimensions, PAL uses the inverse conditional
+    sampler described by Hua (2026). For higher dimensions, PAL uses the
+    Marshall-Olkin frailty representation, with the one-dimensional FRA1 frailty
+    distribution obtained by numerical inversion of its Laplace transform.
 
     The upper-tail dependence coefficient is
 
@@ -445,17 +446,22 @@ class FRA1Copula(Copula):
     References:
         Hua, L. (2026). "A new tractable Archimedean copula for full-range
         tail dependence." arXiv:2609.18742.
+        Marshall, A. W. and Olkin, I. (1988). "Families of multivariate
+        distributions." Journal of the American Statistical Association.
+        Ridout, M. S. (2009). "Generating random numbers from a distribution
+        specified by its Laplace transform." Statistics and Computing.
     """
 
-    def __init__(self, eta: float, theta: float) -> None:
+    def __init__(self, eta: float, theta: float, dimension: int = 2) -> None:
         """Initialize an FRA1 copula.
 
         Args:
             eta: Lower-tail parameter in [-1, 1).
             theta: Upper-tail parameter in [-1, 1).
+            dimension: Number of variables, at least 2.
 
         Raises:
-            ValueError: If either parameter lies outside [-1, 1).
+            ValueError: If a parameter lies outside its supported range.
         """
         eta = float(eta)
         theta = float(theta)
@@ -463,9 +469,11 @@ class FRA1Copula(Copula):
             raise ValueError("Eta must be in the range [-1, 1)")
         if not -1.0 <= theta < 1.0:
             raise ValueError("Theta must be in the range [-1, 1)")
+        if dimension < 2:
+            raise ValueError("Dimension must be at least 2")
         self.eta = eta
         self.theta = theta
-        self.dimension = 2
+        self.dimension = dimension
 
     @property
     def lower_tail_dependence(self) -> float:
@@ -494,12 +502,15 @@ class FRA1Copula(Copula):
     def generate(
         self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
-        """Generate bivariate uniform samples from the FRA1 copula."""
+        """Generate uniform samples from the FRA1 copula."""
         return self._generate_base(n_sims, rng)
 
     def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
-        if self.dimension != 2:
-            raise ValueError("FRA1Copula currently supports exactly two variables")
+        if self.dimension < 2:
+            raise ValueError("FRA1Copula requires at least two variables")
+
+        if self.dimension > 2:
+            return _fra1.generate_multivariate(self.dimension, n_sims, rng, self.eta, self.theta)
 
         uniforms = rng.uniform(size=(2, n_sims))
         if self.eta == -1.0 and self.theta == -1.0:
