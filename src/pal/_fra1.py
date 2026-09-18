@@ -319,7 +319,8 @@ def frailty_log_quantile_table(
     # Numerical Laplace inversion can create flat sections at machine precision.
     # Remove duplicates so interpolation always sees a strictly increasing CDF.
     keep = np.concatenate((np.asarray([True]), np.diff(cdf) > 1e-10))
-    return cdf[keep], log_v[keep]
+    indices = np.flatnonzero(keep)
+    return np.take(cdf, indices), np.take(log_v, indices)
 
 
 def sample_log_frailty(
