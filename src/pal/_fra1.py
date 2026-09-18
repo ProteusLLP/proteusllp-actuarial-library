@@ -311,13 +311,14 @@ def frailty_log_quantile_table(
     stretch = 4.5
     log_v = 650.0 * np.sinh(stretch * z) / np.sinh(stretch)
     cdf = frailty_cdf_from_log(log_v, eta, theta)
-    cdf = np.clip(cdf, 0.0, 1.0)
+    cdf = np.sort(np.clip(cdf, 0.0, 1.0))
     cdf[0] = 0.0
-    cdf = np.maximum.accumulate(cdf)
     cdf[-1] = 1.0
 
-    # Numerical Laplace inversion can create flat sections at machine precision.
-    # Remove duplicates so interpolation always sees a strictly increasing CDF.
+    # Numerical Laplace inversion can introduce tiny local violations of
+    # monotonicity. Sorting performs a monotone rearrangement and is supported
+    # efficiently by both NumPy and CuPy. Remove flat sections at machine
+    # precision so interpolation always sees a strictly increasing CDF.
     keep = np.concatenate((np.asarray([True]), np.diff(cdf) > 1e-10))
     indices = np.flatnonzero(keep)
     return np.take(cdf, indices), np.take(log_v, indices)
