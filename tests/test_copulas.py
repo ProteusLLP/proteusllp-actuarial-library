@@ -14,7 +14,7 @@ import scipy.special
 import scipy.stats  # ignore:import-untyped
 
 import pal.maths as pnp
-from pal import config, copulas, distributions
+from pal import _fra1, config, copulas, distributions
 from pal.variables import ProteusVariable, StochasticScalar
 from tests._assertions import allclose, host_values
 
@@ -262,14 +262,62 @@ def test_fra1_parameter_errors(eta: float, theta: float):
         copulas.FRA1Copula(eta=eta, theta=theta)
 
 
-def test_fra1_apply_requires_two_variables():
+def _fra1_joint_cdf(point: list[float], eta: float, theta: float) -> float:
+    log_phi = _fra1.log_inverse_generator(np.asarray(point), eta, theta)
+    phi = np.exp(host_values(log_phi))
+    return float(host_values(_fra1.generator_from_log_argument(np.log(phi.sum()), eta, theta)))
+
+
+def test_fra1_multivariate_copula():
+    config.rng = np.random.default_rng(13579)
+    eta = 0.3
+    theta = 0.4
+    samples = copulas.FRA1Copula(eta=eta, theta=theta, dimension=5).generate(150000)
+    copula_margins(samples)
+
+    pair_point = [0.3, 0.55]
+    pair_empirical = ((samples[0] <= pair_point[0]) & (samples[1] <= pair_point[1])).mean()
+    pair_expected = _fra1_joint_cdf(pair_point, eta, theta)
+    assert np.isclose(pair_empirical, pair_expected, atol=5e-3)
+
+    triple_point = [0.35, 0.5, 0.65]
+    triple_empirical = (
+        (samples[0] <= triple_point[0])
+        & (samples[1] <= triple_point[1])
+        & (samples[2] <= triple_point[2])
+    ).mean()
+    triple_expected = _fra1_joint_cdf(triple_point, eta, theta)
+    assert np.isclose(triple_empirical, triple_expected, atol=5e-3)
+
+
+def test_fra1_multivariate_independence():
+    config.rng = np.random.default_rng(97531)
+    samples = copulas.FRA1Copula(eta=-1.0, theta=-1.0, dimension=6).generate(50000)
+    correlation = np.corrcoef(np.vstack([host_values(sample) for sample in samples]))
+    assert np.allclose(correlation, np.eye(6), atol=2e-2)
+    copula_margins(samples)
+
+
+def test_fra1_multivariate_near_parameter_boundary():
+    config.rng = np.random.default_rng(86420)
+    samples = copulas.FRA1Copula(eta=0.8, theta=0.8, dimension=4).generate(30000)
+    copula_margins(samples)
+
+
+def test_fra1_multivariate_apply():
     variables = [
-        distributions.Normal(0, 1).generate(100),
-        distributions.Normal(0, 1).generate(100),
-        distributions.Normal(0, 1).generate(100),
+        distributions.Normal(0, 1).generate(5000),
+        distributions.Normal(0, 1).generate(5000),
+        distributions.Normal(0, 1).generate(5000),
     ]
-    with pytest.raises(ValueError, match="FRA1Copula currently supports exactly two variables"):
-        copulas.FRA1Copula(eta=0.2, theta=0.3).apply(variables)
+    copulas.FRA1Copula(eta=0.2, theta=0.3).apply(variables)
+    rank_correlation = scipy.stats.spearmanr(host_values(variables[0]), host_values(variables[1])).statistic
+    assert rank_correlation > 0.05
+
+
+def test_fra1_dimension_error():
+    with pytest.raises(ValueError, match="Dimension must be at least 2"):
+        copulas.FRA1Copula(eta=0.2, theta=0.3, dimension=1)
 
 
 @pytest.mark.parametrize("theta", [0.00001, 0.1, 0.5, 2, 4])
