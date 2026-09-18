@@ -14,7 +14,8 @@ import scipy.special
 import scipy.stats  # ignore:import-untyped
 
 import pal.maths as pnp
-from pal import config, copulas, distributions
+from pal import _fra1, config, copulas, distributions
+from pal._maths import to_backend
 from pal.variables import ProteusVariable, StochasticScalar
 from tests._assertions import allclose, host_values
 
@@ -190,6 +191,133 @@ def test_frank_copula(theta: float):
     )
     # test the margins
     copula_margins(samples)
+
+
+@pytest.mark.parametrize(
+    ("eta", "theta", "lower_dependence", "upper_dependence", "lower_order", "upper_order"),
+    [
+        (-1.0, -1.0, 0.0, 0.0, 2.0, 2.0),
+        (-0.5, -0.25, 0.0, 0.0, np.sqrt(2.0), 1.25),
+        (0.5, 0.5, 0.5, 2.0 - np.sqrt(2.0), 1.0, 1.0),
+    ],
+)
+def test_fra1_tail_measures(
+    eta: float,
+    theta: float,
+    lower_dependence: float,
+    upper_dependence: float,
+    lower_order: float,
+    upper_order: float,
+):
+    copula = copulas.FRA1Copula(eta=eta, theta=theta)
+    assert np.isclose(copula.lower_tail_dependence, lower_dependence)
+    assert np.isclose(copula.upper_tail_dependence, upper_dependence)
+    assert np.isclose(copula.lower_tail_order, lower_order)
+    assert np.isclose(copula.upper_tail_order, upper_order)
+
+
+def test_fra1_copula_full_range_tail_dependence():
+    config.rng = np.random.default_rng(123456)
+    copula = copulas.FRA1Copula(eta=0.5, theta=0.5)
+    samples = copula.generate(100000)
+
+    lower_threshold = 0.01
+    lower_joint = ((samples[0] < lower_threshold) & (samples[1] < lower_threshold)).mean()
+    lower_marginal = (samples[1] < lower_threshold).mean()
+    estimated_lower = lower_joint / lower_marginal
+
+    upper_threshold = 0.99
+    upper_joint = ((samples[0] > upper_threshold) & (samples[1] > upper_threshold)).mean()
+    upper_marginal = (samples[1] > upper_threshold).mean()
+    estimated_upper = upper_joint / upper_marginal
+
+    assert np.isclose(estimated_lower, copula.lower_tail_dependence, atol=6e-2)
+    assert np.isclose(estimated_upper, copula.upper_tail_dependence, atol=6e-2)
+    copula_margins(samples)
+
+
+@pytest.mark.parametrize(
+    ("eta", "theta"),
+    [(0.95, 0.95), (0.95, -0.95), (-0.95, 0.95)],
+)
+def test_fra1_stable_near_parameter_boundaries(eta: float, theta: float):
+    config.rng = np.random.default_rng(98765)
+    samples = copulas.FRA1Copula(eta=eta, theta=theta).generate(20000)
+    copula_margins(samples)
+
+
+def test_fra1_independence_limit():
+    config.rng = np.random.default_rng(24680)
+    samples = copulas.FRA1Copula(eta=-1.0, theta=-1.0).generate(100000)
+    rank_correlation = scipy.stats.spearmanr(host_values(samples[0]), host_values(samples[1])).statistic
+    assert np.isclose(rank_correlation, 0.0, atol=1e-2)
+    copula_margins(samples)
+
+
+@pytest.mark.parametrize(
+    ("eta", "theta"),
+    [(-1.01, 0.0), (1.0, 0.0), (0.0, -1.01), (0.0, 1.0), (np.nan, 0.0), (0.0, np.inf)],
+)
+def test_fra1_parameter_errors(eta: float, theta: float):
+    with pytest.raises(ValueError):
+        copulas.FRA1Copula(eta=eta, theta=theta)
+
+
+def _fra1_joint_cdf(point: list[float], eta: float, theta: float) -> float:
+    log_phi = _fra1.log_inverse_generator(to_backend(point), eta, theta)
+    phi = np.exp(host_values(log_phi))
+    log_sum = to_backend(np.log(phi.sum()))
+    return float(host_values(_fra1.generator_from_log_argument(log_sum, eta, theta)))
+
+
+def test_fra1_multivariate_copula():
+    config.rng = np.random.default_rng(13579)
+    eta = 0.3
+    theta = 0.4
+    samples = copulas.FRA1Copula(eta=eta, theta=theta, dimension=5).generate(150000)
+    copula_margins(samples)
+
+    pair_point = [0.3, 0.55]
+    pair_empirical = ((samples[0] <= pair_point[0]) & (samples[1] <= pair_point[1])).mean()
+    pair_expected = _fra1_joint_cdf(pair_point, eta, theta)
+    assert np.isclose(pair_empirical, pair_expected, atol=5e-3)
+
+    triple_point = [0.35, 0.5, 0.65]
+    triple_empirical = (
+        (samples[0] <= triple_point[0]) & (samples[1] <= triple_point[1]) & (samples[2] <= triple_point[2])
+    ).mean()
+    triple_expected = _fra1_joint_cdf(triple_point, eta, theta)
+    assert np.isclose(triple_empirical, triple_expected, atol=5e-3)
+
+
+def test_fra1_multivariate_independence():
+    config.rng = np.random.default_rng(97531)
+    samples = copulas.FRA1Copula(eta=-1.0, theta=-1.0, dimension=6).generate(50000)
+    correlation = np.corrcoef(np.vstack([host_values(sample) for sample in samples]))
+    assert np.allclose(correlation, np.eye(6), atol=2e-2)
+    copula_margins(samples)
+
+
+def test_fra1_multivariate_near_parameter_boundary():
+    config.rng = np.random.default_rng(86420)
+    samples = copulas.FRA1Copula(eta=0.8, theta=0.8, dimension=4).generate(30000)
+    copula_margins(samples)
+
+
+def test_fra1_multivariate_apply():
+    variables = [
+        distributions.Normal(0, 1).generate(5000),
+        distributions.Normal(0, 1).generate(5000),
+        distributions.Normal(0, 1).generate(5000),
+    ]
+    copulas.FRA1Copula(eta=0.2, theta=0.3).apply(variables)
+    rank_correlation = scipy.stats.spearmanr(host_values(variables[0]), host_values(variables[1])).statistic
+    assert rank_correlation > 0.05
+
+
+def test_fra1_dimension_error():
+    with pytest.raises(ValueError, match="Dimension must be at least 2"):
+        copulas.FRA1Copula(eta=0.2, theta=0.3, dimension=1)
 
 
 @pytest.mark.parametrize("theta", [0.00001, 0.1, 0.5, 2, 4])
