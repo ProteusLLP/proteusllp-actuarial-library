@@ -119,6 +119,7 @@ different patterns of dependence, especially in the tails.
 | Clayton | `ClaytonCopula` | `theta`, `n` | Lower |
 | Frank | `FrankCopula` | `theta`, `n` | None |
 | Joe | `JoeCopula` | `theta`, `n` | Upper |
+| FRA1 | `FRA1Copula` | `eta`, `theta` | Lower and upper |
 | **Extreme value** | | | |
 | MM1 | `MM1Copula` | `delta_matrix`, `theta` | Upper |
 | Galambos | `GalambosCopula` | `theta`, `d` | Upper |
@@ -325,3 +326,5 @@ other coupled quantities consistently.
   rank correlation among input variables." *Communications in Statistics —
   Simulation and Computation*, 11(3), 311–334.
 - Joe, H. (2014). *Dependence Modeling with Copulas*. CRC Press.
+- Hua, L. (2026). “A new tractable Archimedean copula for full-range tail
+  dependence.” arXiv:2609.18742.
