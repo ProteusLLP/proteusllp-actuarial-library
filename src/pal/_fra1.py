@@ -245,6 +245,118 @@ def _log_negative_generator_prime(log_t: t.Any, eta: float, theta: float) -> t.A
     return _log_generator_and_negative_prime(log_t, eta, theta)[1]
 
 
+_STEHFEST_COEFFICIENTS = np.asarray(
+    [
+        4.96031746031746e-05,
+        -0.6095734126984128,
+        274.5940476190476,
+        -26306.956746031745,
+        957257.2013888889,
+        -17358694.84583333,
+        182421222.64722222,
+        -1218533288.3091269,
+        5491680025.283035,
+        -17362131115.206844,
+        39455096903.52738,
+        -65266516985.175,
+        78730068328.22083,
+        -68556444196.120834,
+        41984343475.05357,
+        -17160934711.839287,
+        4204550039.102679,
+        -467172226.56696427,
+    ],
+    dtype=np.float64,
+)
+_STEHFEST_INDICES = np.arange(1, 19, dtype=np.float64)
+_STEHFEST_LOG_ARGUMENTS = np.log(_STEHFEST_INDICES * _LOG_TWO)
+
+
+def generator_from_log_argument(log_t: t.Any, eta: float, theta: float) -> t.Any:
+    """Evaluate the FRA1 generator from log(t)."""
+    log_t = np.asarray(log_t)
+    at_zero = np.isneginf(log_t)
+    safe_log_t = np.where(at_zero, 0.0, log_t)
+    log_generator = _log_generator_and_negative_prime(safe_log_t, eta, theta)[0]
+    return np.where(at_zero, 1.0, np.exp(log_generator))
+
+
+def frailty_cdf_from_log(log_v: t.Any, eta: float, theta: float) -> t.Any:
+    """Numerically invert the frailty Laplace transform at log(v).
+
+    The FRA1 generator is the Laplace transform of a positive frailty variable.
+    This evaluates its CDF using an 18-term Gaver-Stehfest inversion of
+    psi(s) / s. Working in log coordinates keeps the inversion stable over
+    the very wide frailty ranges that occur near the parameter boundaries.
+    """
+    log_v = np.atleast_1d(np.asarray(log_v, dtype=np.float64))
+    log_s = _STEHFEST_LOG_ARGUMENTS[:, np.newaxis] - log_v[np.newaxis, :]
+    psi = generator_from_log_argument(log_s, eta, theta)
+    weights = _STEHFEST_COEFFICIENTS / _STEHFEST_INDICES
+    return np.sum(weights[:, np.newaxis] * psi, axis=0)
+
+
+def frailty_log_quantile_table(
+    eta: float,
+    theta: float,
+    grid_size: int = 8193,
+) -> tuple[t.Any, t.Any]:
+    """Build a numerical quantile table for the FRA1 frailty distribution."""
+    if grid_size < 257:
+        raise ValueError("grid_size must be at least 257")
+
+    # A sinh grid provides fine resolution around the main body while retaining
+    # an enormous dynamic range for the heavy frailty tails as theta approaches 1.
+    z = np.linspace(-1.0, 1.0, grid_size)
+    stretch = 4.5
+    log_v = 650.0 * np.sinh(stretch * z) / np.sinh(stretch)
+    cdf = frailty_cdf_from_log(log_v, eta, theta)
+    cdf = np.clip(cdf, 0.0, 1.0)
+    cdf[0] = 0.0
+    cdf = np.maximum.accumulate(cdf)
+    cdf[-1] = 1.0
+
+    # Numerical Laplace inversion can create flat sections at machine precision.
+    # Remove duplicates so interpolation always sees a strictly increasing CDF.
+    keep = np.concatenate((np.asarray([True]), np.diff(cdf) > 1e-10))
+    return cdf[keep], log_v[keep]
+
+
+def sample_log_frailty(
+    n_sims: int,
+    rng: t.Any,
+    eta: float,
+    theta: float,
+) -> t.Any:
+    """Sample log frailties for the multivariate Marshall-Olkin construction."""
+    probabilities = rng.uniform(size=n_sims)
+    cdf, log_v = frailty_log_quantile_table(eta, theta)
+    return np.interp(probabilities, cdf, log_v)
+
+
+def generate_multivariate(
+    dimension: int,
+    n_sims: int,
+    rng: t.Any,
+    eta: float,
+    theta: float,
+) -> t.Any:
+    """Generate a d-variate FRA1 sample using its frailty representation."""
+    if dimension < 2:
+        raise ValueError("dimension must be at least 2")
+
+    if eta == -1.0 and theta == -1.0:
+        return rng.uniform(size=(dimension, n_sims))
+
+    log_frailty = sample_log_frailty(n_sims, rng, eta, theta)
+    exponentials = np.maximum(
+        rng.exponential(size=(dimension, n_sims)),
+        np.finfo(np.float64).tiny,
+    )
+    log_arguments = np.log(exponentials) - log_frailty[np.newaxis, :]
+    return generator_from_log_argument(log_arguments, eta, theta)
+
+
 def conditional_ppf(q: t.Any, v: t.Any, eta: float, theta: float) -> t.Any:
     """Invert the FRA1 conditional CDF for bivariate sampling."""
     log_y = log_inverse_generator(v, eta, theta)
