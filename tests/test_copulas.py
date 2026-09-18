@@ -192,6 +192,71 @@ def test_frank_copula(theta: float):
     copula_margins(samples)
 
 
+@pytest.mark.parametrize(
+    ("eta", "theta", "lower_dependence", "upper_dependence", "lower_order", "upper_order"),
+    [
+        (-1.0, -1.0, 0.0, 0.0, 2.0, 2.0),
+        (-0.5, -0.25, 0.0, 0.0, np.sqrt(2.0), 1.25),
+        (0.5, 0.5, 0.5, 2.0 - np.sqrt(2.0), 1.0, 1.0),
+    ],
+)
+def test_fra1_tail_measures(
+    eta: float,
+    theta: float,
+    lower_dependence: float,
+    upper_dependence: float,
+    lower_order: float,
+    upper_order: float,
+):
+    copula = copulas.FRA1Copula(eta=eta, theta=theta)
+    assert np.isclose(copula.lower_tail_dependence, lower_dependence)
+    assert np.isclose(copula.upper_tail_dependence, upper_dependence)
+    assert np.isclose(copula.lower_tail_order, lower_order)
+    assert np.isclose(copula.upper_tail_order, upper_order)
+
+
+def test_fra1_copula_full_range_tail_dependence():
+    config.rng = np.random.default_rng(123456)
+    copula = copulas.FRA1Copula(eta=0.5, theta=0.5)
+    samples = copula.generate(100000)
+
+    lower_threshold = 0.01
+    lower_joint = ((samples[0] < lower_threshold) & (samples[1] < lower_threshold)).mean()
+    lower_marginal = (samples[1] < lower_threshold).mean()
+    estimated_lower = lower_joint / lower_marginal
+
+    upper_threshold = 0.99
+    upper_joint = ((samples[0] > upper_threshold) & (samples[1] > upper_threshold)).mean()
+    upper_marginal = (samples[1] > upper_threshold).mean()
+    estimated_upper = upper_joint / upper_marginal
+
+    assert np.isclose(estimated_lower, copula.lower_tail_dependence, atol=6e-2)
+    assert np.isclose(estimated_upper, copula.upper_tail_dependence, atol=6e-2)
+    copula_margins(samples)
+
+
+def test_fra1_independence_limit():
+    config.rng = np.random.default_rng(24680)
+    samples = copulas.FRA1Copula(eta=-1.0, theta=-1.0).generate(100000)
+    rank_correlation = scipy.stats.spearmanr(host_values(samples[0]), host_values(samples[1])).statistic
+    assert np.isclose(rank_correlation, 0.0, atol=1e-2)
+    copula_margins(samples)
+
+
+@pytest.mark.parametrize(
+    ("eta", "theta"),
+    [(-1.01, 0.0), (1.0, 0.0), (0.0, -1.01), (0.0, 1.0), (np.nan, 0.0), (0.0, np.inf)],
+)
+def test_fra1_parameter_errors(eta: float, theta: float):
+    with pytest.raises(ValueError):
+        copulas.FRA1Copula(eta=eta, theta=theta)
+
+
+def test_fra1_apply_requires_two_variables():
+    variables = [distributions.Normal().generate(100), distributions.Normal().generate(100), distributions.Normal().generate(100)]
+    with pytest.raises(ValueError, match="FRA1Copula currently supports exactly two variables"):
+        copulas.FRA1Copula(eta=0.2, theta=0.3).apply(variables)
+
 @pytest.mark.parametrize("theta", [0.00001, 0.1, 0.5, 2, 4])
 def test_galambos_copula(theta: float):
     config.rng = np.random.default_rng(42)
