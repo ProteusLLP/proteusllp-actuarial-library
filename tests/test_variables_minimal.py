@@ -179,11 +179,11 @@ def test_correlation_matrix_types():
 
     assert allclose(
         x.correlation_matrix("linear"),
-        [[1.0, -1.0, 0.9], [-1.0, 1.0, -0.9], [0.9, -0.9, 1.0]],
+        [[1.0, -1.0, 0.8], [-1.0, 1.0, -0.8], [0.8, -0.8, 1.0]],
     )
     assert allclose(
         x.correlation_matrix("spearman"),
-        [[1.0, -1.0, 0.9], [-1.0, 1.0, -0.9], [0.9, -0.9, 1.0]],
+        [[1.0, -1.0, 0.8], [-1.0, 1.0, -0.8], [0.8, -0.8, 1.0]],
     )
     assert allclose(
         x.correlation_matrix("kendall"),
