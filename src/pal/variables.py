@@ -850,9 +850,9 @@ class ProteusVariable(t.Generic[T]):
         ]
 
         if correlation_type == "kendall":
-            result = np.eye(n, dtype=float)
+            result = np.empty((n, n), dtype=float)
             for i in range(n):
-                for j in range(i + 1, n):
+                for j in range(i, n):
                     tau = float(
                         scipy.stats.kendalltau(values[i], values[j]).statistic  # type: ignore[arg-type]
                     )
