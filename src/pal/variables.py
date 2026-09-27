@@ -845,25 +845,28 @@ class ProteusVariable(t.Generic[T]):
         if not hasattr(self[0], "values"):
             raise TypeError(f"First element must have 'values' attribute, got {type(self[0]).__name__}")
         n = len(self.values)
-        result: list[list[float]] = [[0.0] * n] * n
         values: list[npt.NDArray[t.Any]] = [
-            asnumpy(getattr(self[i], "values", self[i])) for i in range(len(self.values))
+            asnumpy(getattr(self[i], "values", self[i])) for i in range(n)
         ]
-        if correlation_type.lower() in ["spearman", "kendall"]:
-            # rank the variables first
-            for i, value in enumerate(values):
-                values[i] = scipy.stats.rankdata(value)  # type: ignore[assignment]
 
         if correlation_type == "kendall":
-            for i, value1 in enumerate(values):
-                for j, value2 in enumerate(values):
-                    result[i][j] = float(
-                        scipy.stats.kendalltau(value1, value2).statistic  # type: ignore[arg-type]
+            result = np.eye(n, dtype=float)
+            for i in range(n):
+                for j in range(i + 1, n):
+                    tau = float(
+                        scipy.stats.kendalltau(values[i], values[j]).statistic  # type: ignore[arg-type]
                     )
-        else:
-            result = np.corrcoef(values).tolist()
+                    result[i, j] = tau
+                    result[j, i] = tau
+            return result.tolist()
 
-        return result
+        if correlation_type == "spearman":
+            values = [
+                scipy.stats.rankdata(value)  # type: ignore[misc]
+                for value in values
+            ]
+
+        return np.atleast_2d(np.corrcoef(values)).tolist()
 
     def histogram_plot(self, title: str | None = None) -> go.Figure:
         """Return overlaid Plotly histograms for the contained variables.
