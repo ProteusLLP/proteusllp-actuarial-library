@@ -834,7 +834,7 @@ class ProteusVariable(t.Generic[T]):
 
         return result  # type: ignore
 
-    def correlation_matrix(self, correlation_type: str = "spearman") -> list[list[float]]:
+    def correlation_matrix(self, correlation_type: str = "spearman") -> npt.NDArray[np.float64]:
         """Compute correlation matrix between variables."""
         # validate type
         correlation_type = correlation_type.lower()
@@ -856,7 +856,7 @@ class ProteusVariable(t.Generic[T]):
                     )
                     result[i, j] = tau
                     result[j, i] = tau
-            return result.tolist()
+            return result
 
         if correlation_type == "spearman":
             values = [
@@ -864,7 +864,7 @@ class ProteusVariable(t.Generic[T]):
                 for value in values
             ]
 
-        return np.atleast_2d(np.corrcoef(values)).tolist()
+        return np.atleast_2d(np.corrcoef(values))
 
     def histogram_plot(self, title: str | None = None) -> go.Figure:
         """Return overlaid Plotly histograms for the contained variables.
