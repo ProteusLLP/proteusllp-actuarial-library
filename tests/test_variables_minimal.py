@@ -161,27 +161,42 @@ def test_correlation_matrix():
         },
     )
     corr = x.correlation_matrix()
-    assert isinstance(corr, list)
+    assert isinstance(corr, np.ndarray)
     assert allclose(corr, [[1.0, 1.0], [1.0, 1.0]])
     assert len(corr) == 2
 
 
 def test_correlation_matrix_types():
-    """Test different correlation types."""
+    """Test linear, Spearman, and Kendall correlation values."""
     x = ProteusVariable(
         "dim",
         {
             "a": StochasticScalar([1, 2, 3, 4, 5]),
             "b": StochasticScalar([5, 4, 3, 2, 1]),
+            "c": StochasticScalar([1, 3, 2, 5, 4]),
         },
     )
-    corr_spearman = x.correlation_matrix("spearman")
-    corr_kendall = x.correlation_matrix("kendall")
-    corr_linear = x.correlation_matrix("linear")
 
-    assert isinstance(corr_spearman, list)
-    assert isinstance(corr_kendall, list)
-    assert isinstance(corr_linear, list)
+    assert allclose(
+        x.correlation_matrix("linear"),
+        [[1.0, -1.0, 0.8], [-1.0, 1.0, -0.8], [0.8, -0.8, 1.0]],
+    )
+    assert allclose(
+        x.correlation_matrix("spearman"),
+        [[1.0, -1.0, 0.8], [-1.0, 1.0, -0.8], [0.8, -0.8, 1.0]],
+    )
+    assert allclose(
+        x.correlation_matrix("kendall"),
+        [[1.0, -1.0, 0.6], [-1.0, 1.0, -0.6], [0.6, -0.6, 1.0]],
+    )
+
+
+@pytest.mark.parametrize("correlation_type", ["linear", "spearman", "kendall"])
+def test_correlation_matrix_single_variable(correlation_type: str):
+    """A single stochastic variable still returns a 1x1 matrix."""
+    x = ProteusVariable("dim", {"a": StochasticScalar([1, 2, 3, 4, 5])})
+
+    assert allclose(x.correlation_matrix(correlation_type), [[1.0]])
 
 
 def test_array_protocol():
