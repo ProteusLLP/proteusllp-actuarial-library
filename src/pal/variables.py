@@ -845,9 +845,7 @@ class ProteusVariable(t.Generic[T]):
         if not hasattr(self[0], "values"):
             raise TypeError(f"First element must have 'values' attribute, got {type(self[0]).__name__}")
         n = len(self.values)
-        values: list[npt.NDArray[t.Any]] = [
-            asnumpy(getattr(self[i], "values", self[i])) for i in range(n)
-        ]
+        values: list[npt.NDArray[t.Any]] = [asnumpy(getattr(self[i], "values", self[i])) for i in range(n)]
 
         if correlation_type == "kendall":
             result = np.empty((n, n), dtype=float)
