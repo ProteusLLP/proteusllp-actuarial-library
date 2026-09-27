@@ -161,7 +161,7 @@ def test_correlation_matrix():
         },
     )
     corr = x.correlation_matrix()
-    assert isinstance(corr, list)
+    assert isinstance(corr, np.ndarray)
     assert allclose(corr, [[1.0, 1.0], [1.0, 1.0]])
     assert len(corr) == 2
 
