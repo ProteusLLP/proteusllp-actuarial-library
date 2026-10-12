@@ -204,11 +204,11 @@ class ProteusVariable(t.Generic[T]):
                         self.dimensions.append(dimension)
 
             if self.n_sims is None:
-                if isinstance(value, ProteusStochasticVariable):
+                if isinstance(value, (ProteusStochasticVariable, ProteusVariable)):
                     self.n_sims = value.n_sims
                 else:
                     self.n_sims = 1
-            elif isinstance(value, ProteusStochasticVariable):
+            elif isinstance(value, (ProteusStochasticVariable, ProteusVariable)):
                 if value.n_sims != self.n_sims:
                     if self.n_sims == 1:
                         self.n_sims = value.n_sims
