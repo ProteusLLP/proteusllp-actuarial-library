@@ -142,6 +142,24 @@ GaussianCopula([[1.0, 0.8], [0.8, 1.0]]).apply([x, y])
 np.corrcoef(x.ranks, y.ranks)[0, 1]
 ```
 
+### Scatter Plots — Rank Space
+
+The best way to understand how copulas differ is to plot the variables in
+**rank space** (plotting the ranks rather than the raw values). This removes
+the effect of the marginal distributions and isolates the dependency
+structure.
+
+```{only} html
+![Copula dependency structures in rank space](../_static/generated/copula_scatter_plots.svg)
+```
+
+- **Independent**: uniform scatter with no pattern
+- **Gaussian**: elliptical concentration along the diagonal
+- **Gumbel**: strong clustering in the upper-right corner (upper tail)
+- **Clayton**: strong clustering in the lower-left corner (lower tail)
+- **Student's T**: similar to Gaussian but with heavier concentration in
+  both corners (both tails)
+
 PAL can also generate all pairwise scatter plots directly from a
 `ProteusVariable`:
 
@@ -152,6 +170,16 @@ dependency = ProteusVariable("variable", {"X": x, "Y": y})
 dependency.rank_scatter_plot(title="Dependency in rank space").show()
 dependency.value_scatter_plot(title="Dependency in value space").show()
 ```
+
+```{only} html
+![Pairwise dependency in rank space](../_static/generated/copula_rank_scatter.svg)
+
+![Pairwise dependency in value space](../_static/generated/copula_value_scatter.svg)
+```
+
+For multivariate variables these methods plot every unordered pair. By default
+pairs are shown in subplots; pass `frames=True` to show one pair at a time with
+a Plotly slider.
 
 ## 3. Variable Reordering
 

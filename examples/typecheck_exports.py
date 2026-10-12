@@ -6,12 +6,18 @@ should rely on from the installed package.
 
 # pyright: reportUnusedImport=false
 
-from pal import config, set_default_n_sims, set_random_seed
+from pal import (
+    FreqSevSims,
+    FrequencySeverityModel,
+    ProteusVariable,
+    StochasticScalar,
+    config,
+    set_default_n_sims,
+    set_random_seed,
+)
 from pal.contracts import XoL, XoLTower
 from pal.copulas import GaussianCopula
 from pal.distributions import Gamma
-from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
-from pal.variables import ProteusVariable, StochasticScalar
 
 _ = (
     config,
