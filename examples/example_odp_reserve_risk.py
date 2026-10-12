@@ -1,4 +1,3 @@
-# type: ignore
 """
 Over-Dispersed Poisson (ODP) Bayesian Posterior Predictive Model
 ================================================================
@@ -14,10 +13,12 @@ Proteus Actuarial Library.
 
 import numpy as np
 
-from pal import ProteusVariable, StochasticScalar, config, distributions
-from pal import maths as pnp
+import pal
+import pal.maths as pnp
+from pal.distributions import Beta, Gamma, Poisson
+from pal.variables import ProteusVariable, StochasticScalar
 
-config.n_sims = 100_000
+pal.config.n_sims = 100_000
 
 
 class ODPModel:
@@ -46,10 +47,6 @@ class ODPModel:
             str(op): [str(j) for j in range(self.n - op + 2, self.n + 1)] for op in range(1, self.n + 1)
         }
 
-    # ---------------------------------------------------------
-    # Step 1: estimate dispersion φ̂
-    # ---------------------------------------------------------
-
     def estimate_phi(self):
         """Estimate the dispersion parameter φ from the observed triangle.
 
@@ -58,22 +55,19 @@ class ODPModel:
         """
         n = self.n
         cumtri = self.cumtri
-
-        # Link ratios
         link = np.zeros(n)
         for j in range(1, n):
             num = np.sum(cumtri[: n - j, j])
             den = np.sum(cumtri[: n - j, j - 1])
             link[j] = num / den
 
-        # Tail factors and beta pattern
         tail = np.ones(n)
         for j in range(n - 2, -1, -1):
             tail[j] = tail[j + 1] * link[j + 1]
         cumulative_beta_hat = 1 / tail
 
         beta_hat = np.diff(cumulative_beta_hat, prepend=0)
-        mu_hat = np.array([cumtri[i, n - i - 1] / (cumulative_beta_hat[n - i - 1]) for i in range(n)])
+        mu_hat = np.array([cumtri[i, n - i - 1] / cumulative_beta_hat[n - i - 1] for i in range(n)])
         m_hat = np.outer(mu_hat, beta_hat)
 
         num = np.sum(((m_hat - self.triangle) ** 2 / m_hat)[self.obs_mask])
@@ -82,72 +76,47 @@ class ODPModel:
         self.phi = num / denom
         return self.phi
 
-    # ---------------------------------------------------------
-    # Step 2: build posteriors ψ_j, β_j, μ_i
-    # ---------------------------------------------------------
     def build_posterior(self):
         n, phi = self.n, self.phi
         cumtri = self.cumtri
-        d_i = np.nansum(self.triangle, axis=1) / phi  # the scaled origin period totals
-        c_j = np.nansum(self.triangle, axis=0) / phi  # the scaled development period totals
+        d_i = np.nansum(self.triangle, axis=1) / phi
+        c_j = np.nansum(self.triangle, axis=0) / phi
         d_ij = cumtri / phi
-        # column sums of d_ij not including the diagonal
         sum_dij = [np.sum(d_ij[: n - j, j - 1]) for j in range(1, n)]
 
-        # ψ_j ~ Beta(a_j + C_j, b_j + Σ_i D_{i,j-1})
-        # psi is the incremental amount of the remaining development to be paid
-        #
-        psi_vars = [StochasticScalar([1])]  # ψ₁ = 1
+        psi = ProteusVariable("Development Period", {"1": StochasticScalar([1.0])})
         for j in range(1, n):
-            a_j, b_j = 0.0, 1.0
-            psi_vars.append(distributions.Beta(a_j + float(c_j[j]), b_j + float(sum_dij[j - 1])).generate())
-        psi = ProteusVariable("dp", {str(dp + 1): psi_vars[dp] for dp in range(n)})
+            a_j, b_j = 0.0, 1.0  # adapt if necessary based on prior knowledge
+            psi[str(j + 1)] = Beta(a_j + c_j[j], b_j + sum_dij[j - 1]).generate()
 
-        # β_j recursively from ψ
-        betas = [StochasticScalar([])] * n
-        betas[-1] = psi[-1]
-        future_sum_beta = psi[-1]
+        betas = ProteusVariable("Development Period", {str(j + 1): StochasticScalar([1.0]) for j in range(n)})
+        betas[str(n)] = psi[str(n)]
+        future_sum_beta = psi[str(n)]
         for j in range(n - 2, -1, -1):
-            betas[j] = psi[j] * (1 - future_sum_beta)
-            future_sum_beta = future_sum_beta + betas[j]
+            betas[str(j + 1)] = psi[str(j + 1)] * (1 - future_sum_beta)
+            future_sum_beta = future_sum_beta + betas[str(j + 1)]
         cumulative_payment_pattern = pnp.cumsum(betas)
 
-        # μ_i ~ φGamma(D_i, 1/(Σ β_j))
-        # These are the origin period means
         self.mu = ProteusVariable(
-            dim_name="op",
+            dim_name="Origin Period",
             values={
-                str(i + 1): phi
-                * np.maximum(1 / (cumulative_payment_pattern[n - i - 1]), 0)
-                * distributions.Gamma(
-                    float(d_i[i]),
-                    1,
-                ).generate()
+                str(i + 1): phi * np.maximum(1 / cumulative_payment_pattern[n - i - 1], 0) * Gamma(d_i[i], 1).generate()
                 for i in range(n)
             },
         )
-        self.betas = ProteusVariable("dp", {str(dp + 1): betas[dp] for dp in range(n)})
+        self.betas = betas
 
-    # ---------------------------------------------------------
-    # Step 3: simulate predictive distribution
-    # ---------------------------------------------------------
     def simulate_reserves(self) -> StochasticScalar:
-        """Simulate the predictive distribution of future claims.
-
-        Returns:
-            StochasticScalar: Total future claims payments
-        """
+        """Simulate the predictive distribution of future claims."""
         self.estimate_phi()
         self.build_posterior()
         phi = self.phi
-        total_by_origin: ProteusVariable[StochasticScalar] = ProteusVariable("op", {})
+        total_by_origin: ProteusVariable[StochasticScalar] = ProteusVariable("Origin Period", {})
 
         for op in self.origin_periods:
-            total_by_origin[op] = 0.0
+            total_by_origin[op] = StochasticScalar([0.0])
             for dp in self.future_dev_periods[op]:
-                x_ij = distributions.Poisson(
-                    self.mu[op] * self.betas[dp] / phi
-                ).generate()  # could also use a Gamma as the forecasting distribution
+                x_ij = Poisson(self.mu[op] * self.betas[dp] / phi).generate()
                 total_by_origin[op] = total_by_origin[op] + phi * x_ij
 
         total = total_by_origin.sum()
@@ -155,14 +124,7 @@ class ODPModel:
         self.total_future_claims_by_origin = total_by_origin
         return total
 
-    # ---------------------------------------------------------
-    # Step 4: summary reporting
-    # ---------------------------------------------------------
-
-    def describe(
-        self,
-        percentiles: list[float] | None = None,
-    ):
+    def describe(self, percentiles: list[float] | None = None):
         if percentiles is None:
             percentiles = [0.5, 1, 2.5, 5, 10, 50, 90, 95, 99, 99.5]
         x = self.total_future_claims
@@ -179,11 +141,6 @@ class ODPModel:
         return {"mean": mean, "sd": sd, "cv": cv}
 
 
-# ---------------------------------------------------------------------
-# Helper: standard cumulative and mask logic
-# ---------------------------------------------------------------------
-
-
 def cumulative_triangle(tri: np.ndarray) -> np.ndarray:
     """Row-wise cumulative sums (NaNs treated as zero)."""
     return np.cumsum(np.nan_to_num(tri), axis=1)
@@ -198,13 +155,8 @@ def observed_mask(tri: np.ndarray) -> np.ndarray:
     return mask
 
 
-# ---------------------------------------------------------------------
-# Example usage
-# ---------------------------------------------------------------------
-
 if __name__ == "__main__":
     import pandas as pd
-    import plotly.graph_objects as go
 
     triangle = pd.read_csv("data/reserve_risk/claims_triangle.csv", index_col=0).to_numpy()
 
@@ -213,19 +165,16 @@ if __name__ == "__main__":
     model.describe()
     total_future_claims_by_origin = model.total_future_claims_by_origin
 
-    fig = go.Figure()
-    for i in range(2, model.n + 1):
-        fig.add_trace(
-            go.Scatter(
-                x=np.sort(total_future_claims_by_origin[str(i)].tolist()),  # type: ignore
-                y=np.linspace(0, 1, config.n_sims),
-                name=f"Origin Period {i}",
-            )
-        )
-        fig.update_layout(
-            title="Predictive CDFs of Future Claims by Origin Period",
-            xaxis_title="Future Claims Payments",
-            yaxis_title="Cumulative Probability",
-        )
+    fig = total_future_claims_by_origin.cdf_plot(title="Predictive CDFs of Future Claims by Origin Period")
+    fig.update_layout(
+        title="Predictive CDFs of Future Claims by Origin Period",
+        xaxis_title="Future Claims Payments",
+        yaxis_title="Cumulative Probability",
+    )
     print("Displaying predictive CDF plot...")
+
+    fig.show()
+    fig = total_future_claims_by_origin.percentile_fan_plot(
+        title="Predictive Percentile Fan Plots of Future Claims by Origin Period"
+    )
     fig.show()

@@ -14,4 +14,4 @@ inflation_index = ProteusVariable.from_csv(
 # upsample the inflation index to the correct number of simulations
 upsampled_inflation_index = inflation_index.upsample(n_sims)
 
-upsampled_inflation_index.show_cdf()
+upsampled_inflation_index.cdf_plot().show()

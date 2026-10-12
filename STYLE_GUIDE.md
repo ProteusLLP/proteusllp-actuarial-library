@@ -3,10 +3,12 @@
 
 This document outlines the coding standards and style guidelines for the Proteus Actuarial Library.
 
+Configuration in `pyproject.toml` is authoritative where a tool setting or supported Python version is concerned.
+
 ## Code Style
 
-- **Line Length**: 120 characters (following Black's default)
-- **Python Version**: 3.11+
+- **Line Length**: 120 characters, as configured in `pyproject.toml`
+- **Python Version**: support the versions declared by `requires-python` and the project classifiers in `pyproject.toml`
 - **Import Sorting**: Automatic via ruff (isort rules)
 - **Code Formatting**: Automatic via ruff formatter
 - **Whitespace**: No trailing whitespace at end of lines
@@ -80,7 +82,7 @@ def calculate_premium(base_amount: float, rate: float) -> float:
 ## Comments
 
 - **Purpose**: Comments should explain WHY, not WHAT the code does
-- **Line Length**: Must not exceed 120 characters per line
+- **Line Length**: Must not exceed the Ruff line length configured in `pyproject.toml`
 - **Quality**: The code itself shows what it does - comments that repeat this are redundant noise
 - **Good comments explain**:
   - Business logic and domain-specific rules
@@ -104,8 +106,8 @@ for item in reversed(items):
 ## Docstrings
 
 - **Style**: Google-style docstrings
-- **Required**: All public modules, classes, functions, and methods
-- **Required**: Test functions should have docstrings explaining what they test
+- **Required**: Public modules, classes, functions, and methods according to the Ruff configuration
+- **Tests**: Use a test docstring when it adds useful intent; test-function docstrings are not required by lint
 - **No Types**: Do not include type information in docstrings (use type hints instead)
 
 ### Function/Method Docstrings
@@ -147,12 +149,15 @@ class ActuarialModel:
 
 ### Test Docstrings
 
+Use test names as the primary description. Add a docstring when the reason for a test or its numerical reference is not obvious from the name and assertions.
+
 ```python
 def test_premium_calculation_with_zero_rate():
-    """Test that premium calculation returns zero when rate is zero."""
+    """Zero premium rate must produce zero premium."""
+
 
 def test_policy_validation_rejects_expired_policies():
-    """Test that policy validation properly rejects expired policies."""
+    """Expired policies are rejected before claims are processed."""
 ```
 
 ## Security
@@ -166,9 +171,11 @@ def test_policy_validation_rejects_expired_policies():
 The following tools are configured and must pass in CI:
 
 - **ruff**: Linting, formatting, import sorting, docstring validation
-- **mypy**: Type checking with strict mode
+- **pyright**: Type checking
 - **bandit**: Security vulnerability scanning
 - **vulture**: Dead code detection
+
+The `Makefile` is the canonical interface for running these checks.
 
 ## VS Code Configuration
 
@@ -178,15 +185,20 @@ Install these extensions for consistent development experience:
 - **Pylance** (`ms-python.pylance`) - Type checking and IntelliSense
 - **Python** (`ms-python.python`) - Core Python support
 
-The project includes `.vscode/settings.json` with tool configurations that match CI.
+The project includes VS Code/devcontainer configuration intended to match CI.
 
 ## Enforcement
 
-All static analysis checks must pass before code can be merged. The CI pipeline will:
+All configured static analysis checks must pass before code can be merged. Use the Makefile rather than maintaining a separate list of direct tool commands:
 
-1. Run ruff for linting and formatting checks
-2. Run mypy for type checking
-3. Run bandit for security scanning
-4. Run vulture for dead code detection
+```bash
+make static-analysis
+```
 
-Use `pdm run` commands locally to ensure compliance before pushing.
+Before completing a change, run the full relevant validation, normally:
+
+```bash
+make check
+```
+
+For backend-sensitive changes, also run the relevant GPU validation described in the repository agent guidance and CI workflows.

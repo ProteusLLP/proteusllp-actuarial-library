@@ -96,37 +96,24 @@ class XoL:
         Returns:
             ContractResults: The results of applying the contract.
 
-        Calculation of the recoveries from the excess of loss contract:
+        Notes:
+            Recoveries are computed in the following steps::
 
-        Firstly, the effect of any franchise or reverse franchise is calculated
-        on the individual losses.
+                losses_post_franchise = (
+                    loss if franchise <= loss < reverse_franchise else 0
+                )
+                layer_loss = min(max(losses_post_franchise - excess, 0), limit)
+                aggregate_recoveries = min(
+                    max(aggregate_layer_losses - aggregate_deductible, 0),
+                    aggregate_limit,
+                )
 
-        losses post franchise = loss if loss >= franchise and loss<= reverse franchise
+            Aggregate recoveries are allocated back to individual losses in
+            proportion to the individual recoveries before the aggregate limit and
+            deductible.
 
-        Next the individual losses to the layer are calculated:
-
-        layer_loss = min(max(losses post franchise - excess, 0), limit)
-
-        Then the aggregate layer losses before aggregate limit and deductible
-        are calculated.
-        The aggregate limit and deductible are then applied to get the aggregate
-        recoveries for the layer:
-
-        aggregate_recoveries = min(
-            max(aggregate_layer_losses - aggregate_deductible, 0),
-            aggregate_limit
-        )
-
-        The aggregate recoveries are then allocated back to the individual losses
-        in proportion to the individual recoveries before aggregate limit and
-        deductible.
-
-        The reinstatement premium is calculated as the sum of the reinstatement
-        premium cost multiplied by the number of reinstatements used.
-        The number of reinstatements used is calculated as the minimum of the
-        aggregate recoveries divided by the limit and the number of
-        reinstatements available (which is the aggregate limit divided by the
-        occurrence limit, less one).
+            Reinstatement premium is calculated as the sum of reinstatement premium
+            cost multiplied by the number of reinstatements used.
         """
         # apply franchise
         if self.franchise != 0 or self.reverse_franchise != np.inf:

@@ -3,26 +3,23 @@
 import numpy as np
 import pytest
 
-from pal import (
+from pal import set_random_seed
+from pal._maths import xp
+from pal.config import config
+from pal.copulas import StudentsTCopula
+from pal.distributions import InverseGaussian, NegBinomial, Normal, StudentsT
+from pal.multivariate_distributions import (
     Dirichlet,
     GeneralizedDirichlet,
-    InverseGaussian,
     InverseWishart,
     InvertedDirichlet,
     InvertedGeneralizedDirichlet,
     Multinomial,
     MultivariateNormal,
     MultivariateStudentsT,
-    NegBinomial,
-    Normal,
-    StochasticScalar,
-    StudentsT,
     Wishart,
-    set_random_seed,
 )
-from pal._maths import xp
-from pal.config import config
-from pal.copulas import StudentsTCopula
+from pal.variables import StochasticScalar
 
 pytestmark = pytest.mark.skipif(xp.__name__ != "cupy", reason="requires the CuPy backend")
 

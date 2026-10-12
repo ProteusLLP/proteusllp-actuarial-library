@@ -317,7 +317,7 @@ class StudentsTCopula(EllipticalCopula):
 
     .. math::
 
-        \lambda_U = \lambda_L = 2t_{\nu+1}\left(-\sqrt{\frac{(\nu+1)(1-\rho)}{1+\rho}}\right)
+        \lambda_U = \lambda_L = 2\,t_{\nu+1}\left(-\sqrt{\frac{(\nu+1)(1-\rho)}{1+\rho}}\right)
 
     where :math:`\nu` is the degrees of freedom and :math:`\rho` is the correlation parameter.
     """
@@ -522,7 +522,7 @@ class GumbelCopula(ArchimedeanCopula):
 
     .. math::
 
-        C(u_1, \ldots, u_d) = \exp\left[-\left(\sum_{i=1}^d (-\ln u_i)^\theta\right)^{1/\theta}\right]
+        C(u_1, \ldots, u_d) = \exp\left(-\left(\sum_{i=1}^d (-\ln u_i)^\theta\right)^{1/\theta}\right)
 
     where :math:`\theta \geq 1` is the dependence parameter. The Gumbel copula
     exhibits upper tail dependence and is part of the Archimedean family. The upper
@@ -570,9 +570,9 @@ class FrankCopula(ArchimedeanCopula):
 
     .. math::
 
-        C(u_1, \ldots, u_d) = -\frac{1}{\theta} \ln\left(1 +
-            \frac{\prod_{i=1}^d (e^{-\theta u_i} - 1)}{(e^{-\theta} - 1)^{d-1}}
-            \right)
+        C(u_1, \ldots, u_d) = -\frac{1}{\theta}\ln\left(
+            1 + \frac{\prod_{i=1}^d (e^{-\theta u_i} - 1)}{(e^{-\theta} - 1)^{d-1}}
+        \right)
 
     where :math:`\theta \in \mathbb{R} \setminus \{0\}` is the dependence parameter.
     The Frank copula is symmetric and does not exhibit tail dependence.
@@ -686,8 +686,7 @@ class MM1Copula(Copula):
 
     .. math::
 
-        \lambda_{ij} = 2 - \left(\frac{2^{1/\delta_{ij}}}{d-1}
-        + \frac{2(d-2)}{d-1}\right)^{1/\theta}
+        \lambda_{ij} = 2 - \left(\frac{2^{1/\delta_{ij}}}{d-1} + \frac{2(d-2)}{d-1}\right)^{1/\theta}
 
     where :math:`\delta_{ij}` is the pairwise parameter from the delta_matrix,
     :math:`d` is the dimension of the copula, and :math:`\theta` is the overall
@@ -1421,8 +1420,7 @@ class ExtremalTCopula(Copula):
 
     .. math::
 
-        \lambda_{ij} = 2 \, t_{\nu+1}\left(-\sqrt{
-        \frac{(\nu+1)(1-\rho_{ij})}{1+\rho_{ij}}}\right)
+        \lambda_{ij} = 2\, t_{\nu+1}\left(-\sqrt{\frac{(\nu+1)(1-\rho_{ij})}{1+\rho_{ij}}}\right)
 
     where :math:`t_{\nu+1}` is the CDF of a univariate t-distribution with
     :math:`\nu+1` degrees of freedom and :math:`\rho_{ij}` is the correlation

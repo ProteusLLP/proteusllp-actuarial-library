@@ -38,7 +38,7 @@ The paper models an insurance portfolio with:
 ```python
 import pandas as pd
 
-from pal.config import set_default_n_sims, set_random_seed
+from pal import set_default_n_sims, set_random_seed
 from pal.contracts import XoLTower
 from pal.distributions import Pareto, Poisson
 from pal.frequency_severity import FrequencySeverityModel

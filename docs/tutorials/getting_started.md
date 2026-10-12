@@ -8,7 +8,9 @@ Library through a short, end-to-end example.
 ```python
 import numpy as np
 
-from pal import config, copulas, distributions, set_random_seed
+from pal import FrequencySeverityModel, config, set_random_seed
+from pal.copulas import GaussianCopula
+from pal.distributions import LogNormal, Poisson
 
 config.n_sims = 10_000
 set_random_seed(42)
@@ -24,7 +26,7 @@ Create a loss variable from a LogNormal distribution:
 <!--pytest-codeblocks:cont-->
 
 ```python
-loss = distributions.LogNormal(mu=14, sigma=0.5).generate()
+loss = LogNormal(mu=14, sigma=0.5).generate()
 ```
 
 This returns a `StochasticScalar` — a vector of 10,000 simulated values.
@@ -63,8 +65,8 @@ lockstep.
 
 ```python
 set_random_seed(42)
-motor = distributions.LogNormal(mu=14, sigma=0.5).generate()
-prop = distributions.LogNormal(mu=15, sigma=0.8).generate()
+motor = LogNormal(mu=14, sigma=0.5).generate()
+prop = LogNormal(mu=15, sigma=0.8).generate()
 
 combined = motor + prop
 ```
@@ -88,10 +90,10 @@ economic conditions). Use a copula to introduce dependence:
 
 ```python
 set_random_seed(42)
-motor = distributions.LogNormal(mu=14, sigma=0.5).generate()
-prop = distributions.LogNormal(mu=15, sigma=0.8).generate()
+motor = LogNormal(mu=14, sigma=0.5).generate()
+prop = LogNormal(mu=15, sigma=0.8).generate()
 
-copulas.GaussianCopula([[1, 0.5], [0.5, 1]]).apply([motor, prop])
+GaussianCopula([[1, 0.5], [0.5, 1]]).apply([motor, prop])
 
 combined = motor + prop
 ```
@@ -116,12 +118,10 @@ For compound distributions (random number of random-sized claims):
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal.frequency_severity import FrequencySeverityModel
-
 set_random_seed(42)
 model = FrequencySeverityModel(
-    freq_dist=distributions.Poisson(mean=100),
-    sev_dist=distributions.LogNormal(mu=10, sigma=1.5),
+    freq_dist=Poisson(mean=100),
+    sev_dist=LogNormal(mu=10, sigma=1.5),
 )
 events = model.generate()
 ```
@@ -146,17 +146,49 @@ tutorial for more detail.
 
 ## Visualisation
 
-Every `StochasticScalar` has a `show_cdf()` method that displays an
-interactive CDF plot:
+PAL's stochastic variables include Plotly chart helpers, so a simulation can go
+straight from calculation to an interactive figure. For example, a histogram is
+a quick way to inspect the shape and skew of the individual loss distribution:
 
 <!--pytest.mark.skip-->
 
 ```python
-agg.show_cdf("Aggregate Loss")
+fig = loss.histogram_plot("Loss Distribution")
+fig.show()
 ```
 
-Set the environment variable `PAL_SUPPRESS_PLOTS=true` to disable
-plot display in headless environments.
+```{only} html
+![Histogram of simulated loss values](../_static/generated/distributions_guide_histogram.svg)
+```
+
+For aggregate losses, an empirical CDF makes probabilities and tail percentiles
+easy to inspect:
+
+<!--pytest.mark.skip-->
+
+```python
+fig = agg.cdf_plot("Aggregate Loss")
+fig.show()
+```
+
+```{only} html
+![Aggregate loss empirical CDF](../_static/generated/getting_started_aggregate_cdf.svg)
+```
+
+The plotting methods return standard Plotly `Figure` objects. See the
+[Plotly Python documentation](https://plotly.com/python/) for the full range of
+interactive charting functionality.
+
+PAL also provides `rank_scatter_plot()` and `value_scatter_plot()` on
+`ProteusVariable` containers for visualising dependence between stochastic
+variables; these are particularly useful when working with copulas. See the
+[Coupling Groups, Copulas and Variable Reordering](coupling_groups_and_copulas.md)
+tutorial for examples.
+
+Because the plotting methods do not display anything themselves, headless code
+can simply avoid calling `.show()`. The older `show_cdf()` and
+`show_histogram()` convenience methods remain available for backwards
+compatibility.
 
 ## Configuration Summary
 

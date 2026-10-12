@@ -27,7 +27,7 @@ class StochasticScalar(ProteusStochasticVariable):
     """A class to represent a single scalar variable in a simulation."""
 
     coupled_variable_group: CouplingGroup
-    n_sims: int
+    n_sims: int  # pyright: ignore[reportIncompatibleVariableOverride]
     """The number of simulations in the variable."""
 
     # ===================
@@ -38,8 +38,8 @@ class StochasticScalar(ProteusStochasticVariable):
         """Initialize a stochastic scalar.
 
         Args:
-            values: An array of values that describe the distribution for the scalar
-                variable.
+            values: An array-like sequence of values that describe the distribution
+                for the scalar variable.
         """
         super().__init__()
 
@@ -49,33 +49,20 @@ class StochasticScalar(ProteusStochasticVariable):
             self.coupled_variable_group.merge(values.coupled_variable_group)
             return
 
-        if isinstance(values, list):
-            # Type ignore: Generic list type inference limitation
-            self.values = xp.array(values)  # type: ignore[misc]
-            self.n_sims = len(values)  # type: ignore[misc]
-            return
+        invalid_type_message = f"Type of values must be a sequence or array. Found {type(values).__name__}"
+        if isinstance(values, (str, dict, set)):
+            raise TypeError(invalid_type_message)
 
-        if isinstance(values, xp.ndarray):
-            if values.ndim == 1:
-                self.values = values
-                # Type ignore: Generic array type inference limitation
-                self.n_sims = len(values)  # type: ignore[misc]
-                return
+        try:
+            array = xp.asarray(values)
+        except (TypeError, ValueError) as exc:
+            raise TypeError(invalid_type_message) from exc
+
+        if array.ndim != 1:
             raise ValueError("Values must be a 1D array.")
 
-        if isinstance(values, np.ndarray):
-            if values.ndim == 1:
-                self.values = xp.asarray(
-                    values,
-                    dtype=values.dtype,  # type: ignore
-                )
-                # Type ignore: Generic array type inference limitation
-                self.n_sims = len(values)  # type: ignore[misc]
-                return
-            raise ValueError("Values must be a 1D array.")
-
-        # Type ignore: Generic ArrayLike type inference limitation
-        raise TypeError("Type of values must be a sequence or array. Found " + type(values).__name__)  # type: ignore[misc]
+        self.values = array
+        self.n_sims = len(array)
 
     def __repr__(self) -> str:
         try:
@@ -327,27 +314,46 @@ class StochasticScalar(ProteusStochasticVariable):
             return self
         return type(self)(self.values[xp.arange(n_sims) % self.n_sims])
 
-    def show_histogram(self, title: str | None = None) -> None:
-        """Show a histogram of the variable.
+    def histogram_plot(self, title: str | None = None) -> go.Figure:
+        """Return a Plotly histogram of the simulated values.
 
         Args:
-            title (optional): Title of the histogram plot. Defaults to None.
-        """
-        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
-            return
-        fig = go.Figure(go.Histogram(x=self), layout={"title": title})
-        # Type ignore: plotly-stubs has incomplete type information
-        fig.show()  # type: ignore[misc]
+            title: Optional title for the histogram.
 
-    def show_cdf(self, title: str | None = None) -> None:
-        """Show a plot of the cumulative distribution function (cdf) of the variable.
+        Returns:
+            A Plotly figure. Call ``.show()`` to display it, or use any of
+            Plotly's figure export methods to save it.
+        """
+        return go.Figure(go.Histogram(x=self), layout={"title": title})
+
+    def show_histogram(self, title: str | None = None) -> go.Figure:
+        """Show and return a histogram of the simulated values.
+
+        This method is retained for backwards compatibility. New code can use
+        :meth:`histogram_plot` and explicitly call ``.show()`` when required.
 
         Args:
-            title (optional): Title of the cdf plot. Defaults to None.
-        """
-        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
-            return
+            title: Optional title for the histogram.
 
+        Returns:
+            The Plotly figure that was displayed.
+        """
+        fig = self.histogram_plot(title=title)
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
+            # Type ignore: plotly-stubs has incomplete type information
+            fig.show()  # type: ignore[misc]
+        return fig
+
+    def cdf_plot(self, title: str | None = None) -> go.Figure:
+        """Return a Plotly empirical cumulative distribution function plot.
+
+        Args:
+            title: Optional title for the CDF plot.
+
+        Returns:
+            A Plotly figure. Call ``.show()`` to display it, or use any of
+            Plotly's figure export methods to save it.
+        """
         sorted_values = StochasticScalar(xp.sort(self.values))
         cumulative_probabilities = StochasticScalar(xp.arange(self.n_sims) / self.n_sims)
         fig = go.Figure(
@@ -360,7 +366,25 @@ class StochasticScalar(ProteusStochasticVariable):
         # Type ignore: plotly-stubs has incomplete type information
         fig.update_xaxes({"title": "Value"})  # type: ignore[misc]
         fig.update_yaxes({"title": "Cumulative Probability"})  # type: ignore[misc]
-        fig.show()  # type: ignore[misc]
+        return fig
+
+    def show_cdf(self, title: str | None = None) -> go.Figure:
+        """Show and return the empirical cumulative distribution function.
+
+        This method is retained for backwards compatibility. New code can use
+        :meth:`cdf_plot` and explicitly call ``.show()`` when required.
+
+        Args:
+            title: Optional title for the CDF plot.
+
+        Returns:
+            The Plotly figure that was displayed.
+        """
+        fig = self.cdf_plot(title=title)
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
+            # Type ignore: plotly-stubs has incomplete type information
+            fig.show()  # type: ignore[misc]
+        return fig
 
     # ===================
     # PRIVATE METHODS

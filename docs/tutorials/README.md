@@ -12,15 +12,20 @@ Library (PAL) with worked examples and outputs.
 | [Frequency-Severity Modelling](frequency_severity_modelling.md) | Compound models, aggregate losses, occurrence maxima and derived statistics |
 | [Coupling Groups, Copulas and Variable Reordering](coupling_groups_and_copulas.md) | Dependency structures, copula families, rank reordering and coupling groups |
 | [Pricing an Excess-of-Loss Reinsurance Program](xol_reinsurance.md) | XoL layers, towers, reinstatements, aggregate limits and net loss calculation |
+| [Property Reinsurance Exposure Rating with MBBEFD](property_exposure_rating.md) | Infer claim frequency from premium and loss ratio, build an empirical MBBEFD policy severity and compare simulation with exposure rating |
 | [XoL Reinstatement Pricing — Mata (2000)](reinstatement_pricing.md) | Reproducing pure premiums and PH transform premiums with reinstatements |
+| [Over-Dispersed Poisson Claims Reserving](odp_claims_reserving.md) | Exact Bayesian ODP predictive reserve distribution, chain-ladder mean and origin-period prior extension |
 | [Risk Measures and Capital Allocation](risk_measures_and_allocation.md) | Spectral risk measures, standard deviation principle, CAPL and Euler allocation |
 
 ## Prerequisites
 
-The tutorials assume PAL is installed and importable:
+The tutorials assume PAL is installed and importable. Modelling classes are
+imported directly from their public submodules:
 
 ```python
-from pal import distributions, copulas, config
+from pal import config
+from pal.copulas import GaussianCopula
+from pal.distributions import Gamma
 ```
 
 All examples use `set_random_seed(42)` for reproducibility.

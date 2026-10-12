@@ -26,7 +26,7 @@ class ProteusStochasticVariable(
     NDArrayOperatorsMixin,
     ABC,
 ):
-    n_sims: int | None
+    n_sims: int
     values: npt.NDArray[t.Any]
     coupled_variable_group: CouplingGroup
     _uid: int
