@@ -138,6 +138,7 @@ A small model, end to end
    tutorials/xol_reinsurance
    tutorials/property_exposure_rating
    tutorials/reinstatement_pricing
+   tutorials/odp_claims_reserving
    tutorials/risk_measures_and_allocation
 
 .. toctree::

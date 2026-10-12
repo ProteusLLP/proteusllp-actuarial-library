@@ -105,6 +105,7 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "D103"] # Allow assert and skip test function docstrings
 "examples/*" = ["D"]       # Skip docstrings in examples
+"src/pal/examples/*" = ["D"]  # Packaged copies of the runnable examples
 "src/pal/__init__.py" = ["F403"] # Allow star imports in package init
 
 
@@ -118,11 +119,12 @@ min_confidence = 80
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["pal"]
+packages = ["pal", "pal.examples"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-pal = ["py.typed"]
+pal = ["py.typed", "data/*/*.csv"]
+"pal.examples" = ["data/*.csv"]
 
 [tool.setuptools_scm]
 # Automatic versioning from git tags
