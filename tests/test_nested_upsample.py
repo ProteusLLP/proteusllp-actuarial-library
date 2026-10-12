@@ -55,12 +55,8 @@ def test_upsample_freqsev_preserves_shared_simulation_selection() -> None:
         np.asarray(resampled_second.aggregate()),
         10.0 * np.asarray(resampled_first.aggregate()),
     )
-    np.testing.assert_array_equal(
-        np.asarray(resampled_first.sim_index), [0, 0, 2, 3, 4, 4, 6, 7, 8, 8]
-    )
-    np.testing.assert_array_equal(
-        np.asarray(resampled_first.values), [1, 2, 4, 5, 1, 2, 4, 5, 1, 2]
-    )
+    np.testing.assert_array_equal(np.asarray(resampled_first.sim_index), [0, 0, 2, 3, 4, 4, 6, 7, 8, 8])
+    np.testing.assert_array_equal(np.asarray(resampled_first.values), [1, 2, 4, 5, 1, 2, 4, 5, 1, 2])
     assert type(resampled_first.sim_index) is type(first.sim_index)
     assert type(resampled_first.values) is type(first.values)
 
