@@ -11,6 +11,8 @@ Proteus Actuarial Library.
 
 """
 
+from importlib.resources import files
+
 import numpy as np
 
 import pal
@@ -157,9 +159,10 @@ def observed_mask(tri: np.ndarray) -> np.ndarray:
 
 if __name__ == "__main__":
     import pandas as pd
-    from importlib.resources import files
 
-    triangle = pd.read_csv(files("pal").joinpath("data", "reserve_risk", "claims_triangle.csv").open("r"), index_col=0).to_numpy()
+    triangle = pd.read_csv(
+        files("pal").joinpath("data", "reserve_risk", "claims_triangle.csv").open("r"), index_col=0
+    ).to_numpy()
 
     model = ODPModel(triangle)
     model.simulate_reserves()

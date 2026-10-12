@@ -176,7 +176,7 @@ This is parameter uncertainty in the development pattern itself: every simulatio
 Conditional on the simulated development pattern, each origin-period ultimate has a gamma posterior. If $k_i=n-i+1$ is the latest observed development period for origin period $i$, then
 
 ```{math}
-\mu_i\mid\boldsymbol{\beta},X_n
+\mu_i\mid\vec{\beta},X_n
 \sim
 \operatorname{Gamma}\!\left(
     d_i,
@@ -312,4 +312,4 @@ The non-informative example above is therefore the chain-ladder endpoint of the 
 
 ## See also
 
-The executable script [`examples/example_odp_reserve_risk.py`](../../examples/example_odp_reserve_risk.py) contains the same non-informative exact predictive model in a compact reusable class.
+The executable script [`examples/example_odp_reserve_risk.py`](https://github.com/ProteusLLP/proteusllp-actuarial-library/blob/main/examples/example_odp_reserve_risk.py) contains the same non-informative exact predictive model in a compact reusable class.
