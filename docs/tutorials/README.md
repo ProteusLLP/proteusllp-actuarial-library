@@ -34,3 +34,6 @@ All examples use `set_random_seed(42)` for reproducibility.
 
 Jupyter notebook versions of several tutorials are available in the
 `examples/` directory for interactive exploration with inline plots.
+
+Runnable Python examples are also importable as `pal.examples` modules after installation.
+For example: `from pal.examples.example_odp_reserve_risk import ODPModel`.

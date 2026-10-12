@@ -118,11 +118,12 @@ min_confidence = 80
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["pal"]
+packages = ["pal", "pal.examples"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-pal = ["py.typed"]
+pal = ["py.typed", "data/*/*.csv"]
+"pal.examples" = ["data/*.csv"]
 
 [tool.setuptools_scm]
 # Automatic versioning from git tags
