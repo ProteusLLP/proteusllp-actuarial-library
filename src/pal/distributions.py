@@ -584,8 +584,14 @@ class GB2(DistributionBase):
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute the severity quantile at probability u."""
         a, b, p, q = self._params.values()
-        z = _special_call(special.betaincinv, p, q, u)
-        result = b * np.power(np.divide(z, 1 - z), 1 / a)
+        # Invert the smaller beta tail to retain accuracy for high severity quantiles.
+        upper_tail = np.greater(u, 0.5)
+        probability = np.minimum(u, 1 - u)
+        first_shape = np.where(upper_tail, q, p)
+        second_shape = np.where(upper_tail, p, q)
+        z = _special_call(special.betaincinv, first_shape, second_shape, probability)
+        ratio = np.where(upper_tail, np.divide(1 - z, z), np.divide(z, 1 - z))
+        result = b * np.power(ratio, 1 / a)
         return t.cast(ReturnType, scalar_or_array(result))
 
     @override
