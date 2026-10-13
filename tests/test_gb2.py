@@ -25,6 +25,17 @@ def test_gb2_matches_independent_beta_prime_reference(a: float, b: float, p: flo
         assert dist.cdf(expected) == pytest.approx(betaprime.cdf((expected / b) ** a, p, q), rel=1e-8)
 
 
+@pytest.mark.parametrize("q", [0.1, 0.3, 0.9])
+def test_gb2_extreme_upper_quantile(q: float) -> None:
+    """Even small q must return a finite high quantile when mathematically finite."""
+    dist = GB2(a=2.0, b=100.0, p=1.5, q=q)
+    probability = 1 - 1e-6
+    expected = 100.0 * betaprime.ppf(probability, 1.5, q) ** 0.5
+    actual = dist.invcdf(probability)
+    assert math.isfinite(float(actual))
+    assert actual == pytest.approx(expected, rel=1e-7)
+
+
 def test_gb2_boundaries_and_special_cases() -> None:
     """Check positive support and reduction to existing severity distributions."""
     dist = GB2(a=2.0, b=100.0, p=1.5, q=3.0)
