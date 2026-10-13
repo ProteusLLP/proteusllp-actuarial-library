@@ -585,7 +585,7 @@ class GB2(DistributionBase):
         """Compute the severity quantile at probability u."""
         a, b, p, q = self._params.values()
         z = _special_call(special.betaincinv, p, q, u)
-        return b * (z / (1 - z)) ** (1 / a)
+        return b * np.power(np.divide(z, 1 - z), 1 / a)
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
