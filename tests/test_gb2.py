@@ -8,7 +8,7 @@ from scipy.stats import betaprime
 
 from pal import StochasticScalar, set_random_seed
 from pal._maths import xp
-from pal.distributions import Burr, ContinuousDistributionGenerator, GB2, LogLogistic
+from pal.distributions import GB2, Burr, ContinuousDistributionGenerator, LogLogistic
 
 
 @pytest.mark.parametrize(
@@ -87,7 +87,7 @@ def test_gb2_stochastic_parameters_preserve_coupling() -> None:
 @pytest.mark.parametrize("invalid", [-1.0, 0.0, float("nan"), float("inf")])
 def test_gb2_rejects_invalid_parameters(param: str, invalid: float) -> None:
     """All GB2 parameters must be strictly positive and finite."""
-    parameters = dict(a=2.0, b=100.0, p=1.5, q=3.0)
+    parameters = {"a": 2.0, "b": 100.0, "p": 1.5, "q": 3.0}
     parameters[param] = invalid
     with pytest.raises(ValueError, match=param):
         GB2(**parameters)
