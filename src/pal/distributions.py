@@ -523,6 +523,79 @@ class Burr(DistributionBase):
         return scale * (((1 / (1 - u)) ** (1 / shape) - 1) ** (1 / power)) + loc
 
 
+class GB2(DistributionBase):
+    r"""Generalized Beta of the Second Kind (GB2) distribution.
+
+    GB2 is a flexible positive severity distribution with separate control over
+    the shape near zero and the heaviness of the upper tail. Its CDF is
+
+    .. math::
+
+        F(x) = I_{z(x)}(p,q), \qquad
+        z(x) = \frac{(x/b)^a}{1+(x/b)^a}, \qquad x > 0,
+
+    where I is the regularized incomplete beta function. Its density is
+
+    .. math::
+
+        f(x) = \frac{a}{b B(p,q)}
+        \frac{(x/b)^{ap-1}}{[1+(x/b)^a]^{p+q}}, \qquad x > 0.
+
+    The r-th moment exists when -ap < r < aq and equals
+
+    .. math::
+
+        E[X^r] = b^r \frac{B(p+r/a,\ q-r/a)}{B(p,q)}.
+
+    Burr XII is the special case p=1, and the log-logistic distribution
+    has p=q=1. The upper-tail power exponent is aq.
+
+    Parameters:
+        a: Positive power parameter.
+        b: Positive scale parameter.
+        p: Positive first beta shape parameter.
+        q: Positive second beta shape parameter.
+    """
+
+    def __init__(
+        self,
+        a: DistributionParameter,
+        b: DistributionParameter,
+        p: DistributionParameter,
+        q: DistributionParameter,
+    ) -> None:
+        """Initialize a GB2 severity distribution."""
+        for name, value in (("a", a), ("b", b), ("p", p), ("q", q)):
+            raw = value.values if isinstance(value, StochasticScalar) else value
+            values = xp.asarray(raw)
+            if not bool(xp.all(xp.isfinite(values) & (values > 0))):
+                raise ValueError(f"{name} must be positive and finite")
+        super().__init__(a=a, b=b, p=p, q=q)
+
+    @override
+    def cdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability of a claim severity not exceeding x."""
+        a, b, p, q = self._params.values()
+        # This form avoids overflow from calculating (x / b) ** a for large x.
+        z = 1 / (1 + (b / np.maximum(x, 0.0)) ** a)
+        return _special_call(special.betainc, p, q, z)
+
+    @override
+    def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Compute the severity quantile at probability u."""
+        a, b, p, q = self._params.values()
+        z = _special_call(special.betaincinv, p, q, u)
+        return b * (z / (1 - z)) ** (1 / a)
+
+    @override
+    def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
+        """Sample via a ratio of independent unit-scale gamma variates."""
+        a, b, p, q = self._param_values
+        numerator = rng.gamma(_rng_value(p, rng), 1.0, size=n_sims)
+        denominator = rng.gamma(_rng_value(q, rng), 1.0, size=n_sims)
+        return StochasticScalar(_rng_value(b, rng) * (numerator / denominator) ** (1 / _rng_value(a, rng)))
+
+
 class Beta(DistributionBase):
     r"""Beta Distribution.
 
@@ -2024,6 +2097,7 @@ AVAILABLE_DISCRETE_DISTRIBUTIONS: dict[str, t.Any] = {
 AVAILABLE_CONTINUOUS_DISTRIBUTIONS: dict[str, t.Any] = {
     "beta": Beta,
     "burr": Burr,
+    "gb2": GB2,
     "exponential": Exponential,
     "gamma": Gamma,
     "gev": GEV,
