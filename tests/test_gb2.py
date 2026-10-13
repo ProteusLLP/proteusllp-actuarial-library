@@ -2,7 +2,6 @@
 
 import math
 
-import numpy as np
 import pytest
 from scipy.special import beta as beta_function
 from scipy.stats import betaprime
