@@ -26,6 +26,7 @@ Continuous distributions
 
    pal.distributions.GPD
    pal.distributions.Burr
+   pal.distributions.GB2
    pal.distributions.Beta
    pal.distributions.MBBEFD
    pal.distributions.Normal
