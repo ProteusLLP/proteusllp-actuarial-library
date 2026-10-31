@@ -21,6 +21,7 @@ from ._maths import asnumpy, scalar_or_array, to_backend, xp
 from .couplings import CouplingGroup, ProteusStochasticVariable
 from .stats import NumberOrList
 from .types import Numeric, NumericLike, ScipyNumeric
+from ._value_arrays import host_values, stochastic_array
 
 
 class StochasticScalar(ProteusStochasticVariable):
@@ -54,7 +55,7 @@ class StochasticScalar(ProteusStochasticVariable):
             raise TypeError(invalid_type_message)
 
         try:
-            array = xp.asarray(values)
+            array = stochastic_array(values)
         except (TypeError, ValueError) as exc:
             raise TypeError(invalid_type_message) from exc
 
@@ -102,7 +103,20 @@ class StochasticScalar(ProteusStochasticVariable):
             #
             var_pos = var_not_stochastic_scalar.index(True)
             return inputs[var_pos].__array_ufunc__(ufunc, method, *inputs, **kwargs)
-        _inputs = tuple(x.values if isinstance(x, StochasticScalar) else to_backend(x) for x in inputs)
+        is_host = any(
+            isinstance(x, StochasticScalar) and host_values(x.values) for x in inputs
+        ) or host_values(self.values)
+        _inputs = tuple(
+            (
+                asnumpy(x.values) if isinstance(x, StochasticScalar) else
+                asnumpy(x) if isinstance(x, xp.ndarray) else x
+            ) if is_host else (
+                x.values if isinstance(x, StochasticScalar) else to_backend(x)
+            )
+            for x in inputs
+        )
+        if is_host:
+            ufunc = getattr(np, ufunc.__name__, ufunc)
         out = kwargs.get("out", ())
         if out:
             kwargs["out"] = tuple(x.values if isinstance(x, StochasticScalar) else x for x in out)
@@ -148,9 +162,18 @@ class StochasticScalar(ProteusStochasticVariable):
             NotImplementedError: If the function is not supported
         """
         # Extract PAL values and move any NumPy operands to the active backend.
-        processed_args = tuple(x.values if isinstance(x, StochasticScalar) else to_backend(x) for x in args)
+        is_host = host_values(self.values) or any(
+            isinstance(x, StochasticScalar) and host_values(x.values) for x in args
+        )
+        processed_args = tuple(
+            (asnumpy(x.values) if isinstance(x, StochasticScalar) else
+             asnumpy(x) if isinstance(x, xp.ndarray) else x)
+            if is_host else
+            (x.values if isinstance(x, StochasticScalar) else to_backend(x))
+            for x in args
+        )
         if func is np.where:
-            processed_args = (xp.asarray(processed_args[0]), *processed_args[1:])
+            processed_args = ((np if is_host else xp).asarray(processed_args[0]), *processed_args[1:])
         result = func(*processed_args, **kwargs)
 
         scalar_result = scalar_or_array(result)
@@ -197,12 +220,16 @@ class StochasticScalar(ProteusStochasticVariable):
             if xp.issubdtype(index.values.dtype, xp.bool_):
                 # Use boolean indexing directly - no conversion needed
                 # Type ignore: Runtime type checking ensures boolean indexing is valid
-                result = type(self)(self.values[index.values])  # type: ignore[arg-type]
+                indices = asnumpy(index.values) if host_values(self.values) else index.values
+                result = type(self)(self.values[indices])  # type: ignore[arg-type]
             else:
                 # Convert numeric indices to integers for positional indexing
                 indices = index.values.astype(int)
+                if host_values(self.values):
+                    indices = asnumpy(indices)
                 result = type(self)(self.values[indices])
 
+            result.coupled_variable_group.merge(self.coupled_variable_group)
             result.coupled_variable_group.merge(index.coupled_variable_group)
             return result
 
@@ -226,16 +253,17 @@ class StochasticScalar(ProteusStochasticVariable):
     def ranks(self) -> StochasticScalar:
         """Return the ranks of the variable."""
         result = xp.empty(self.n_sims, dtype=int)
-        result[xp.argsort(self.values)] = xp.arange(self.n_sims)
+        order = np.argsort(self.values) if host_values(self.values) else xp.argsort(self.values)
+        result[order] = xp.arange(self.n_sims)
         return StochasticScalar(result)
 
     # ===================
     # PUBLIC METHODS
     # ===================
 
-    def tolist(self) -> list[Numeric]:
+    def tolist(self) -> list[t.Any]:
         """Convert the values to a Python list."""
-        return t.cast(list[Numeric], self.values.tolist())
+        return self.values.tolist()
 
     def mean(
         self,
@@ -392,6 +420,8 @@ class StochasticScalar(ProteusStochasticVariable):
 
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
         """Reorder the simulations in the variable."""
+        if host_values(self.values):
+            new_order = asnumpy(new_order)
         self.values = self.values[new_order]
 
     def _wrap_reduction_result(self, result: t.Any) -> t.Any:
