@@ -56,7 +56,9 @@ class StochasticScalar(ProteusStochasticVariable):
 
         try:
             array = stochastic_array(values)
-        except (TypeError, ValueError) as exc:
+        except TypeError:
+            raise
+        except ValueError as exc:
             raise TypeError(invalid_type_message) from exc
 
         if array.ndim != 1:
