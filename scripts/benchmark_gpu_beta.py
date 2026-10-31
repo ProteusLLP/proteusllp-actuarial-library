@@ -23,6 +23,11 @@ SHAPES = (
     ("student_t_df5", 2.5, 0.5),
     ("student_t_df30", 15.0, 0.5),
     ("nearly_symmetric", 1000.0, 1031.0),
+    ("skewed", 0.1, 10.0),
+    ("noninteger", 5.5, 20.3),
+    ("symmetric_50", 50.0, 50.0),
+    ("symmetric_100", 100.0, 100.0),
+    ("symmetric_10000", 10_000.0, 10_000.0),
 )
 
 

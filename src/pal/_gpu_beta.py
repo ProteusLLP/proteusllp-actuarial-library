@@ -703,7 +703,7 @@ def _scalar_log_beta(a: float, b: float) -> float:
 
 
 @functools.lru_cache(maxsize=128)
-def _scalar_kernels(a: float, b: float) -> tuple[t.Any, t.Any]:
+def _scalar_kernels(a: float, b: float) -> tuple[t.Any, ...]:
     """Let CUDA fold constant distribution shapes across the full algorithm.
 
     Compilation is cached for repeated distribution parameters. Device shape
