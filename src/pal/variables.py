@@ -103,10 +103,11 @@ def _resample_freqsev(value: FreqSevSims, indices: StochasticScalar) -> FreqSevS
 
     result = FreqSevSims(
         sim_index=new_sim_index,
-        values=value.values[source_positions],
+        values=value.values[asnumpy(source_positions) if isinstance(value.values, np.ndarray) else source_positions],
         n_sims=indices.n_sims,
     )
     result.coupled_variable_group.merge(indices.coupled_variable_group)
+    result.coupled_variable_group.merge(value.coupled_variable_group)
     return result
 
 
@@ -705,6 +706,14 @@ class ProteusVariable(t.Generic[T]):
             if isinstance(value, ProteusStochasticVariable):
                 result.coupled_variable_group.merge(value.coupled_variable_group)
         return result
+
+    @t.overload
+    def __getitem__(self, key: int | str) -> T: ...
+
+    @t.overload
+    def __getitem__(
+        self, key: StochasticScalar | FreqSevSims
+    ) -> StochasticScalar | FreqSevSims: ...
 
     def __getitem__(self, key: int | str | StochasticScalar | FreqSevSims) -> T | StochasticScalar | FreqSevSims:
         if isinstance(key, (StochasticScalar, FreqSevSims)):
@@ -1557,7 +1566,9 @@ class ProteusVariable(t.Generic[T]):
                 # Extract all values and return a new StochasticScalar with those
                 # indices
                 indices = sim_no.values.astype(int)
-                return StochasticScalar(x.values[indices])
+                if isinstance(x, FreqSevSims):
+                    return _resample_freqsev(x, sim_no)
+                return StochasticScalar(x.values[asnumpy(indices) if isinstance(x.values, np.ndarray) else indices])
 
             # Handle the main case: extract value at specific simulation index
             if isinstance(sim_no, int):  # type: ignore[redundant-expr]
