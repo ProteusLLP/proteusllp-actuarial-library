@@ -105,16 +105,13 @@ class StochasticScalar(ProteusStochasticVariable):
             #
             var_pos = var_not_stochastic_scalar.index(True)
             return inputs[var_pos].__array_ufunc__(ufunc, method, *inputs, **kwargs)
-        is_host = any(
-            isinstance(x, StochasticScalar) and host_values(x.values) for x in inputs
-        ) or host_values(self.values)
+        is_host = any(isinstance(x, StochasticScalar) and host_values(x.values) for x in inputs) or host_values(
+            self.values
+        )
         _inputs = tuple(
-            (
-                asnumpy(x.values) if isinstance(x, StochasticScalar) else
-                asnumpy(x) if isinstance(x, xp.ndarray) else x
-            ) if is_host else (
-                x.values if isinstance(x, StochasticScalar) else to_backend(x)
-            )
+            (asnumpy(x.values) if isinstance(x, StochasticScalar) else asnumpy(x) if isinstance(x, xp.ndarray) else x)
+            if is_host
+            else (x.values if isinstance(x, StochasticScalar) else to_backend(x))
             for x in inputs
         )
         if is_host:
@@ -171,10 +168,9 @@ class StochasticScalar(ProteusStochasticVariable):
             for x in args
         )
         processed_args = tuple(
-            (asnumpy(x.values) if isinstance(x, StochasticScalar) else
-             asnumpy(x) if isinstance(x, xp.ndarray) else x)
-            if is_host else
-            (x.values if isinstance(x, StochasticScalar) else to_backend(x))
+            (asnumpy(x.values) if isinstance(x, StochasticScalar) else asnumpy(x) if isinstance(x, xp.ndarray) else x)
+            if is_host
+            else (x.values if isinstance(x, StochasticScalar) else to_backend(x))
             for x in args
         )
         if func is np.where:
