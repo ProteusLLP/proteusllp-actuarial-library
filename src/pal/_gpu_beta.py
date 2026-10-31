@@ -66,9 +66,10 @@ __device__ __forceinline__ double pal_lanczos_sum(const double z) {
     } else {
         numerator = pal_lanczos_num[0];
         denominator = pal_lanczos_den[0];
+        const double inverse_z = 1.0 / z;
         for (int i = 1; i < 13; ++i) {
-            numerator = numerator / z + pal_lanczos_num[i];
-            denominator = denominator / z + pal_lanczos_den[i];
+            numerator = fma(numerator, inverse_z, pal_lanczos_num[i]);
+            denominator = fma(denominator, inverse_z, pal_lanczos_den[i]);
         }
     }
     return numerator / denominator;
