@@ -23,6 +23,8 @@ def stochastic_array(values: t.Any) -> npt.NDArray[t.Any]:
     dtype = getattr(candidate, "dtype", None)
     if dtype is not None and dtype.kind == "O":
         items = np.asarray(candidate).ravel().tolist()
+        if all(isinstance(item, str) for item in items):
+            return np.asarray(candidate, dtype=str)
         if all(isinstance(item, dt.datetime) for item in items):
             return np.asarray(candidate, dtype="datetime64[us]")
         if all(isinstance(item, dt.date) for item in items):
