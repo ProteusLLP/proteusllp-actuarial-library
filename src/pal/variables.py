@@ -650,7 +650,7 @@ class ProteusVariable(t.Generic[T]):
                     values = np.concatenate([asnumpy(x) for x in event_values])
                 else:
                     values = xp.concatenate(event_values)
-                order = xp.argsort(indices)
+                order = xp.argsort(indices, kind="stable")
                 values = values[asnumpy(order) if isinstance(values, np.ndarray) else order]
                 indices = indices[order]
             else:
