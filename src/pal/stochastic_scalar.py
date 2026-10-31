@@ -18,10 +18,10 @@ from pal import stats  # type: ignore
 
 from ._compat import Self
 from ._maths import asnumpy, scalar_or_array, to_backend, xp
+from ._value_arrays import host_values, stochastic_array
 from .couplings import CouplingGroup, ProteusStochasticVariable
 from .stats import NumberOrList
 from .types import Numeric, NumericLike, ScipyNumeric
-from ._value_arrays import host_values, stochastic_array
 
 
 class StochasticScalar(ProteusStochasticVariable):
