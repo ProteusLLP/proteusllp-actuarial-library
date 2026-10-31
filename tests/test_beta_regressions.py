@@ -53,7 +53,9 @@ def test_beta_integer_shape_cdf_is_accurate_and_monotone(alpha: float, beta: flo
     assert np.all(np.diff(actual) >= -3e-14)
 
 
-@pytest.mark.parametrize("alpha,beta", [(1000.0, 1032.0), (1000.0, 1032.1), (1032.0, 1000.0)])
+@pytest.mark.parametrize(
+    "alpha,beta", [(1000.0, 1032.0), (1000.0, 1032.1), (1032.0, 1000.0), (0.5956446446171759, 83.55656794148626)]
+)
 def test_beta_inverse_retains_converged_solution(alpha: float, beta: float) -> None:
     """Keep a rounded Halley correction from discarding an accurate root."""
     actual = asnumpy(betaincinv(alpha, beta, xp.asarray(PROBABILITIES)))

@@ -283,7 +283,7 @@ __device__ __forceinline__ double pal_factorial(const int value) {
 
 // DiDonato-Morris BGRAT expansion, following Boost.Math's
 // beta_small_b_large_a_series implementation.
-__device__ __forceinline__ double pal_ibeta_small_b_large_a(
+__device__ __noinline__ double pal_ibeta_small_b_large_a(
     const double a, const double b, const double x, const double y
 ) {
     const double bm1 = b - 1.0;
@@ -372,10 +372,21 @@ __device__ __forceinline__ double pal_ibeta(
     const bool integer_shape = (b == floor(b)) && (b <= 32.0) && (a <= 1e6);
     if (integer_shape) {
         double polynomial = 1.0;
-        for (int j = (int)b - 1; j >= 1; --j) {
-            polynomial = 1.0 + (a + j - 1.0) * (1.0 - x) * polynomial / j;
+        #pragma unroll
+        for (int j = 31; j >= 1; --j) {
+            if (j < b) {
+                polynomial = 1.0 + (a + j - 1.0) * (1.0 - x) * polynomial / j;
+            }
         }
-        result = exp(a * log(x) + log(polynomial));
+        const double power = exp(a * log(x));
+        result = power * polynomial;
+        if (power == 0.0) {
+            result = exp(a * log(x) + log(polynomial));
+        }
+        if (result > 1.0 - 1e-10 && x > switch_point) {
+            const double tail_power = exp(b * log1p(-x) + a * log(x) - log_beta);
+            result = 1.0 - tail_power * pal_ibeta_fraction(b, a, 1.0 - x) / b;
+        }
     } else if (a + b < 128.0) {
         const double power = exp(a * log(x) + b * log1p(-x) - log_beta);
         if (x <= switch_point) {
@@ -591,10 +602,12 @@ __device__ __forceinline__ double pal_ibeta_inverse(
                 }
             }
 
-            if (candidate == x || nextafter(lower, upper) >= upper) {
+            if ((isfinite(candidate) && fabs(candidate - x) <= 8.0 * PAL_DBL_EPSILON * x)
+                || nextafter(lower, upper) >= upper) {
                 break;
             }
-            if (!(candidate > lower && candidate < upper) || !isfinite(candidate)) {
+            if (!(candidate > lower && candidate < upper) || !isfinite(candidate)
+                || fabs(candidate - x) > 0.5 * fmin(x, 1.0 - x)) {
                 if (lower == 0.0) {
                     candidate = x <= 0.5 ? x / 2.0 : 2.0 * x - 1.0;
                     if (candidate == 0.0) {
