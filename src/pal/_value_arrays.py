@@ -15,9 +15,7 @@ def stochastic_array(values: t.Any) -> npt.NDArray[t.Any]:
     """Create a one-dimensional array without converting dates or labels to numbers."""
     if isinstance(values, np.ndarray):
         candidate = values
-    elif isinstance(values, (list, tuple)) and values and isinstance(
-        values[0], (str, bytes, dt.date, np.datetime64)
-    ):
+    elif isinstance(values, (list, tuple)) and values and isinstance(values[0], (str, bytes, dt.date, np.datetime64)):
         candidate = np.asarray(values)
     else:
         candidate = values
