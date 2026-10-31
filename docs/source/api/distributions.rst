@@ -17,6 +17,8 @@ Discrete distributions
    pal.distributions.Bernoulli
    pal.distributions.Empirical
 
+   pal.distributions.Categorical
+
 Continuous distributions
 ------------------------
 
