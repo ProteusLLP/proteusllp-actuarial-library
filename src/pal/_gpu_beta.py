@@ -13,7 +13,9 @@ more important than preserving a float32 input dtype.
 from __future__ import annotations
 
 import functools
+import hashlib
 import importlib
+import math
 import typing as t
 
 from scipy.special import betaln
@@ -700,6 +702,27 @@ def _scalar_log_beta(a: float, b: float) -> float:
     return float(betaln(a, b))
 
 
+@functools.lru_cache(maxsize=128)
+def _scalar_kernels(a: float, b: float) -> tuple[t.Any, t.Any]:
+    """Let CUDA fold constant distribution shapes across the full algorithm.
+
+    Compilation is cached for repeated distribution parameters. Device shape
+    arrays continue through the fused kernels without host inspection.
+    """
+    key = hashlib.sha256(f"{a.hex()},{b.hex()}".encode()).hexdigest()[:16]
+    constants = f"const double a={a:.17e}, b={b:.17e}, log_beta={_scalar_log_beta(a, b):.17e};"
+    return tuple(
+        cp.ElementwiseKernel(
+            "float64 value",
+            "float64 result",
+            constants + f"result = {function}(a, b, value, log_beta);",
+            f"pal_beta_scalar_{name}_{key}",
+            preamble=_BETA_PREAMBLE,
+        )
+        for name, function in (("cdf", "pal_ibeta"), ("inverse", "pal_ibeta_inverse"))
+    )
+
+
 def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
     """Evaluate the regularized incomplete beta function on the GPU."""
     a = _coerce_device_array(a)
@@ -708,6 +731,8 @@ def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
     if not any(isinstance(value, cp.ndarray) for value in (a, b, x)):
         x = cp.asarray(x, dtype=cp.float64)
     if not isinstance(a, cp.ndarray) and not isinstance(b, cp.ndarray):
+        if a > 0 and b > 0 and math.isfinite(a) and math.isfinite(b):
+            return _scalar_kernels(float(a), float(b))[0](x)
         return _BETA_CDF_KERNEL(a, b, x, _scalar_log_beta(float(a), float(b)))
     return _BETA_CDF_ARRAY_KERNEL(a, b, x)
 
@@ -720,6 +745,8 @@ def betaincinv(a: t.Any, b: t.Any, p: t.Any) -> t.Any:
     if not any(isinstance(value, cp.ndarray) for value in (a, b, p)):
         p = cp.asarray(p, dtype=cp.float64)
     if not isinstance(a, cp.ndarray) and not isinstance(b, cp.ndarray):
+        if a > 0 and b > 0 and math.isfinite(a) and math.isfinite(b):
+            return _scalar_kernels(float(a), float(b))[1](p)
         return _BETA_INVERSE_KERNEL(a, b, p, _scalar_log_beta(float(a), float(b)))
     return _BETA_INVERSE_ARRAY_KERNEL(a, b, p)
 
