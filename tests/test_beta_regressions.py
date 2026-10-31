@@ -7,6 +7,7 @@ calculations and tolerances independently of the CUDA implementation.
 import numpy as np
 import pytest
 import scipy.special
+import scipy.stats
 
 from pal import StochasticScalar
 from pal._beta import betainc, betaincinv
@@ -109,7 +110,7 @@ def test_beta_extreme_tails_use_independent_cdf_and_inverse(alpha: float, beta: 
         )
     )
     expected = np.where(
-        upper, scipy.special.betaincc(alpha, beta, reference), scipy.special.betainc(alpha, beta, reference)
+        upper, scipy.stats.beta.sf(reference, alpha, beta), scipy.special.betainc(alpha, beta, reference)
     )
     np.testing.assert_allclose(actual, expected, rtol=5e-10, atol=0)
 

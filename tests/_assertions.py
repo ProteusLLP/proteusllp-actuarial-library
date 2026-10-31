@@ -6,6 +6,7 @@ import typing as t
 
 import numpy as np
 import scipy.special
+import scipy.stats
 
 from pal._maths import asnumpy
 from pal.couplings import ProteusStochasticVariable
@@ -69,7 +70,7 @@ def assert_beta_inverse_tail_accuracy(alpha: t.Any, beta: t.Any, probability: t.
     def smaller_tail(value: np.ndarray) -> np.ndarray:
         return np.where(
             probability > 0.5,
-            scipy.special.betaincc(alpha, beta, value),
+            scipy.stats.beta.sf(value, alpha, beta),
             scipy.special.betainc(alpha, beta, value),
         )
 
