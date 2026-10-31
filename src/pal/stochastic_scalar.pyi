@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 from ._compat import Self
 from .couplings import CouplingGroup, ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
-from .types import Numeric, NumericLike, ScipyNumeric
+from .types import Numeric, ScipyNumeric
 
 class StochasticScalar(ProteusStochasticVariable):
     coupled_variable_group: CouplingGroup
