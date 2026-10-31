@@ -7,7 +7,7 @@ from pal import set_random_seed
 from pal._maths import xp
 from pal.config import config
 from pal.copulas import StudentsTCopula
-from pal.distributions import InverseGaussian, NegBinomial, Normal, StudentsT
+from pal.distributions import Beta, InverseGaussian, NegBinomial, Normal, StudentsT
 from pal.multivariate_distributions import (
     Dirichlet,
     GeneralizedDirichlet,
@@ -48,6 +48,8 @@ def test_generation_and_numpy_dispatch_do_not_transfer_to_host(monkeypatch: pyte
         students_t_copula = StudentsTCopula([[1, 0.5], [0.5, 1]], 5).generate(4096)
         inverse_gaussian = InverseGaussian(2, 3).generate(256)
         negative_binomial = NegBinomial(4, 0.5).generate(256)
+        beta_probability = Beta(2, 5).cdf(simulations / 200)
+        beta_quantile = Beta(2, 5).invcdf(beta_probability)
         multivariate_normal_distribution = MultivariateNormal([0, 0], [[1, 0.5], [0.5, 1]])
         multivariate_students_t_distribution = MultivariateStudentsT(5, [0, 0], [[1, 0.5], [0.5, 1]])
         dirichlet_distribution = Dirichlet([2, 3, 4])
@@ -74,6 +76,8 @@ def test_generation_and_numpy_dispatch_do_not_transfer_to_host(monkeypatch: pyte
         assert all(isinstance(margin.values, xp.ndarray) for margin in students_t_copula)
         assert isinstance(inverse_gaussian.values, xp.ndarray)
         assert isinstance(negative_binomial.values, xp.ndarray)
+        assert isinstance(beta_probability.values, xp.ndarray)
+        assert isinstance(beta_quantile.values, xp.ndarray)
         multivariate_samples = (
             multivariate_normal,
             multivariate_students_t,

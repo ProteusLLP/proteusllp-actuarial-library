@@ -28,6 +28,8 @@ import numpy as np
 import scipy.special as scipy_special
 from scipy.stats import geninvgauss
 
+from ._beta import betainc, betaincinv
+
 # Local imports
 from ._compat import override
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
@@ -566,13 +568,13 @@ class Beta(DistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
         alpha, beta, scale, loc = self._params.values()
-        return _special_call(special.betainc, alpha, beta, (x - loc) / scale)  # type: ignore[return-type]
+        return _special_call(betainc, alpha, beta, (x - loc) / scale)  # type: ignore[return-type]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         alpha, beta, scale, loc = self._params.values()
-        return _special_call(special.betaincinv, alpha, beta, u) * scale + loc  # type: ignore[return-type]
+        return _special_call(betaincinv, alpha, beta, u) * scale + loc  # type: ignore[return-type]
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
@@ -1616,15 +1618,14 @@ class StudentsT(DistributionBase):
         # F(t; ν) = 1/2 + t * Γ((ν+1)/2) / (√(νπ) * Γ(ν/2)) * 2F1(...)
         # Or equivalently: F(t; ν) = 1 - 1/2 * I_{ν/(ν+t²)}(ν/2, 1/2) for t > 0
         x_pos = np.abs(z)
-        p = _special_call(special.betainc, nu / 2, 0.5, nu / (nu + x_pos**2)) / 2
+        p = _special_call(betainc, nu / 2, 0.5, nu / (nu + x_pos**2)) / 2
         result = np.where(z >= 0, 1 - p, p)
         return result  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        params = tuple(self._param_values)
-        nu, mu, sigma = params[0], params[1], params[2]
+        nu, mu, sigma = self._params.values()
 
         # Use the relationship between t-distribution and Beta distribution
         # to support GPU execution via betaincinv.
@@ -1633,7 +1634,7 @@ class StudentsT(DistributionBase):
 
         p_tilde = np.minimum(u, 1 - u)
         y = 2 * p_tilde
-        x_beta = _special_call(special.betaincinv, nu / 2, 0.5, y)
+        x_beta = _special_call(betaincinv, nu / 2, 0.5, y)
         x_sq = nu * (1 / x_beta - 1)
         x = np.sqrt(x_sq)
         sign = np.sign(u - 0.5)
