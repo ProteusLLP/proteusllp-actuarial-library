@@ -163,7 +163,10 @@ class StochasticScalar(ProteusStochasticVariable):
         """
         # Extract PAL values and move any NumPy operands to the active backend.
         is_host = host_values(self.values) or any(
-            isinstance(x, StochasticScalar) and host_values(x.values) for x in args
+            (isinstance(x, StochasticScalar) and host_values(x.values))
+            or isinstance(x, (str, bytes))
+            or (isinstance(x, np.ndarray) and host_values(x))
+            for x in args
         )
         processed_args = tuple(
             (asnumpy(x.values) if isinstance(x, StochasticScalar) else
