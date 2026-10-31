@@ -1964,6 +1964,7 @@ class Uniform(DistributionBase):
             raise TypeError("Uniform bounds must both be numbers or both be dates")
         self._date_unit: str | None = None
         if is_date_a:
+
             def has_time(value: dt.date | np.datetime64) -> bool:
                 if isinstance(value, dt.datetime):
                     return True
@@ -1989,8 +1990,7 @@ class Uniform(DistributionBase):
             return (x - a) / (b - a)
         source = x.values if isinstance(x, StochasticScalar) else x
         ticks = (
-            np.asarray(asnumpy(source), dtype=f"datetime64[{self._date_unit}]")
-            - self._date_start
+            np.asarray(asnumpy(source), dtype=f"datetime64[{self._date_unit}]") - self._date_start
         ) / np.timedelta64(1, self._date_unit)
         if self._date_unit == "D":
             result = np.clip((ticks + 1) / (self._date_span + 1), 0.0, 1.0)
@@ -2049,8 +2049,7 @@ class Categorical(DistributionBase):
         if len(set(self._values.tolist())) != len(self._values):
             raise ValueError("Category labels must be unique")
         weights = (
-            np.full(len(values), 1.0 / len(values))
-            if probabilities is None else np.asarray(probabilities, dtype=float)
+            np.full(len(values), 1.0 / len(values)) if probabilities is None else np.asarray(probabilities, dtype=float)
         )
         if weights.shape != (len(values),) or np.any(~np.isfinite(weights)) or np.any(weights < 0):
             raise ValueError("Category probabilities must be finite, nonnegative and match the labels")
@@ -2088,7 +2087,6 @@ class Categorical(DistributionBase):
             wrapped.coupled_variable_group.merge(x.coupled_variable_group)
             return wrapped
         return t.cast(ReturnType, result)
-
 
 
 class InverseExponential(DistributionBase):
