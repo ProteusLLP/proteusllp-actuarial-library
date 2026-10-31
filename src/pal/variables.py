@@ -615,7 +615,7 @@ class ProteusVariable(t.Generic[T]):
         else:
             raise TypeError("Stochastic ProteusVariable keys must contain strings or integers")
 
-        leaves = list(self.values.values())
+        leaves = t.cast(list[t.Any], list(self.values.values()))
         is_event_values = all(isinstance(x, FreqSevSims) for x in leaves)
         if any(isinstance(x, ProteusVariable) for x in leaves):
             raise TypeError("Stochastic selection of nested ProteusVariables is not supported")
