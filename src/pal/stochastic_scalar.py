@@ -21,7 +21,7 @@ from ._maths import asnumpy, scalar_or_array, to_backend, xp
 from ._value_arrays import host_values, stochastic_array
 from .couplings import CouplingGroup, ProteusStochasticVariable
 from .stats import NumberOrList
-from .types import Numeric, NumericLike, ScipyNumeric
+from .types import Numeric, ScipyNumeric
 
 
 class StochasticScalar(ProteusStochasticVariable):
@@ -242,7 +242,7 @@ class StochasticScalar(ProteusStochasticVariable):
         """Return the number of simulations."""
         return len(self.values)
 
-    def __iter__(self) -> t.Iterator[NumericLike]:
+    def __iter__(self) -> t.Iterator[t.Any]:
         """Iterate over the values."""
         return iter(self.values)
 
