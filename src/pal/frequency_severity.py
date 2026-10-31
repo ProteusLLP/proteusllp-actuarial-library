@@ -379,8 +379,6 @@ class FreqSevSims(_ProteusStochasticVariable):
         )
         indices = asnumpy(self.sim_index) if host else self.sim_index
         if isinstance(x, FreqSevSims):
-            if not bool(xp.array_equal(self.sim_index, x.sim_index)):
-                raise ValueError("Frequency-severity simulation indices must match")
             return asnumpy(x.values) if host else x.values
         elif isinstance(x, StochasticScalar):
             values = asnumpy(x.values) if host else x.values
