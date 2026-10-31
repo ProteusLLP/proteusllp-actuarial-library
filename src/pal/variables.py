@@ -586,9 +586,7 @@ class ProteusVariable(t.Generic[T]):
     def __ne__(self, other: object) -> Self:  # type: ignore[override]
         return t.cast(Self, self._binary_operation(other, lambda a, b: a != b))
 
-    def _stochastic_getitem(
-        self, selector: StochasticScalar | FreqSevSims
-    ) -> StochasticScalar | FreqSevSims:
+    def _stochastic_getitem(self, selector: StochasticScalar | FreqSevSims) -> StochasticScalar | FreqSevSims:
         """Select a container entry separately for each simulation or event.
 
         String selectors refer to named entries. Integer selectors refer to
@@ -609,9 +607,7 @@ class ProteusVariable(t.Generic[T]):
             missing = set(np.unique(labels)) - lookup.keys()
             if missing:
                 raise KeyError(f"Unknown {self.dim_name} keys: {sorted(missing)!r}")
-            positions = np.fromiter(
-                (lookup[name] for name in labels), dtype=np.intp, count=len(labels)
-            )
+            positions = np.fromiter((lookup[name] for name in labels), dtype=np.intp, count=len(labels))
         else:
             raise TypeError("Stochastic ProteusVariable keys must contain strings or integers")
 
@@ -621,9 +617,7 @@ class ProteusVariable(t.Generic[T]):
             raise TypeError("Stochastic selection of nested ProteusVariables is not supported")
         if is_event_values and isinstance(selector, FreqSevSims):
             for value in leaves:
-                if value.n_sims != selector.n_sims or not bool(
-                    xp.array_equal(value.sim_index, selector.sim_index)
-                ):
+                if value.n_sims != selector.n_sims or not bool(xp.array_equal(value.sim_index, selector.sim_index)):
                     raise ValueError("Event selectors require matching event indices")
         elif not is_event_values and any(isinstance(x, FreqSevSims) for x in leaves):
             raise TypeError("ProteusVariable entries must have a common stochastic type")
@@ -639,10 +633,7 @@ class ProteusVariable(t.Generic[T]):
                 if not np.any(mask):
                     continue
                 event_indices.append(value.sim_index[xp.asarray(mask)])
-                event_values.append(
-                    value.values[mask if isinstance(value.values, np.ndarray)
-                                 else xp.asarray(mask)]
-                )
+                event_values.append(value.values[mask if isinstance(value.values, np.ndarray) else xp.asarray(mask)])
             first = leaves[0]
             if event_indices:
                 indices = xp.concatenate(event_indices)
@@ -656,9 +647,7 @@ class ProteusVariable(t.Generic[T]):
             else:
                 indices = xp.asarray([], dtype=int)
                 values = first.values[:0]
-            result: StochasticScalar | FreqSevSims = FreqSevSims(
-                indices, values, selector.n_sims
-            )
+            result: StochasticScalar | FreqSevSims = FreqSevSims(indices, values, selector.n_sims)
         else:
             # Select one leaf at each scenario or event, retaining the input shape.
             first = leaves[0]
@@ -681,16 +670,12 @@ class ProteusVariable(t.Generic[T]):
                         selected = value.values[0]
                     elif value.n_sims == selector.n_sims:
                         if isinstance(selector, FreqSevSims):
-                            source_idx = selector.sim_index[
-                                xp.asarray(mask)
-                            ]
+                            source_idx = selector.sim_index[xp.asarray(mask)]
                             if isinstance(value.values, np.ndarray):
                                 source_idx = asnumpy(source_idx)
                             selected = value.values[source_idx]
                         else:
-                            selected = value.values[
-                                mask if isinstance(value.values, np.ndarray) else target
-                            ]
+                            selected = value.values[mask if isinstance(value.values, np.ndarray) else target]
                     else:
                         raise ValueError("Simulation counts do not match")
                 else:
@@ -711,9 +696,7 @@ class ProteusVariable(t.Generic[T]):
     def __getitem__(self, key: int | str) -> T: ...
 
     @t.overload
-    def __getitem__(
-        self, key: StochasticScalar | FreqSevSims
-    ) -> StochasticScalar | FreqSevSims: ...
+    def __getitem__(self, key: StochasticScalar | FreqSevSims) -> StochasticScalar | FreqSevSims: ...
 
     def __getitem__(self, key: int | str | StochasticScalar | FreqSevSims) -> T | StochasticScalar | FreqSevSims:
         if isinstance(key, (StochasticScalar, FreqSevSims)):
