@@ -374,9 +374,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         Returns:
             Array values aligned with simulation indices
         """
-        host = host_values(self.values) or (
-            isinstance(x, (FreqSevSims, StochasticScalar)) and host_values(x.values)
-        )
+        host = host_values(self.values) or (isinstance(x, (FreqSevSims, StochasticScalar)) and host_values(x.values))
         indices = asnumpy(self.sim_index) if host else self.sim_index
         if isinstance(x, FreqSevSims):
             return asnumpy(x.values) if host else x.values
@@ -392,8 +390,7 @@ class FreqSevSims(_ProteusStochasticVariable):
 
     def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any) -> FreqSevSims:
         host = host_values(self.values) or any(
-            isinstance(x, (FreqSevSims, StochasticScalar)) and host_values(x.values)
-            for x in inputs
+            isinstance(x, (FreqSevSims, StochasticScalar)) and host_values(x.values) for x in inputs
         )
         _inputs = tuple(self._extract_array_for_ufunc(x) for x in inputs)
         if host:
@@ -454,10 +451,9 @@ class FreqSevSims(_ProteusStochasticVariable):
             for x in args
         )
         processed_args = tuple(
-            (asnumpy(x.values) if isinstance(x, FreqSevSims) else
-             asnumpy(x) if isinstance(x, xp.ndarray) else x)
-            if host else
-            (x.values if isinstance(x, FreqSevSims) else to_backend(x))
+            (asnumpy(x.values) if isinstance(x, FreqSevSims) else asnumpy(x) if isinstance(x, xp.ndarray) else x)
+            if host
+            else (x.values if isinstance(x, FreqSevSims) else to_backend(x))
             for x in args
         )
         if func is np.where:
