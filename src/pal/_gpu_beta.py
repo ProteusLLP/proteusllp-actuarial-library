@@ -12,8 +12,11 @@ more important than preserving a float32 input dtype.
 
 from __future__ import annotations
 
+import functools
 import importlib
 import typing as t
+
+from scipy.special import betaln
 
 cp = t.cast(t.Any, importlib.import_module("cupy"))
 
@@ -127,9 +130,54 @@ __device__ __forceinline__ double pal_ibeta_power_terms(
     return exp(log_result);
 }
 
+// Convergents avoid the four dependent divisions in each Lentz iteration.
+// Rescale all four recurrence values together to preserve their ratio.
+__device__ __forceinline__ double pal_ibeta_fast_fraction(
+    const double a, const double b, const double x
+) {
+    double numerator = 1.0, previous_numerator = 1.0;
+    double denominator = 1.0 - (a + b) * x / (a + 1.0);
+    double previous_denominator = 1.0;
+    double result = numerator / denominator;
+    for (int m = 1; m <= 256; ++m) {
+        const double twice_m = 2.0 * m;
+        double coefficient = m * (b - m) * x / ((a - 1.0 + twice_m) * (a + twice_m));
+        double next_numerator = numerator + coefficient * previous_numerator;
+        double next_denominator = denominator + coefficient * previous_denominator;
+        previous_numerator = numerator;
+        previous_denominator = denominator;
+        numerator = next_numerator;
+        denominator = next_denominator;
+        coefficient = -(a + m) * (a + b + m) * x / ((a + twice_m) * (a + 1.0 + twice_m));
+        next_numerator = numerator + coefficient * previous_numerator;
+        next_denominator = denominator + coefficient * previous_denominator;
+        previous_numerator = numerator;
+        previous_denominator = denominator;
+        numerator = next_numerator;
+        denominator = next_denominator;
+        const double next_result = numerator / denominator;
+        if (fabs(next_result - result) <= 8.0 * PAL_DBL_EPSILON * fabs(next_result)) {
+            return next_result;
+        }
+        result = next_result;
+        const double magnitude = fmax(fabs(numerator), fabs(denominator));
+        if (magnitude > 1e100 || magnitude < 1e-100) {
+            const double scale = magnitude > 1e100 ? 1e-100 : 1e100;
+            numerator *= scale;
+            denominator *= scale;
+            previous_numerator *= scale;
+            previous_denominator *= scale;
+        }
+    }
+    return result;
+}
+
 __device__ __forceinline__ double pal_ibeta_fraction(
     const double a, const double b, const double x
 ) {
+    if (a + b < 128.0) {
+        return pal_ibeta_fast_fraction(a, b, x);
+    }
     const double qab = a + b;
     const double qap = a + 1.0;
     const double qam = a - 1.0;
@@ -175,66 +223,6 @@ __device__ __forceinline__ double pal_ibeta_fraction(
         }
     }
     return result;
-}
-
-__device__ __forceinline__ double pal_ibeta_series(
-    const double a, const double b, const double x, const double log_beta
-) {
-    double term = exp(a * log(x) - log_beta);
-    double denominator = a;
-    double pochhammer = 1.0 - b;
-    double sum = 0.0;
-    for (int n = 1; n <= 32; ++n) {
-        const double contribution = term / denominator;
-        sum += contribution;
-        if (n >= b) {
-            break;
-        }
-        denominator += 1.0;
-        term *= pochhammer * x / n;
-        pochhammer += 1.0;
-    }
-    return sum;
-}
-
-__device__ __forceinline__ double pal_ibeta_b7(
-    const double a, const double x
-) {
-    if (isnan(a) || isnan(x) || !(a > 0.0) || x < 0.0 || x > 1.0) {
-        return CUDART_NAN;
-    }
-    if (x == 0.0) {
-        return 0.0;
-    }
-    if (x == 1.0) {
-        return 1.0;
-    }
-
-    // For positive integer b, the complement of the binomial expansion is
-    // finite and positive.  The b=7 form avoids log-beta evaluation and the
-    // cancellation in the alternating incomplete-beta series:
-    // I_x(a,7) = x^a sum_{j=0}^6 (a)_j (1-x)^j / j!.
-    const double c1 = a;
-    const double c2 = c1 * (a + 1.0) * 0.5;
-    const double c3 = c2 * (a + 2.0) / 3.0;
-    const double c4 = c3 * (a + 3.0) * 0.25;
-    const double c5 = c4 * (a + 4.0) * 0.2;
-    const double c6 = c5 * (a + 5.0) / 6.0;
-    const double y = 1.0 - x;
-    double polynomial = fma(c6, y, c5);
-    polynomial = fma(polynomial, y, c4);
-    polynomial = fma(polynomial, y, c3);
-    polynomial = fma(polynomial, y, c2);
-    polynomial = fma(polynomial, y, c1);
-    polynomial = fma(polynomial, y, 1.0);
-    const double result = exp(a * log(x)) * polynomial;
-    if (isfinite(result)) {
-        return fmin(1.0, fmax(0.0, result));
-    }
-    // c6 can overflow only for shapes above roughly 1e51.  At that scale the
-    // beta distribution is closer to one than any representable x < 1, so
-    // its CDF rounds to zero throughout the open unit interval.
-    return 0.0;
 }
 
 __device__ __forceinline__ double pal_gamma_q(
@@ -379,19 +367,15 @@ __device__ __forceinline__ double pal_ibeta(
         return pal_ibeta_small_b_large_a(a, b, x, 1.0 - x);
     }
 
-    const double minimum = fmin(a, b);
-    const double maximum = fmax(a, b);
-    if ((minimum >= 1000.0) && (sqrt(minimum) > maximum - minimum)) {
-        return pal_temme_ibeta(a, b, x);
-    }
-
     const double switch_point = (a + 1.0) / (a + b + 2.0);
     double result;
-    const double series_limit = 0.8;
-    const bool terminating_series = (a >= 1.0) && (b == floor(b))
-        && (b <= 32.0) && (x <= series_limit);
-    if (terminating_series) {
-        result = pal_ibeta_series(a, b, x, log_beta);
+    const bool integer_shape = (b == floor(b)) && (b <= 32.0) && (a <= 1e6);
+    if (integer_shape) {
+        double polynomial = 1.0;
+        for (int j = (int)b - 1; j >= 1; --j) {
+            polynomial = 1.0 + (a + j - 1.0) * (1.0 - x) * polynomial / j;
+        }
+        result = exp(a * log(x) + log(polynomial));
     } else if (a + b < 128.0) {
         const double power = exp(a * log(x) + b * log1p(-x) - log_beta);
         if (x <= switch_point) {
@@ -540,7 +524,6 @@ __device__ __forceinline__ double pal_ibeta_inverse(
 
         if ((minimum >= 1000.0) && (sqrt(minimum) > maximum - minimum)) {
             x = pal_temme_inverse_start(a, b, p);
-            return reflect ? 1.0 - x : x;
         } else if ((minimum > 5.0) && (sqrt(minimum) > maximum - minimum)) {
             x = pal_temme_inverse_start(a, b, p);
         } else if ((a > 1.0) && (b > 1.0)) {
@@ -608,6 +591,9 @@ __device__ __forceinline__ double pal_ibeta_inverse(
                 }
             }
 
+            if (candidate == x || nextafter(lower, upper) >= upper) {
+                break;
+            }
             if (!(candidate > lower && candidate < upper) || !isfinite(candidate)) {
                 if (lower == 0.0) {
                     candidate = x <= 0.5 ? x / 2.0 : 2.0 * x - 1.0;
@@ -664,11 +650,19 @@ _BETA_CDF_KERNEL = cp.ElementwiseKernel(
     preamble=_BETA_PREAMBLE,
 )
 
-_BETA_CDF_B7_KERNEL = cp.ElementwiseKernel(
-    "float64 a, float64 x",
+_BETA_CDF_ARRAY_KERNEL = cp.ElementwiseKernel(
+    "float64 a, float64 b, float64 x",
     "float64 result",
-    "result = pal_ibeta_b7(a, x);",
-    "pal_gpu_beta_cdf_b7",
+    "result = pal_ibeta(a, b, x, pal_log_beta(a, b));",
+    "pal_gpu_beta_cdf_array",
+    preamble=_BETA_PREAMBLE,
+)
+
+_BETA_INVERSE_ARRAY_KERNEL = cp.ElementwiseKernel(
+    "float64 a, float64 b, float64 p",
+    "float64 result",
+    "result = pal_ibeta_inverse(a, b, p, pal_log_beta(a, b));",
+    "pal_gpu_beta_inverse_array",
     preamble=_BETA_PREAMBLE,
 )
 
@@ -680,14 +674,6 @@ _BETA_INVERSE_KERNEL = cp.ElementwiseKernel(
     preamble=_BETA_PREAMBLE,
 )
 
-_LOG_BETA_KERNEL = cp.ElementwiseKernel(
-    "float64 a, float64 b",
-    "float64 result",
-    "result = pal_log_beta(a, b);",
-    "pal_gpu_log_beta",
-    preamble=_BETA_PREAMBLE,
-)
-
 
 def _coerce_device_array(value: t.Any) -> t.Any:
     if isinstance(value, cp.ndarray) and value.dtype != cp.float64:
@@ -695,19 +681,10 @@ def _coerce_device_array(value: t.Any) -> t.Any:
     return value
 
 
-def _device_log_beta(a: t.Any, b: t.Any) -> t.Any:
-    if not isinstance(a, cp.ndarray) and not isinstance(b, cp.ndarray):
-        a = cp.asarray(a, dtype=cp.float64)
-    return _LOG_BETA_KERNEL(a, b)
-
-
-def _is_scalar_seven(value: t.Any) -> bool:
-    if isinstance(value, cp.ndarray):
-        return False
-    try:
-        return float(value) == 7.0
-    except (TypeError, ValueError):
-        return False
+@functools.lru_cache(maxsize=256)
+def _scalar_log_beta(a: float, b: float) -> float:
+    """Cache normalisation for host scalar shapes without reading device arrays."""
+    return float(betaln(a, b))
 
 
 def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
@@ -717,9 +694,9 @@ def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
     x = _coerce_device_array(x)
     if not any(isinstance(value, cp.ndarray) for value in (a, b, x)):
         x = cp.asarray(x, dtype=cp.float64)
-    if _is_scalar_seven(b):
-        return _BETA_CDF_B7_KERNEL(a, x)
-    return _BETA_CDF_KERNEL(a, b, x, _device_log_beta(a, b))
+    if not isinstance(a, cp.ndarray) and not isinstance(b, cp.ndarray):
+        return _BETA_CDF_KERNEL(a, b, x, _scalar_log_beta(float(a), float(b)))
+    return _BETA_CDF_ARRAY_KERNEL(a, b, x)
 
 
 def betaincinv(a: t.Any, b: t.Any, p: t.Any) -> t.Any:
@@ -729,7 +706,9 @@ def betaincinv(a: t.Any, b: t.Any, p: t.Any) -> t.Any:
     p = _coerce_device_array(p)
     if not any(isinstance(value, cp.ndarray) for value in (a, b, p)):
         p = cp.asarray(p, dtype=cp.float64)
-    return _BETA_INVERSE_KERNEL(a, b, p, _device_log_beta(a, b))
+    if not isinstance(a, cp.ndarray) and not isinstance(b, cp.ndarray):
+        return _BETA_INVERSE_KERNEL(a, b, p, _scalar_log_beta(float(a), float(b)))
+    return _BETA_INVERSE_ARRAY_KERNEL(a, b, p)
 
 
 __all__ = ["betainc", "betaincinv"]
