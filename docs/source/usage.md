@@ -50,6 +50,34 @@ portfolio = ProteusVariable(
 
 Variable containers support numpy operations and can be added, multiplied together etc. Operations involving multiple variable containers will attempt to match on dictionary labels.
 
+### Date and categorical simulations
+
+Simulated values can represent claim dates, regions, policy types and other
+labels. For a calendar date, `Uniform` samples each date from the first through
+the last day with equal probability; `Categorical` samples named categories
+with the specified probabilities.
+
+```python
+from datetime import date
+from pal import ProteusVariable, StochasticScalar
+from pal.distributions import Categorical, Uniform
+
+claim_dates = Uniform(date(2026, 1, 1), date(2026, 12, 31)).generate(4)
+regions = Categorical(["UK", "US"], [0.7, 0.3]).generate(4)
+
+by_region = ProteusVariable("region", {
+    "UK": StochasticScalar([100, 200, 300, 400]),
+    "US": StochasticScalar([10, 20, 30, 40]),
+})
+selected = by_region[regions]  # One value for each simulated region
+```
+
+A `FreqSevSims` can also contain dates or category labels for individual
+events. When such an object indexes a `ProteusVariable`, the result retains
+its event indices. Numeric summaries such as `aggregate()` are intended for
+numeric event values; `count()` works for any event type. Dates and strings
+remain NumPy values when PAL runs with GPU acceleration.
+
 ## Copulas and Dependencies
 
 Statistical dependencies between PAL variables can be modeled using copulas:
