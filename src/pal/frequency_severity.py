@@ -450,7 +450,10 @@ class FreqSevSims(_ProteusStochasticVariable):
 
         # Extract values from FreqSevSims objects, leave others as-is
         host = host_values(self.values) or any(
-            isinstance(x, FreqSevSims) and host_values(x.values) for x in args
+            (isinstance(x, FreqSevSims) and host_values(x.values))
+            or isinstance(x, (str, bytes))
+            or (isinstance(x, np.ndarray) and host_values(x))
+            for x in args
         )
         processed_args = tuple(
             (asnumpy(x.values) if isinstance(x, FreqSevSims) else
