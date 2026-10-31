@@ -341,7 +341,8 @@ class StochasticScalar(ProteusStochasticVariable):
         """Increase the number of simulations in the variable."""
         if n_sims == self.n_sims:
             return self
-        return type(self)(self.values[xp.arange(n_sims) % self.n_sims])
+        backend = np if host_values(self.values) else xp
+        return type(self)(self.values[backend.arange(n_sims) % self.n_sims])
 
     def histogram_plot(self, title: str | None = None) -> go.Figure:
         """Return a Plotly histogram of the simulated values.
