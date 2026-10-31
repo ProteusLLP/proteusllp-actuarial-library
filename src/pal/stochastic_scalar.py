@@ -421,9 +421,8 @@ class StochasticScalar(ProteusStochasticVariable):
 
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
         """Reorder the simulations in the variable."""
-        if host_values(self.values):
-            new_order = asnumpy(new_order)
-        self.values = self.values[new_order]
+        order = asnumpy(new_order) if host_values(self.values) else new_order
+        self.values = self.values[order]
 
     def _wrap_reduction_result(self, result: t.Any) -> t.Any:
         """Return scalar reductions directly and preserve one-dimensional results."""
