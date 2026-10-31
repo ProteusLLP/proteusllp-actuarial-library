@@ -501,9 +501,13 @@ class FreqSevSims(_ProteusStochasticVariable):
         if n_sims == self.n_sims:
             return self.copy()
         sim_index = xp.repeat(self.sim_index, n_sims // self.n_sims)
-        values = xp.repeat(self.values, n_sims // self.n_sims)
+        host = host_values(self.values)
+        values = (np if host else xp).repeat(self.values, n_sims // self.n_sims)
         if n_sims % self.n_sims > 0:
             sim_index = xp.concatenate((sim_index, self.sim_index[self.sim_index < n_sims % self.n_sims]))
-            values = xp.concatenate((values, self.values[self.sim_index < n_sims % self.n_sims]))
+            mask = self.sim_index < n_sims % self.n_sims
+            values = (np if host else xp).concatenate(
+                (values, self.values[asnumpy(mask) if host else mask])
+            )
         sim_index = sim_index + xp.arange(len(sim_index)) % n_sims
         return FreqSevSims(sim_index, values, n_sims)
