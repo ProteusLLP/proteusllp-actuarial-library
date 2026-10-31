@@ -1972,9 +1972,7 @@ class Uniform(DistributionBase):
                     return np.datetime_data(value.dtype)[0] not in ("Y", "M", "W", "D")
                 return False
 
-            unit: t.Literal["D", "us"] = (
-                "us" if has_time(t.cast(t.Any, a)) or has_time(t.cast(t.Any, b)) else "D"
-            )
+            unit: t.Literal["D", "us"] = "us" if has_time(t.cast(t.Any, a)) or has_time(t.cast(t.Any, b)) else "D"
             self._date_unit = unit
             self._date_start = np.datetime64(t.cast(dt.date | np.datetime64, a), unit)
             end = np.datetime64(t.cast(dt.date | np.datetime64, b), unit)
@@ -2043,7 +2041,7 @@ class Categorical(DistributionBase):
     ) -> None:
         """Initialize a distribution of category labels and their probabilities."""
         super().__init__()
-        if not values:
+        if len(values) == 0:
             raise ValueError("At least one category is required")
         self._values = stochastic_array(values)
         if self._values.dtype.kind not in "USM":
