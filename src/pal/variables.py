@@ -585,7 +585,130 @@ class ProteusVariable(t.Generic[T]):
     def __ne__(self, other: object) -> Self:  # type: ignore[override]
         return t.cast(Self, self._binary_operation(other, lambda a, b: a != b))
 
-    def __getitem__(self, key: int | str) -> T:
+    def _stochastic_getitem(
+        self, selector: StochasticScalar | FreqSevSims
+    ) -> StochasticScalar | FreqSevSims:
+        """Select a container entry separately for each simulation or event.
+
+        String selectors refer to named entries. Integer selectors refer to
+        entry positions, as for ordinary indexing.
+        """
+        if not self.values:
+            raise ValueError("Cannot select from an empty ProteusVariable")
+
+        labels = asnumpy(selector.values)
+        keys = list(self.values)
+        if labels.dtype.kind in "iu":
+            positions = labels.astype(np.intp)
+            if np.any(positions < -len(keys)) or np.any(positions >= len(keys)):
+                raise IndexError("Stochastic ProteusVariable index is out of range")
+            positions = positions % len(keys)
+        elif labels.dtype.kind in "US":
+            lookup = {name: i for i, name in enumerate(keys)}
+            missing = set(np.unique(labels)) - lookup.keys()
+            if missing:
+                raise KeyError(f"Unknown {self.dim_name} keys: {sorted(missing)!r}")
+            positions = np.fromiter(
+                (lookup[name] for name in labels), dtype=np.intp, count=len(labels)
+            )
+        else:
+            raise TypeError("Stochastic ProteusVariable keys must contain strings or integers")
+
+        leaves = list(self.values.values())
+        is_event_values = all(isinstance(x, FreqSevSims) for x in leaves)
+        if any(isinstance(x, ProteusVariable) for x in leaves):
+            raise TypeError("Stochastic selection of nested ProteusVariables is not supported")
+        if is_event_values and isinstance(selector, FreqSevSims):
+            for value in leaves:
+                if value.n_sims != selector.n_sims or not bool(
+                    xp.array_equal(value.sim_index, selector.sim_index)
+                ):
+                    raise ValueError("Event selectors require matching event indices")
+        elif not is_event_values and any(isinstance(x, FreqSevSims) for x in leaves):
+            raise TypeError("ProteusVariable entries must have a common stochastic type")
+
+        if isinstance(selector, StochasticScalar) and is_event_values:
+            event_indices: list[t.Any] = []
+            event_values: list[t.Any] = []
+            for i, value in enumerate(leaves):
+                if value.n_sims != selector.n_sims:
+                    raise ValueError("Simulation counts do not match")
+                event_sims = asnumpy(value.sim_index)
+                mask = positions[event_sims] == i
+                if not np.any(mask):
+                    continue
+                event_indices.append(value.sim_index[xp.asarray(mask)])
+                event_values.append(
+                    value.values[mask if isinstance(value.values, np.ndarray)
+                                 else xp.asarray(mask)]
+                )
+            first = leaves[0]
+            if event_indices:
+                indices = xp.concatenate(event_indices)
+                if isinstance(first.values, np.ndarray):
+                    values = np.concatenate([asnumpy(x) for x in event_values])
+                else:
+                    values = xp.concatenate(event_values)
+                order = xp.argsort(indices)
+                values = values[asnumpy(order) if isinstance(values, np.ndarray) else order]
+                indices = indices[order]
+            else:
+                indices = xp.asarray([], dtype=int)
+                values = first.values[:0]
+            result: StochasticScalar | FreqSevSims = FreqSevSims(
+                indices, values, selector.n_sims
+            )
+        else:
+            # Select one leaf at each scenario or event, retaining the input shape.
+            first = leaves[0]
+            sample = first.values if isinstance(first, ProteusStochasticVariable) else np.asarray(first)
+            use_host = isinstance(sample, np.ndarray) and sample.dtype.kind in "USMm"
+            if use_host:
+                chosen = np.empty(len(positions), dtype=sample.dtype)
+            else:
+                chosen = xp.empty(len(positions), dtype=sample.dtype)
+            for i, value in enumerate(leaves):
+                mask = positions == i
+                if not np.any(mask):
+                    continue
+                target = mask if use_host else xp.asarray(mask)
+                if isinstance(value, FreqSevSims):
+                    source = value.values
+                    selected = source[mask if isinstance(source, np.ndarray) else target]
+                elif isinstance(value, StochasticScalar):
+                    if value.n_sims == 1:
+                        selected = value.values[0]
+                    elif value.n_sims == selector.n_sims:
+                        if isinstance(selector, FreqSevSims):
+                            source_idx = selector.sim_index[
+                                xp.asarray(mask)
+                            ]
+                            if isinstance(value.values, np.ndarray):
+                                source_idx = asnumpy(source_idx)
+                            selected = value.values[source_idx]
+                        else:
+                            selected = value.values[
+                                mask if isinstance(value.values, np.ndarray) else target
+                            ]
+                    else:
+                        raise ValueError("Simulation counts do not match")
+                else:
+                    selected = value
+                chosen[target] = selected
+            if isinstance(selector, FreqSevSims):
+                result = FreqSevSims(selector.sim_index, chosen, selector.n_sims)
+            else:
+                result = StochasticScalar(chosen)
+
+        result.coupled_variable_group.merge(selector.coupled_variable_group)
+        for value in leaves:
+            if isinstance(value, ProteusStochasticVariable):
+                result.coupled_variable_group.merge(value.coupled_variable_group)
+        return result
+
+    def __getitem__(self, key: int | str | StochasticScalar | FreqSevSims) -> T | StochasticScalar | FreqSevSims:
+        if isinstance(key, (StochasticScalar, FreqSevSims)):
+            return self._stochastic_getitem(key)
         # FIXME: This assumes that the ordering of the values never changes. At the
         # moment, this is not true. The values are stored in mutable container!
         if isinstance(key, int):
