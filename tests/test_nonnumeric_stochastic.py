@@ -45,9 +45,7 @@ def test_frequency_severity_categorical_event_values() -> None:
         3,
     )
     assert dates.values.dtype.kind == "M"
-    np.testing.assert_array_equal(
-        (dates < dt.date(2026, 2, 1)).values, [True, False]
-    )
+    np.testing.assert_array_equal((dates < dt.date(2026, 2, 1)).values, [True, False])
 
 
 def test_uniform_dates_are_inclusive_and_have_exact_cdf() -> None:
@@ -55,10 +53,12 @@ def test_uniform_dates_are_inclusive_and_have_exact_cdf() -> None:
     assert dist.invcdf(0) == np.datetime64("2026-01-01")
     assert dist.invcdf(1) == np.datetime64("2026-01-03")
     np.testing.assert_allclose(
-        [dist.cdf(dt.date(2025, 12, 31)),
-         dist.cdf(dt.date(2026, 1, 1)),
-         dist.cdf(dt.date(2026, 1, 2)),
-         dist.cdf(dt.date(2026, 1, 3))],
+        [
+            dist.cdf(dt.date(2025, 12, 31)),
+            dist.cdf(dt.date(2026, 1, 1)),
+            dist.cdf(dt.date(2026, 1, 2)),
+            dist.cdf(dt.date(2026, 1, 3)),
+        ],
         [0.0, 1 / 3, 2 / 3, 1.0],
     )
     generated = dist.generate(5000, np.random.default_rng(5))
@@ -94,10 +94,13 @@ def test_categorical_distribution_and_frequency_severity_model() -> None:
 
 
 def test_stochastic_dereferencing_scenarios() -> None:
-    values = ProteusVariable("region", {
-        "UK": StochasticScalar([1, 2, 3, 4]),
-        "US": StochasticScalar([10, 20, 30, 40]),
-    })
+    values = ProteusVariable(
+        "region",
+        {
+            "UK": StochasticScalar([1, 2, 3, 4]),
+            "US": StochasticScalar([10, 20, 30, 40]),
+        },
+    )
     region = StochasticScalar(["UK", "US", "UK", "US"])
     result = values[region]
     assert isinstance(result, StochasticScalar)
@@ -114,10 +117,13 @@ def test_stochastic_dereferencing_scenarios() -> None:
 
 
 def test_stochastic_dereferencing_events_and_event_outputs() -> None:
-    by_region = ProteusVariable("region", {
-        "UK": StochasticScalar([100, 200, 300]),
-        "US": StochasticScalar([10, 20, 30]),
-    })
+    by_region = ProteusVariable(
+        "region",
+        {
+            "UK": StochasticScalar([100, 200, 300]),
+            "US": StochasticScalar([10, 20, 30]),
+        },
+    )
     event_region = FreqSevSims([0, 0, 2], ["UK", "US", "US"], 3)
     selected = by_region[event_region]
     assert isinstance(selected, FreqSevSims)
@@ -125,10 +131,13 @@ def test_stochastic_dereferencing_events_and_event_outputs() -> None:
     assert selected.sim_index.tolist() == [0, 0, 2]
     assert event_region in selected.coupled_variable_group
 
-    event_values = ProteusVariable("region", {
-        "UK": FreqSevSims([0, 1, 1, 2], [1, 2, 3, 4], 3),
-        "US": FreqSevSims([0, 0, 1, 2], [10, 20, 30, 40], 3),
-    })
+    event_values = ProteusVariable(
+        "region",
+        {
+            "UK": FreqSevSims([0, 1, 1, 2], [1, 2, 3, 4], 3),
+            "US": FreqSevSims([0, 0, 1, 2], [10, 20, 30, 40], 3),
+        },
+    )
     region = StochasticScalar(["US", "UK", "US"])
     selected_events = event_values[region]
     assert isinstance(selected_events, FreqSevSims)
