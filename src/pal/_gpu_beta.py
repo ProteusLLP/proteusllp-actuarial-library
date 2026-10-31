@@ -515,7 +515,12 @@ __device__ __forceinline__ double pal_ibeta_inverse(
     const double original_p = p;
 
     bool reflect = false;
-    if (p > 0.5) {
+    // Central probabilities can have quantiles too close to an endpoint to
+    // subtract accurately. In far tails retain probability-based reflection.
+    const bool use_complement = fmin(a, b) < 1.0 && fmin(p, 1.0 - p) > 1e-4
+        ? p > pal_ibeta(a, b, 0.5, input_log_beta)
+        : p > 0.5;
+    if (use_complement) {
         const double temporary = a;
         a = b;
         b = temporary;
@@ -588,7 +593,7 @@ __device__ __forceinline__ double pal_ibeta_inverse(
             } else {
                 upper = x;
             }
-            if (fabs(residual) <= 8.0 * PAL_DBL_EPSILON * fmax(p, PAL_DBL_MIN)) {
+            if (fabs(residual) <= 8.0 * PAL_DBL_EPSILON * fmax(fmin(p, 1.0 - p), PAL_DBL_MIN)) {
                 break;
             }
 
@@ -732,7 +737,13 @@ def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
     if not any(isinstance(value, cp.ndarray) for value in (a, b, x)):
         x = cp.asarray(x, dtype=cp.float64)
     if not isinstance(a, cp.ndarray) and not isinstance(b, cp.ndarray):
-        if a > 0 and b > 0 and math.isfinite(a) and math.isfinite(b):
+        if (
+            a > 0
+            and b > 0
+            and math.isfinite(a)
+            and math.isfinite(b)
+            and math.isfinite(_scalar_log_beta(float(a), float(b)))
+        ):
             return _scalar_kernels(float(a), float(b))[0](x)
         return _BETA_CDF_KERNEL(a, b, x, _scalar_log_beta(float(a), float(b)))
     return _BETA_CDF_ARRAY_KERNEL(a, b, x)
@@ -746,7 +757,13 @@ def betaincinv(a: t.Any, b: t.Any, p: t.Any) -> t.Any:
     if not any(isinstance(value, cp.ndarray) for value in (a, b, p)):
         p = cp.asarray(p, dtype=cp.float64)
     if not isinstance(a, cp.ndarray) and not isinstance(b, cp.ndarray):
-        if a > 0 and b > 0 and math.isfinite(a) and math.isfinite(b):
+        if (
+            a > 0
+            and b > 0
+            and math.isfinite(a)
+            and math.isfinite(b)
+            and math.isfinite(_scalar_log_beta(float(a), float(b)))
+        ):
             return _scalar_kernels(float(a), float(b))[1](p)
         return _BETA_INVERSE_KERNEL(a, b, p, _scalar_log_beta(float(a), float(b)))
     return _BETA_INVERSE_ARRAY_KERNEL(a, b, p)
