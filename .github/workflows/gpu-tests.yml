@@ -77,9 +77,10 @@ jobs:
           python - <<'PY'
           import cupy
           import numpy
-          from pal import Normal, set_random_seed
+          from pal import set_random_seed
           from pal._maths import xp
           from pal.config import config
+          from pal.distributions import Normal
 
           if xp is not cupy:
               raise RuntimeError("PAL did not select the CuPy backend")
@@ -116,7 +117,21 @@ jobs:
           PY
 
       - name: Run tests with GPU acceleration
+        id: gpu_tests
         run: pytest -v --cov=pal --cov-report=term --codeblocks
 
       - name: Benchmark GPU beta functions
-        run: python scripts/benchmark_gpu_beta.py --size 1000000 --repeats 7
+        if: ${{ !cancelled() && (steps.gpu_tests.outcome == 'success' || steps.gpu_tests.outcome == 'failure') }}
+        run: |
+          set -o pipefail
+          python scripts/benchmark_gpu_beta.py --sizes 1000 100000 1000000 --repeats 7 --output beta-benchmark.json | tee beta-benchmark.log
+
+      - name: Save GPU beta benchmark results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: gpu-beta-benchmark
+          path: |
+            beta-benchmark.json
+            beta-benchmark.log
+          if-no-files-found: ignore

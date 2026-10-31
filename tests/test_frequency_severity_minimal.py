@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pal import FreqSevSims
+from pal.frequency_severity import FreqSevSims
 from pal.variables import StochasticScalar
 from tests._assertions import assert_array_equal, host_values
 
@@ -33,20 +33,12 @@ def test_freqsevsims_len_and_iter():
     losses = np.array([100, 200, 300, 400, 500])
     freq_sev = FreqSevSims(sim_idx, losses, n_sims=3)
 
-    # Test __len__
     assert len(freq_sev) == 3
-
-    # Test __iter__
     sims_list = list(freq_sev)
     assert len(sims_list) == 3
     assert all(isinstance(s, StochasticScalar) for s in sims_list)
-
-    # Verify the actual values in each simulation
-    # Sim 0 has losses at indices where sim_idx == 0
     assert_array_equal(sims_list[0].values, [100, 200])
-    # Sim 1 has losses at indices where sim_idx == 1
     assert_array_equal(sims_list[1].values, [300, 400])
-    # Sim 2 has losses at indices where sim_idx == 2
     assert_array_equal(sims_list[2].values, [500])
 
 
@@ -55,16 +47,10 @@ def test_freqsevsims_deep_copy():
     sim_idx = np.array([0, 0, 1, 1, 2])
     losses = np.array([100, 200, 300, 400, 500])
     freq_sev = FreqSevSims(sim_idx, losses, n_sims=3)
-
-    # Create deep copy
     copied = freq_sev.deep_copy()
-
-    # Verify it's a copy with same values
     assert isinstance(copied, FreqSevSims)
     assert len(copied.values) == len(freq_sev.values)
     assert_array_equal(copied.values, freq_sev.values)
-
-    # Modify original - copy should not be affected
     original_value = host_values(freq_sev)[0]
     freq_sev.values[0] = 999
     assert copied.values[0] == original_value
@@ -76,19 +62,12 @@ def test_freqsevsims_private_is_compatible():
     sim_idx = np.array([0, 0, 1, 1, 2])
     losses1 = np.array([100, 200, 300, 400, 500])
     losses2 = np.array([10, 20, 30, 40, 50])
-
     freq_sev1 = FreqSevSims(sim_idx, losses1, n_sims=3)
     freq_sev2 = FreqSevSims(sim_idx, losses2, n_sims=3)
-
-    # Same sim_index should be compatible
     assert freq_sev1._is_compatible(freq_sev2)
-
-    # Different sim_index should not be compatible
     different_idx = np.array([0, 1, 1, 2, 2])
     freq_sev3 = FreqSevSims(different_idx, losses2, n_sims=3)
     assert not freq_sev1._is_compatible(freq_sev3)
-
-    # Non-FreqSevSims should not be compatible
     assert not freq_sev1._is_compatible(123)  # type: ignore
 
 
@@ -97,12 +76,9 @@ def test_freqsevsims_upsample_same_size():
     sim_idx = np.array([0, 0, 1, 1, 2])
     losses = np.array([100, 200, 300, 400, 500])
     freq_sev = FreqSevSims(sim_idx, losses, n_sims=3)
-
-    # Upsample to same size should return a copy
     upsampled = freq_sev.upsample(3)
     assert isinstance(upsampled, FreqSevSims)
     assert upsampled.n_sims == 3
-    # Modify original to verify it's a copy
     freq_sev.values[0] = 999
     assert upsampled.values[0] != 999
 
@@ -112,15 +88,10 @@ def test_freqsevsims_upsample_with_modulo():
     sim_idx = np.array([0, 0, 1])
     losses = np.array([100, 200, 300])
     freq_sev = FreqSevSims(sim_idx, losses, n_sims=2)
-
-    # Upsample to 5 (not evenly divisible by 2)
     upsampled = freq_sev.upsample(5)
     assert isinstance(upsampled, FreqSevSims)
     assert upsampled.n_sims == 5
     assert len(upsampled.values) > len(freq_sev.values)
-
-    # Verify the upsampled values contain the original values
-    # Original has [100, 200, 300], upsampled should repeat them
     original_set = set(host_values(freq_sev))
     upsampled_set = set(host_values(upsampled))
     assert original_set.issubset(upsampled_set)

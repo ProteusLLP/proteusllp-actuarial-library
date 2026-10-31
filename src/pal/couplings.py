@@ -70,7 +70,7 @@ class CouplingGroup:
 class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
     """A class to represent a stochastic variable in a simulation."""
 
-    n_sims: int | None = None
+    n_sims: int
     values: npt.NDArray[np.number[t.Any]]
     _uid: int
 

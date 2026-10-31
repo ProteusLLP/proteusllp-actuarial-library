@@ -7,11 +7,11 @@ generation and GPU support are managed via configuration settings.
 It's expected that you construct distributions of distributions ie. a distribution can
 be created and passed to another distribution as a parameter.
 
-Note on Type Signatures:
-Distributions accept and return only primitives (int, float) or StochasticScalar.
-The DistributionParameter type alias is Union[int, float, StochasticScalar].
-Internally, scipy.special functions may operate on arrays extracted from
-StochasticScalar.values, but the public API never exposes raw numpy arrays.
+Univariate distributions accept and return only primitives (int, float) or
+StochasticScalar. Multivariate distributions return a ProteusVariable containing
+one StochasticScalar per named component, keeping the simulation dimension
+one-dimensional at each leaf. Matrix distributions return nested row and column
+ProteusVariable objects with a StochasticScalar at each named matrix entry.
 
 Type Definitions:
 - DistributionParameter: Union[int, float, StochasticScalar]
@@ -36,6 +36,19 @@ from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
 from .config import config
 from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
+
+if t.TYPE_CHECKING:
+    from .multivariate_distributions import Dirichlet as Dirichlet
+    from .multivariate_distributions import GeneralizedDirichlet as GeneralizedDirichlet
+    from .multivariate_distributions import InverseWishart as InverseWishart
+    from .multivariate_distributions import InvertedDirichlet as InvertedDirichlet
+    from .multivariate_distributions import InvertedGeneralizedDirichlet as InvertedGeneralizedDirichlet
+    from .multivariate_distributions import MatrixDistributionBase as MatrixDistributionBase
+    from .multivariate_distributions import Multinomial as Multinomial
+    from .multivariate_distributions import MultivariateDistributionBase as MultivariateDistributionBase
+    from .multivariate_distributions import MultivariateNormal as MultivariateNormal
+    from .multivariate_distributions import MultivariateStudentsT as MultivariateStudentsT
+    from .multivariate_distributions import Wishart as Wishart
 
 TOLERANCE = 1e-10  # Tolerance for numerical comparisons
 # FIXME: Consider replaching with VectorLike from types.py
@@ -807,6 +820,40 @@ class MBBEFD(DistributionBase):
         )
         result = xp.where(values <= 0, 0.0, xp.where(values >= 1, 1.0, interior))
         return self._wrap_result(result, x)
+
+    def mean(self) -> ReturnType:
+        r"""Return the expected damage ratio :math:`E[X]`.
+
+        For the main parameter region,
+
+        .. math::
+
+            E[X] = \frac{(1-b)\log(gb)}{(1-gb)\log(b)}.
+
+        The corresponding continuous limits are used for ``b=1`` and
+        ``gb=1``. The degenerate boundary ``g=1`` or ``b=0`` has mean one.
+        """
+        g, b = self._validated_params()
+        degenerate = (g == 1) | (b == 0)
+        b_one = xp.isclose(b, 1, rtol=TOLERANCE, atol=TOLERANCE)
+        bg_one = xp.isclose(b * g, 1, rtol=TOLERANCE, atol=TOLERANCE)
+
+        safe_g = xp.where(degenerate, 2.0, g)
+        safe_b = xp.where(degenerate | b_one | bg_one, 2.0, b)
+        limit_g = xp.where(degenerate, 2.0, g)
+        limit_b = xp.where(degenerate | b_one, 0.5, b)
+
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            main = (1 - safe_b) * xp.log(safe_g * safe_b) / ((1 - safe_g * safe_b) * xp.log(safe_b))
+            b_limit = xp.log(limit_g) / (limit_g - 1)
+            bg_limit = (1 - limit_b) / (-xp.log(limit_b))
+
+        result = xp.where(
+            degenerate,
+            1.0,
+            xp.where(b_one, b_limit, xp.where(bg_one, bg_limit, main)),
+        )
+        return self._wrap_result(result, 0.0)
 
 
 class LogLogistic(DistributionBase):

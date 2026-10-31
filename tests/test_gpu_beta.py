@@ -7,6 +7,8 @@ import scipy.special
 from pal._beta import betainc, betaincinv
 from pal._maths import asnumpy, xp
 
+from ._assertions import assert_beta_inverse_tail_accuracy
+
 pytestmark = pytest.mark.skipif(xp.__name__ != "cupy", reason="requires the CuPy backend")
 
 
@@ -75,34 +77,14 @@ def test_gpu_beta_cdf_matches_scipy_for_seven_term_series() -> None:
 
 
 def test_gpu_beta_inverse_round_trip_preserves_tail_probabilities() -> None:
-    """Recover input probabilities without losing relative tail accuracy."""
+    """Recover input probabilities using an independent SciPy tail evaluation."""
     alpha, beta, probability = _parameter_grid(PROBABILITIES)
     device_alpha = xp.asarray(alpha)
     device_beta = xp.asarray(beta)
     device_probability = xp.asarray(probability)
 
     quantile = betaincinv(device_alpha, device_beta, device_probability)
-    recovered = asnumpy(betainc(device_alpha, device_beta, quantile))
-    host_quantile = asnumpy(quantile)
-    tail_scale = np.minimum(probability, 1 - probability)
-    tolerance = 2e-8 * tail_scale + 2e-14
-    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-        log_density = (
-            (alpha - 1) * np.log(host_quantile)
-            + (beta - 1) * np.log1p(-host_quantile)
-            - scipy.special.betaln(alpha, beta)
-        )
-        probability_resolution = np.exp(log_density) * np.spacing(host_quantile)
-    # Exclude endpoint-conditioned quantiles where two ULPs in x represent
-    # more probability mass than the requested round-trip tolerance.
-    representable = (
-        (host_quantile > np.finfo(float).tiny) & (host_quantile < 1) & (2 * probability_resolution < tolerance)
-    )
-
-    np.testing.assert_array_less(
-        np.abs(recovered[representable] - probability[representable]),
-        tolerance[representable],
-    )
+    assert_beta_inverse_tail_accuracy(alpha, beta, probability, quantile)
 
 
 def test_gpu_beta_functions_handle_boundaries_and_invalid_inputs() -> None:

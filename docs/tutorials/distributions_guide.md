@@ -9,7 +9,9 @@ and use them.
 ```python
 import numpy as np
 
-from pal import config, distributions, set_random_seed
+from pal import config, set_random_seed
+from pal.distributions import Gamma, LogNormal, Poisson
+from pal.multivariate_distributions import InverseWishart, MultivariateStudentsT
 
 config.n_sims = 10_000
 set_random_seed(42)
@@ -23,11 +25,11 @@ Every distribution has a `generate()` method that returns a
 <!--pytest-codeblocks:cont-->
 
 ```python
-loss = distributions.LogNormal(mu=10, sigma=1.5).generate()
+loss = LogNormal(mu=10, sigma=1.5).generate()
 
 loss.mean()                           # => 68,673
 loss.std()                            # => 205,459
-np.percentile(loss.values, 99.5)      # => 1,111,353
+loss.percentile(99.5)                 # => 1,111,353
 ```
 
 The number of samples is controlled by `config.n_sims` (default
@@ -41,7 +43,7 @@ generate samples:
 <!--pytest-codeblocks:cont-->
 
 ```python
-ln = distributions.LogNormal(mu=10, sigma=1.5)
+ln = LogNormal(mu=10, sigma=1.5)
 
 ln.cdf(50_000)       # => 0.7076  (P(X ≤ 50,000))
 ln.invcdf(0.5)       # => 22,026  (median)
@@ -57,7 +59,7 @@ validating simulation results.
 
 | Distribution | Parameters | Typical Use |
 |-------------|------------|-------------|
-| `LogNormal` | `mu`, `sigma` | Attritional losses, claim sizes |
+| `LogNormal` | `mu`, `sigma` | Claim sizes |
 | `Gamma` | `alpha`, `theta`, `loc=0` | Aggregate losses, waiting times |
 | `Pareto` | `shape`, `scale` | Large/catastrophe losses |
 | `GPD` | `shape`, `scale`, `loc` | Excess losses above a threshold |
@@ -87,6 +89,56 @@ validating simulation results.
 | `NegBinomial` | `n`, `p` | Over-dispersed claim counts |
 | `Binomial` | `n`, `p` | Events out of fixed trials |
 | `HyperGeometric` | `ngood`, `nbad`, `population_size` | Sampling without replacement |
+
+### Multivariate Distributions
+
+| Distribution | Parameters | Typical Use |
+|-------------|------------|-------------|
+| `MultivariateNormal` | `mean`, `covariance` | Correlated symmetric risk factors |
+| `MultivariateStudentsT` | `nu`, `mean`, `scale` | Correlated heavy-tailed risk factors |
+| `Multinomial` | `n`, `p` | Allocate a fixed count across categories |
+| `Dirichlet` | `alpha` | Random proportions with a fixed total |
+| `InvertedDirichlet` | `alpha` | Positively dependent ratios and positive vectors |
+| `GeneralizedDirichlet` | `alpha`, `beta` | Proportions with a richer covariance structure |
+| `InvertedGeneralizedDirichlet` | `alpha`, `beta` | Positive vectors with a richer covariance structure |
+| `Wishart` | `df`, `scale` | Random covariance or precision matrices |
+| `InverseWishart` | `df`, `scale` | Uncertain covariance matrices |
+
+Multivariate samples contain one `StochasticScalar` per named component:
+
+<!--pytest-codeblocks:cont-->
+
+```python
+economic_factors = MultivariateStudentsT(
+    nu=6,
+    mean=[0.02, 0.04],
+    scale=[[0.0004, 0.0001], [0.0001, 0.0025]],
+    component_names=["inflation", "equity_return"],
+).generate()
+
+economic_factors["inflation"].mean()
+economic_factors["equity_return"].std()
+```
+
+The generalized Dirichlet returns the final unallocated remainder as an
+explicit component, so all generated components sum to one. The inverted
+Dirichlet uses the final `alpha` value as the common denominator parameter and
+therefore returns one fewer component than the number of parameters.
+
+Wishart and inverse Wishart samples use nested named dimensions. The outer
+variable contains matrix rows and each row contains the corresponding columns:
+
+<!--pytest-codeblocks:cont-->
+
+```python
+covariance = InverseWishart(
+    df=10,
+    scale=[[0.04, 0.01], [0.01, 0.09]],
+    component_names=["property", "casualty"],
+).generate()
+
+covariance["property"]["casualty"].mean()
+```
 
 ## Comparing Severity Distributions
 
@@ -161,8 +213,8 @@ Distribution parameters can themselves be stochastic. Pass a
 set_random_seed(42)
 
 # Uncertain claim rate: mean is itself random
-uncertain_rate = distributions.Gamma(alpha=25, theta=2).generate()
-claims = distributions.Poisson(mean=uncertain_rate).generate()
+uncertain_rate = Gamma(alpha=25, theta=2).generate()
+claims = Poisson(mean=uncertain_rate).generate()
 ```
 
 This produces over-dispersed counts because the Poisson mean varies
@@ -177,7 +229,7 @@ operations:
 <!--pytest.mark.skip-->
 
 ```python
-loss = distributions.LogNormal(mu=14, sigma=0.5).generate()
+loss = LogNormal(mu=14, sigma=0.5).generate()
 
 # Arithmetic
 with_expenses = loss * 1.10
@@ -186,11 +238,25 @@ capped = np.minimum(loss, 5_000_000)
 # Statistics
 loss.mean()
 loss.std()
-np.percentile(loss.values, [25, 50, 75, 95, 99, 99.5])
+loss.percentile([25, 50, 75, 95, 99, 99.5])
 
-# Visualisation
-loss.show_cdf("Loss Distribution")
+# Visualisation of generated simulations
+cdf_fig = loss.cdf_plot("Loss Distribution")
+cdf_fig.show()
+
+histogram_fig = loss.histogram_plot("Loss Distribution")
+histogram_fig.show()
 ```
+
+```{only} html
+![Empirical CDF of the simulated loss](../_static/generated/distributions_guide_cdf.svg)
+
+![Histogram of the simulated loss](../_static/generated/distributions_guide_histogram.svg)
+```
+
+The naming deliberately distinguishes analytical distribution methods such as
+`ln.cdf(x)`, which calculate probabilities, from simulation plotting methods
+such as `loss.cdf_plot()`, which return Plotly figures.
 
 ## See Also
 
