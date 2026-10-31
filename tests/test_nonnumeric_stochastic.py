@@ -12,14 +12,14 @@ from pal.distributions import Categorical, Poisson, Uniform
 def test_stochastic_scalar_strings_and_dates() -> None:
     labels = StochasticScalar(["UK", "US", "UK"])
     assert labels.values.dtype.kind == "U"
-    np.testing.assert_array_equal((labels == "UK").values, [True, False, True])
+    np.testing.assert_array_equal(np.asarray(labels == "UK"), [True, False, True])
     np.testing.assert_array_equal(np.asarray(labels), ["UK", "US", "UK"])
     np.testing.assert_array_equal(np.where(labels == "UK", "GBP", "USD").values, ["GBP", "USD", "GBP"])
     assert labels.upsample(5).tolist() == ["UK", "US", "UK", "UK", "US"]
 
     dates = StochasticScalar([dt.date(2026, 1, 1), dt.date(2026, 1, 3)])
     assert dates.values.dtype == np.dtype("datetime64[D]")
-    np.testing.assert_array_equal((dates >= dt.date(2026, 1, 2)).values, [False, True])
+    np.testing.assert_array_equal(np.asarray(dates >= dt.date(2026, 1, 2)), [False, True])
     assert dates.tolist() == [dt.date(2026, 1, 1), dt.date(2026, 1, 3)]
 
     datetimes = StochasticScalar([dt.datetime(2026, 1, 1, 10), dt.datetime(2026, 1, 1, 12)])
@@ -35,7 +35,7 @@ def test_frequency_severity_categorical_event_values() -> None:
     assert locations[1].tolist() == []
     assert locations.count().tolist() == [2.0, 0.0, 1.0]
     assert locations.copy().values.dtype.kind == "U"
-    np.testing.assert_array_equal((locations == "London").values, [True, False, True])
+    np.testing.assert_array_equal(np.asarray(locations == "London"), [True, False, True])
     with pytest.raises(TypeError, match="numeric"):
         locations.aggregate()
 
@@ -45,7 +45,7 @@ def test_frequency_severity_categorical_event_values() -> None:
         3,
     )
     assert dates.values.dtype.kind == "M"
-    np.testing.assert_array_equal((dates < dt.date(2026, 2, 1)).values, [True, False])
+    np.testing.assert_array_equal(np.asarray(dates < dt.date(2026, 2, 1)), [True, False])
 
 
 def test_uniform_dates_are_inclusive_and_have_exact_cdf() -> None:
