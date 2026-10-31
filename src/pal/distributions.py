@@ -1972,10 +1972,12 @@ class Uniform(DistributionBase):
                     return np.datetime_data(value.dtype)[0] not in ("Y", "M", "W", "D")
                 return False
 
-            unit = "us" if has_time(t.cast(t.Any, a)) or has_time(t.cast(t.Any, b)) else "D"
+            unit: t.Literal["D", "us"] = (
+                "us" if has_time(t.cast(t.Any, a)) or has_time(t.cast(t.Any, b)) else "D"
+            )
             self._date_unit = unit
-            self._date_start = np.datetime64(a, unit)
-            end = np.datetime64(b, unit)
+            self._date_start = np.datetime64(t.cast(dt.date | np.datetime64, a), unit)
+            end = np.datetime64(t.cast(dt.date | np.datetime64, b), unit)
             if np.isnat(self._date_start) or np.isnat(end):
                 raise ValueError("Uniform date bounds cannot be NaT")
             self._date_span = int((end - self._date_start) / np.timedelta64(1, unit))
@@ -1991,7 +1993,7 @@ class Uniform(DistributionBase):
         source = x.values if isinstance(x, StochasticScalar) else x
         ticks = (
             np.asarray(asnumpy(source), dtype=f"datetime64[{self._date_unit}]") - self._date_start
-        ) / np.timedelta64(1, self._date_unit)
+        ) / np.timedelta64(1, t.cast(t.Literal["D", "us"], self._date_unit))
         if self._date_unit == "D":
             result = np.clip((ticks + 1) / (self._date_span + 1), 0.0, 1.0)
         elif self._date_span == 0:
