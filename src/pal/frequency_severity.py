@@ -242,9 +242,29 @@ class FreqSevSims(_ProteusStochasticVariable):
         return self.n_sims
 
     def __iter__(self) -> t.Iterator[StochasticScalar]:
-        """Iterate over the simulations."""
-        for i in range(self.n_sims):
-            yield self[i]
+        """Iterate over the simulations, preserving each simulation's event order."""
+        # __getitem__ scans the entire event-index array on each access.
+        # Group once rather than repeating that scan for every simulation.
+        indices = self.sim_index.astype(xp.int64, copy=False)
+        counts = xp.bincount(indices, minlength=self.n_sims)
+        offsets = xp.cumsum(counts)
+        # Python iteration requires host integer slice offsets. On CUDA, copy
+        # only these counts, never the event values.
+        ends = asnumpy(offsets) if xp is not np else offsets
+
+        if indices.size < 2 or bool(xp.all(indices[1:] >= indices[:-1])):
+            grouped_values = self.values
+        else:
+            # Copula reordering may relabel the simulations without sorting
+            # the events. A stable sort retains their original within-sim order.
+            order = xp.argsort(indices, kind="stable")
+            grouped_values = self.values[asnumpy(order) if host_values(self.values) else order]
+
+        start = 0
+        for end in ends:
+            end = int(end)
+            yield StochasticScalar(grouped_values[start:end])
+            start = end
 
     def _reduce_over_events(self, operation: ReductionOperation) -> StochasticScalar:
         """Apply a reduction operation over events for each simulation.
