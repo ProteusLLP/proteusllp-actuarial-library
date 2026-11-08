@@ -397,13 +397,13 @@ class FreqSevSims(_ProteusStochasticVariable):
     def _validate_event_layout(self, *operands: t.Any) -> None:
         """Reject event-wise operations on different scenario/event assignments."""
         for other in operands:
-            if isinstance(other, FreqSevSims) and (
+            if isinstance(other, FreqSevSims) and other is not self and (
                 self.n_sims != other.n_sims or not bool(xp.array_equal(self.sim_index, other.sim_index))
             ):
                 raise ValueError("Event simulation indices must match for event-wise operations")
 
     def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any) -> FreqSevSims:
-        self._validate_event_layout(*inputs, *(kwargs.get("out") or ()))
+        self._validate_event_layout(*inputs, *(kwargs.get("out") or ()), kwargs.get("where"))
         host = (
             host_values(self.values)
             or any(host_values(x.values if isinstance(x, (FreqSevSims, StochasticScalar)) else x) for x in inputs)
@@ -420,9 +420,12 @@ class FreqSevSims(_ProteusStochasticVariable):
             kwargs["out"] = (
                 tuple(asnumpy(x).copy() if isinstance(x, xp.ndarray) else x for x in out_arrays) if host else out_arrays
             )
-        if host and "where" in kwargs:
+        if "where" in kwargs:
             mask = kwargs["where"]
-            kwargs["where"] = asnumpy(mask.values if isinstance(mask, StochasticScalar) else mask)
+            if isinstance(mask, (FreqSevSims, StochasticScalar)):
+                kwargs["where"] = self._extract_array_for_ufunc(mask, host)
+            elif host:
+                kwargs["where"] = asnumpy(mask)
         result = getattr(ufunc, method)(*_inputs, **kwargs)
         if out and host:
             for destination, buffer in zip(out_arrays, kwargs["out"]):
@@ -432,7 +435,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         if scalar_result is not result:
             return scalar_result  # type: ignore[return-value]
         result = FreqSevSims(self.sim_index, result, self.n_sims)
-        for input in inputs:
+        for input in (*inputs, mask) if "where" in kwargs else inputs:
             if isinstance(input, _ProteusStochasticVariable):
                 input.coupled_variable_group.merge(self.coupled_variable_group)
         result.coupled_variable_group.merge(self.coupled_variable_group)
@@ -467,7 +470,8 @@ class FreqSevSims(_ProteusStochasticVariable):
         ):
             raise NotImplementedError(f"Function {func.__name__} not supported")
 
-        self._validate_event_layout(*args)
+        if func is not np.array_equal:
+            self._validate_event_layout(*args)
 
         # Special handling for mean - aggregate first, then take mean
         if func is np.mean and len(args) == 1 and args[0] is self:
