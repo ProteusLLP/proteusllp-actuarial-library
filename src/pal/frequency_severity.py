@@ -403,7 +403,8 @@ class FreqSevSims(_ProteusStochasticVariable):
                 raise ValueError("Event simulation indices must match for event-wise operations")
 
     def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any) -> FreqSevSims:
-        self._validate_event_layout(*inputs, *(kwargs.get("out") or ()), kwargs.get("where"))
+        where_mask = kwargs.get("where")
+        self._validate_event_layout(*inputs, *(kwargs.get("out") or ()), where_mask)
         host = (
             host_values(self.values)
             or any(host_values(x.values if isinstance(x, (FreqSevSims, StochasticScalar)) else x) for x in inputs)
@@ -421,11 +422,10 @@ class FreqSevSims(_ProteusStochasticVariable):
                 tuple(asnumpy(x).copy() if isinstance(x, xp.ndarray) else x for x in out_arrays) if host else out_arrays
             )
         if "where" in kwargs:
-            mask = kwargs["where"]
-            if isinstance(mask, (FreqSevSims, StochasticScalar)):
-                kwargs["where"] = self._extract_array_for_ufunc(mask, host)
+            if isinstance(where_mask, (FreqSevSims, StochasticScalar)):
+                kwargs["where"] = self._extract_array_for_ufunc(where_mask, host)
             elif host:
-                kwargs["where"] = asnumpy(mask)
+                kwargs["where"] = asnumpy(where_mask)
         result = getattr(ufunc, method)(*_inputs, **kwargs)
         if out and host:
             for destination, buffer in zip(out_arrays, kwargs["out"]):
@@ -435,7 +435,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         if scalar_result is not result:
             return scalar_result  # type: ignore[return-value]
         result = FreqSevSims(self.sim_index, result, self.n_sims)
-        for input in (*inputs, mask) if "where" in kwargs else inputs:
+        for input in (*inputs, where_mask):
             if isinstance(input, _ProteusStochasticVariable):
                 input.coupled_variable_group.merge(self.coupled_variable_group)
         result.coupled_variable_group.merge(self.coupled_variable_group)
