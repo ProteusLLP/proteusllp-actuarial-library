@@ -76,9 +76,7 @@ def test_resampled_event_leaves_share_target_coupling_not_source() -> None:
 
 
 def test_stochastic_lookup_promotes_numeric_and_text_dtypes() -> None:
-    numeric = ProteusVariable(
-        "type", {"integer": StochasticScalar([1]), "fraction": StochasticScalar([0.75])}
-    )
+    numeric = ProteusVariable("type", {"integer": StochasticScalar([1]), "fraction": StochasticScalar([0.75])})
     selector = StochasticScalar(["integer", "fraction", "fraction"])
     result = numeric[selector]
     np.testing.assert_allclose(np.asarray(result), [1.0, 0.75, 0.75])
@@ -86,9 +84,7 @@ def test_stochastic_lookup_promotes_numeric_and_text_dtypes() -> None:
     assert numeric["fraction"] not in result.coupled_variable_group
     assert selector in result.coupled_variable_group
 
-    names = ProteusVariable(
-        "region", {"short": StochasticScalar(["UK"]), "long": StochasticScalar(["Australia"])}
-    )
+    names = ProteusVariable("region", {"short": StochasticScalar(["UK"]), "long": StochasticScalar(["Australia"])})
     assert names[StochasticScalar(["long", "short"])].tolist() == ["Australia", "UK"]
 
 
