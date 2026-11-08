@@ -1,0 +1,77 @@
+name: Performance benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      sizes:
+        description: "Comma-separated simulation counts"
+        type: string
+        default: "10000,100000"
+      run_gpu:
+        description: "Also benchmark on the dedicated GPU runner"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 7 * * 1"
+  pull_request:
+    branches: [main]
+    paths:
+      - "benchmarks/**"
+      - ".github/workflows/performance.yml"
+      - "src/pal/frequency_severity.py"
+
+permissions:
+  contents: read
+
+jobs:
+  cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install PAL
+        run: pip install -e .
+      - name: Benchmark CPU
+        env:
+          BENCH_SIZES: ${{ inputs.sizes || '10000,100000' }}
+        run: |
+          python -m benchmarks.benchmark_core --sizes "$BENCH_SIZES" \
+            --output "$RUNNER_TEMP/pal-cpu.json" --summary "$RUNNER_TEMP/pal-cpu.md"
+          cat "$RUNNER_TEMP/pal-cpu.md" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pal-performance-cpu
+          path: ${{ runner.temp }}/pal-cpu.*
+          retention-days: 90
+
+  gpu:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_gpu && github.ref == 'refs/heads/main'
+    runs-on: proteus-gpu
+    timeout-minutes: 35
+    env:
+      PAL_USE_GPU: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install PAL and CuPy
+        run: pip install -e ".[gpu]" "cupy-cuda12x[ctk]"
+      - name: Benchmark GPU
+        env:
+          BENCH_SIZES: ${{ inputs.sizes || '10000,100000' }}
+        run: |
+          nvidia-smi
+          python -m benchmarks.benchmark_core --sizes "$BENCH_SIZES" \
+            --output "$RUNNER_TEMP/pal-gpu.json" --summary "$RUNNER_TEMP/pal-gpu.md"
+          cat "$RUNNER_TEMP/pal-gpu.md" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pal-performance-gpu
+          path: ${{ runner.temp }}/pal-gpu.*
+          retention-days: 90
