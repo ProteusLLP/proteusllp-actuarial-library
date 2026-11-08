@@ -238,6 +238,34 @@ def test_unary_and_scalar_ufuncs_skip_self_layout_comparison(monkeypatch: pytest
     assert_allclose(shifted.values, [2.0, 3.0, 4.0])
 
 
+def test_shared_event_indices_skip_equality_scan_but_check_simulation_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Derived event arrays sharing the same indices should not synchronise the GPU."""
+    events = FreqSevSims([0, 0, 1], [1.0, 2.0, 3.0], 2)
+    derived = events + 1.0
+    assert derived.sim_index is events.sim_index
+
+    original_array_equal = xp.array_equal
+    calls = 0
+
+    def tracked_array_equal(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original_array_equal(*args, **kwargs)
+
+    monkeypatch.setattr(xp, "array_equal", tracked_array_equal)
+    combined = derived * events
+    assert calls == 0
+
+    different_count = FreqSevSims(events.sim_index, [1.0, 2.0, 3.0], 3)
+    assert different_count.sim_index is events.sim_index
+    with pytest.raises(ValueError, match="Event simulation indices must match"):
+        _ = derived + different_count
+    assert calls == 0
+
+    monkeypatch.setattr(xp, "array_equal", original_array_equal)
+    assert_allclose(combined.values, [2.0, 6.0, 12.0])
+
+
 def test_array_equal_allows_differing_event_layouts() -> None:
     """Equality is a predicate, not an aligned binary arithmetic operation."""
     source = FreqSevSims([0, 0, 1], [1, 2, 3], 2)
