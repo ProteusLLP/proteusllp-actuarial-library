@@ -25,10 +25,9 @@ def stochastic_array(values: t.Any) -> npt.NDArray[t.Any]:
         items = np.asarray(candidate).ravel().tolist()
         if all(isinstance(item, str) for item in items):
             return np.asarray(candidate, dtype=str)
-        if all(isinstance(item, dt.datetime) for item in items):
-            return np.asarray(candidate, dtype="datetime64[us]")
         if all(isinstance(item, dt.date) for item in items):
-            return np.asarray(candidate, dtype="datetime64[D]")
+            unit = "us" if any(isinstance(item, dt.datetime) for item in items) else "D"
+            return np.asarray(candidate, dtype=f"datetime64[{unit}]")
         raise TypeError("Simulated values must have a consistent numeric, string or date type")
 
     if dtype is not None and dtype.kind in "USMm":
