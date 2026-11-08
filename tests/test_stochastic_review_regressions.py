@@ -6,6 +6,7 @@ import numpy as np
 
 from pal import FreqSevSims, ProteusVariable, StochasticScalar
 from pal.distributions import Categorical
+from tests._assertions import host_values
 
 
 def test_event_slice_has_independent_simulation_axis() -> None:
@@ -47,13 +48,13 @@ def test_resample_events_after_copula_relabels_indices() -> None:
     variable = ProteusVariable("line", {"A": source})
     resampled = variable.get_value_at_sim(StochasticScalar([0, 1]))["A"]
     assert isinstance(resampled, FreqSevSims)
-    assert np.asarray(resampled.sim_index).tolist() == [0, 1]
+    assert host_values(resampled.sim_index).tolist() == [0, 1]
     assert resampled.values.tolist() == [20, 10]
 
     # This also applies to upsampling, which preserves complete events.
     upsampled = variable.upsample(4)["A"]
     assert isinstance(upsampled, FreqSevSims)
-    assert np.asarray(upsampled.sim_index).tolist() == [0, 1, 2, 3]
+    assert host_values(upsampled.sim_index).tolist() == [0, 1, 2, 3]
     assert upsampled.values.tolist() == [20, 10, 20, 10]
     assert source not in upsampled.coupled_variable_group
 
@@ -71,7 +72,7 @@ def test_resampled_event_leaves_share_target_coupling_not_source() -> None:
     for member in list(left.coupled_variable_group):
         member._reorder_sims(np.array([3, 2, 1, 0]))
     assert first.n_sims == 2
-    assert np.asarray(first.sim_index).tolist() == [1, 0]
+    assert host_values(first.sim_index).tolist() == [1, 0]
 
 
 def test_stochastic_lookup_promotes_numeric_and_text_dtypes() -> None:
