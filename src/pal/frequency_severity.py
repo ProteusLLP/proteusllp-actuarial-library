@@ -436,7 +436,7 @@ class FreqSevSims(_ProteusStochasticVariable):
             calculated = getattr(ufunc, method)(*_inputs, **unmasked_kwargs)
             if out_arrays:
                 destination = out_arrays[0]
-                destination[...] = xp.where(mask, calculated, destination)
+                xp.copyto(destination, calculated, casting=kwargs.get("casting", "same_kind"), where=mask)
                 result = destination
             else:
                 result = xp.where(mask, calculated, xp.empty_like(calculated))
