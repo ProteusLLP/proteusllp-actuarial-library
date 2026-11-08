@@ -1697,9 +1697,7 @@ def apply_copula(
         return
 
     n_sims = variables_list[0].n_sims
-    if any(var.n_sims != n_sims for var in variables_list) or any(
-        sample.n_sims != n_sims for sample in copula_list
-    ):
+    if any(var.n_sims != n_sims for var in variables_list) or any(sample.n_sims != n_sims for sample in copula_list):
         raise ValueError("Variables and copula samples must have the same number of simulations.")
 
     # Check independence before mutating any of the coupled variables.
@@ -1715,7 +1713,7 @@ def apply_copula(
     # Align the first variable's sorted observations to the first copula margin.
     # Keep ranks and permutations on the active array backend. Constructing a
     # NumPy stack here copies every GPU margin to the host (or raises on CuPy).
-    first_order = np.argsort(variables_list[0].values)
+    first_order = np.argsort(variables_list[0].values, kind="stable")
     first_ranks = np.empty(n_sims, dtype=first_order.dtype)
     first_ranks[first_order] = np.arange(n_sims)
     copula_first_order = np.argsort(copula_list[0].values, kind="stable")
@@ -1728,7 +1726,7 @@ def apply_copula(
     for var, sample in zip(variables_list[1:], copula_list[1:]):
         sample_order = np.argsort(sample.values, kind="stable")
         ranks[sample_order] = rank_values
-        variable_order = np.argsort(var.values)
+        variable_order = np.argsort(var.values, kind="stable")
         re_ordering = variable_order[ranks[sample_positions]]
         for coupled in var.coupled_variable_group:
             coupled._reorder_sims(re_ordering)  # type: ignore[misc]
