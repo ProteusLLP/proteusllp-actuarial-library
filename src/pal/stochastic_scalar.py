@@ -119,6 +119,7 @@ class StochasticScalar(ProteusStochasticVariable):
         if is_host:
             ufunc = getattr(np, ufunc.__name__, ufunc)
         out = kwargs.get("out", ())
+        out_arrays: tuple[t.Any, ...] = ()
         if out:
             out_arrays = tuple(x.values if isinstance(x, StochasticScalar) else x for x in out)
             kwargs["out"] = (
