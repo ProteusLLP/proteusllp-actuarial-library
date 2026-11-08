@@ -36,14 +36,15 @@ def test_event_reductions_against_independent_python_reference(seed: int, n_sims
     assert events.aggregate().coupled_variable_group is events.coupled_variable_group
 
 
-@pytest.mark.parametrize("indices,values,n_sims", [
-    ([], [], 4),
-    ([2, 2], [-4.0, 1.0], 4),
-    ([1, 0, 1, 3], [2.5, -7.0, -1.5, 9.0], 5),
-])
-def test_aggregate_signed_losses_and_empty_scenarios(
-    indices: list[int], values: list[float], n_sims: int
-) -> None:
+@pytest.mark.parametrize(
+    "indices,values,n_sims",
+    [
+        ([], [], 4),
+        ([2, 2], [-4.0, 1.0], 4),
+        ([1, 0, 1, 3], [2.5, -7.0, -1.5, 9.0], 5),
+    ],
+)
+def test_aggregate_signed_losses_and_empty_scenarios(indices: list[int], values: list[float], n_sims: int) -> None:
     """Aggregation must preserve signed values and zero-event simulations."""
     events = FreqSevSims(indices, values, n_sims)
     reference = _per_simulation_values(np.asarray(indices), np.asarray(values), n_sims)
@@ -51,14 +52,17 @@ def test_aggregate_signed_losses_and_empty_scenarios(
     assert_array_equal(events.count(), [len(group) for group in reference])
 
 
-@pytest.mark.parametrize("counts,target", [
-    ([2, 0, 1], 7),
-    ([2, 0, 1], 3),
-    ([2, 0, 1], 2),
-    ([0, 0, 0], 8),
-    ([1], 5),
-    ([0, 3, 2, 0], 9),
-])
+@pytest.mark.parametrize(
+    "counts,target",
+    [
+        ([2, 0, 1], 7),
+        ([2, 0, 1], 3),
+        ([2, 0, 1], 2),
+        ([0, 0, 0], 8),
+        ([1], 5),
+        ([0, 3, 2, 0], 9),
+    ],
+)
 def test_direct_upsample_preserves_complete_event_lists(counts: list[int], target: int) -> None:
     """Each target simulation must contain precisely its selected source's events."""
     original_indices = np.repeat(np.arange(len(counts)), counts)
@@ -76,7 +80,10 @@ def test_direct_upsample_preserves_complete_event_lists(counts: list[int], targe
     assert_allclose(result.values, expected_values)
     assert_allclose(result.aggregate(), [sum(group) for group in expected_groups])
     assert_array_equal(result.count(), [len(group) for group in expected_groups])
-    assert original not in result.coupled_variable_group
+    if target == original.n_sims:
+        assert original in result.coupled_variable_group  # same-size resampling is a coupled copy
+    else:
+        assert original not in result.coupled_variable_group
 
 
 def test_direct_upsample_preserves_event_order_with_unsorted_input() -> None:
@@ -202,10 +209,13 @@ class _FixedDistribution:
         return StochasticScalar(self.values)
 
 
-@pytest.mark.parametrize("counts,severities", [
-    ([2, 0, 1, 0], [10.0, 20.0, 5.0]),
-    ([0, 0, 0, 0], [42.0]),
-])
+@pytest.mark.parametrize(
+    "counts,severities",
+    [
+        ([2, 0, 1, 0], [10.0, 20.0, 5.0]),
+        ([0, 0, 0, 0], [42.0]),
+    ],
+)
 def test_frequency_severity_model_preserves_event_counts_and_empty_output(
     counts: list[int], severities: list[float]
 ) -> None:
