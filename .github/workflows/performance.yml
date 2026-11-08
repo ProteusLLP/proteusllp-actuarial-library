@@ -40,7 +40,12 @@ jobs:
         run: |
           python -m benchmarks.benchmark_core --sizes "$BENCH_SIZES" \
             --output "$RUNNER_TEMP/pal-cpu.json" --summary "$RUNNER_TEMP/pal-cpu.md"
-          cat "$RUNNER_TEMP/pal-cpu.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish CPU benchmark summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/pal-cpu.md" ]; then
+            cat "$RUNNER_TEMP/pal-cpu.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/upload-artifact@v7
         if: always()
         with:
