@@ -230,8 +230,8 @@ class StochasticScalar(ProteusStochasticVariable):
                     indices = asnumpy(indices)
                 result = type(self)(self.values[indices])
 
-            result.coupled_variable_group.merge(self.coupled_variable_group)
-            result.coupled_variable_group.merge(index.coupled_variable_group)
+            if result.n_sims == index.n_sims:
+                result.coupled_variable_group.merge(index.coupled_variable_group)
             return result
 
         raise TypeError(
