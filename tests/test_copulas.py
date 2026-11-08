@@ -400,3 +400,95 @@ def test_mm1_copula(delta_matrix: list[list[float]], theta: float):
             )
 
     copula_margins(samples)
+
+
+@pytest.mark.parametrize("n_margins", [2, 5])
+def test_apply_copula_matches_independent_rank_reference(n_margins: int):
+    """Match the original rank transformation, including ties, on both backends."""
+    n_sims = 13
+    raw_variables = [
+        np.array([(7 * i + j * j + 3 * j) % (5 + i) for j in range(n_sims)], dtype=float)
+        for i in range(n_margins)
+    ]
+    raw_samples = [
+        np.array([(3 * j + i * i + (j // 2)) % (7 + i) for j in range(n_sims)], dtype=float)
+        for i in range(n_margins)
+    ]
+
+    # Independent NumPy reference for the pre-optimisation implementation.
+    copula_sorts = np.argsort(np.array(raw_samples), axis=1, kind="stable")
+    copula_ranks = np.empty_like(copula_sorts)
+    copula_ranks[np.arange(n_margins)[:, None], copula_sorts] = np.arange(n_sims)
+    variable_sorts = np.argsort(np.array(raw_variables), axis=1)
+    first_ranks = np.empty(n_sims, dtype=int)
+    first_ranks[variable_sorts[0]] = np.arange(n_sims)
+    sample_positions = copula_sorts[0, first_ranks]
+    expected = [raw_variables[0]] + [
+        raw_variables[i][variable_sorts[i, copula_ranks[i, sample_positions]]] for i in range(1, n_margins)
+    ]
+
+    variables = [StochasticScalar(v) for v in raw_variables]
+    samples = [StochasticScalar(v) for v in raw_samples]
+    derived = variables[1] * 3
+    copulas.apply_copula(variables, samples)
+
+    for actual, reference in zip(variables, expected):
+        np.testing.assert_array_equal(host_values(actual), reference)
+    np.testing.assert_array_equal(host_values(derived), 3 * expected[1])
+    assert all(var.coupled_variable_group is variables[0].coupled_variable_group for var in variables)
+    assert derived.coupled_variable_group is variables[0].coupled_variable_group
+
+
+def test_apply_copula_reorders_coupled_frequency_severity_indices():
+    """Event-to-simulation indices follow the same permutation as aggregates."""
+    from pal.frequency_severity import FreqSevSims
+
+    events = FreqSevSims([0, 0, 2, 3, 3, 4], [10.0, 20.0, 30.0, 2.0, 5.0, 40.0], 5)
+    aggregate = events.aggregate()
+    other = StochasticScalar([5.0, 12.0, 1.0, 9.0, 3.0])
+    samples = [
+        StochasticScalar([0.9, 0.1, 0.7, 0.4, 0.3]),
+        StochasticScalar([0.6, 0.3, 0.1, 0.9, 0.5]),
+    ]
+
+    original_indices = host_values(events.sim_index).copy()
+    original_aggregate = host_values(aggregate).copy()
+    other_before = host_values(other).copy()
+    left_sort = np.argsort(original_aggregate)
+    left_ranks = np.empty(5, dtype=int)
+    left_ranks[left_sort] = np.arange(5)
+    sample_positions = np.argsort(host_values(samples[0]), kind="stable")[left_ranks]
+    right_order = np.argsort(other_before)
+    right_rank = np.empty(5, dtype=int)
+    right_rank[np.argsort(host_values(samples[1]), kind="stable")] = np.arange(5)
+    permutation = right_order[right_rank[sample_positions]]
+
+    # Attach events to the *reordered* margin, as in a compound-loss copula.
+    events2 = FreqSevSims([0, 0, 1, 3, 4], [1.0, 4.0, 5.0, 7.0, 9.0], 5)
+    other = events2.aggregate()
+    other_before = host_values(other).copy()
+    right_order = np.argsort(other_before)
+    permutation = right_order[right_rank[sample_positions]]
+    previous_indices = host_values(events2.sim_index).copy()
+    previous_values = host_values(events2.values).copy()
+
+    copulas.apply_copula([aggregate, other], samples)
+
+    expected_inverse = np.empty(5, dtype=int)
+    expected_inverse[permutation] = np.arange(5)
+    np.testing.assert_array_equal(host_values(events2.sim_index), expected_inverse[previous_indices])
+    np.testing.assert_array_equal(host_values(events2.values), previous_values)
+    np.testing.assert_array_equal(host_values(other), other_before[permutation])
+    assert events2.coupled_variable_group is aggregate.coupled_variable_group
+
+
+def test_apply_copula_rejects_mismatched_scenario_counts_without_mutation():
+    first = StochasticScalar([4.0, 2.0, 3.0])
+    second = StochasticScalar([1.0, 5.0, 2.0])
+    before = host_values(second).copy()
+    with pytest.raises(ValueError, match="same number"):
+        copulas.apply_copula(
+            [first, second],
+            [StochasticScalar([0.2, 0.4, 0.6]), StochasticScalar([0.1, 0.3])],
+        )
+    np.testing.assert_array_equal(host_values(second), before)
