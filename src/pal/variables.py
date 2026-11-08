@@ -653,9 +653,7 @@ class ProteusVariable(t.Generic[T]):
             # Select one leaf at each scenario or event, retaining the input shape.
             first = leaves[0]
             dtypes = [
-                value.values.dtype
-                if isinstance(value, ProteusStochasticVariable)
-                else np.asarray(value).dtype
+                value.values.dtype if isinstance(value, ProteusStochasticVariable) else np.asarray(value).dtype
                 for value in leaves
             ]
             dtype = np.result_type(*dtypes)
