@@ -428,7 +428,20 @@ class FreqSevSims(_ProteusStochasticVariable):
                 kwargs["where"] = self._extract_array_for_ufunc(where_mask, host)
             elif host:
                 kwargs["where"] = asnumpy(where_mask)
-        result = getattr(ufunc, method)(*_inputs, **kwargs)
+        if xp is not np and not host and method == "__call__" and "where" in kwargs:
+            # CuPy ufuncs do not accept the NumPy "where" keyword. Keep the
+            # mask and the output on the device, preserving unselected values.
+            mask = xp.asarray(kwargs["where"])
+            unmasked_kwargs = {key: value for key, value in kwargs.items() if key not in ("where", "out")}
+            calculated = getattr(ufunc, method)(*_inputs, **unmasked_kwargs)
+            if out_arrays:
+                destination = out_arrays[0]
+                destination[...] = xp.where(mask, calculated, destination)
+                result = destination
+            else:
+                result = xp.where(mask, calculated, xp.empty_like(calculated))
+        else:
+            result = getattr(ufunc, method)(*_inputs, **kwargs)
         if out and host:
             for destination, buffer in zip(out_arrays, kwargs["out"]):
                 if destination is not buffer:
