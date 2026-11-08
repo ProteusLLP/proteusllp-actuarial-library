@@ -1692,38 +1692,48 @@ def apply_copula(
     if len(variables) != len(copula_samples):
         raise ValueError("Number of variables and copula samples do not match.")
     variables_list = list(variables)
+    copula_list = list(copula_samples)
+    if not variables_list:
+        return
 
-    # Check independence of variables
+    n_sims = variables_list[0].n_sims
+    if any(var.n_sims != n_sims for var in variables_list) or any(
+        sample.n_sims != n_sims for sample in copula_list
+    ):
+        raise ValueError("Variables and copula samples must have the same number of simulations.")
+
+    # Check independence before mutating any of the coupled variables.
     for i, var1 in enumerate(variables_list):
         for j, var2 in enumerate(variables_list[i + 1 :]):
             if var1.coupled_variable_group is var2.coupled_variable_group:
                 raise ValueError(
                     f"Cannot apply copula as the variables at positions {i} and {j + i + 1} are not independent"
                 )
+    if len(variables_list) == 1:
+        return
 
-    # Get sort indices and ranks
-    copula_sort_indices = np.argsort(np.array([cs.values for cs in copula_samples]), axis=1, kind="stable")
-    copula_ranks = np.empty_like(copula_sort_indices)
-    copula_ranks[np.arange(len(copula_samples))[:, np.newaxis], copula_sort_indices] = np.arange(
-        copula_sort_indices.shape[1]
-    )
-    variable_sort_indices = np.argsort(np.array([var.values for var in variables]), axis=1)
-    first_variable_rank = np.empty_like(variable_sort_indices[0])
-    first_variable_rank[variable_sort_indices[0]] = np.arange(variable_sort_indices.shape[1])
-    copula_ranks = copula_ranks[:, copula_sort_indices[0, first_variable_rank]]
+    # Align the first variable's sorted observations to the first copula margin.
+    # Keep ranks and permutations on the active array backend. Constructing a
+    # NumPy stack here copies every GPU margin to the host (or raises on CuPy).
+    first_order = np.argsort(variables_list[0].values)
+    first_ranks = np.empty(n_sims, dtype=first_order.dtype)
+    first_ranks[first_order] = np.arange(n_sims)
+    copula_first_order = np.argsort(copula_list[0].values, kind="stable")
+    sample_positions = copula_first_order[first_ranks]
+    ranks = np.empty(n_sims, dtype=first_order.dtype)
+    rank_values = np.arange(n_sims)
 
-    # Apply reordering
-    for i, var in enumerate(variables):
-        if i == 0:
-            continue
-        re_ordering = variable_sort_indices[i, copula_ranks[i]]
-        for var2 in var.coupled_variable_group:
-            # FIXME: _reorder_sims is a protected method but we need to access it here
-            # for copula reordering functionality. Consider making this method public
-            # or providing a public interface for reordering simulations across
-            # coupled variable groups.
-            var2._reorder_sims(re_ordering)  # type: ignore[misc]
+    # Process one margin at a time instead of allocating (dimension, n_sims)
+    # matrices of ranks and sort indices. The first variable is unchanged.
+    for var, sample in zip(variables_list[1:], copula_list[1:]):
+        sample_order = np.argsort(sample.values, kind="stable")
+        ranks[sample_order] = rank_values
+        variable_order = np.argsort(var.values)
+        re_ordering = variable_order[ranks[sample_positions]]
+        for coupled in var.coupled_variable_group:
+            coupled._reorder_sims(re_ordering)  # type: ignore[misc]
 
-    # Merge coupling groups
-    for var in variables:
-        var.coupled_variable_group.merge(variables[0].coupled_variable_group)
+    # Merge coupling groups only after all permutations have been applied.
+    first_group = variables_list[0].coupled_variable_group
+    for var in variables_list[1:]:
+        first_group.merge(var.coupled_variable_group)
