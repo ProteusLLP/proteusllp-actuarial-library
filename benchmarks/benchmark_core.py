@@ -122,16 +122,22 @@ def environment() -> dict[str, Any]:
             pass
     gpu = None
     cupy_version = None
+    cuda_runtime_version = None
+    cuda_driver_version = None
     if xp is not np:
         props = xp.cuda.runtime.getDeviceProperties(0)
         gpu = props["name"].decode() if isinstance(props["name"], bytes) else str(props["name"])
         cupy_version = xp.__version__
+        cuda_runtime_version = int(xp.cuda.runtime.runtimeGetVersion())
+        cuda_driver_version = int(xp.cuda.runtime.driverGetVersion())
     return {
         "backend": "cpu" if xp is np else "gpu",
         "python": platform.python_version(),
         "numpy": np.__version__,
         "scipy": scipy.__version__,
         "cupy": cupy_version,
+        "cuda_runtime_version": cuda_runtime_version,
+        "cuda_driver_version": cuda_driver_version,
         "cpu": hardware,
         "cpu_count": os.cpu_count(),
         "gpu": gpu,
@@ -166,7 +172,9 @@ def run_cases(names: list[str], sizes: list[int], warmup: int, repeat: int) -> d
 def comparison(current: dict[str, Any], baseline: dict[str, Any]) -> dict[tuple[str, int], float]:
     """Compare only matching hardware/backend stacks; do not assert speed budgets."""
     a, b = current["environment"], baseline["environment"]
-    keys = ("backend", "python", "numpy", "scipy", "cupy", "cpu", "gpu")
+    keys = (
+        "backend", "python", "numpy", "scipy", "cupy", "cuda_runtime_version", "cuda_driver_version", "cpu", "gpu"
+    )
     if any(a.get(key) != b.get(key) for key in keys):
         raise ValueError("Baseline environment differs; comparisons require the same hardware and software stack")
     prior = {(row["name"], row["n_sims"]): row["median_ms"] for row in baseline["results"] if row["status"] == "ok"}
@@ -185,6 +193,7 @@ def markdown_report(data: dict[str, Any], deltas: dict[tuple[str, int], float]) 
         "",
         f"Backend: {env['backend']}; CPU: {env['cpu']}; GPU: {env['gpu'] or 'n/a'}",
         f"Python {env['python']}; NumPy {env['numpy']}; SciPy {env['scipy']}; CuPy {env['cupy'] or 'n/a'}",
+        f"CUDA runtime: {env['cuda_runtime_version']}; driver: {env['cuda_driver_version']}",
         f"Commit: `{env['commit']}`; warmed runs: {data['repeat']}",
         "",
         "| Workload | Simulations | Median (ms) | MAD (ms) | Change vs baseline | Result |",
