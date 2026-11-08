@@ -2065,7 +2065,8 @@ class Categorical(DistributionBase):
         p = np.asarray(asnumpy(source), dtype=float)
         if np.any(~np.isfinite(p)) or np.any((p < 0) | (p > 1)):
             raise ValueError("Quantile probabilities must lie between 0 and 1")
-        index = np.minimum(np.searchsorted(self._cumulative, p, side="right"), len(self._values) - 1)
+        final_supported = np.searchsorted(self._cumulative, 1.0, side="left")
+        index = np.minimum(np.searchsorted(self._cumulative, p, side="right"), final_supported)
         result = self._values[index]
         if isinstance(u, StochasticScalar):
             wrapped = StochasticScalar(np.atleast_1d(result))
