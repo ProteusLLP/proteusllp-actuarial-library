@@ -179,9 +179,7 @@ def test_where_aligned_branches_merge_coupling() -> None:
         ([0, 0, 1], 3),
     ],
 )
-def test_ufunc_where_rejects_misaligned_event_mask_before_writing(
-    mask_index: list[int], mask_n_sims: int
-) -> None:
+def test_ufunc_where_rejects_misaligned_event_mask_before_writing(mask_index: list[int], mask_n_sims: int) -> None:
     """An event-wise where mask must have the same simulation assignment."""
     events = FreqSevSims([0, 0, 1], [10, 20, 30], 2)
     destination = FreqSevSims([0, 0, 1], [-1, -1, -1], 2)
