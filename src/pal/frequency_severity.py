@@ -390,7 +390,16 @@ class FreqSevSims(_ProteusStochasticVariable):
             # Scalar value - return as-is
             return x
 
+    def _validate_event_layout(self, *operands: t.Any) -> None:
+        """Reject event-wise operations on different scenario/event assignments."""
+        for other in operands:
+            if isinstance(other, FreqSevSims) and (
+                self.n_sims != other.n_sims or not bool(xp.array_equal(self.sim_index, other.sim_index))
+            ):
+                raise ValueError("Event simulation indices must match for event-wise operations")
+
     def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any) -> FreqSevSims:
+        self._validate_event_layout(*inputs, *(kwargs.get("out") or ()))
         host = (
             host_values(self.values)
             or any(host_values(x.values if isinstance(x, (FreqSevSims, StochasticScalar)) else x) for x in inputs)
@@ -454,6 +463,8 @@ class FreqSevSims(_ProteusStochasticVariable):
         ):
             raise NotImplementedError(f"Function {func.__name__} not supported")
 
+        self._validate_event_layout(*args)
+
         # Special handling for mean - aggregate first, then take mean
         if func is np.mean and len(args) == 1 and args[0] is self:
             return func(self.aggregate(), **kwargs)
@@ -480,6 +491,9 @@ class FreqSevSims(_ProteusStochasticVariable):
         # Otherwise create a new FreqSevSims object with the result
         new_freq_sev = FreqSevSims(self.sim_index, result, self.n_sims)
         new_freq_sev.coupled_variable_group.merge(self.coupled_variable_group)
+        for argument in args:
+            if isinstance(argument, _ProteusStochasticVariable):
+                new_freq_sev.coupled_variable_group.merge(argument.coupled_variable_group)
         return new_freq_sev
 
     def __repr__(self):
@@ -494,28 +508,32 @@ class FreqSevSims(_ProteusStochasticVariable):
         Returns:
             True if compatible, False otherwise
         """
-        return isinstance(other, FreqSevSims) and bool(xp.array_equal(self.sim_index, other.sim_index))
+        return (
+            isinstance(other, FreqSevSims)
+            and self.n_sims == other.n_sims
+            and bool(xp.array_equal(self.sim_index, other.sim_index))
+        )
 
     def upsample(self, n_sims: int) -> FreqSevSims:
-        """Upsamples the FreqSevSims object to the given number of simulations.
+        """Resample complete event lists by cycling through source simulations.
 
-        Args:
-            n_sims: Target number of simulations
-
-        Returns:
-            New FreqSevSims object with upsampled data
-
-        Raises:
-            ValueError: If self.n_sims is None
+        The events belonging to each source simulation are copied as a unit.
+        Within-simulation event order is preserved, including for unsorted inputs.
         """
+        if n_sims < 1 or self.n_sims < 1:
+            raise ValueError("n_sims must be positive for frequency-severity resampling")
         if n_sims == self.n_sims:
             return self.copy()
-        sim_index = xp.repeat(self.sim_index, n_sims // self.n_sims)
-        host = host_values(self.values)
-        values = (np if host else xp).repeat(self.values, n_sims // self.n_sims)
-        if n_sims % self.n_sims > 0:
-            sim_index = xp.concatenate((sim_index, self.sim_index[self.sim_index < n_sims % self.n_sims]))
-            mask = self.sim_index < n_sims % self.n_sims
-            values = (np if host else xp).concatenate((values, self.values[asnumpy(mask) if host else mask]))
-        sim_index = sim_index + xp.arange(len(sim_index)) % n_sims
+
+        source_sims = xp.arange(n_sims, dtype=int) % self.n_sims
+        source_counts = xp.bincount(self.sim_index, minlength=self.n_sims)
+        target_counts = source_counts[source_sims]
+        sim_index = xp.repeat(xp.arange(n_sims, dtype=int), target_counts)
+        source_event_order = xp.argsort(self.sim_index, kind="stable")
+        source_starts = xp.cumsum(source_counts) - source_counts
+        target_starts = xp.cumsum(target_counts) - target_counts
+        within_event = xp.arange(len(sim_index)) - xp.repeat(target_starts, target_counts)
+        source_positions = source_starts[source_sims[sim_index]] + within_event
+        event_positions = source_event_order[source_positions]
+        values = self.values[asnumpy(event_positions) if host_values(self.values) else event_positions]
         return FreqSevSims(sim_index, values, n_sims)
