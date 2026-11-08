@@ -596,19 +596,27 @@ class ProteusVariable(t.Generic[T]):
         if not self.values:
             raise ValueError("Cannot select from an empty ProteusVariable")
 
-        labels = asnumpy(selector.values)
+        labels = selector.values
         keys = list(self.values)
         if labels.dtype.kind in "iu":
-            positions = labels.astype(np.intp)
-            if np.any(positions < -len(keys)) or np.any(positions >= len(keys)):
+            # Keep numeric selectors on the active array backend, and check
+            # unsigned values before any narrowing cast could wrap them.
+            if labels.dtype.kind == "u":
+                invalid = labels >= len(keys)
+            else:
+                invalid = (labels < -len(keys)) | (labels >= len(keys))
+            if bool(xp.any(invalid)):
                 raise IndexError("Stochastic ProteusVariable index is out of range")
-            positions = positions % len(keys)
+            positions = labels.astype(xp.intp) % len(keys)
         elif labels.dtype.kind in "US":
+            host_labels = asnumpy(labels)
             lookup = {name: i for i, name in enumerate(keys)}
-            missing = set(np.unique(labels)) - lookup.keys()
+            missing = set(np.unique(host_labels)) - lookup.keys()
             if missing:
                 raise KeyError(f"Unknown {self.dim_name} keys: {sorted(missing)!r}")
-            positions = np.fromiter((lookup[name] for name in labels), dtype=np.intp, count=len(labels))
+            positions = xp.asarray(
+                np.fromiter((lookup[name] for name in host_labels), dtype=np.intp, count=len(host_labels))
+            )
         else:
             raise TypeError("Stochastic ProteusVariable keys must contain strings or integers")
 
@@ -629,19 +637,21 @@ class ProteusVariable(t.Generic[T]):
             for i, value in enumerate(leaves):
                 if value.n_sims != selector.n_sims:
                     raise ValueError("Simulation counts do not match")
-                event_sims = asnumpy(value.sim_index)
-                mask = positions[event_sims] == i
-                if not np.any(mask):
+                mask = positions[value.sim_index] == i
+                if not bool(xp.any(mask)):
                     continue
-                event_indices.append(value.sim_index[xp.asarray(mask)])
-                event_values.append(value.values[mask if isinstance(value.values, np.ndarray) else xp.asarray(mask)])
+                event_indices.append(value.sim_index[mask])
+                event_values.append(value.values[asnumpy(mask) if isinstance(value.values, np.ndarray) else mask])
             first = leaves[0]
             if event_indices:
                 indices = xp.concatenate(event_indices)
-                if isinstance(first.values, np.ndarray):
-                    values = np.concatenate([asnumpy(x) for x in event_values])
+                event_dtype = np.result_type(*(x.dtype for x in event_values))
+                if event_dtype.kind in "USMm":
+                    values = np.concatenate([asnumpy(x) for x in event_values]).astype(event_dtype, copy=False)
+                elif event_dtype.kind in "biufc":
+                    values = xp.concatenate([xp.asarray(x) for x in event_values]).astype(event_dtype, copy=False)
                 else:
-                    values = xp.concatenate(event_values)
+                    raise TypeError("Selected event values must have compatible dtypes")
                 order = xp.argsort(indices, kind="stable")
                 values = values[asnumpy(order) if isinstance(values, np.ndarray) else order]
                 indices = indices[order]
@@ -652,34 +662,40 @@ class ProteusVariable(t.Generic[T]):
         else:
             # Select one leaf at each scenario or event, retaining the input shape.
             first = leaves[0]
+            selected_indices = [i for i in range(len(leaves)) if bool(xp.any(positions == i))]
             dtypes = [
                 value.values.dtype if isinstance(value, ProteusStochasticVariable) else np.asarray(value).dtype
-                for value in leaves
+                for value in (leaves[i] for i in selected_indices)
             ]
-            dtype = np.result_type(*dtypes)
+            if not dtypes:
+                dtypes = [leaves[0].values.dtype if isinstance(leaves[0], ProteusStochasticVariable) else np.asarray(leaves[0]).dtype]
+            try:
+                dtype = np.result_type(*dtypes)
+            except TypeError as exc:
+                raise TypeError("Stochastic lookup values must have compatible dtypes") from exc
             if dtype.kind == "O":
                 raise TypeError("Stochastic lookup values must have compatible dtypes")
             use_host = dtype.kind in "USMm"
             chosen = (np if use_host else xp).empty(len(positions), dtype=dtype)
             for i, value in enumerate(leaves):
                 mask = positions == i
-                if not np.any(mask):
+                if not bool(xp.any(mask)):
                     continue
-                target = mask if use_host else xp.asarray(mask)
+                target = asnumpy(mask) if use_host else mask
                 if isinstance(value, FreqSevSims):
                     source = value.values
-                    selected = source[mask if isinstance(source, np.ndarray) else target]
+                    selected = source[asnumpy(mask) if isinstance(source, np.ndarray) else mask]
                 elif isinstance(value, StochasticScalar):
                     if value.n_sims == 1:
                         selected = value.values[0]
                     elif value.n_sims == selector.n_sims:
                         if isinstance(selector, FreqSevSims):
-                            source_idx = selector.sim_index[xp.asarray(mask)]
+                            source_idx = selector.sim_index[mask]
                             if isinstance(value.values, np.ndarray):
                                 source_idx = asnumpy(source_idx)
                             selected = value.values[source_idx]
                         else:
-                            selected = value.values[mask if isinstance(value.values, np.ndarray) else target]
+                            selected = value.values[asnumpy(mask) if isinstance(value.values, np.ndarray) else mask]
                     else:
                         raise ValueError("Simulation counts do not match")
                 else:
