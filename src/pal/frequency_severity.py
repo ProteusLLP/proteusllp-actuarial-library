@@ -401,6 +401,7 @@ class FreqSevSims(_ProteusStochasticVariable):
             _inputs = tuple(asnumpy(x) if isinstance(x, xp.ndarray) else x for x in _inputs)
             ufunc = getattr(np, ufunc.__name__, ufunc)
         out = kwargs.get("out", ())
+        out_arrays: tuple[t.Any, ...] = ()
         if out:
             out_arrays = tuple(x.values if isinstance(x, FreqSevSims) else x for x in out)
             kwargs["out"] = (
