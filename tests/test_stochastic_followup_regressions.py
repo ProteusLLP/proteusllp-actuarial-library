@@ -7,7 +7,7 @@ import pytest
 
 from pal import FreqSevSims, ProteusVariable, StochasticScalar
 from pal.distributions import Categorical, Uniform
-from tests._assertions import assert_array_equal, host_values
+from tests._assertions import assert_array_equal
 
 
 def test_numeric_object_arrays_remain_supported() -> None:
