@@ -46,8 +46,12 @@ def test_categorical_tail_zero_mass_and_date_query() -> None:
     assert dist.invcdf(StochasticScalar([1.0])).tolist() == ["9"]
 
     dates = Categorical([dt.date(2026, 1, 1), dt.datetime(2026, 1, 2, 12)])
-    assert np.isclose(dates.cdf(dt.date(2026, 1, 1)), 0.5)
-    assert np.isclose(dates.cdf(dt.datetime(2026, 1, 2, 12)), 1.0)
+    first_cdf = dates.cdf(dt.date(2026, 1, 1))
+    second_cdf = dates.cdf(dt.datetime(2026, 1, 2, 12))
+    assert np.ndim(first_cdf) == 0
+    assert np.ndim(second_cdf) == 0
+    assert np.isclose(first_cdf, 0.5)
+    assert np.isclose(second_cdf, 1.0)
     with pytest.raises(ValueError, match="Unknown"):
         dates.cdf(dt.date(2026, 1, 3))
 
