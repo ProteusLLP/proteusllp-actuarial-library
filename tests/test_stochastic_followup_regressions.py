@@ -71,9 +71,7 @@ def test_unsigned_stochastic_indices_validate_before_cast() -> None:
 
 
 def test_numeric_selection_with_stochastic_scalar_and_event_selector() -> None:
-    p = ProteusVariable(
-        "item", {"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([4, 5, 6])}
-    )
+    p = ProteusVariable("item", {"a": StochasticScalar([1, 2, 3]), "b": StochasticScalar([4, 5, 6])})
     assert_array_equal(p[StochasticScalar([0, 1, 0])], [1, 5, 3])
     selected = p[FreqSevSims([0, 1, 1], [0, 1, 0], 3)]
     assert_array_equal(selected.values, [1, 5, 2])
