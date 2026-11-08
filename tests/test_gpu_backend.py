@@ -115,9 +115,7 @@ def test_generation_and_numpy_dispatch_do_not_transfer_to_host(monkeypatch: pyte
 def test_copula_apply_performs_no_device_to_host_array_conversion(monkeypatch: pytest.MonkeyPatch) -> None:
     """Sorting and propagation through a coupled event array stay on the GPU."""
     a = StochasticScalar(xp.asarray([6.0, 3.0, 2.0, 5.0, 9.0]))
-    events = FreqSevSims(
-        xp.asarray([0, 0, 2, 3, 4]), xp.asarray([3.0, 4.0, 1.0, 8.0, 5.0]), 5
-    )
+    events = FreqSevSims(xp.asarray([0, 0, 2, 3, 4]), xp.asarray([3.0, 4.0, 1.0, 8.0, 5.0]), 5)
     b = events.aggregate()
     samples = [
         StochasticScalar(xp.asarray([0.5, 0.2, 0.9, 0.1, 0.4])),
