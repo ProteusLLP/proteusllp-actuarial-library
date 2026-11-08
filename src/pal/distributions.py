@@ -1974,8 +1974,8 @@ class Uniform(DistributionBase):
 
             unit: t.Literal["D", "us"] = "us" if has_time(t.cast(t.Any, a)) or has_time(t.cast(t.Any, b)) else "D"
             self._date_unit = unit
-            self._date_start = np.datetime64(t.cast(dt.date | np.datetime64, a), unit)
-            end = np.datetime64(t.cast(dt.date | np.datetime64, b), unit)
+            self._date_start = np.datetime64(t.cast(t.Union[dt.date, np.datetime64], a), unit)
+            end = np.datetime64(t.cast(t.Union[dt.date, np.datetime64], b), unit)
             if np.isnat(self._date_start) or np.isnat(end):
                 raise ValueError("Uniform date bounds cannot be NaT")
             self._date_span = int((end - self._date_start) / np.timedelta64(1, unit))
@@ -2046,8 +2046,11 @@ class Categorical(DistributionBase):
         self._values = stochastic_array(values)
         if self._values.dtype.kind not in "USM":
             raise TypeError("Categories must be strings or dates")
+        if self._values.dtype.kind == "M" and np.isnat(self._values).any():
+            raise ValueError("Category dates cannot contain NaT")
         if len(set(self._values.tolist())) != len(self._values):
             raise ValueError("Category labels must be unique")
+        self._lookup = {label: i for i, label in enumerate(self._values.tolist())}
         weights = (
             np.full(len(values), 1.0 / len(values)) if probabilities is None else np.asarray(probabilities, dtype=float)
         )
@@ -2055,8 +2058,10 @@ class Categorical(DistributionBase):
             raise ValueError("Category probabilities must be finite, nonnegative and match the labels")
         if not np.isclose(weights.sum(), 1.0, rtol=0, atol=1e-10):
             raise ValueError("Category probabilities must sum to one")
+        weights = weights / weights.sum()
+        self._last_positive = int(np.flatnonzero(weights > 0)[-1])
         self._cumulative = np.cumsum(weights)
-        self._cumulative[-1] = 1.0
+        self._cumulative[self._last_positive :] = 1.0
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
@@ -2065,8 +2070,7 @@ class Categorical(DistributionBase):
         p = np.asarray(asnumpy(source), dtype=float)
         if np.any(~np.isfinite(p)) or np.any((p < 0) | (p > 1)):
             raise ValueError("Quantile probabilities must lie between 0 and 1")
-        final_supported = np.searchsorted(self._cumulative, 1.0, side="left")
-        index = np.minimum(np.searchsorted(self._cumulative, p, side="right"), final_supported)
+        index = np.minimum(np.searchsorted(self._cumulative, p, side="right"), self._last_positive)
         result = self._values[index]
         if isinstance(u, StochasticScalar):
             wrapped = StochasticScalar(np.atleast_1d(result))
@@ -2079,10 +2083,17 @@ class Categorical(DistributionBase):
         """Return cumulative probability at the category's position."""
         source = x.values if isinstance(x, StochasticScalar) else x
         labels = np.asarray(asnumpy(source))
-        matches = labels[..., None] == self._values
-        if not np.all(matches.any(axis=-1)):
+        if self._values.dtype.kind == "M":
+            # Normalize Python dates to the stored datetime unit.
+            labels = stochastic_array(np.atleast_1d(labels)).astype(self._values.dtype)
+        positions = np.fromiter(
+            (self._lookup.get(label, -1) for label in labels.ravel().tolist()),
+            dtype=np.intp,
+            count=labels.size,
+        ).reshape(labels.shape)
+        if np.any(positions < 0):
             raise ValueError("Unknown category")
-        result = self._cumulative[np.argmax(matches, axis=-1)]
+        result = self._cumulative[positions]
         if isinstance(x, StochasticScalar):
             wrapped = StochasticScalar(np.atleast_1d(result))
             wrapped.coupled_variable_group.merge(x.coupled_variable_group)
