@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import numbers
 import typing as t
 
 import numpy as np
@@ -25,9 +26,19 @@ def stochastic_array(values: t.Any) -> npt.NDArray[t.Any]:
         items = np.asarray(candidate).ravel().tolist()
         if all(isinstance(item, str) for item in items):
             return np.asarray(candidate, dtype=str)
-        if all(isinstance(item, dt.date) for item in items):
-            unit = "us" if any(isinstance(item, dt.datetime) for item in items) else "D"
-            return np.asarray(candidate, dtype=f"datetime64[{unit}]")
+        if all(isinstance(item, (dt.date, np.datetime64)) for item in items):
+            units = [
+                item.dtype
+                if isinstance(item, np.datetime64)
+                else np.dtype("datetime64[us]" if isinstance(item, dt.datetime) else "datetime64[D]")
+                for item in items
+            ]
+            dtype = np.result_type(*units) if units else np.dtype("datetime64[D]")
+            return np.asarray(candidate, dtype=dtype)
+        if all(isinstance(item, numbers.Number) for item in items):
+            numeric = np.asarray(items).reshape(np.asarray(candidate).shape)
+            if numeric.dtype.kind in "biufc":
+                return t.cast(npt.NDArray[t.Any], xp.asarray(numeric))
         raise TypeError("Simulated values must have a consistent numeric, string or date type")
 
     if dtype is not None and dtype.kind in "USMm":
@@ -36,5 +47,16 @@ def stochastic_array(values: t.Any) -> npt.NDArray[t.Any]:
 
 
 def host_values(values: t.Any) -> bool:
-    """Whether values are stored in NumPy because the active backend lacks this dtype."""
-    return isinstance(values, np.ndarray) and values.dtype.kind in "USMm"
+    """Whether an array, scalar or sequence needs the NumPy host backend."""
+    if isinstance(values, np.ndarray):
+        return values.dtype.kind in "USMmO"
+    if isinstance(values, (str, bytes, dt.date, np.datetime64, np.timedelta64)):
+        return True
+    if isinstance(values, (list, tuple)):
+        if any(host_values(item) for item in values):
+            return True
+        try:
+            return np.asarray(values).dtype.kind in "USMmO"
+        except (TypeError, ValueError):
+            return True
+    return False
