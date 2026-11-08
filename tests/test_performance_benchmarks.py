@@ -4,8 +4,8 @@ import json
 
 import numpy as np
 import pytest
-
 from benchmarks.benchmark_core import comparison, markdown_report, run_cases
+
 from pal._maths import asnumpy, xp
 from pal.frequency_severity import _get_sims_of_events
 
