@@ -172,6 +172,86 @@ def test_where_aligned_branches_merge_coupling() -> None:
     assert result.coupled_variable_group is right.coupled_variable_group
 
 
+@pytest.mark.parametrize(
+    "mask_index,mask_n_sims",
+    [
+        ([0, 1, 1], 2),
+        ([0, 0, 1], 3),
+    ],
+)
+def test_ufunc_where_rejects_misaligned_event_mask_before_writing(
+    mask_index: list[int], mask_n_sims: int
+) -> None:
+    """An event-wise where mask must have the same simulation assignment."""
+    events = FreqSevSims([0, 0, 1], [10, 20, 30], 2)
+    destination = FreqSevSims([0, 0, 1], [-1, -1, -1], 2)
+    mask = FreqSevSims(mask_index, [True, False, True], mask_n_sims)
+
+    with pytest.raises(ValueError, match="Event simulation indices must match"):
+        np.add(events, 1, out=destination, where=mask)
+
+    assert_array_equal(destination.values, [-1, -1, -1])
+    assert destination.coupled_variable_group is not mask.coupled_variable_group
+    assert events.coupled_variable_group is not mask.coupled_variable_group
+
+
+def test_ufunc_where_aligned_event_mask_updates_selected_losses() -> None:
+    """The aligned event mask controls only the corresponding event positions."""
+    events = FreqSevSims([0, 0, 1], [10, 20, 30], 2)
+    destination = FreqSevSims([0, 0, 1], [-1, -1, -1], 2)
+    mask = FreqSevSims([0, 0, 1], [True, False, True], 2)
+
+    result = np.add(events, 1, out=destination, where=mask)
+    assert_array_equal(destination.values, [11, -1, 31])
+    assert_array_equal(result.sim_index, [0, 0, 1])
+    assert result.coupled_variable_group is events.coupled_variable_group
+    assert result.coupled_variable_group is mask.coupled_variable_group
+    assert result.coupled_variable_group is destination.coupled_variable_group
+
+
+def test_ufunc_where_scenario_level_mask_broadcasts_to_events() -> None:
+    """A StochasticScalar mask is applied to every event in its simulation."""
+    events = FreqSevSims([0, 0, 1], [10, 20, 30], 2)
+    destination = FreqSevSims([0, 0, 1], [-1, -1, -1], 2)
+    mask = StochasticScalar([False, True])
+
+    np.add(events, 1, out=destination, where=mask)
+    assert_array_equal(destination.values, [-1, -1, 31])
+    assert destination.coupled_variable_group is mask.coupled_variable_group
+
+
+def test_unary_and_scalar_ufuncs_skip_self_layout_comparison(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Operations involving only this event layout should not scan its indices."""
+    events = FreqSevSims([0, 0, 1], [1.0, 2.0, 3.0], 2)
+    original_array_equal = xp.array_equal
+    calls = 0
+
+    def tracked_array_equal(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original_array_equal(*args, **kwargs)
+
+    monkeypatch.setattr(xp, "array_equal", tracked_array_equal)
+    transformed = np.exp(events)
+    shifted = events + 1.0
+    assert calls == 0
+    monkeypatch.setattr(xp, "array_equal", original_array_equal)
+    assert_allclose(transformed.values, np.exp([1.0, 2.0, 3.0]))
+    assert_allclose(shifted.values, [2.0, 3.0, 4.0])
+
+
+def test_array_equal_allows_differing_event_layouts() -> None:
+    """Equality is a predicate, not an aligned binary arithmetic operation."""
+    source = FreqSevSims([0, 0, 1], [1, 2, 3], 2)
+    differing_layout = FreqSevSims([0, 1, 1], [1, 2, 4], 2)
+    differing_sim_count = FreqSevSims([0, 0, 1], [1, 5, 3], 3)
+
+    assert not bool(np.array_equal(source, differing_layout))
+    assert not bool(np.array_equal(source, differing_sim_count))
+    assert bool(np.array_equal(source, source))
+    assert source.coupled_variable_group is not differing_layout.coupled_variable_group
+
+
 def test_copy_and_deep_copy_have_distinct_coupling_contracts() -> None:
     """Copies have independent buffers; deep_copy is not coupled to its source."""
     original = FreqSevSims([0, 2], [4.0, 8.0], 3)
