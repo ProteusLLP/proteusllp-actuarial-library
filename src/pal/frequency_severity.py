@@ -391,9 +391,11 @@ class FreqSevSims(_ProteusStochasticVariable):
             return x
 
     def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any) -> FreqSevSims:
-        host = host_values(self.values) or any(
-            host_values(x.values if isinstance(x, (FreqSevSims, StochasticScalar)) else x) for x in inputs
-        ) or host_values(kwargs.get("where"))
+        host = (
+            host_values(self.values)
+            or any(host_values(x.values if isinstance(x, (FreqSevSims, StochasticScalar)) else x) for x in inputs)
+            or host_values(kwargs.get("where"))
+        )
         _inputs = tuple(self._extract_array_for_ufunc(x, host) for x in inputs)
         if host:
             _inputs = tuple(asnumpy(x) if isinstance(x, xp.ndarray) else x for x in _inputs)
@@ -402,9 +404,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         if out:
             out_arrays = tuple(x.values if isinstance(x, FreqSevSims) else x for x in out)
             kwargs["out"] = (
-                tuple(asnumpy(x).copy() if isinstance(x, xp.ndarray) else x for x in out_arrays)
-                if host
-                else out_arrays
+                tuple(asnumpy(x).copy() if isinstance(x, xp.ndarray) else x for x in out_arrays) if host else out_arrays
             )
         if host and "where" in kwargs:
             mask = kwargs["where"]
@@ -458,9 +458,7 @@ class FreqSevSims(_ProteusStochasticVariable):
             return func(self.aggregate(), **kwargs)
 
         # Extract values from FreqSevSims objects, leave others as-is
-        host = host_values(self.values) or any(
-            host_values(x.values if isinstance(x, FreqSevSims) else x) for x in args
-        )
+        host = host_values(self.values) or any(host_values(x.values if isinstance(x, FreqSevSims) else x) for x in args)
         processed_args = tuple(
             (asnumpy(x.values) if isinstance(x, FreqSevSims) else asnumpy(x) if isinstance(x, xp.ndarray) else x)
             if host
