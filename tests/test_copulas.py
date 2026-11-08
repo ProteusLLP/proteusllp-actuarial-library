@@ -407,19 +407,17 @@ def test_apply_copula_matches_independent_rank_reference(n_margins: int):
     """Match the original rank transformation, including ties, on both backends."""
     n_sims = 13
     raw_variables = [
-        np.array([(7 * i + j * j + 3 * j) % (5 + i) for j in range(n_sims)], dtype=float)
-        for i in range(n_margins)
+        np.array([(7 * i + j * j + 3 * j) % (5 + i) for j in range(n_sims)], dtype=float) for i in range(n_margins)
     ]
     raw_samples = [
-        np.array([(3 * j + i * i + (j // 2)) % (7 + i) for j in range(n_sims)], dtype=float)
-        for i in range(n_margins)
+        np.array([(3 * j + i * i + (j // 2)) % (7 + i) for j in range(n_sims)], dtype=float) for i in range(n_margins)
     ]
 
     # Independent NumPy reference for the pre-optimisation implementation.
     copula_sorts = np.argsort(np.array(raw_samples), axis=1, kind="stable")
     copula_ranks = np.empty_like(copula_sorts)
     copula_ranks[np.arange(n_margins)[:, None], copula_sorts] = np.arange(n_sims)
-    variable_sorts = np.argsort(np.array(raw_variables), axis=1)
+    variable_sorts = np.argsort(np.array(raw_variables), axis=1, kind="stable")
     first_ranks = np.empty(n_sims, dtype=int)
     first_ranks[variable_sorts[0]] = np.arange(n_sims)
     sample_positions = copula_sorts[0, first_ranks]
@@ -455,11 +453,11 @@ def test_apply_copula_reorders_coupled_frequency_severity_indices():
     other = events2.aggregate()
     other_before = host_values(other).copy()
     left_ranks = np.empty(5, dtype=int)
-    left_ranks[np.argsort(host_values(aggregate))] = np.arange(5)
+    left_ranks[np.argsort(host_values(aggregate), kind="stable")] = np.arange(5)
     sample_positions = np.argsort(host_values(samples[0]), kind="stable")[left_ranks]
     right_rank = np.empty(5, dtype=int)
     right_rank[np.argsort(host_values(samples[1]), kind="stable")] = np.arange(5)
-    permutation = np.argsort(other_before)[right_rank[sample_positions]]
+    permutation = np.argsort(other_before, kind="stable")[right_rank[sample_positions]]
     previous_indices = host_values(events2.sim_index).copy()
     previous_values = host_values(events2.values).copy()
 
