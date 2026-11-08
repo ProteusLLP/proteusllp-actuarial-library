@@ -105,9 +105,9 @@ class StochasticScalar(ProteusStochasticVariable):
             #
             var_pos = var_not_stochastic_scalar.index(True)
             return inputs[var_pos].__array_ufunc__(ufunc, method, *inputs, **kwargs)
-        is_host = any(isinstance(x, StochasticScalar) and host_values(x.values) for x in inputs) or host_values(
-            self.values
-        )
+        is_host = host_values(self.values) or any(
+            host_values(x.values if isinstance(x, StochasticScalar) else x) for x in inputs
+        ) or host_values(kwargs.get("where"))
         _inputs = tuple(
             (asnumpy(x.values) if isinstance(x, StochasticScalar) else asnumpy(x) if isinstance(x, xp.ndarray) else x)
             if is_host
@@ -118,11 +118,23 @@ class StochasticScalar(ProteusStochasticVariable):
             ufunc = getattr(np, ufunc.__name__, ufunc)
         out = kwargs.get("out", ())
         if out:
-            kwargs["out"] = tuple(x.values if isinstance(x, StochasticScalar) else x for x in out)
+            out_arrays = tuple(x.values if isinstance(x, StochasticScalar) else x for x in out)
+            kwargs["out"] = (
+                tuple(asnumpy(x).copy() if isinstance(x, xp.ndarray) else x for x in out_arrays)
+                if is_host
+                else out_arrays
+            )
+        if is_host and "where" in kwargs:
+            mask = kwargs["where"]
+            kwargs["where"] = asnumpy(mask.values if isinstance(mask, StochasticScalar) else mask)
 
         # Handle reduction operations - return scalars directly
         if method == "reduce":
             result = getattr(ufunc, method)(*_inputs, **kwargs)
+            if out and is_host:
+                for destination, buffer in zip(out_arrays, kwargs["out"]):
+                    if destination is not buffer:
+                        destination[...] = xp.asarray(buffer) if isinstance(destination, xp.ndarray) else buffer
 
             # Check if result should be wrapped (keepdims=True or axis specified)
             keepdims = kwargs.get("keepdims", False)
@@ -137,10 +149,18 @@ class StochasticScalar(ProteusStochasticVariable):
         # Handle reduceat/accumulate operations - return wrapped arrays
         if method in ("reduceat", "accumulate"):
             result = getattr(ufunc, method)(*_inputs, **kwargs)
+            if out and is_host:
+                for destination, buffer in zip(out_arrays, kwargs["out"]):
+                    if destination is not buffer:
+                        destination[...] = xp.asarray(buffer) if isinstance(destination, xp.ndarray) else buffer
             return self._wrap_result_with_coupling(result, inputs)
 
         # Handle regular element-wise operations
         result = getattr(ufunc, method)(*_inputs, **kwargs)
+        if out and is_host:
+            for destination, buffer in zip(out_arrays, kwargs["out"]):
+                if destination is not buffer:
+                    destination[...] = xp.asarray(buffer) if isinstance(destination, xp.ndarray) else buffer
         return self._wrap_result_with_coupling(result, inputs)
 
     def __array_function__(
@@ -162,10 +182,7 @@ class StochasticScalar(ProteusStochasticVariable):
         """
         # Extract PAL values and move any NumPy operands to the active backend.
         is_host = host_values(self.values) or any(
-            (isinstance(x, StochasticScalar) and host_values(x.values))
-            or isinstance(x, (str, bytes))
-            or (isinstance(x, np.ndarray) and host_values(x))
-            for x in args
+            host_values(x.values if isinstance(x, StochasticScalar) else x) for x in args
         )
         processed_args = tuple(
             (asnumpy(x.values) if isinstance(x, StochasticScalar) else asnumpy(x) if isinstance(x, xp.ndarray) else x)
