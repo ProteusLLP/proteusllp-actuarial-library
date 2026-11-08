@@ -2085,7 +2085,7 @@ class Categorical(DistributionBase):
         labels = np.asarray(asnumpy(source))
         if self._values.dtype.kind == "M":
             # Normalize Python dates to the stored datetime unit.
-            labels = stochastic_array(np.atleast_1d(labels)).astype(self._values.dtype)
+            labels = stochastic_array(np.atleast_1d(labels)).astype(self._values.dtype).reshape(labels.shape)
         positions = np.fromiter(
             (self._lookup.get(label, -1) for label in labels.ravel().tolist()),
             dtype=np.intp,
