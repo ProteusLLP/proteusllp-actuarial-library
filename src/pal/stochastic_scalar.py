@@ -105,9 +105,11 @@ class StochasticScalar(ProteusStochasticVariable):
             #
             var_pos = var_not_stochastic_scalar.index(True)
             return inputs[var_pos].__array_ufunc__(ufunc, method, *inputs, **kwargs)
-        is_host = host_values(self.values) or any(
-            host_values(x.values if isinstance(x, StochasticScalar) else x) for x in inputs
-        ) or host_values(kwargs.get("where"))
+        is_host = (
+            host_values(self.values)
+            or any(host_values(x.values if isinstance(x, StochasticScalar) else x) for x in inputs)
+            or host_values(kwargs.get("where"))
+        )
         _inputs = tuple(
             (asnumpy(x.values) if isinstance(x, StochasticScalar) else asnumpy(x) if isinstance(x, xp.ndarray) else x)
             if is_host
