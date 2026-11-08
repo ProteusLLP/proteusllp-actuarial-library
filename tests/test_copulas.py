@@ -445,30 +445,21 @@ def test_apply_copula_reorders_coupled_frequency_severity_indices():
 
     events = FreqSevSims([0, 0, 2, 3, 3, 4], [10.0, 20.0, 30.0, 2.0, 5.0, 40.0], 5)
     aggregate = events.aggregate()
-    other = StochasticScalar([5.0, 12.0, 1.0, 9.0, 3.0])
     samples = [
         StochasticScalar([0.9, 0.1, 0.7, 0.4, 0.3]),
         StochasticScalar([0.6, 0.3, 0.1, 0.9, 0.5]),
     ]
 
-    original_indices = host_values(events.sim_index).copy()
-    original_aggregate = host_values(aggregate).copy()
-    other_before = host_values(other).copy()
-    left_sort = np.argsort(original_aggregate)
-    left_ranks = np.empty(5, dtype=int)
-    left_ranks[left_sort] = np.arange(5)
-    sample_positions = np.argsort(host_values(samples[0]), kind="stable")[left_ranks]
-    right_order = np.argsort(other_before)
-    right_rank = np.empty(5, dtype=int)
-    right_rank[np.argsort(host_values(samples[1]), kind="stable")] = np.arange(5)
-    permutation = right_order[right_rank[sample_positions]]
-
     # Attach events to the *reordered* margin, as in a compound-loss copula.
     events2 = FreqSevSims([0, 0, 1, 3, 4], [1.0, 4.0, 5.0, 7.0, 9.0], 5)
     other = events2.aggregate()
     other_before = host_values(other).copy()
-    right_order = np.argsort(other_before)
-    permutation = right_order[right_rank[sample_positions]]
+    left_ranks = np.empty(5, dtype=int)
+    left_ranks[np.argsort(host_values(aggregate))] = np.arange(5)
+    sample_positions = np.argsort(host_values(samples[0]), kind="stable")[left_ranks]
+    right_rank = np.empty(5, dtype=int)
+    right_rank[np.argsort(host_values(samples[1]), kind="stable")] = np.arange(5)
+    permutation = np.argsort(other_before)[right_rank[sample_positions]]
     previous_indices = host_values(events2.sim_index).copy()
     previous_values = host_values(events2.values).copy()
 
