@@ -229,9 +229,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         if isinstance(sim_index, int):  # type: ignore[unecessary-check]
             indices = asnumpy(self.sim_index) if host_values(self.values) else self.sim_index
             ints = (indices == sim_index).nonzero()
-            result = StochasticScalar(self.values[ints])
-            result.coupled_variable_group.merge(self.coupled_variable_group)
-            return result
+            return StochasticScalar(self.values[ints])
         else:
             raise NotImplementedError
 
