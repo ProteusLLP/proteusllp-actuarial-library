@@ -362,7 +362,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         result.coupled_variable_group.merge(self.coupled_variable_group)
         return result
 
-    def _extract_array_for_ufunc(self, x: t.Any) -> npt.NDArray[np.floating]:
+    def _extract_array_for_ufunc(self, x: t.Any, host: bool | None = None) -> npt.NDArray[np.floating]:
         """Extract array values from various input types for ufunc operations.
 
         Args:
@@ -372,7 +372,10 @@ class FreqSevSims(_ProteusStochasticVariable):
         Returns:
             Array values aligned with simulation indices
         """
-        host = host_values(self.values) or (isinstance(x, (FreqSevSims, StochasticScalar)) and host_values(x.values))
+        if host is None:
+            host = host_values(self.values) or host_values(
+                x.values if isinstance(x, (FreqSevSims, StochasticScalar)) else x
+            )
         indices = asnumpy(self.sim_index) if host else self.sim_index
         if isinstance(x, FreqSevSims):
             return asnumpy(x.values) if host else x.values
@@ -388,16 +391,28 @@ class FreqSevSims(_ProteusStochasticVariable):
 
     def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any) -> FreqSevSims:
         host = host_values(self.values) or any(
-            isinstance(x, (FreqSevSims, StochasticScalar)) and host_values(x.values) for x in inputs
-        )
-        _inputs = tuple(self._extract_array_for_ufunc(x) for x in inputs)
+            host_values(x.values if isinstance(x, (FreqSevSims, StochasticScalar)) else x) for x in inputs
+        ) or host_values(kwargs.get("where"))
+        _inputs = tuple(self._extract_array_for_ufunc(x, host) for x in inputs)
         if host:
             _inputs = tuple(asnumpy(x) if isinstance(x, xp.ndarray) else x for x in _inputs)
             ufunc = getattr(np, ufunc.__name__, ufunc)
         out = kwargs.get("out", ())
         if out:
-            kwargs["out"] = tuple(x.values for x in out)
+            out_arrays = tuple(x.values if isinstance(x, FreqSevSims) else x for x in out)
+            kwargs["out"] = (
+                tuple(asnumpy(x).copy() if isinstance(x, xp.ndarray) else x for x in out_arrays)
+                if host
+                else out_arrays
+            )
+        if host and "where" in kwargs:
+            mask = kwargs["where"]
+            kwargs["where"] = asnumpy(mask.values if isinstance(mask, StochasticScalar) else mask)
         result = getattr(ufunc, method)(*_inputs, **kwargs)
+        if out and host:
+            for destination, buffer in zip(out_arrays, kwargs["out"]):
+                if destination is not buffer:
+                    destination[...] = xp.asarray(buffer) if isinstance(destination, xp.ndarray) else buffer
         scalar_result = scalar_or_array(result)
         if scalar_result is not result:
             return scalar_result  # type: ignore[return-value]
@@ -443,10 +458,7 @@ class FreqSevSims(_ProteusStochasticVariable):
 
         # Extract values from FreqSevSims objects, leave others as-is
         host = host_values(self.values) or any(
-            (isinstance(x, FreqSevSims) and host_values(x.values))
-            or isinstance(x, (str, bytes))
-            or (isinstance(x, np.ndarray) and host_values(x))
-            for x in args
+            host_values(x.values if isinstance(x, FreqSevSims) else x) for x in args
         )
         processed_args = tuple(
             (asnumpy(x.values) if isinstance(x, FreqSevSims) else asnumpy(x) if isinstance(x, xp.ndarray) else x)
