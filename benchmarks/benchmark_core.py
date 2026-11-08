@@ -173,7 +173,8 @@ def comparison(current: dict[str, Any], baseline: dict[str, Any]) -> dict[tuple[
     """Compare only matching hardware/backend stacks; do not assert speed budgets."""
     a, b = current["environment"], baseline["environment"]
     keys = (
-        "backend", "python", "numpy", "scipy", "cupy", "cuda_runtime_version", "cuda_driver_version", "cpu", "gpu"
+        "backend", "python", "numpy", "scipy", "cupy", "cuda_runtime_version", "cuda_driver_version",
+        "cpu", "cpu_count", "platform", "gpu"
     )
     if any(a.get(key) != b.get(key) for key in keys):
         raise ValueError("Baseline environment differs; comparisons require the same hardware and software stack")
