@@ -1700,13 +1700,16 @@ def apply_copula(
     if any(var.n_sims != n_sims for var in variables_list) or any(sample.n_sims != n_sims for sample in copula_list):
         raise ValueError("Variables and copula samples must have the same number of simulations.")
 
-    # Check independence before mutating any of the coupled variables.
-    for i, var1 in enumerate(variables_list):
-        for j, var2 in enumerate(variables_list[i + 1 :]):
-            if var1.coupled_variable_group is var2.coupled_variable_group:
-                raise ValueError(
-                    f"Cannot apply copula as the variables at positions {i} and {j + i + 1} are not independent"
-                )
+    # Check independence in linear time, before mutating coupled variables.
+    group_positions: dict[int, int] = {}
+    for i, var in enumerate(variables_list):
+        group_id = id(var.coupled_variable_group)
+        if group_id in group_positions:
+            previous = group_positions[group_id]
+            raise ValueError(
+                f"Cannot apply copula as the variables at positions {previous} and {i} are not independent"
+            )
+        group_positions[group_id] = i
     if len(variables_list) == 1:
         return
 
