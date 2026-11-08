@@ -199,6 +199,10 @@ class FreqSevSims(_ProteusStochasticVariable):
         """
         super().__init__()
         self.sim_index = xp.asarray(sim_index)
+        # NumPy infers float for an empty list, but empty event indices
+        # must remain suitable for indexed reductions and bincount.
+        if self.sim_index.size == 0:
+            self.sim_index = self.sim_index.astype(int)
         self.values = stochastic_array(values)
         self.n_sims = n_sims  # type: ignore
 
