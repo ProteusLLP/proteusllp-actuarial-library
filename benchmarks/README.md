@@ -30,9 +30,24 @@ The full-model benchmark includes stochastic generation and contract application
 Results are **descriptive**, not performance gates. GitHub-hosted runner variance,
 changes in hardware, allocator caching and dependency versions can move timings
 independently of PAL. Investigate persistent changes with repeated, same-stack
-measurements and a profiler before setting regression thresholds. Current
-measurements do not provide a reliable per-workload peak memory measurement;
-dedicated CPU RSS and GPU allocated-memory benchmarks are follow-up work.
+measurements and a profiler before setting regression thresholds. For memory, run `python -m benchmarks.profile_memory --sizes 10000,100000`.
+Each case runs in a separate Python process to isolate the OS peak process
+RSS (including native NumPy allocations). The JSON records after-import,
+after-setup and after-run high-water marks. On GPU, it also records CuPy's
+caching-pool reservation (which is not the same as total VRAM use or a
+precise temporary-allocation peak). The optional Python `tracemalloc` reading
+does not capture native array buffers. These measurements are observational
+rather than regression gates.
+
+For portfolio scaling, run `python -m benchmarks.profile_portfolio
+--simulations 100000 --lobs 100 --layers 500`. The workload generates
+multiple compound loss streams, combines them, and processes an adjacent,
+non-overlapping XoL tower. It is a synthetic computational stress test, not a
+calibrated capital model; large settings may need substantial memory and time.
+To profile memory for it, use `--cases portfolio --portfolio-lobs 100
+--portfolio-layers 500` with `profile_memory`. Start small, then scale.
+
+
 
 Run normal correctness, numerical and stochastic-coupling tests before accepting
 a performance improvement. Faster results alone do not establish correctness.
