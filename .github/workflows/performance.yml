@@ -46,7 +46,7 @@ jobs:
         with:
           name: pal-performance-cpu
           path: ${{ runner.temp }}/pal-cpu.*
-          retention-days: 90
+          retention-days: 30
 
   gpu:
     if: github.event_name == 'workflow_dispatch' && inputs.run_gpu && github.ref == 'refs/heads/main'
@@ -74,4 +74,4 @@ jobs:
         with:
           name: pal-performance-gpu
           path: ${{ runner.temp }}/pal-gpu.*
-          retention-days: 90
+          retention-days: 30
