@@ -397,10 +397,10 @@ class FreqSevSims(_ProteusStochasticVariable):
     def _validate_event_layout(self, *operands: t.Any) -> None:
         """Reject event-wise operations on different scenario/event assignments."""
         for other in operands:
-            if (
-                isinstance(other, FreqSevSims)
-                and other is not self
-                and (self.n_sims != other.n_sims or not bool(xp.array_equal(self.sim_index, other.sim_index)))
+            if not isinstance(other, FreqSevSims) or other is self:
+                continue
+            if self.n_sims != other.n_sims or (
+                self.sim_index is not other.sim_index and not bool(xp.array_equal(self.sim_index, other.sim_index))
             ):
                 raise ValueError("Event simulation indices must match for event-wise operations")
 
