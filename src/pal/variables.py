@@ -668,7 +668,10 @@ class ProteusVariable(t.Generic[T]):
                 for value in (leaves[i] for i in selected_indices)
             ]
             if not dtypes:
-                dtypes = [leaves[0].values.dtype if isinstance(leaves[0], ProteusStochasticVariable) else np.asarray(leaves[0]).dtype]
+                first = leaves[0]
+                dtypes = [
+                    first.values.dtype if isinstance(first, ProteusStochasticVariable) else np.asarray(first).dtype
+                ]
             try:
                 dtype = np.result_type(*dtypes)
             except TypeError as exc:
