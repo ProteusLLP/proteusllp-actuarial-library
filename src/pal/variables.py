@@ -93,13 +93,15 @@ def _resample_freqsev(value: FreqSevSims, indices: StochasticScalar) -> FreqSevS
     source_starts = xp.cumsum(source_counts) - source_counts
 
     target_indices = indices.values.astype(int)
+    # A copula can relabel events without placing them back in simulation order.
+    source_order = xp.argsort(value.sim_index, kind="stable")
     target_counts = source_counts[target_indices]
     target_starts = source_starts[target_indices]
 
     new_sim_index = xp.repeat(xp.arange(indices.n_sims, dtype=int), target_counts)
     target_event_starts = xp.cumsum(target_counts) - target_counts
     within_target_offsets = xp.arange(new_sim_index.size, dtype=int) - xp.repeat(target_event_starts, target_counts)
-    source_positions = xp.repeat(target_starts, target_counts) + within_target_offsets
+    source_positions = source_order[xp.repeat(target_starts, target_counts) + within_target_offsets]
 
     result = FreqSevSims(
         sim_index=new_sim_index,
@@ -107,7 +109,6 @@ def _resample_freqsev(value: FreqSevSims, indices: StochasticScalar) -> FreqSevS
         n_sims=indices.n_sims,
     )
     result.coupled_variable_group.merge(indices.coupled_variable_group)
-    result.coupled_variable_group.merge(value.coupled_variable_group)
     return result
 
 
@@ -651,12 +652,17 @@ class ProteusVariable(t.Generic[T]):
         else:
             # Select one leaf at each scenario or event, retaining the input shape.
             first = leaves[0]
-            sample = first.values if isinstance(first, ProteusStochasticVariable) else np.asarray(first)
-            use_host = isinstance(sample, np.ndarray) and sample.dtype.kind in "USMm"
-            if use_host:
-                chosen = np.empty(len(positions), dtype=sample.dtype)
-            else:
-                chosen = xp.empty(len(positions), dtype=sample.dtype)
+            dtypes = [
+                value.values.dtype
+                if isinstance(value, ProteusStochasticVariable)
+                else np.asarray(value).dtype
+                for value in leaves
+            ]
+            dtype = np.result_type(*dtypes)
+            if dtype.kind == "O":
+                raise TypeError("Stochastic lookup values must have compatible dtypes")
+            use_host = dtype.kind in "USMm"
+            chosen = (np if use_host else xp).empty(len(positions), dtype=dtype)
             for i, value in enumerate(leaves):
                 mask = positions == i
                 if not np.any(mask):
@@ -680,6 +686,8 @@ class ProteusVariable(t.Generic[T]):
                         raise ValueError("Simulation counts do not match")
                 else:
                     selected = value
+                if use_host and isinstance(selected, xp.ndarray):
+                    selected = asnumpy(selected)
                 chosen[target] = selected
             if isinstance(selector, FreqSevSims):
                 result = FreqSevSims(selector.sim_index, chosen, selector.n_sims)
@@ -688,7 +696,7 @@ class ProteusVariable(t.Generic[T]):
 
         result.coupled_variable_group.merge(selector.coupled_variable_group)
         for value in leaves:
-            if isinstance(value, ProteusStochasticVariable):
+            if isinstance(value, ProteusStochasticVariable) and value.n_sims == result.n_sims:
                 result.coupled_variable_group.merge(value.coupled_variable_group)
         return result
 
