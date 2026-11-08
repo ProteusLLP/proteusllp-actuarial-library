@@ -368,6 +368,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         Args:
             x: Input value that could be FreqSevSims, StochasticScalar, ndarray,
                or scalar
+            host: Whether operands should be extracted as NumPy host arrays.
 
         Returns:
             Array values aligned with simulation indices
