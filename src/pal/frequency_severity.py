@@ -432,6 +432,10 @@ class FreqSevSims(_ProteusStochasticVariable):
             # CuPy ufuncs do not accept the NumPy "where" keyword. Keep the
             # mask and the output on the device, preserving unselected values.
             mask = xp.asarray(kwargs["where"])
+            if isinstance(where_mask, (FreqSevSims, StochasticScalar, np.ndarray, xp.ndarray)) and not np.can_cast(
+                mask.dtype, np.bool_, casting="safe"
+            ):
+                raise TypeError("where mask cannot be safely cast to bool")
             unmasked_kwargs = {key: value for key, value in kwargs.items() if key not in ("where", "out")}
             calculated = getattr(ufunc, method)(*_inputs, **unmasked_kwargs)
             if out_arrays and out_arrays[0] is not None:

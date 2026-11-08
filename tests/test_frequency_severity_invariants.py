@@ -218,6 +218,28 @@ def test_ufunc_where_scenario_level_mask_broadcasts_to_events() -> None:
     assert destination.coupled_variable_group is mask.coupled_variable_group
 
 
+def test_ufunc_where_rejects_nonboolean_array_mask_before_writing() -> None:
+    """A numeric array mask must not be treated as truth values on the GPU."""
+    events = FreqSevSims([0, 1], [10, 20], 2)
+    destination = FreqSevSims([0, 1], [-1, -1], 2)
+    mask = xp.asarray([1, 0])
+
+    with pytest.raises(TypeError):
+        np.add(events, 1, out=destination, where=mask)
+
+    assert_array_equal(destination.values, [-1, -1])
+
+
+def test_ufunc_where_accepts_boolean_sequence_mask() -> None:
+    """A boolean sequence remains a supported ufunc mask on every backend."""
+    events = FreqSevSims([0, 1], [10, 20], 2)
+    destination = FreqSevSims([0, 1], [-1, -1], 2)
+
+    np.add(events, 1, out=destination, where=[True, False])
+
+    assert_array_equal(destination.values, [11, -1])
+
+
 def test_unary_and_scalar_ufuncs_skip_self_layout_comparison(monkeypatch: pytest.MonkeyPatch) -> None:
     """Operations involving only this event layout should not scan its indices."""
     events = FreqSevSims([0, 0, 1], [1.0, 2.0, 3.0], 2)
