@@ -71,6 +71,8 @@ validating simulation results.
 | `LogLogistic` | `shape`, `scale`, `loc=0` | Income distributions, survival |
 | `Logistic` | `mu`, `sigma` | Growth models |
 | `Uniform` | `a`, `b` | Equal-likelihood scenarios |
+| `Uniform` | `a`, `b` | Numeric values or dates sampled uniformly between bounds |
+| `Categorical` | `values`, `probabilities` | Regions, claim types and other categories |
 | `InverseGamma` | `alpha`, `theta`, `loc=0` | Bayesian priors |
 | `GeneralizedInverseGaussian` | `p`, `chi`, `psi`, `loc=0` | Flexible positive, right-skewed risks |
 | `MBBEFD` | `g`, `b` | Property exposure rating and capped loss-to-value ratios |

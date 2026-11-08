@@ -21,6 +21,7 @@ Type Definitions:
 # Standard library imports
 from __future__ import annotations
 
+import datetime as dt
 import typing as t
 from abc import ABC
 
@@ -31,6 +32,7 @@ from scipy.stats import geninvgauss
 # Local imports
 from ._compat import override
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
+from ._value_arrays import stochastic_array
 from .config import config
 from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
@@ -1938,39 +1940,165 @@ class Exponential(DistributionBase):
 
 
 class Uniform(DistributionBase):
-    r"""Uniform Distribution.
+    r"""Uniform distribution on a numeric interval or between two dates.
 
-    Defined by:
-
-    .. math::
-
-        F(x) = \frac{x-a}{b-a}, \qquad a \leq x \leq b
+    For date bounds, every calendar date in the inclusive interval has equal
+    probability. Datetime bounds give a continuous uniform distribution, with
+    timestamps represented to microsecond precision.
 
     Parameters:
-        a (float): Lower bound.
-        b (float): Upper bound.
+        a: Lower bound.
+        b: Upper bound, of the same kind as `a`.
     """
 
-    def __init__(self, a: float, b: float) -> None:
-        """Initialize uniform distribution.
+    def __init__(
+        self,
+        a: float | dt.date | np.datetime64,
+        b: float | dt.date | np.datetime64,
+    ) -> None:
+        """Initialize a numeric, calendar-date or datetime uniform distribution."""
+        super().__init__(a=t.cast(t.Any, a), b=t.cast(t.Any, b))
+        is_date_a = isinstance(a, (dt.date, np.datetime64))
+        is_date_b = isinstance(b, (dt.date, np.datetime64))
+        if is_date_a != is_date_b:
+            raise TypeError("Uniform bounds must both be numbers or both be dates")
+        self._date_unit: str | None = None
+        if is_date_a:
 
-        Args:
-            a: Lower bound.
-            b: Upper bound.
-        """
-        super().__init__(a=a, b=b)
+            def has_time(value: dt.date | np.datetime64) -> bool:
+                if isinstance(value, dt.datetime):
+                    return True
+                if isinstance(value, np.datetime64):
+                    return np.datetime_data(value.dtype)[0] not in ("Y", "M", "W", "D")
+                return False
+
+            unit: t.Literal["D", "us"] = "us" if has_time(t.cast(t.Any, a)) or has_time(t.cast(t.Any, b)) else "D"
+            self._date_unit = unit
+            self._date_start = np.datetime64(t.cast(t.Union[dt.date, np.datetime64], a), unit)
+            end = np.datetime64(t.cast(t.Union[dt.date, np.datetime64], b), unit)
+            if np.isnat(self._date_start) or np.isnat(end):
+                raise ValueError("Uniform date bounds cannot be NaT")
+            self._date_span = int((end - self._date_start) / np.timedelta64(1, unit))
+            if self._date_span < 0:
+                raise ValueError("Uniform upper date bound must not precede lower bound")
 
     @override
-    def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+    def cdf(self, x: t.Any) -> ReturnType:
+        """Compute the cumulative distribution function."""
         a, b = self._params.values()
-        return (x - a) / (b - a)
+        if self._date_unit is None:
+            return (x - a) / (b - a)
+        source = x.values if isinstance(x, StochasticScalar) else x
+        ticks = (
+            np.asarray(asnumpy(source), dtype=f"datetime64[{self._date_unit}]") - self._date_start
+        ) / np.timedelta64(1, t.cast(t.Literal["D", "us"], self._date_unit))
+        if self._date_unit == "D":
+            result = np.clip((ticks + 1) / (self._date_span + 1), 0.0, 1.0)
+        elif self._date_span == 0:
+            result = np.where(ticks >= 0, 1.0, 0.0)
+        else:
+            result = np.clip(ticks / self._date_span, 0.0, 1.0)
+        if isinstance(x, StochasticScalar):
+            wrapped = StochasticScalar(np.atleast_1d(result))
+            wrapped.coupled_variable_group.merge(x.coupled_variable_group)
+            return wrapped
+        return t.cast(ReturnType, result.item() if np.ndim(result) == 0 else result)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute a uniform quantile, returning dates for date bounds."""
         a, b = self._params.values()
-        return a + (b - a) * u
+        if self._date_unit is None:
+            return a + (b - a) * u
+        source = u.values if isinstance(u, StochasticScalar) else u
+        probability = np.asarray(asnumpy(source), dtype=float)
+        if np.any(~np.isfinite(probability)) or np.any((probability < 0) | (probability > 1)):
+            raise ValueError("Quantile probabilities must lie between 0 and 1")
+        if self._date_unit == "D":
+            offsets = np.floor(probability * (self._date_span + 1))
+        else:
+            offsets = np.floor(probability * self._date_span)
+        offsets = np.minimum(offsets, self._date_span).astype("int64")
+        result = self._date_start + offsets.astype(f"timedelta64[{self._date_unit}]")
+        if isinstance(u, StochasticScalar):
+            wrapped = StochasticScalar(np.atleast_1d(result))
+            wrapped.coupled_variable_group.merge(u.coupled_variable_group)
+            return wrapped
+        return t.cast(ReturnType, result.item() if np.ndim(result) == 0 else result)
+
+
+class Categorical(DistributionBase):
+    """Distribution over an ordered collection of string or date labels.
+
+    The supplied order defines the cumulative probabilities used by `cdf`
+    and `invcdf`.
+    """
+
+    def __init__(
+        self,
+        values: t.Sequence[str | dt.date | np.datetime64],
+        probabilities: t.Sequence[float] | None = None,
+    ) -> None:
+        """Initialize a distribution of category labels and their probabilities."""
+        super().__init__()
+        if len(values) == 0:
+            raise ValueError("At least one category is required")
+        self._values = stochastic_array(values)
+        if self._values.dtype.kind not in "USM":
+            raise TypeError("Categories must be strings or dates")
+        if self._values.dtype.kind == "M" and np.isnat(self._values).any():
+            raise ValueError("Category dates cannot contain NaT")
+        if len(set(self._values.tolist())) != len(self._values):
+            raise ValueError("Category labels must be unique")
+        self._lookup = {label: i for i, label in enumerate(self._values.tolist())}
+        weights = (
+            np.full(len(values), 1.0 / len(values)) if probabilities is None else np.asarray(probabilities, dtype=float)
+        )
+        if weights.shape != (len(values),) or np.any(~np.isfinite(weights)) or np.any(weights < 0):
+            raise ValueError("Category probabilities must be finite, nonnegative and match the labels")
+        if not np.isclose(weights.sum(), 1.0, rtol=0, atol=1e-10):
+            raise ValueError("Category probabilities must sum to one")
+        weights = weights / weights.sum()
+        self._last_positive = int(np.flatnonzero(weights > 0)[-1])
+        self._cumulative = np.cumsum(weights)
+        self._cumulative[self._last_positive :] = 1.0
+
+    @override
+    def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Return the category corresponding to each cumulative probability."""
+        source = u.values if isinstance(u, StochasticScalar) else u
+        p = np.asarray(asnumpy(source), dtype=float)
+        if np.any(~np.isfinite(p)) or np.any((p < 0) | (p > 1)):
+            raise ValueError("Quantile probabilities must lie between 0 and 1")
+        index = np.minimum(np.searchsorted(self._cumulative, p, side="right"), self._last_positive)
+        result = self._values[index]
+        if isinstance(u, StochasticScalar):
+            wrapped = StochasticScalar(np.atleast_1d(result))
+            wrapped.coupled_variable_group.merge(u.coupled_variable_group)
+            return wrapped
+        return t.cast(ReturnType, result)
+
+    @override
+    def cdf(self, x: t.Any) -> ReturnType:
+        """Return cumulative probability at the category's position."""
+        source = x.values if isinstance(x, StochasticScalar) else x
+        labels = np.asarray(asnumpy(source))
+        if self._values.dtype.kind == "M":
+            # Normalize Python dates to the stored datetime unit.
+            labels = stochastic_array(np.atleast_1d(labels)).astype(self._values.dtype).reshape(labels.shape)
+        positions = np.fromiter(
+            (self._lookup.get(label, -1) for label in labels.ravel().tolist()),
+            dtype=np.intp,
+            count=labels.size,
+        ).reshape(labels.shape)
+        if np.any(positions < 0):
+            raise ValueError("Unknown category")
+        result = self._cumulative[positions]
+        if isinstance(x, StochasticScalar):
+            wrapped = StochasticScalar(np.atleast_1d(result))
+            wrapped.coupled_variable_group.merge(x.coupled_variable_group)
+            return wrapped
+        return t.cast(ReturnType, result)
 
 
 class InverseExponential(DistributionBase):
