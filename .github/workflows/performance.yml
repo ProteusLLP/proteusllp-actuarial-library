@@ -84,7 +84,6 @@ jobs:
           nvidia-smi
           python -m benchmarks.benchmark_core --sizes "$BENCH_SIZES" \
             --output "$RUNNER_TEMP/pal-gpu.json" --summary "$RUNNER_TEMP/pal-gpu.md"
-          cat "$RUNNER_TEMP/pal-gpu.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Profile GPU memory
         run: |
           python -m benchmarks.profile_memory \
@@ -92,7 +91,14 @@ jobs:
             --sizes 10000,100000 \
             --output "$RUNNER_TEMP/pal-memory-gpu.json" \
             --summary "$RUNNER_TEMP/pal-memory-gpu.md"
-          cat "$RUNNER_TEMP/pal-memory-gpu.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish GPU benchmark summary
+        if: always()
+        run: |
+          for report in "$RUNNER_TEMP/pal-gpu.md" "$RUNNER_TEMP/pal-memory-gpu.md"; do
+            if [ -f "$report" ]; then
+              cat "$report" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
       - uses: actions/upload-artifact@v7
         if: always()
         with:
