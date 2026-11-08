@@ -3,9 +3,9 @@
 import json
 
 import numpy as np
-
 from benchmarks.profile_memory import markdown_report, run_isolated, worker
 from benchmarks.profile_portfolio import run_portfolio
+
 from pal import set_random_seed
 
 
@@ -25,8 +25,12 @@ def test_isolated_worker_returns_machine_readable_results():
     json.loads(json.dumps(record))
     assert record["status"] == "ok", record.get("error")
     assert record["n_sims"] == 64
-    report = markdown_report({"environment": {"backend": "cpu", "cpu": "test", "gpu": None, "python": "3", "commit": "x"},
-                              "results": [record]})
+    report = markdown_report(
+        {
+            "environment": {"backend": "cpu", "cpu": "test", "gpu": None, "python": "3", "commit": "x"},
+            "results": [record],
+        }
+    )
     assert "Peak process RSS" in report
 
 
