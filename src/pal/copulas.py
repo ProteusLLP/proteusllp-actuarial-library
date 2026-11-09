@@ -1710,6 +1710,17 @@ def apply_copula(
                 f"Cannot apply copula as the variables at positions {previous} and {i} are not independent"
             )
         group_positions[group_id] = i
+
+    # The copula supplies the dependence ordering and must not depend on any
+    # marginal that this operation might reorder. Copula samples may remain
+    # coupled to *one another*, as they normally are for a generated copula.
+    for i, sample in enumerate(copula_list):
+        marginal_position = group_positions.get(id(sample.coupled_variable_group))
+        if marginal_position is not None:
+            raise ValueError(
+                f"Copula sample at position {i} is coupled to marginal variable at position {marginal_position}"
+            )
+
     if len(variables_list) == 1:
         return
 
@@ -1719,20 +1730,15 @@ def apply_copula(
     first_order = np.argsort(variables_list[0].values, kind="stable")
     first_ranks = np.empty(n_sims, dtype=first_order.dtype)
     first_ranks[first_order] = np.arange(n_sims)
-    # A copula sample can share a coupling group with a variable reordered
-    # earlier in the loop. Retain the original array objects before any
-    # reordering: StochasticScalar._reorder_sims replaces its values array,
-    # so this preserves the original ranks without copying CPU/GPU buffers.
-    sample_values = [sample.values for sample in copula_list]
-    copula_first_order = np.argsort(sample_values[0], kind="stable")
+    copula_first_order = np.argsort(copula_list[0].values, kind="stable")
     sample_positions = copula_first_order[first_ranks]
     ranks = np.empty(n_sims, dtype=first_order.dtype)
     rank_values = np.arange(n_sims)
 
     # Process one margin at a time instead of allocating (dimension, n_sims)
     # matrices of ranks and sort indices. The first variable is unchanged.
-    for var, values in zip(variables_list[1:], sample_values[1:]):
-        sample_order = np.argsort(values, kind="stable")
+    for var, sample in zip(variables_list[1:], copula_list[1:]):
+        sample_order = np.argsort(sample.values, kind="stable")
         ranks[sample_order] = rank_values
         variable_order = np.argsort(var.values, kind="stable")
         re_ordering = variable_order[ranks[sample_positions]]
