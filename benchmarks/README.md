@@ -57,6 +57,8 @@ a performance improvement. Faster results alone do not establish correctness.
 For issue #133, on a CUDA runner, compare all three event-index algorithms
 with identical integer outputs and separate pool-cold and warmed measurements:
 
+<!--pytest-codeblocks:skip-->
+
 ```bash
 PAL_USE_GPU=1 python -m benchmarks.benchmark_gpu_event_indexing \
   --sizes 10000,100000,1000000
