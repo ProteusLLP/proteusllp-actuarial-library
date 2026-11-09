@@ -102,7 +102,7 @@ void fill_cooperative(const long long* counts, const long long* ends,
 @lru_cache(maxsize=1)
 def _gpu_event_index_fill_kernel() -> t.Any:
     """Compile the CUDA event-index kernel only on the GPU backend."""
-    return xp.RawKernel(_GPU_EVENT_INDEX_FILL_SOURCE, "fill_cooperative")
+    return t.cast(t.Any, xp).RawKernel(_GPU_EVENT_INDEX_FILL_SOURCE, "fill_cooperative")
 
 
 def _get_sims_of_events(
