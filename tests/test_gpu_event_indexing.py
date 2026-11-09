@@ -2,8 +2,8 @@
 
 import numpy as np
 import pytest
-
 from benchmarks.benchmark_gpu_event_indexing import METHODS, _method, make_counts
+
 from pal._maths import asnumpy, xp
 from pal.frequency_severity import FreqSevSims
 
