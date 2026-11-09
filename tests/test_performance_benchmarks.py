@@ -4,6 +4,7 @@ import json
 
 import numpy as np
 import pytest
+from benchmarks import benchmark_core
 from benchmarks.benchmark_core import comparison, markdown_report, run_cases
 
 from pal._maths import asnumpy, xp
@@ -67,3 +68,14 @@ def test_baseline_comparison_is_stack_matched():
     past["environment"]["cpu"] = "B"
     with pytest.raises(ValueError, match="environment"):
         comparison(present, past)
+
+
+def test_end_to_end_does_not_build_unused_event_fixtures(monkeypatch: pytest.MonkeyPatch):
+    """Memory setup must not allocate the separate reduction/XoL event sample."""
+
+    def fail_if_fixture_built(_counts):
+        raise AssertionError("Unneeded event fixture was constructed during workload setup")
+
+    monkeypatch.setattr(benchmark_core, "_get_sims_of_events", fail_if_fixture_built)
+    operation = benchmark_core.build_workload("end_to_end", 32)
+    assert callable(operation)
