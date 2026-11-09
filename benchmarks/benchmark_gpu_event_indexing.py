@@ -197,7 +197,8 @@ def markdown_report(data: dict[str, Any]) -> str:
         f"GPU: {env['gpu']}; CuPy: {env['cupy']}; CUDA runtime: {env['cuda_runtime_version']}",
         f"Commit: {env['commit']}; repetitions: {data['repeat']}; warmup: {data['warmup']}",
         "",
-        "| Simulations | Pattern | Events | Method | Warm median (ms) | MAD (ms) | Cold (ms) | Ratio vs current | Screening result |",
+        "| Simulations | Pattern | Events | Method | Warm median (ms) | MAD (ms) | Cold (ms) | "
+        "Ratio vs current | Screening result |",
         "| ---: | --- | ---: | --- | ---: | ---: | ---: | ---: | --- |",
     ]
     groups: dict[tuple[int, str], dict[str, dict[str, Any]]] = {}
@@ -208,7 +209,9 @@ def markdown_report(data: dict[str, Any]) -> str:
         for name in METHODS:
             row = methods[name]
             if row["status"] != "ok":
-                lines.append(f"| {n_sims:,} | {scenario} | {row['events']:,} | {name} | - | - | - | - | {row['error']} |")
+                lines.append(
+                    f"| {n_sims:,} | {scenario} | {row['events']:,} | {name} | - | - | - | - | {row['error']} |"
+                )
                 continue
             ratio = row["median_ms"] / reference["median_ms"] if reference["status"] == "ok" else float("nan")
             decision = "candidate" if name != "current" and significant_gain(reference, row) else "-"
