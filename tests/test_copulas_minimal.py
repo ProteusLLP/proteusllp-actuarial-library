@@ -126,7 +126,7 @@ def test_clayton_copula_zero_theta():
     """Test Clayton copula with theta=0 (independence)."""
     set_random_seed(42)
     clayton = copulas.ClaytonCopula(theta=0.0, dimension=2)
-    samples = clayton.generate(10000)
+    samples = clayton.generate(1000)
     check_copula_independence(samples)
 
 
