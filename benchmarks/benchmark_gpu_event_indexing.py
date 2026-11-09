@@ -329,7 +329,7 @@ def trace_one() -> None:
 def main(argv: list[str] | None = None) -> int:
     """Execute the GPU comparison or NVTX profiling workload."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--sizes", default="10000,100000,1000000")
+    parser.add_argument("--sizes", default="1,100,1000,10000,100000,1000000")
     parser.add_argument("--warmup", type=int, default=2)
     parser.add_argument("--repeat", type=int, default=7)
     parser.add_argument("--output", type=Path, default=Path("gpu-event-indexing.json"))
