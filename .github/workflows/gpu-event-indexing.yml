@@ -41,7 +41,8 @@ jobs:
           python -m benchmarks.benchmark_gpu_event_indexing \
             --sizes 10000,100000,1000000 \
             --output "$RUNNER_TEMP/gpu-event-indexing.json" \
-            --summary "$RUNNER_TEMP/gpu-event-indexing.md"
+            --summary "$RUNNER_TEMP/gpu-event-indexing.md" \
+            --host-trace "$RUNNER_TEMP/gpu-event-indexing-host-trace.json"
 
       - name: Capture CUDA and NVTX trace where Nsight Systems is available
         if: always()
@@ -70,6 +71,7 @@ jobs:
           path: |
             ${{ runner.temp }}/gpu-event-indexing.json
             ${{ runner.temp }}/gpu-event-indexing.md
+            ${{ runner.temp }}/gpu-event-indexing-host-trace.json
             ${{ runner.temp }}/gpu-event-indexing-trace*
           if-no-files-found: warn
           retention-days: 30
