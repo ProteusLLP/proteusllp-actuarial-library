@@ -22,7 +22,7 @@ from benchmarks.benchmark_core import environment
 from pal._maths import xp
 from pal.frequency_severity import _get_sims_of_events
 
-SCENARIOS = ("sparse", "dense", "skewed")
+SCENARIOS = ("sparse", "dense", "skewed", "concentrated")
 METHODS = ("current", "repeat", "prefix_fill")
 
 _FILL_SOURCE = r"""
@@ -48,7 +48,11 @@ def make_counts(scenario: str, n_sims: int) -> np.ndarray:
     if scenario == "dense":
         return rng.poisson(10, size=n_sims).astype(np.int64)
     counts = np.zeros(n_sims, dtype=np.int64)
-    counts[::1000] = 1000
+    if scenario == "concentrated":
+        if n_sims:
+            counts[0] = min(200000, n_sims * 10)
+    else:
+        counts[::1000] = 1000
     return counts
 
 
