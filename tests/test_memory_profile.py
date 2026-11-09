@@ -1,14 +1,18 @@
 """Smoke tests for isolated memory profiling and portfolio scaling."""
 
 import json
+import sys
 
 import numpy as np
+import pytest
+from benchmarks import profile_memory
 from benchmarks.profile_memory import markdown_report, run_isolated, worker
 from benchmarks.profile_portfolio import run_portfolio
 
 from pal import set_random_seed
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="RSS profiling requires Unix resource or Linux /proc")
 def test_memory_worker_records_process_and_backend_allocations():
     """Even tiny workloads should report a coherent memory high-water mark."""
     record = worker("aggregate", 128, n_lobs=2, n_layers=2)
@@ -20,6 +24,7 @@ def test_memory_worker_records_process_and_backend_allocations():
         assert record["gpu_pool_peak_mb"] >= record["gpu_pool_after_setup_mb"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="RSS profiling requires Unix resource or Linux /proc")
 def test_isolated_worker_returns_machine_readable_results():
     record = run_isolated("event_indexing", 64, n_lobs=2, n_layers=2)
     json.loads(json.dumps(record))
@@ -42,3 +47,14 @@ def test_portfolio_workload_small_and_reproducible():
     assert np.isfinite(first)
     assert first >= 0.0
     assert first == second
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="VmHWM is Linux-specific")
+def test_linux_peak_rss_is_read_from_process_status(monkeypatch: pytest.MonkeyPatch):
+    """Read the post-exec process peak, not an inherited getrusage high-water mark."""
+    def fake_status(path, encoding="utf-8"):
+        assert str(path) == "/proc/self/status"
+        return "Name:\tpython\nVmHWM:\t8192 kB\nVmRSS:\t1024 kB\n"
+
+    monkeypatch.setattr(profile_memory.Path, "read_text", fake_status)
+    assert profile_memory._peak_rss_bytes() == 8192 * 1024
