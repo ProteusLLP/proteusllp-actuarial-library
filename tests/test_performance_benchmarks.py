@@ -14,6 +14,7 @@ from pal.frequency_severity import _get_sims_of_events
 @pytest.mark.parametrize(
     "counts",
     [
+        [],
         [1],
         [0, 0, 0],
         [2, 0, 3, 1, 0, 4],
@@ -37,10 +38,11 @@ def test_event_to_simulation_indices_random_portfolio():
         np.testing.assert_array_equal(actual, np.repeat(np.arange(len(counts)), counts))
 
 
-def test_empty_cpu_counts():
-    if xp is not np:
-        pytest.skip("The existing GPU path requires at least one simulation")
-    assert _get_sims_of_events(np.empty(0, dtype=np.int64)).shape == (0,)
+def test_empty_event_index_has_integer_dtype_and_stays_on_backend():
+    actual = _get_sims_of_events(xp.empty(0, dtype=xp.int64))
+    assert isinstance(actual, xp.ndarray)
+    assert actual.dtype == xp.int64
+    assert actual.shape == (0,)
 
 
 def test_benchmark_results_are_machine_readable():
