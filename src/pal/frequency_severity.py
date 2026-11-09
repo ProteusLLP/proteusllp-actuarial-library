@@ -63,7 +63,6 @@ ArrayTransform = t.Callable[
 ]
 
 
-
 _GPU_EVENT_INDEX_FILL_SOURCE = r"""
 extern "C" __global__
 void fill_cooperative(const long long* counts, const long long* ends,
