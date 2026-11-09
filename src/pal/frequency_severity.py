@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import typing as t
 from collections.abc import Callable
+from functools import lru_cache
 
 import numpy as np
 import numpy.typing as npt
@@ -62,6 +63,49 @@ ArrayTransform = t.Callable[
 ]
 
 
+
+_GPU_EVENT_INDEX_FILL_SOURCE = r"""
+extern "C" __global__
+void fill_cooperative(const long long* counts, const long long* ends,
+                      long long* indices, const long long n_sims) {
+    __shared__ int heavy_lanes[256];
+    __shared__ int n_heavy;
+    if (threadIdx.x == 0) n_heavy = 0;
+    __syncthreads();
+
+    const long long sim = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    const long long count = sim < n_sims ? counts[sim] : 0;
+    const long long start = sim < n_sims ? ends[sim] - count : 0;
+    // Each lane handles normal frequencies directly. Large segments are
+    // finished cooperatively by the whole block, rather than one CUDA lane.
+    const long long cap = count < 64 ? count : 64;
+    for (long long j = 0; j < cap; ++j) indices[start + j] = sim;
+    if (count > 64) {
+        const int slot = atomicAdd(&n_heavy, 1);
+        heavy_lanes[slot] = threadIdx.x;
+    }
+    __syncthreads();
+
+    for (int h = 0; h < n_heavy; ++h) {
+        const long long heavy_sim =
+            (long long)blockIdx.x * blockDim.x + heavy_lanes[h];
+        const long long heavy_count = counts[heavy_sim];
+        const long long heavy_start = ends[heavy_sim] - heavy_count;
+        for (long long j = 64 + threadIdx.x; j < heavy_count;
+             j += blockDim.x) {
+            indices[heavy_start + j] = heavy_sim;
+        }
+    }
+}
+"""
+
+
+@lru_cache(maxsize=1)
+def _gpu_event_index_fill_kernel() -> t.Any:
+    """Compile the CUDA event-index kernel only on the GPU backend."""
+    return xp.RawKernel(_GPU_EVENT_INDEX_FILL_SOURCE, "fill_cooperative")
+
+
 def _get_sims_of_events(
     n_events_by_sim: npt.NDArray[np.int64],
 ) -> npt.NDArray[np.int64]:
@@ -89,10 +133,21 @@ def _get_sims_of_events(
         # indices are the same as the cumulative-count search, including gaps.
         return np.repeat(np.arange(len(n_events_by_sim), dtype=np.int64), n_events_by_sim)
 
-    cumulative_n_events = n_events_by_sim.cumsum()
-    total_events = cumulative_n_events[-1]
-    event_no = t.cast(npt.NDArray[np.int64], xp.arange(total_events))
-    return cumulative_n_events.searchsorted(event_no + 1)
+    # The GPU path assigns short segments to individual threads. Within each
+    # block, threads cooperate to fill unusually large segments. This avoids
+    # an event-wise binary search and also handles concentrated claim counts.
+    cumulative_n_events = n_events_by_sim.cumsum(dtype=xp.int64)
+    total_events = int(cumulative_n_events[-1])
+    indices = xp.empty(total_events, dtype=xp.int64)
+    if total_events:
+        threads = 256
+        blocks = (n_events_by_sim.size + threads - 1) // threads
+        _gpu_event_index_fill_kernel()(
+            (blocks,),
+            (threads,),
+            (n_events_by_sim, cumulative_n_events, indices, np.int64(n_events_by_sim.size)),
+        )
+    return indices
 
 
 class FrequencySeverityModel:
