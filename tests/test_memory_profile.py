@@ -52,6 +52,7 @@ def test_portfolio_workload_small_and_reproducible():
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="VmHWM is Linux-specific")
 def test_linux_peak_rss_is_read_from_process_status(monkeypatch: pytest.MonkeyPatch):
     """Read the post-exec process peak, not an inherited getrusage high-water mark."""
+
     def fake_status(path, encoding="utf-8"):
         assert str(path) == "/proc/self/status"
         return "Name:\tpython\nVmHWM:\t8192 kB\nVmRSS:\t1024 kB\n"
