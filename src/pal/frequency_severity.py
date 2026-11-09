@@ -263,7 +263,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         start = 0
         for end in ends:
             end = int(end)
-            yield StochasticScalar(grouped_values[start:end])
+            yield StochasticScalar(grouped_values[start:end].copy())
             start = end
 
     def _reduce_over_events(self, operation: ReductionOperation) -> StochasticScalar:
