@@ -254,6 +254,55 @@ def markdown_report(data: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+
+def host_trace() -> dict[str, Any]:
+    """Record host-call and device-wait spans for Chrome tracing.
+
+    These spans can reveal sync-heavy Python calls, but they are not a CUDA
+    kernel trace. Use Nsight Systems for kernel and memory-copy events.
+    """
+    if xp is np:
+        raise RuntimeError("CUDA is required for event-index profiling")
+    events: list[dict[str, Any]] = []
+    origin = time.perf_counter_ns()
+    for scenario in SCENARIOS:
+        counts = xp.asarray(make_counts(scenario, 100000))
+        for name in METHODS:
+            fn = _method(name)
+            try:
+                value = fn(counts)
+                _sync()
+                del value
+                _sync()
+                begin = time.perf_counter_ns()
+                value = fn(counts)
+                dispatched = time.perf_counter_ns()
+                _sync()
+                complete = time.perf_counter_ns()
+                del value
+            except (TypeError, ValueError, NotImplementedError):
+                continue
+            for label, start, end in (
+                ("host call (may include implicit CUDA sync)", begin, dispatched),
+                ("explicit CUDA completion wait", dispatched, complete),
+            ):
+                events.append({
+                    "name": label,
+                    "cat": f"{scenario}/{name}",
+                    "ph": "X",
+                    "ts": (start - origin) / 1000.0,
+                    "dur": (end - start) / 1000.0,
+                    "pid": 1,
+                    "tid": 1,
+                    "args": {"scenario": scenario, "method": name, "simulations": 100000},
+                })
+    return {
+        "traceEvents": events,
+        "displayTimeUnit": "ms",
+        "otherData": {"note": "Host-side spans only, not GPU kernel execution tracing"},
+    }
+
+
 def trace_one() -> None:
     """Emit NVTX ranges for a representative profile with Nsight Systems."""
     if xp is np:
@@ -286,6 +335,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, default=Path("gpu-event-indexing.json"))
     parser.add_argument("--summary", type=Path, default=Path("gpu-event-indexing.md"))
     parser.add_argument("--trace-only", action="store_true")
+    parser.add_argument("--host-trace", type=Path, help="Write host-side Chrome trace JSON")
     args = parser.parse_args(argv)
     if args.trace_only:
         trace_one()
@@ -295,6 +345,9 @@ def main(argv: list[str] | None = None) -> int:
     args.summary.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     args.summary.write_text(markdown_report(result), encoding="utf-8")
+    if args.host_trace:
+        args.host_trace.parent.mkdir(parents=True, exist_ok=True)
+        args.host_trace.write_text(json.dumps(host_trace(), indent=2) + "\n", encoding="utf-8")
     return int(any(row["status"] != "ok" for row in result["rows"] if row["method"] != "repeat"))
 
 
