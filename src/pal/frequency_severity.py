@@ -80,6 +80,10 @@ def _get_sims_of_events(
     Returns:
         np.ndarray: Array of simulation indices for each event.
     """
+    if n_events_by_sim.size == 0:
+        # The CUDA path cannot read the final cumulative count of an empty array.
+        return xp.empty(0, dtype=xp.int64)
+
     if xp is np:
         # Avoid binary searches for each event on CPU. The repeated simulation
         # indices are the same as the cumulative-count search, including gaps.
