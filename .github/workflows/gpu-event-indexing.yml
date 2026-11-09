@@ -39,7 +39,7 @@ jobs:
       - name: Compare indexed-event construction
         run: |
           python -m benchmarks.benchmark_gpu_event_indexing \
-            --sizes 10000,100000,1000000 \
+            --sizes 1,100,1000,10000,100000,1000000 \
             --output "$RUNNER_TEMP/gpu-event-indexing.json" \
             --summary "$RUNNER_TEMP/gpu-event-indexing.md" \
             --host-trace "$RUNNER_TEMP/gpu-event-indexing-host-trace.json"
