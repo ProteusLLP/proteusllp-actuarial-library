@@ -8,7 +8,7 @@ from pal._maths import asnumpy, xp
 from pal.frequency_severity import FreqSevSims
 
 
-@pytest.mark.parametrize("scenario", ["sparse", "dense", "skewed"])
+@pytest.mark.parametrize("scenario", ["sparse", "dense", "skewed", "concentrated"])
 def test_event_index_fixture_is_reproducible(scenario):
     first = make_counts(scenario, 1050)
     np.testing.assert_array_equal(first, make_counts(scenario, 1050))
@@ -16,9 +16,11 @@ def test_event_index_fixture_is_reproducible(scenario):
     assert np.all(first >= 0)
     if scenario == "skewed":
         assert np.count_nonzero(first) == 2
+    if scenario == "concentrated":
+        assert np.count_nonzero(first) == 1
 
 
-@pytest.mark.parametrize("scenario", ["sparse", "dense", "skewed"])
+@pytest.mark.parametrize("scenario", ["sparse", "dense", "skewed", "concentrated"])
 @pytest.mark.parametrize("n_sims", [0, 1, 1031])
 @pytest.mark.parametrize("method", METHODS)
 def test_gpu_event_index_candidates_match_numpy(scenario, n_sims, method):
