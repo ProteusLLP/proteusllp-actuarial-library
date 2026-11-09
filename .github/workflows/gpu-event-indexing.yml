@@ -7,7 +7,6 @@ on:
       - "benchmarks/benchmark_gpu_event_indexing.py"
       - "tests/test_gpu_event_indexing.py"
       - ".github/workflows/gpu-event-indexing.yml"
-      - "src/pal/frequency_severity.py"
   workflow_dispatch:
 
 permissions:
