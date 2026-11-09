@@ -41,6 +41,9 @@ def run_portfolio(n_sims: int, n_lobs: int = 10, n_layers: int = 10) -> Any:
         indices.append(losses.sim_index)
         values.append(losses.values)
     portfolio = FreqSevSims(xp.concatenate(indices), xp.concatenate(values), n_sims)
+    # Concatenation owns new arrays. Release per-line event arrays before the
+    # reinsurance loop, otherwise the benchmark exaggerates peak RAM/VRAM.
+    del indices, values, losses
     net = portfolio.aggregate().values.copy()
 
     # These layers are adjacent and disjoint, so their total recoveries cannot
