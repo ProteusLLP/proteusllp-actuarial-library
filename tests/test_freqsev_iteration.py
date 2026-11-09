@@ -46,3 +46,20 @@ def test_iteration_does_not_run_a_full_scan_for_each_simulation(monkeypatch: pyt
     assert observations[99] == [3.0]
     assert observations[199] == [4.0]
     assert sum(map(len, observations)) == 3
+
+
+@pytest.mark.parametrize("reordered", [False, True])
+def test_iteration_values_do_not_alias_source(reordered: bool):
+    """Mutating yielded events must not change the underlying FreqSevSims."""
+    fs = FreqSevSims(
+        xp.asarray([0, 0, 1, 2]),
+        xp.asarray([1.0, 2.0, 3.0, 4.0]),
+        n_sims=3,
+    )
+    if reordered:
+        fs._reorder_sims(xp.asarray([2, 0, 1]))
+    before = asnumpy(fs.values).copy()
+    first = next(iter(fs))
+    assert len(first.values) > 0
+    first.values[0] = -999.0
+    np.testing.assert_array_equal(asnumpy(fs.values), before)
