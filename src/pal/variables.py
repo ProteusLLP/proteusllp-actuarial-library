@@ -55,7 +55,6 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import plotly.graph_objects as go  # type: ignore
-import plotly.io as pio  # type: ignore
 import scipy.stats
 
 from . import maths as pnp
@@ -66,8 +65,8 @@ from ._maths import asnumpy, xp
 from .couplings import ProteusStochasticVariable
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
-from .types import VectorLike
 from .plotly_template import add_proteus_branding
+from .types import VectorLike
 
 T = t.TypeVar("T")
 
