@@ -437,6 +437,44 @@ def test_apply_copula_matches_independent_rank_reference(n_margins: int):
     assert derived.coupled_variable_group is variables[0].coupled_variable_group
 
 
+@pytest.mark.parametrize("derived_sample", [False, True])
+def test_apply_copula_ranks_original_samples_when_earlier_margin_reorders_them(derived_sample: bool):
+    """A later copula sample may be a reordered variable or a coupled derivative."""
+    a_values = np.array([70.0, 10.0, 50.0, 90.0, 30.0, 60.0, 20.0])
+    b_values = np.array([40.0, 70.0, 10.0, 60.0, 20.0, 50.0, 30.0])
+    c_values = np.array([12.0, 18.0, 10.0, 15.0, 17.0, 11.0, 16.0])
+    u_values = np.array([0.7, 0.1, 0.4, 0.9, 0.3, 0.6, 0.2])
+    v_values = np.array([0.4, 0.2, 0.7, 0.5, 0.1, 0.6, 0.3])
+
+    a, b, c = (StochasticScalar(values) for values in (a_values, b_values, c_values))
+    # This sample will be reordered *as a side effect* of applying the second
+    # margin. Its original ranks must still be used for the third margin.
+    sample = b * 3 if derived_sample else b
+    original_sample_values = b_values * (3 if derived_sample else 1)
+    first_ranks = np.empty(len(a_values), dtype=int)
+    first_ranks[np.argsort(a_values, kind="stable")] = np.arange(len(a_values))
+    first_positions = np.argsort(u_values, kind="stable")[first_ranks]
+
+    def expected_order(marginal: np.ndarray, copula_values: np.ndarray) -> np.ndarray:
+        ranks = np.empty(len(marginal), dtype=int)
+        ranks[np.argsort(copula_values, kind="stable")] = np.arange(len(marginal))
+        return np.argsort(marginal, kind="stable")[ranks[first_positions]]
+
+    b_order = expected_order(b_values, v_values)
+    c_order = expected_order(c_values, original_sample_values)
+    # Ensure this test detects ranking the mutated third sample instead.
+    wrong_order = expected_order(c_values, original_sample_values[b_order])
+    assert not np.array_equal(c_values[c_order], c_values[wrong_order])
+
+    copulas.apply_copula([a, b, c], [StochasticScalar(u_values), StochasticScalar(v_values), sample])
+
+    np.testing.assert_array_equal(host_values(a), a_values)
+    np.testing.assert_array_equal(host_values(b), b_values[b_order])
+    np.testing.assert_array_equal(host_values(c), c_values[c_order])
+    np.testing.assert_array_equal(host_values(sample), original_sample_values[b_order])
+    assert a.coupled_variable_group is b.coupled_variable_group is c.coupled_variable_group
+
+
 def test_apply_copula_reorders_coupled_frequency_severity_indices():
     """Event-to-simulation indices follow the same permutation as aggregates."""
     from pal.frequency_severity import FreqSevSims
