@@ -44,9 +44,8 @@ def build_workload(name: str, n_sims: int) -> Callable[[], Any]:
     if name not in DEFAULT_CASES:
         raise ValueError(f"Unknown benchmark: {name}")
     rng = np.random.default_rng(20261108 + n_sims)
-    counts_cpu = rng.poisson(2, size=n_sims).astype(np.int64)
-    counts = xp.asarray(counts_cpu)
     if name == "event_indexing":
+        counts = xp.asarray(rng.poisson(2, size=n_sims).astype(np.int64))
         return lambda: _get_sims_of_events(counts)
 
     if name in ("stochastic_arithmetic", "percentile_99_5"):
@@ -62,24 +61,27 @@ def build_workload(name: str, n_sims: int) -> Callable[[], Any]:
         copula = GaussianCopula(np.array([[1.0, 0.45], [0.45, 1.0]]))
         return lambda: copula.generate(n_sims=n_sims)
 
-    sim_index = _get_sims_of_events(counts)
+    layer = XoL(name="Benchmark layer", limit=25000, excess=10000, premium=1000)
+    if name == "end_to_end":
+
+        def full_model() -> Any:
+            sample = model.generate(n_sims=n_sims)
+            recoveries = layer.apply(sample).recoveries
+            return recoveries.aggregate().percentile(99.5)
+
+        return full_model
+
+    # Only event-reduction and XoL workloads need independent event fixtures.
+    # The end-to-end case generates its claims during the timed operation.
+    counts_cpu = rng.poisson(2, size=n_sims).astype(np.int64)
+    sim_index = _get_sims_of_events(xp.asarray(counts_cpu))
     event_values = xp.asarray(rng.lognormal(9, 0.9, size=int(counts_cpu.sum())))
     losses = FreqSevSims(sim_index, event_values, n_sims)
     if name == "aggregate":
         return losses.aggregate
     if name == "occurrence":
         return losses.occurrence
-
-    layer = XoL(name="Benchmark layer", limit=25000, excess=10000, premium=1000)
-    if name == "xol_layer":
-        return lambda: layer.apply(losses)
-
-    def full_model() -> Any:
-        sample = model.generate(n_sims=n_sims)
-        recoveries = layer.apply(sample).recoveries
-        return recoveries.aggregate().percentile(99.5)
-
-    return full_model
+    return lambda: layer.apply(losses)
 
 
 def synchronise() -> None:
