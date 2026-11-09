@@ -1,0 +1,76 @@
+name: GPU event-indexing comparison
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "benchmarks/benchmark_gpu_event_indexing.py"
+      - "tests/test_gpu_event_indexing.py"
+      - ".github/workflows/gpu-event-indexing.yml"
+      - "src/pal/frequency_severity.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: proteus-gpu
+    timeout-minutes: 45
+    env:
+      PAL_USE_GPU: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install PAL and CUDA dependencies
+        run: pip install -e ".[test,gpu]" "cupy-cuda12x[ctk]"
+
+      - name: Check GPU event indexing
+        run: |
+          nvidia-smi
+          pytest -q tests/test_performance_benchmarks.py tests/test_gpu_event_indexing.py
+
+      - name: Compare indexed-event construction
+        run: |
+          python -m benchmarks.benchmark_gpu_event_indexing \
+            --sizes 10000,100000,1000000 \
+            --output "$RUNNER_TEMP/gpu-event-indexing.json" \
+            --summary "$RUNNER_TEMP/gpu-event-indexing.md"
+
+      - name: Capture CUDA and NVTX trace where Nsight Systems is available
+        if: always()
+        run: |
+          if command -v nsys >/dev/null 2>&1; then
+            nsys profile --trace=cuda,nvtx --sample=none \
+              --force-overwrite=true \
+              --output "$RUNNER_TEMP/gpu-event-indexing-trace" \
+              python -m benchmarks.benchmark_gpu_event_indexing --trace-only \
+              || echo "Nsight Systems tracing could not run on this host"
+          else
+            echo "Nsight Systems is not installed on this runner"
+          fi
+
+      - name: Publish GPU comparison
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/gpu-event-indexing.md" ]; then
+            cat "$RUNNER_TEMP/gpu-event-indexing.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: gpu-event-indexing-comparison
+          path: |
+            ${{ runner.temp }}/gpu-event-indexing.json
+            ${{ runner.temp }}/gpu-event-indexing.md
+            ${{ runner.temp }}/gpu-event-indexing-trace*
+          if-no-files-found: warn
+          retention-days: 30
