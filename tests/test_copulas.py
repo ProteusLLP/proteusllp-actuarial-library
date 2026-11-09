@@ -437,42 +437,49 @@ def test_apply_copula_matches_independent_rank_reference(n_margins: int):
     assert derived.coupled_variable_group is variables[0].coupled_variable_group
 
 
+@pytest.mark.parametrize("sample_position", [0, 2])
 @pytest.mark.parametrize("derived_sample", [False, True])
-def test_apply_copula_ranks_original_samples_when_earlier_margin_reorders_them(derived_sample: bool):
-    """A later copula sample may be a reordered variable or a coupled derivative."""
-    a_values = np.array([70.0, 10.0, 50.0, 90.0, 30.0, 60.0, 20.0])
-    b_values = np.array([40.0, 70.0, 10.0, 60.0, 20.0, 50.0, 30.0])
-    c_values = np.array([12.0, 18.0, 10.0, 15.0, 17.0, 11.0, 16.0])
-    u_values = np.array([0.7, 0.1, 0.4, 0.9, 0.3, 0.6, 0.2])
-    v_values = np.array([0.4, 0.2, 0.7, 0.5, 0.1, 0.6, 0.3])
+def test_apply_copula_rejects_samples_coupled_to_marginals_without_mutation(
+    sample_position: int, derived_sample: bool
+):
+    """A sample cannot be a marginal or any variable coupled to a marginal."""
+    a = StochasticScalar([70.0, 10.0, 50.0, 90.0, 30.0, 60.0, 20.0])
+    b = StochasticScalar([40.0, 70.0, 10.0, 60.0, 20.0, 50.0, 30.0])
+    c = StochasticScalar([12.0, 18.0, 10.0, 15.0, 17.0, 11.0, 16.0])
+    variables = [a, b, c]
+    samples = [
+        StochasticScalar([0.7, 0.1, 0.4, 0.9, 0.3, 0.6, 0.2]),
+        StochasticScalar([0.4, 0.2, 0.7, 0.5, 0.1, 0.6, 0.3]),
+        StochasticScalar([0.6, 0.1, 0.3, 0.2, 0.7, 0.4, 0.5]),
+    ]
+    marginal = a if sample_position == 0 else b
+    samples[sample_position] = marginal * 3 if derived_sample else marginal
+    all_scalars = variables + samples
+    original_values = [host_values(x).copy() for x in all_scalars]
+    original_groups = [x.coupled_variable_group for x in all_scalars]
 
-    a, b, c = (StochasticScalar(values) for values in (a_values, b_values, c_values))
-    # This sample will be reordered *as a side effect* of applying the second
-    # margin. Its original ranks must still be used for the third margin.
-    sample = b * 3 if derived_sample else b
-    original_sample_values = b_values * (3 if derived_sample else 1)
-    first_ranks = np.empty(len(a_values), dtype=int)
-    first_ranks[np.argsort(a_values, kind="stable")] = np.arange(len(a_values))
-    first_positions = np.argsort(u_values, kind="stable")[first_ranks]
+    with pytest.raises(ValueError, match=f"Copula sample at position {sample_position} is coupled"):
+        copulas.apply_copula(variables, samples)
 
-    def expected_order(marginal: np.ndarray, copula_values: np.ndarray) -> np.ndarray:
-        ranks = np.empty(len(marginal), dtype=int)
-        ranks[np.argsort(copula_values, kind="stable")] = np.arange(len(marginal))
-        return np.argsort(marginal, kind="stable")[ranks[first_positions]]
+    # The validation must happen before reordering or merging any groups.
+    for scalar, expected, group in zip(all_scalars, original_values, original_groups):
+        np.testing.assert_array_equal(host_values(scalar), expected)
+        assert scalar.coupled_variable_group is group
 
-    b_order = expected_order(b_values, v_values)
-    c_order = expected_order(c_values, original_sample_values)
-    # Ensure this test detects ranking the mutated third sample instead.
-    wrong_order = expected_order(c_values, original_sample_values[b_order])
-    assert not np.array_equal(c_values[c_order], c_values[wrong_order])
 
-    copulas.apply_copula([a, b, c], [StochasticScalar(u_values), StochasticScalar(v_values), sample])
+def test_apply_copula_allows_coupled_copula_samples():
+    """Copula dimensions are normally dependent on one another."""
+    a = StochasticScalar([10.0, 20.0, 30.0, 40.0])
+    b = StochasticScalar([400.0, 100.0, 300.0, 200.0])
+    first_sample = StochasticScalar([0.3, 0.1, 0.4, 0.2])
+    second_sample = first_sample * 3
+    assert first_sample.coupled_variable_group is second_sample.coupled_variable_group
 
-    np.testing.assert_array_equal(host_values(a), a_values)
-    np.testing.assert_array_equal(host_values(b), b_values[b_order])
-    np.testing.assert_array_equal(host_values(c), c_values[c_order])
-    np.testing.assert_array_equal(host_values(sample), original_sample_values[b_order])
-    assert a.coupled_variable_group is b.coupled_variable_group is c.coupled_variable_group
+    copulas.apply_copula([a, b], [first_sample, second_sample])
+
+    np.testing.assert_array_equal(host_values(b), [100.0, 200.0, 300.0, 400.0])
+    assert a.coupled_variable_group is b.coupled_variable_group
+    assert first_sample.coupled_variable_group is second_sample.coupled_variable_group
 
 
 def test_apply_copula_reorders_coupled_frequency_severity_indices():
