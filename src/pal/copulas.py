@@ -1686,8 +1686,16 @@ def apply_copula(
     """Apply a reordering from a copula to a list of variables.
 
     Parameters:
-        variables: List of StochasticScalar variables.
+        variables: List of StochasticScalar variables. Their coupling groups
+            must be independent of one another.
         copula_samples: List of StochasticScalar samples from the copula.
+            They may be coupled to one another, but none may share a coupling
+            group with a variable being reordered.
+
+    Raises:
+        ValueError: If the number of dimensions or simulations differs, the
+            marginal variables are coupled, or a copula sample is coupled to
+            a marginal variable.
     """
     if len(variables) != len(copula_samples):
         raise ValueError("Number of variables and copula samples do not match.")
