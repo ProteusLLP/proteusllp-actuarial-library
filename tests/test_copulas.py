@@ -439,9 +439,7 @@ def test_apply_copula_matches_independent_rank_reference(n_margins: int):
 
 @pytest.mark.parametrize("sample_position", [0, 2])
 @pytest.mark.parametrize("derived_sample", [False, True])
-def test_apply_copula_rejects_samples_coupled_to_marginals_without_mutation(
-    sample_position: int, derived_sample: bool
-):
+def test_apply_copula_rejects_samples_coupled_to_marginals_without_mutation(sample_position: int, derived_sample: bool):
     """A sample cannot be a marginal or any variable coupled to a marginal."""
     a = StochasticScalar([70.0, 10.0, 50.0, 90.0, 30.0, 60.0, 20.0])
     b = StochasticScalar([40.0, 70.0, 10.0, 60.0, 20.0, 50.0, 30.0])
