@@ -67,8 +67,10 @@ PAL_USE_GPU=1 python -m benchmarks.benchmark_gpu_event_indexing \
 The dedicated "GPU event-indexing comparison" workflow runs when its benchmark
 or tests change in a same-repository pull request. It saves JSON, an Actions
 summary, and an optional Nsight Systems CUDA/NVTX trace when nsys is installed.
-The experiment checks the existing cumulative-search implementation, CuPy
-repeat with device-resident counts, and a custom prefix-fill kernel.
+The experiment compares the previous cumulative-search algorithm and CuPy
+repeat with a simple prefix-fill kernel and the deployed block-cooperative
+CUDA implementation. The concentrated case tests a single simulation with
+an unusually large number of claims.
 
 Times include output allocation and a CUDA synchronisation. The input transfer,
 correctness copies and kernel compilation are excluded. Pool occupancy in JSON
