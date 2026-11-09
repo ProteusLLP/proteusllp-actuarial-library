@@ -51,3 +51,29 @@ To profile memory for it, use `--cases portfolio --portfolio-lobs 100
 
 Run normal correctness, numerical and stochastic-coupling tests before accepting
 a performance improvement. Faster results alone do not establish correctness.
+
+## CUDA event-indexing comparison
+
+For issue #133, on a CUDA runner, compare all three event-index algorithms
+with identical integer outputs and separate pool-cold and warmed measurements:
+
+```bash
+PAL_USE_GPU=1 python -m benchmarks.benchmark_gpu_event_indexing \
+  --sizes 10000,100000,1000000
+```
+
+The dedicated "GPU event-indexing comparison" workflow runs when its benchmark
+or tests change in a same-repository pull request. It saves JSON, an Actions
+summary, and an optional Nsight Systems CUDA/NVTX trace when nsys is installed.
+The experiment checks the existing cumulative-search implementation, CuPy
+repeat with device-resident counts, and a custom prefix-fill kernel.
+
+Times include output allocation and a CUDA synchronisation. The input transfer,
+correctness copies and kernel compilation are excluded. Pool occupancy in JSON
+is not peak device-memory consumption. A faster single run is insufficient for
+a production change: repeat the experiment on the same GPU/software stack and
+inspect traces for host synchronisations and temporary allocations. In
+particular, output arrays of data-dependent length require resolving the total
+event count on the host before allocation. The report highlights candidates
+whose speedup exceeds 10% and three summed median absolute deviations; these
+are screening criteria, not automatic selection rules.
