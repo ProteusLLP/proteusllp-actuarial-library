@@ -23,7 +23,7 @@ from pal._maths import xp
 from pal.frequency_severity import _get_sims_of_events
 
 SCENARIOS = ("sparse", "dense", "skewed", "concentrated")
-METHODS = ("current", "repeat", "prefix_fill")
+METHODS = ("current", "repeat", "prefix_fill", "cooperative_fill")
 
 _FILL_SOURCE = r"""
 extern "C" __global__
@@ -34,6 +34,42 @@ void fill_event_indices(const long long* counts, const long long* ends,
     const long long start = ends[sim] - counts[sim];
     const long long count = counts[sim];
     for (long long j = 0; j < count; ++j) indices[start + j] = sim;
+}
+"""
+
+
+_COOPERATIVE_SOURCE = r"""
+extern "C" __global__
+void fill_cooperative(const long long* counts, const long long* ends,
+                      long long* indices, const long long n_sims) {
+    __shared__ int heavy_lanes[256];
+    __shared__ int n_heavy;
+    if (threadIdx.x == 0) n_heavy = 0;
+    __syncthreads();
+
+    const long long sim = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    const long long count = sim < n_sims ? counts[sim] : 0;
+    const long long start = sim < n_sims ? ends[sim] - count : 0;
+    // Each lane handles normal frequencies directly. Large segments are
+    // finished cooperatively by the whole block, rather than one CUDA lane.
+    const long long cap = count < 64 ? count : 64;
+    for (long long j = 0; j < cap; ++j) indices[start + j] = sim;
+    if (count > 64) {
+        const int slot = atomicAdd(&n_heavy, 1);
+        heavy_lanes[slot] = threadIdx.x;
+    }
+    __syncthreads();
+
+    for (int h = 0; h < n_heavy; ++h) {
+        const long long heavy_sim =
+            (long long)blockIdx.x * blockDim.x + heavy_lanes[h];
+        const long long heavy_count = counts[heavy_sim];
+        const long long heavy_start = ends[heavy_sim] - heavy_count;
+        for (long long j = 64 + threadIdx.x; j < heavy_count;
+             j += blockDim.x) {
+            indices[heavy_start + j] = heavy_sim;
+        }
+    }
 }
 """
 
@@ -77,13 +113,38 @@ def _prefix_fill(counts: Any) -> Any:
     return result
 
 
+@lru_cache(maxsize=1)
+def _cooperative_kernel() -> Any:
+    """Compile a block-cooperative kernel for exceptionally large counts."""
+    return xp.RawKernel(_COOPERATIVE_SOURCE, "fill_cooperative")
+
+
+def _cooperative_fill(counts: Any) -> Any:
+    """Keep short segments per lane and split large ones across the CUDA block."""
+    if counts.size == 0:
+        return xp.empty(0, dtype=xp.int64)
+    ends = xp.cumsum(counts, dtype=xp.int64)
+    total = int(ends[-1])
+    result = xp.empty(total, dtype=xp.int64)
+    if total:
+        threads = 256
+        blocks = (counts.size + threads - 1) // threads
+        _cooperative_kernel()((blocks,), (threads,), (counts, ends, result, np.int64(counts.size)))
+    return result
+
+
 def _repeat(counts: Any) -> Any:
     """Evaluate CuPy's device-count repeat path without a CPU count copy."""
     return xp.repeat(xp.arange(counts.size, dtype=xp.int64), counts)
 
 
 def _method(name: str) -> Callable[[Any], Any]:
-    return {"current": _get_sims_of_events, "repeat": _repeat, "prefix_fill": _prefix_fill}[name]
+    return {
+        "current": _get_sims_of_events,
+        "repeat": _repeat,
+        "prefix_fill": _prefix_fill,
+        "cooperative_fill": _cooperative_fill,
+    }[name]
 
 
 def _sync() -> None:
