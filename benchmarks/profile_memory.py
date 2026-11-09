@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import resource
 import subprocess
 import sys
 import tracemalloc
@@ -24,9 +23,29 @@ from pal._maths import xp
 from benchmarks.benchmark_core import DEFAULT_CASES, build_workload, environment, synchronise
 from benchmarks.profile_portfolio import run_portfolio
 
+# resource is unavailable on Windows; allow portable tests to import the module.
+try:
+    import resource
+except ImportError:
+    resource = None
+
 
 def _peak_rss_bytes() -> int:
-    """Read the OS high-water RSS, respecting Linux and macOS units."""
+    """Return this process's RSS high-water mark, including native allocations."""
+    if sys.platform.startswith("linux"):
+        # /proc is specific to this post-exec worker; ru_maxrss can inherit
+        # an earlier parent's peak across fork/exec on Linux.
+        try:
+            for line in Path("/proc/self/status").read_text(encoding="utf-8").splitlines():
+                if line.startswith("VmHWM:"):
+                    parts = line.split()
+                    if len(parts) == 3 and parts[2] == "kB":
+                        return int(parts[1]) * 1024
+        except (OSError, ValueError):
+            pass
+
+    if resource is None:
+        raise RuntimeError("Peak RSS profiling requires Linux /proc or Unix resource")
     rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return int(rss if sys.platform == "darwin" else rss * 1024)
 
