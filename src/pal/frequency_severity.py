@@ -80,6 +80,11 @@ def _get_sims_of_events(
     Returns:
         np.ndarray: Array of simulation indices for each event.
     """
+    if xp is np:
+        # Avoid binary searches for each event on CPU. The repeated simulation
+        # indices are the same as the cumulative-count search, including gaps.
+        return np.repeat(np.arange(len(n_events_by_sim), dtype=np.int64), n_events_by_sim)
+
     cumulative_n_events = n_events_by_sim.cumsum()
     total_events = cumulative_n_events[-1]
     event_no = t.cast(npt.NDArray[np.int64], xp.arange(total_events))
