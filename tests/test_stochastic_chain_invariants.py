@@ -28,10 +28,7 @@ def _events_by_simulation(events: FreqSevSims) -> list[list[float]]:
     """Retain the original event order within each simulation."""
     indices = host_values(events.sim_index)
     values = host_values(events)
-    return [
-        [float(value) for index, value in zip(indices, values) if index == sim]
-        for sim in range(events.n_sims)
-    ]
+    return [[float(value) for index, value in zip(indices, values) if index == sim] for sim in range(events.n_sims)]
 
 
 def test_three_margin_copula_reorders_all_attached_frequency_severity_chains() -> None:
