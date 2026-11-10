@@ -8,10 +8,11 @@ import weakref
 import numpy as np
 import pytest
 import scipy.special
+import scipy.stats
 
 from pal import FreqSevSims, FrequencySeverityModel, StochasticScalar
 from pal.copulas import apply_copula
-from pal.distributions import Gamma, Normal, Poisson
+from pal.distributions import GPD, Gamma, Normal, Poisson
 from tests._assertions import assert_allclose, assert_array_equal, host_values
 
 
@@ -155,6 +156,28 @@ def test_gamma_severity_shape_and_scale_follow_simulation_claim_counts() -> None
     assert distribution._params["theta"] is scale
     assert actual.coupled_variable_group is shape.coupled_variable_group
     assert actual.coupled_variable_group is scale.coupled_variable_group
+
+
+def test_gpd_severity_stochastic_parameters_match_independent_scipy_reference() -> None:
+    """Inverse-CDF sampling must use each claim's simulation-level tail parameters."""
+    counts = [3, 0, 2, 1]
+    indices = np.repeat(np.arange(len(counts)), counts)
+    shape = StochasticScalar([0.15, 0.25, 0.45, 0.8])
+    scale = StochasticScalar([100.0, 200.0, 300.0, 400.0])
+    initial_shape = host_values(shape).copy()
+    initial_scale = host_values(scale).copy()
+    seed = 513
+    losses = FrequencySeverityModel(_FixedClaimCounts(counts), GPD(shape=shape, scale=scale, loc=0)).generate(
+        len(counts), np.random.default_rng(seed)
+    )
+    probabilities = np.random.default_rng(seed).uniform(size=len(indices))
+    expected = scipy.stats.genpareto.ppf(
+        probabilities, c=initial_shape[indices], loc=0, scale=initial_scale[indices]
+    )
+    assert_array_equal(losses.sim_index, indices)
+    assert_allclose(losses.values, expected, rtol=1e-10, atol=1e-10)
+    assert losses.coupled_variable_group is shape.coupled_variable_group
+    assert losses.coupled_variable_group is scale.coupled_variable_group
 
 
 def test_no_claims_with_stochastic_severity_preserves_coupling() -> None:
