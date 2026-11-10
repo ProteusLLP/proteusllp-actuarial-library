@@ -171,9 +171,7 @@ def test_gpd_severity_stochastic_parameters_match_independent_scipy_reference() 
         len(counts), np.random.default_rng(seed)
     )
     probabilities = np.random.default_rng(seed).uniform(size=len(indices))
-    expected = scipy.stats.genpareto.ppf(
-        probabilities, c=initial_shape[indices], loc=0, scale=initial_scale[indices]
-    )
+    expected = scipy.stats.genpareto.ppf(probabilities, c=initial_shape[indices], loc=0, scale=initial_scale[indices])
     assert_array_equal(losses.sim_index, indices)
     assert_allclose(losses.values, expected, rtol=1e-10, atol=1e-10)
     assert losses.coupled_variable_group is shape.coupled_variable_group
