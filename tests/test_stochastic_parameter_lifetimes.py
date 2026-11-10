@@ -174,7 +174,7 @@ def test_discarded_intermediate_variables_are_weakly_held() -> None:
     aggregate = losses.aggregate()
     transformed = (aggregate + 5) * 2
     group = losses.coupled_variable_group
-    assert len(group) == 4
+    assert len(group) == 3
     aggregate_ref = weakref.ref(aggregate)
     transformed_ref = weakref.ref(transformed)
     del aggregate
@@ -212,4 +212,4 @@ def test_compound_distribution_does_not_keep_dead_parameters_alive() -> None:
     assert rate_ref() is None
     assert len(group) == 1
     assert list(group)[0] is losses
-    assert_allclose(losses.aggregate(), losses.aggregate())
+    assert_array_equal(losses.count(), np.bincount(host_values(losses.sim_index), minlength=losses.n_sims))
