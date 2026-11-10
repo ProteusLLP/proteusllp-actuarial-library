@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import typing as t
 from collections.abc import Callable
+from copy import copy
 
 import numpy as np
 import numpy.typing as npt
@@ -128,17 +129,48 @@ class FrequencySeverityModel:
             n_sims = config.n_sims
         if rng is None:
             rng = config.rng
+        severity_params = getattr(self.sev_dist, "_params", {})
+        stochastic_params = {
+            name: param for name, param in severity_params.items() if isinstance(param, StochasticScalar)
+        }
+        for name, param in stochastic_params.items():
+            if param.n_sims != n_sims:
+                raise ValueError(
+                    f"Stochastic severity parameter {name!r} must have one value per simulation "
+                    f"({n_sims} values), got {param.n_sims}"
+                )
+
         n_events = self.freq_dist.generate(n_sims, rng)
-        total_events = n_events.sum()
-        # Preserve the event-value type even when all simulated frequencies are zero.
-        sev = self.sev_dist.generate(max(1, int(total_events)), rng)
-        if total_events == 0:
-            sev = StochasticScalar(sev.values[:0])
-        # Convert n_events to integers since _get_sims_of_events expects integer counts
-        # but n_events.values comes from distributions which return floating arrays
-        result = FreqSevSims(_get_sims_of_events(n_events.values.astype(np.int64)), sev.values, n_sims)
+        total_events = int(n_events.sum())
+        # Convert counts to integer event indices before expanding simulation parameters.
+        event_indices = _get_sims_of_events(n_events.values.astype(np.int64))
+
+        severity_distribution = self.sev_dist
+        if stochastic_params:
+            # Generate one severity per claim, using the parameter values of that
+            # claim's simulation. Do not modify the reusable distribution instance.
+            severity_distribution = copy(self.sev_dist)
+            sample_indices = event_indices if total_events else xp.asarray([0], dtype=int)
+            severity_distribution._params = {
+                name: (
+                    StochasticScalar(
+                        param.values[asnumpy(sample_indices) if host_values(param.values) else sample_indices]
+                    )
+                    if isinstance(param, StochasticScalar)
+                    else param
+                )
+                for name, param in severity_params.items()
+            }
+
+        # Draw once even when there are no events to preserve nonnumeric severity types.
+        sev = severity_distribution.generate(max(1, total_events), rng)
+        values = sev.values[:total_events]
+        result = FreqSevSims(event_indices, values, n_sims)
         result.coupled_variable_group.merge(n_events.coupled_variable_group)
-        result.coupled_variable_group.merge(sev.coupled_variable_group)
+        # Event-level temporary parameters cannot join a simulation-level group:
+        # reordering that group must act on the FreqSevSims event indices instead.
+        for param in stochastic_params.values():
+            result.coupled_variable_group.merge(param.coupled_variable_group)
         return result
 
 
