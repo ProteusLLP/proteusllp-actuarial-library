@@ -104,10 +104,7 @@ def test_independent_distribution_parameter_branches_merge_in_downstream_gamma()
     assert_allclose(shape, expected_shape[selection])
     assert_allclose(scale, expected_scale[selection])
     assert_allclose(output, expected_output[selection])
-    assert all(
-        value.coupled_variable_group is driver.coupled_variable_group
-        for value in (shape, scale, output)
-    )
+    assert all(value.coupled_variable_group is driver.coupled_variable_group for value in (shape, scale, output))
 
 
 def test_chained_frequency_and_severity_distributions_preserve_both_ancestry_branches() -> None:
@@ -129,9 +126,7 @@ def test_chained_frequency_and_severity_distributions_preserve_both_ancestry_bra
     reference = np.random.default_rng(seed)
     expected_frequency_driver = reference.gamma(1.5, 0.8, size=n_sims)
     expected_rate = reference.gamma(2.0, expected_frequency_driver + 0.1, size=n_sims)
-    expected_severity_driver = np.exp(
-        -0.7 + 0.3 * scipy.special.ndtri(reference.uniform(size=n_sims))
-    )
+    expected_severity_driver = np.exp(-0.7 + 0.3 * scipy.special.ndtri(reference.uniform(size=n_sims)))
     expected_scale = reference.gamma(2.0, expected_severity_driver, size=n_sims)
     expected_counts = reference.poisson(expected_rate, size=n_sims)
     original_indices = np.repeat(np.arange(n_sims), expected_counts)
@@ -167,10 +162,7 @@ def test_chained_frequency_and_severity_distributions_preserve_both_ancestry_bra
     assert_allclose(aggregate, expected_aggregate[selection])
     assert_allclose(losses.values, expected_losses)
     assert_array_equal(losses.sim_index, np.argsort(selection)[original_indices])
-    assert_allclose(
-        host_values(scale)[host_values(losses.sim_index)],
-        expected_scale[original_indices],
-    )
+    assert_allclose(host_values(scale)[host_values(losses.sim_index)], expected_scale[original_indices])
     assert all(
         value.coupled_variable_group is driver.coupled_variable_group
         for value in (frequency_driver, rate, severity_driver, scale, losses, aggregate)
