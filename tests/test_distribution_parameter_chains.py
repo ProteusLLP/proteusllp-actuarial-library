@@ -47,8 +47,7 @@ def test_three_stage_distribution_parameter_chain_reorders_every_ancestor() -> N
     assert_allclose(location, expected_location)
     assert_allclose(output, expected_output)
     assert all(
-        value.coupled_variable_group is root.coupled_variable_group
-        for value in (rate, counts, location, output)
+        value.coupled_variable_group is root.coupled_variable_group for value in (rate, counts, location, output)
     )
 
     scores = [5, 2, 6, 0, 4, 1, 3]
