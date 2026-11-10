@@ -124,6 +124,9 @@ class FrequencySeverityModel:
 
         Returns:
             Object containing the generated simulations.
+
+        Stochastic severity parameters have one value per simulation. Every
+        claim in a simulation uses that simulation's parameter values.
         """
         if n_sims is None:
             n_sims = config.n_sims
