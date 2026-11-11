@@ -8,7 +8,7 @@ from scipy.stats import betaprime
 
 from pal import StochasticScalar, set_random_seed
 from pal._maths import xp
-from pal.distributions import GeneralizedBetaPrime, Burr, ContinuousDistributionGenerator, LogLogistic
+from pal.distributions import Burr, ContinuousDistributionGenerator, GeneralizedBetaPrime, LogLogistic
 
 
 @pytest.mark.parametrize(
