@@ -138,4 +138,3 @@ def test_gb2_cdf_extreme_survival_tail() -> None:
     w = 1 / (1 + (x / 100.0) ** 2)
     expected_survival = betainc(3.0, 1.5, w)
     assert 1 - float(dist.cdf(x)) == pytest.approx(expected_survival, rel=1e-5, abs=1e-16)
-
