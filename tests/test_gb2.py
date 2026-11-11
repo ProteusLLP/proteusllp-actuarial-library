@@ -125,7 +125,8 @@ def test_gb2_cdf_support_boundary_without_division_warning() -> None:
         actual = dist.cdf(inputs)
     assert isinstance(actual, StochasticScalar)
     assert actual.coupled_variable_group is inputs.coupled_variable_group
-    assert bool(xp.allclose(actual.values, xp.asarray([0.0, 0.0, betaprime.cdf(1.0, 1.5, 3.0)]), rtol=1e-12))
+    expected = xp.asarray([0.0, 0.0, betaprime.cdf(1.0, 1.5, 3.0)])
+    assert bool(xp.allclose(actual.values, expected, rtol=1e-12))
 
 
 def test_gb2_cdf_extreme_survival_tail() -> None:
