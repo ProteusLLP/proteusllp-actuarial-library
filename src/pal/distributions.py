@@ -525,10 +525,10 @@ class Burr(DistributionBase):
         return scale * (((1 / (1 - u)) ** (1 / shape) - 1) ** (1 / power)) + loc
 
 
-class GB2(DistributionBase):
-    r"""Generalized Beta of the Second Kind (GB2) distribution.
+class GeneralizedBetaPrime(DistributionBase):
+    r"""Generalized beta prime distribution (GB2).
 
-    GB2 is a flexible positive severity distribution with separate control over
+    This is a flexible positive severity distribution with separate control over
     the shape near zero and the heaviness of the upper tail. Its CDF is
 
     .. math::
@@ -566,7 +566,7 @@ class GB2(DistributionBase):
         p: DistributionParameter,
         q: DistributionParameter,
     ) -> None:
-        """Initialize a GB2 severity distribution."""
+        """Initialize a generalized beta prime severity distribution."""
         for name, value in (("a", a), ("b", b), ("p", p), ("q", q)):
             raw = value.values if isinstance(value, StochasticScalar) else value
             values = xp.asarray(raw)
@@ -2238,7 +2238,7 @@ AVAILABLE_DISCRETE_DISTRIBUTIONS: dict[str, t.Any] = {
 AVAILABLE_CONTINUOUS_DISTRIBUTIONS: dict[str, t.Any] = {
     "beta": Beta,
     "burr": Burr,
-    "gb2": GB2,
+    "generalizedbetaprime": GeneralizedBetaPrime,
     "exponential": Exponential,
     "gamma": Gamma,
     "gev": GEV,
