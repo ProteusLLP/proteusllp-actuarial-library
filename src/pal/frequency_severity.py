@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import typing as t
 from collections.abc import Callable
+from copy import copy
 
 import numpy as np
 import numpy.typing as npt
@@ -123,22 +124,56 @@ class FrequencySeverityModel:
 
         Returns:
             Object containing the generated simulations.
+
+        Stochastic severity parameters have one value per simulation. Every
+        claim in a simulation uses that simulation's parameter values.
         """
         if n_sims is None:
             n_sims = config.n_sims
         if rng is None:
             rng = config.rng
+        severity_params = getattr(self.sev_dist, "_params", {})
+        stochastic_params = {
+            name: param for name, param in severity_params.items() if isinstance(param, StochasticScalar)
+        }
+        for name, param in stochastic_params.items():
+            if param.n_sims != n_sims:
+                raise ValueError(
+                    f"Stochastic severity parameter {name!r} must have one value per simulation "
+                    f"({n_sims} values), got {param.n_sims}"
+                )
+
         n_events = self.freq_dist.generate(n_sims, rng)
-        total_events = n_events.sum()
-        # Preserve the event-value type even when all simulated frequencies are zero.
-        sev = self.sev_dist.generate(max(1, int(total_events)), rng)
-        if total_events == 0:
-            sev = StochasticScalar(sev.values[:0])
-        # Convert n_events to integers since _get_sims_of_events expects integer counts
-        # but n_events.values comes from distributions which return floating arrays
-        result = FreqSevSims(_get_sims_of_events(n_events.values.astype(np.int64)), sev.values, n_sims)
+        total_events = int(n_events.sum())
+        # Convert counts to integer event indices before expanding simulation parameters.
+        event_indices = _get_sims_of_events(n_events.values.astype(np.int64))
+
+        severity_distribution = self.sev_dist
+        if stochastic_params:
+            # Generate one severity per claim, using the parameter values of that
+            # claim's simulation. Do not modify the reusable distribution instance.
+            severity_distribution = copy(self.sev_dist)
+            sample_indices = event_indices if total_events else xp.asarray([0], dtype=int)
+            severity_distribution._params = {
+                name: (
+                    StochasticScalar(
+                        param.values[asnumpy(sample_indices) if host_values(param.values) else sample_indices]
+                    )
+                    if isinstance(param, StochasticScalar)
+                    else param
+                )
+                for name, param in severity_params.items()
+            }
+
+        # Draw once even when there are no events to preserve nonnumeric severity types.
+        sev = severity_distribution.generate(max(1, total_events), rng)
+        values = sev.values[:total_events]
+        result = FreqSevSims(event_indices, values, n_sims)
         result.coupled_variable_group.merge(n_events.coupled_variable_group)
-        result.coupled_variable_group.merge(sev.coupled_variable_group)
+        # Event-level temporary parameters cannot join a simulation-level group:
+        # reordering that group must act on the FreqSevSims event indices instead.
+        for param in stochastic_params.values():
+            result.coupled_variable_group.merge(param.coupled_variable_group)
         return result
 
 
@@ -247,9 +282,29 @@ class FreqSevSims(_ProteusStochasticVariable):
         return self.n_sims
 
     def __iter__(self) -> t.Iterator[StochasticScalar]:
-        """Iterate over the simulations."""
-        for i in range(self.n_sims):
-            yield self[i]
+        """Iterate over the simulations, preserving each simulation's event order."""
+        # __getitem__ scans the entire event-index array on each access.
+        # Group once rather than repeating that scan for every simulation.
+        indices = self.sim_index.astype(xp.int64, copy=False)
+        counts = xp.bincount(indices, minlength=self.n_sims)
+        offsets = xp.cumsum(counts)
+        # Python iteration requires host integer slice offsets. On CUDA, copy
+        # only these counts, never the event values.
+        ends = asnumpy(offsets) if xp is not np else offsets
+
+        if indices.size < 2 or bool(xp.all(indices[1:] >= indices[:-1])):
+            grouped_values = self.values
+        else:
+            # Copula reordering may relabel the simulations without sorting
+            # the events. A stable sort retains their original within-sim order.
+            order = xp.argsort(indices, kind="stable")
+            grouped_values = self.values[asnumpy(order) if host_values(self.values) else order]
+
+        start = 0
+        for end in ends:
+            end = int(end)
+            yield StochasticScalar(grouped_values[start:end].copy())
+            start = end
 
     def _reduce_over_events(self, operation: ReductionOperation) -> StochasticScalar:
         """Apply a reduction operation over events for each simulation.
