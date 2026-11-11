@@ -578,9 +578,15 @@ class GB2(DistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the probability of a claim severity not exceeding x."""
         a, b, p, q = self._params.values()
-        # This form avoids overflow from calculating (x / b) ** a for large x.
-        z = 1 / (1 + (b / np.maximum(x, 0.0)) ** a)
-        return _special_call(special.betainc, p, q, z)
+        # Avoid division by zero outside the positive support. Evaluate the
+        # complementary beta tail above the scale to avoid rounding z to one.
+        positive = np.greater(x, 0)
+        safe_x = np.where(positive, x, b)
+        z = 1 / (1 + (b / safe_x) ** a)
+        w = 1 / (1 + (safe_x / b) ** a)
+        lower = _special_call(special.betainc, p, q, z)
+        upper = _special_call(special.betainc, q, p, w)
+        return np.where(positive, np.where(np.greater(x, b), 1 - upper, lower), 0.0)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
