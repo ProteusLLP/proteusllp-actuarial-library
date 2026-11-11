@@ -15,7 +15,7 @@ from pal.distributions import Burr, ContinuousDistributionGenerator, Generalized
     "a,b,p,q",
     [(2.0, 100000.0, 1.5, 3.0), (0.75, 10.0, 3.0, 2.5), (3.0, 750.0, 0.65, 0.9)],
 )
-def test_generalized_beta_prime_matches_independent_beta_prime_reference(a: float, b: float, p: float, q: float) -> None:
+def test_generalized_beta_prime_matches_beta_prime_reference(a: float, b: float, p: float, q: float) -> None:
     """Compare probabilities and quantiles with the independently parameterised beta-prime family."""
     dist = GeneralizedBetaPrime(a=a, b=b, p=p, q=q)
     for u in (0.001, 0.1, 0.5, 0.9, 0.99, 0.999):
