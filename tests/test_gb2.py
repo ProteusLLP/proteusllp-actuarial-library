@@ -114,16 +114,18 @@ def test_gb2_named_generator() -> None:
     assert generator.invcdf(0.5) == pytest.approx(GB2(2.0, 100.0, 1.5, 3.0).invcdf(0.5))
     assert generator.generate(20).n_sims == 20
 
+
 def test_gb2_cdf_support_boundary_without_division_warning() -> None:
     """The CDF is zero on nonpositive support, including vector inputs."""
     import numpy as np
 
     dist = GB2(a=2.0, b=100.0, p=1.5, q=3.0)
+    inputs = StochasticScalar([-100.0, 0.0, 100.0])
     with np.errstate(divide="raise", invalid="raise", over="raise"):
-        actual = dist.cdf(np.array([-100.0, 0.0, 100.0]))
-    assert np.asarray(actual) == pytest.approx(
-        [0.0, 0.0, betaprime.cdf(1.0, 1.5, 3.0)], rel=1e-12
-    )
+        actual = dist.cdf(inputs)
+    assert isinstance(actual, StochasticScalar)
+    assert actual.coupled_variable_group is inputs.coupled_variable_group
+    assert np.asarray(actual.values) == pytest.approx([0.0, 0.0, betaprime.cdf(1.0, 1.5, 3.0)], rel=1e-12)
 
 
 def test_gb2_cdf_extreme_survival_tail() -> None:
