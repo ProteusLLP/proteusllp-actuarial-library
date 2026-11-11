@@ -586,7 +586,7 @@ class GB2(DistributionBase):
         w = 1 / (1 + (safe_x / b) ** a)
         lower = _special_call(special.betainc, p, q, z)
         upper = _special_call(special.betainc, q, p, w)
-        return np.where(positive, np.where(np.greater(x, b), 1 - upper, lower), 0.0)
+        return t.cast(ReturnType, np.where(positive, np.where(np.greater(x, b), 1 - upper, lower), 0.0))
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
