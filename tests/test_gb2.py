@@ -113,3 +113,26 @@ def test_gb2_named_generator() -> None:
     generator = ContinuousDistributionGenerator("gb2", [2.0, 100.0, 1.5, 3.0])
     assert generator.invcdf(0.5) == pytest.approx(GB2(2.0, 100.0, 1.5, 3.0).invcdf(0.5))
     assert generator.generate(20).n_sims == 20
+
+def test_gb2_cdf_support_boundary_without_division_warning() -> None:
+    """The CDF is zero on nonpositive support, including vector inputs."""
+    import numpy as np
+
+    dist = GB2(a=2.0, b=100.0, p=1.5, q=3.0)
+    with np.errstate(divide="raise", invalid="raise", over="raise"):
+        actual = dist.cdf(np.array([-100.0, 0.0, 100.0]))
+    assert np.asarray(actual) == pytest.approx(
+        [0.0, 0.0, betaprime.cdf(1.0, 1.5, 3.0)], rel=1e-12
+    )
+
+
+def test_gb2_cdf_extreme_survival_tail() -> None:
+    """Retain a small but representable survival probability."""
+    from scipy.special import betainc
+
+    dist = GB2(a=2.0, b=100.0, p=1.5, q=3.0)
+    x = 10000.0
+    w = 1 / (1 + (x / 100.0) ** 2)
+    expected_survival = betainc(3.0, 1.5, w)
+    assert 1 - float(dist.cdf(x)) == pytest.approx(expected_survival, rel=1e-5, abs=1e-16)
+
