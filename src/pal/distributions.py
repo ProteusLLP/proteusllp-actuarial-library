@@ -27,6 +27,7 @@ from abc import ABC
 
 import numpy as np
 import scipy.special as scipy_special
+import scipy.stats as scipy_stats
 from scipy.stats import geninvgauss
 
 # Local imports
@@ -66,6 +67,30 @@ def _special_call(function: t.Callable[..., t.Any], *args: t.Any) -> t.Any:
             wrapped.coupled_variable_group.merge(arg.coupled_variable_group)
         return wrapped
     return scalar_or_array(result)
+
+
+def _discrete_count_ppf(
+    function: t.Callable[..., t.Any], u: DistributionParameter, *params: DistributionParameter
+) -> ReturnType:
+    """Return a nonnegative count quantile, preserving stochastic coupling.
+
+    SciPy's count PPF is used because the available special-function inverses
+    solve for a distribution parameter, not for the count. For CuPy inputs this
+    calculation transfers the arguments to the host and the result back to the
+    active backend. The zero-probability quantile is the minimum count, zero.
+    """
+    arguments = (u, *params)
+    stochastic_args = [arg for arg in arguments if isinstance(arg, StochasticScalar)]
+    host_args = [asnumpy(arg.values if isinstance(arg, StochasticScalar) else arg) for arg in arguments]
+    result = xp.asarray(function(*host_args))
+    probability = u.values if isinstance(u, StochasticScalar) else u
+    result = xp.where(probability == 0, 0, result)
+    if stochastic_args:
+        wrapped = StochasticScalar(result)
+        for arg in stochastic_args:
+            wrapped.coupled_variable_group.merge(arg.coupled_variable_group)
+        return wrapped
+    return t.cast(ReturnType, scalar_or_array(result))
 
 
 def _rng_value(value: t.Any, rng: t.Any) -> t.Any:
@@ -266,9 +291,9 @@ class NegBinomial(DiscreteDistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
-        n, p = self._param_values
-        return _special_call(special.nbdtri, u, n, p)  # type: ignore[misc, arg-type]
+        """Return the smallest count whose cumulative probability reaches u."""
+        n, p = self._params.values()
+        return _discrete_count_ppf(scipy_stats.nbinom.ppf, u, n, p)
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
@@ -308,9 +333,9 @@ class Binomial(DiscreteDistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
-        n, p = self._param_values
-        return _special_call(special.bdtri, u, n, p)  # type: ignore[return-value]
+        """Return the smallest count whose cumulative probability reaches u."""
+        n, p = self._params.values()
+        return _discrete_count_ppf(scipy_stats.binom.ppf, u, n, p)
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
