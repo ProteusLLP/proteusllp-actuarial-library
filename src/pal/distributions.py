@@ -26,7 +26,6 @@ import typing as t
 from abc import ABC
 
 import numpy as np
-import scipy.special as scipy_special
 import scipy.stats as scipy_stats
 from scipy.stats import geninvgauss
 
@@ -235,19 +234,9 @@ class Poisson(DiscreteDistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
-        # scipy.special functions support array inputs despite restrictive type stubs
-        (mean,) = self._param_values
-        # CuPy does not implement pdtrik. This uncommon inverse-CDF path uses
-        # SciPy explicitly and transfers the result back to the active backend.
-        u_values = u.values if isinstance(u, StochasticScalar) else u
-        mean_values = asnumpy(mean) if hasattr(mean, "ndim") else mean
-        result = xp.asarray(scipy_special.pdtrik(asnumpy(u_values), mean_values))
-        if isinstance(u, StochasticScalar):
-            wrapped = StochasticScalar(result)
-            wrapped.coupled_variable_group.merge(u.coupled_variable_group)
-            return wrapped
-        return scalar_or_array(result)
+        """Return the smallest nonnegative count whose cumulative probability reaches u."""
+        (mean,) = self._params.values()
+        return _discrete_count_ppf(scipy_stats.poisson.ppf, u, mean)
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
