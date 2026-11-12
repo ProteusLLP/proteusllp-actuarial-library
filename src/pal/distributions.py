@@ -205,22 +205,24 @@ class Poisson(DiscreteDistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
         # scipy.special functions support array inputs despite restrictive type stubs
-        (mean,) = self._param_values
+        (mean,) = self._params.values()
         return _special_call(special.pdtr, x, mean)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         # scipy.special functions support array inputs despite restrictive type stubs
-        (mean,) = self._param_values
+        (mean,) = self._params.values()
         # CuPy does not implement pdtrik. This uncommon inverse-CDF path uses
         # SciPy explicitly and transfers the result back to the active backend.
         u_values = u.values if isinstance(u, StochasticScalar) else u
-        mean_values = asnumpy(mean) if hasattr(mean, "ndim") else mean
-        result = xp.asarray(scipy_special.pdtrik(asnumpy(u_values), mean_values))
-        if isinstance(u, StochasticScalar):
+        mean_values = mean.values if isinstance(mean, StochasticScalar) else mean
+        result = xp.asarray(scipy_special.pdtrik(asnumpy(u_values), asnumpy(mean_values)))
+        if isinstance(u, StochasticScalar) or isinstance(mean, StochasticScalar):
             wrapped = StochasticScalar(result)
-            wrapped.coupled_variable_group.merge(u.coupled_variable_group)
+            for param in (u, mean):
+                if isinstance(param, StochasticScalar):
+                    wrapped.coupled_variable_group.merge(param.coupled_variable_group)
             return wrapped
         return scalar_or_array(result)
 
