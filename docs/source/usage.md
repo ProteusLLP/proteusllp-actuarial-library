@@ -29,6 +29,15 @@ gamma_var = Gamma(alpha=2.5, theta=2).generate()
 lognormal_var = LogNormal(mu=1, sigma=0.5).generate()
 ```
 
+For heavy-tailed claim severities, the generalized beta prime distribution
+(also known as GB2) allows the shape of the main body and upper tail to vary:
+
+```python
+from pal.distributions import GeneralizedBetaPrime
+
+claim_severities = GeneralizedBetaPrime(a=2.0, b=100000.0, p=1.5, q=3.0).generate(10000)
+```
+
 ## Variable Containers
 
 Variables can be grouped into containers with the `ProteusVariable` class:
