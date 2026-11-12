@@ -6,11 +6,12 @@ import numpy as np
 import pytest
 from scipy.stats import binom as scipy_binom
 from scipy.stats import nbinom as scipy_nbinom
+from scipy.stats import poisson as scipy_poisson
 
 from pal import StochasticScalar
 from pal._maths import xp
 from pal.copulas import apply_copula
-from pal.distributions import Binomial, NegBinomial
+from pal.distributions import Binomial, NegBinomial, Poisson
 from tests._assertions import assert_array_equal, host_values
 
 
@@ -154,3 +155,38 @@ def test_count_quantiles_return_backend_values_for_stochastic_inputs() -> None:
     assert isinstance(result, StochasticScalar)
     assert isinstance(result.values, xp.ndarray)
     assert_array_equal(result, scipy_binom.ppf([0.2, 0.5, 0.9], 20, 0.2))
+
+
+@pytest.mark.parametrize("mean", [0.5, 3.5, 100.0, 5000.0])
+def test_poisson_count_quantiles_match_scipy_and_cdf_brackets(mean: float) -> None:
+    probabilities = np.array([1e-12, 1e-8, 0.01, 0.1, 0.5, 0.9, 0.99, 1 - 1e-10])
+    result = Poisson(mean).invcdf(StochasticScalar(probabilities))
+    assert isinstance(result, StochasticScalar)
+    quantiles = host_values(result)
+    np.testing.assert_array_equal(quantiles, scipy_poisson.ppf(probabilities, mean))
+    assert np.all(quantiles >= 0)
+    assert np.all(quantiles == np.floor(quantiles))
+    assert np.all(scipy_poisson.cdf(quantiles - 1, mean) < probabilities)
+    assert np.all(scipy_poisson.cdf(quantiles, mean) >= probabilities)
+
+
+def test_poisson_quantile_support_and_parameter_coupling() -> None:
+    assert Poisson(3.5).invcdf(0) == 0
+    assert np.isinf(float(Poisson(3.5).invcdf(1)))
+    assert Poisson(0).invcdf(0.99) == 0
+
+    mean = StochasticScalar([0.5, 3.5, 10, 50])
+    u = StochasticScalar([0.1, 0.5, 0.75, 0.99])
+    result = Poisson(mean).invcdf(u)
+    assert isinstance(result, StochasticScalar)
+    assert_array_equal(result, scipy_poisson.ppf(host_values(u), host_values(mean)))
+    assert result.coupled_variable_group is mean.coupled_variable_group
+    assert result.coupled_variable_group is u.coupled_variable_group
+
+
+def test_poisson_quantile_mismatched_lengths_do_not_merge_groups() -> None:
+    mean = StochasticScalar([1.0, 2.0, 3.0])
+    u = StochasticScalar([0.1, 0.3, 0.5, 0.7])
+    with pytest.raises(ValueError):
+        Poisson(mean).invcdf(u)
+    assert mean.coupled_variable_group is not u.coupled_variable_group
