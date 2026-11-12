@@ -82,8 +82,10 @@ def _discrete_count_ppf(
     stochastic_args = [arg for arg in arguments if isinstance(arg, StochasticScalar)]
     host_args = [asnumpy(arg.values if isinstance(arg, StochasticScalar) else arg) for arg in arguments]
     result = xp.asarray(function(*host_args))
-    probability = u.values if isinstance(u, StochasticScalar) else u
-    result = xp.where(probability == 0, 0, result)
+    if isinstance(u, StochasticScalar):
+        result = xp.where(u.values == 0, 0, result)
+    elif u == 0:
+        result = xp.zeros_like(result)
     if stochastic_args:
         wrapped = StochasticScalar(result)
         for arg in stochastic_args:
