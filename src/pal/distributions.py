@@ -1627,8 +1627,7 @@ class StudentsT(DistributionBase):
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        params = tuple(self._param_values)
-        nu, mu, sigma = params[0], params[1], params[2]
+        nu, mu, sigma = self._params.values()
 
         # Use the relationship between t-distribution and Beta distribution
         # to support GPU execution via betaincinv.
@@ -1695,7 +1694,7 @@ class InverseGaussian(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        mu, lambda_ = self._param_values
+        mu, lambda_ = self._params.values()
         sqrt_lambda_x = np.sqrt(lambda_ / x)
         term1 = _special_call(special.ndtr, sqrt_lambda_x * (x / mu - 1))
         term2 = np.exp(2 * lambda_ / mu) * _special_call(special.ndtr, -sqrt_lambda_x * (x / mu + 1))

@@ -6,7 +6,17 @@ from scipy import special, stats
 
 from pal import StochasticScalar
 from pal._maths import asnumpy
-from pal.distributions import Gamma, InverseGamma, Logistic, LogNormal, Normal, Pareto, Poisson
+from pal.distributions import (
+    Gamma,
+    InverseGamma,
+    InverseGaussian,
+    Logistic,
+    LogNormal,
+    Normal,
+    Pareto,
+    Poisson,
+    StudentsT,
+)
 
 
 @pytest.mark.parametrize("family", ["gamma", "normal", "lognormal", "logistic", "inversegamma", "pareto"])
@@ -62,3 +72,39 @@ def test_poisson_probability_preserves_parameter_ancestry(method: str, stochasti
     if isinstance(argument, StochasticScalar):
         assert result.coupled_variable_group is argument.coupled_variable_group
     assert asnumpy(result.values) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("method", ["cdf", "invcdf"])
+@pytest.mark.parametrize("stochastic_argument", [False, True])
+def test_students_t_probability_preserves_parameter_ancestry(method: str, stochastic_argument: bool) -> None:
+    """Preserve all three parameter groups in Student's t probability methods."""
+    nu = StochasticScalar([3.0, 5.0, 8.0])
+    mu = StochasticScalar([1.0, 2.0, 3.0])
+    sigma = StochasticScalar([0.5, 1.0, 1.5])
+    dist = StudentsT(nu, mu, sigma)
+    reference = stats.t(df=[3.0, 5.0, 8.0], loc=[1.0, 2.0, 3.0], scale=[0.5, 1.0, 1.5])
+    value = 0.75 if method == "invcdf" else 2.0
+    argument = StochasticScalar([value] * 3) if stochastic_argument else value
+    result = dist.cdf(argument) if method == "cdf" else dist.invcdf(argument)
+    expected = reference.cdf(value) if method == "cdf" else reference.ppf(value)
+    assert isinstance(result, StochasticScalar)
+    for param in (nu, mu, sigma, argument):
+        if isinstance(param, StochasticScalar):
+            assert result.coupled_variable_group is param.coupled_variable_group
+    assert asnumpy(result.values) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("stochastic_argument", [False, True])
+def test_inverse_gaussian_cdf_preserves_parameter_ancestry(stochastic_argument: bool) -> None:
+    """Preserve both inverse Gaussian parameter groups."""
+    mu = StochasticScalar([1.0, 2.0, 3.0])
+    shape = StochasticScalar([2.0, 3.0, 4.0])
+    dist = InverseGaussian(mu, shape)
+    reference = stats.invgauss(mu=np.array([1.0, 2.0, 3.0]) / [2.0, 3.0, 4.0], scale=[2.0, 3.0, 4.0])
+    argument = StochasticScalar([2.0] * 3) if stochastic_argument else 2.0
+    result = dist.cdf(argument)
+    assert isinstance(result, StochasticScalar)
+    for param in (mu, shape, argument):
+        if isinstance(param, StochasticScalar):
+            assert result.coupled_variable_group is param.coupled_variable_group
+    assert asnumpy(result.values) == pytest.approx(reference.cdf(2.0))
