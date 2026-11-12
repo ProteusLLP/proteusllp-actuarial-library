@@ -145,10 +145,7 @@ def test_count_quantile_copula_reordering_preserves_parameter_alignment(distribu
     assert_array_equal(p, original_p[selection])
     assert_array_equal(u, original_u[selection])
     assert_array_equal(quantiles, original_q[selection])
-    assert all(
-        item.coupled_variable_group is anchor.coupled_variable_group
-        for item in (n, p, u, quantiles)
-    )
+    assert all(item.coupled_variable_group is anchor.coupled_variable_group for item in (n, p, u, quantiles))
 
 
 def test_count_quantiles_return_backend_values_for_stochastic_inputs() -> None:
