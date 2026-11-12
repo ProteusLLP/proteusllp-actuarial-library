@@ -975,13 +975,13 @@ class Logistic(DistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
         mu, sigma = self._params.values()
-        return 1 / (1 + np.exp(-(x - mu) / sigma))
+        return t.cast(ReturnType, 1 / (1 + np.exp(-(x - mu) / sigma)))
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         mu, sigma = self._params.values()
-        return mu + sigma * np.log(u / (1 - u))
+        return t.cast(ReturnType, mu + sigma * np.log(u / (1 - u)))
 
 
 class LogNormal(DistributionBase):
@@ -1215,7 +1215,7 @@ class InverseGamma(DistributionBase):
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
         alpha, theta, loc = self._params.values()
-        return np.divide(theta, _special_call(special.gammainccinv, alpha, u)) + loc
+        return t.cast(ReturnType, np.divide(theta, _special_call(special.gammainccinv, alpha, u)) + loc)
 
 
 class Pareto(DistributionBase):
