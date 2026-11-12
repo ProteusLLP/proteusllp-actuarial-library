@@ -974,13 +974,13 @@ class Logistic(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        mu, sigma = self._param_values
+        mu, sigma = self._params.values()
         return 1 / (1 + np.exp(-(x - mu) / sigma))
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        mu, sigma = self._param_values
+        mu, sigma = self._params.values()
         return mu + sigma * np.log(u / (1 - u))
 
 
@@ -1208,13 +1208,13 @@ class InverseGamma(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        alpha, theta, loc = self._param_values
+        alpha, theta, loc = self._params.values()
         return _special_call(special.gammaincc, alpha, np.divide(theta, (x - loc)))  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        alpha, theta, loc = self._param_values
+        alpha, theta, loc = self._params.values()
         return np.divide(theta, _special_call(special.gammainccinv, alpha, u)) + loc
 
 
@@ -1246,13 +1246,13 @@ class Pareto(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        shape, scale = self._param_values
+        shape, scale = self._params.values()
         return 1 - (x / scale) ** (-shape)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        shape, scale = self._param_values
+        shape, scale = self._params.values()
         return (1 - u) ** (-1 / shape) * scale
 
 

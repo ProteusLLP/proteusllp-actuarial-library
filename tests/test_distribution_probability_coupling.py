@@ -6,10 +6,10 @@ from scipy import stats
 
 from pal import StochasticScalar
 from pal._maths import asnumpy
-from pal.distributions import Gamma, LogNormal, Normal
+from pal.distributions import Gamma, InverseGamma, Logistic, LogNormal, Normal, Pareto
 
 
-@pytest.mark.parametrize("family", ["gamma", "normal", "lognormal"])
+@pytest.mark.parametrize("family", ["gamma", "normal", "lognormal", "logistic", "inversegamma", "pareto"])
 @pytest.mark.parametrize("method", ["cdf", "invcdf"])
 @pytest.mark.parametrize("stochastic_argument", [False, True])
 def test_probability_method_preserves_parameter_ancestry(family: str, method: str, stochastic_argument: bool) -> None:
@@ -22,6 +22,15 @@ def test_probability_method_preserves_parameter_ancestry(family: str, method: st
     elif family == "normal":
         dist = Normal(mu=first, sigma=second)
         reference = stats.norm(loc=[1.0, 2.0, 3.0], scale=[0.5, 1.0, 1.5])
+    elif family == "logistic":
+        dist = Logistic(mu=first, sigma=second)
+        reference = stats.logistic(loc=[1.0, 2.0, 3.0], scale=[0.5, 1.0, 1.5])
+    elif family == "inversegamma":
+        dist = InverseGamma(alpha=first, theta=second)
+        reference = stats.invgamma(a=[1.0, 2.0, 3.0], scale=[0.5, 1.0, 1.5])
+    elif family == "pareto":
+        dist = Pareto(shape=first, scale=second)
+        reference = stats.pareto(b=[1.0, 2.0, 3.0], scale=[0.5, 1.0, 1.5])
     else:
         dist = LogNormal(mu=first, sigma=second)
         reference = stats.lognorm(s=[0.5, 1.0, 1.5], scale=np.exp([1.0, 2.0, 3.0]))
