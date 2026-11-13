@@ -19,7 +19,7 @@ from pal import stats  # type: ignore
 from ._compat import Self
 from ._maths import asnumpy, scalar_or_array, to_backend, xp
 from ._value_arrays import host_values, stochastic_array
-from .couplings import CouplingGroup, ProteusStochasticVariable
+from .couplings import CouplingGroup, ProteusStochasticVariable, validate_stochastic_axes
 from .stats import NumberOrList
 from .types import Numeric, ScipyNumeric
 
@@ -105,6 +105,7 @@ class StochasticScalar(ProteusStochasticVariable):
             #
             var_pos = var_not_stochastic_scalar.index(True)
             return inputs[var_pos].__array_ufunc__(ufunc, method, *inputs, **kwargs)
+        validate_stochastic_axes(arg for arg in inputs if isinstance(arg, StochasticScalar))
         is_host = (
             host_values(self.values)
             or any(host_values(x.values if isinstance(x, StochasticScalar) else x) for x in inputs)
@@ -183,6 +184,7 @@ class StochasticScalar(ProteusStochasticVariable):
         Raises:
             NotImplementedError: If the function is not supported
         """
+        validate_stochastic_axes(arg for arg in args if isinstance(arg, StochasticScalar))
         # Extract PAL values and move any NumPy operands to the active backend.
         is_host = host_values(self.values) or any(
             host_values(x.values if isinstance(x, StochasticScalar) else x) for x in args
