@@ -21,6 +21,24 @@ from pal._maths import asnumpy, to_backend
 from pal.config import Config
 
 
+def validate_stochastic_axes(
+    variables: t.Iterable[ProteusStochasticVariable], n_sims: int | None = None
+) -> int | None:
+    """Validate scenario lengths before calculations or coupling-group mutations.
+
+    Claim-indexed temporaries must not be passed alongside scenario-indexed
+    variables. Their dimensions require a separate, explicit mapping.
+    """
+    for variable in variables:
+        if n_sims is None:
+            n_sims = variable.n_sims
+        elif variable.n_sims != n_sims:
+            raise ValueError(
+                f"Stochastic inputs must have matching n_sims (expected {n_sims}, got {variable.n_sims})"
+            )
+    return n_sims
+
+
 class CouplingGroup:
     """A class to represent a group of variables that are coupled together."""
 
