@@ -12,7 +12,9 @@ from numpy.lib.mixins import NDArrayOperatorsMixin
 
 from ._compat import Self
 
-def validate_stochastic_axes(variables: t.Iterable[ProteusStochasticVariable], n_sims: int | None = None) -> int | None: ...
+def validate_stochastic_axes(
+    variables: t.Iterable[ProteusStochasticVariable], n_sims: int | None = None
+) -> int | None: ...
 
 class CouplingGroup:
     _refs: weakref.WeakValueDictionary[int, ProteusStochasticVariable]
