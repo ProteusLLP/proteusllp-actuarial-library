@@ -48,21 +48,30 @@ def test_numpy_where_rejects_broadcasting_stochastic_scenarios_atomically() -> N
     _assert_separate_and_unchanged(condition, values)
 
 
-@pytest.mark.parametrize(
-    "operation",
-    [
-        lambda item: np.add(item, np.array([10.0, 20.0, 30.0])),
-        lambda item: np.where(item > 0, np.array([10.0, 20.0, 30.0]), 0.0),
-    ],
-)
-def test_stochastic_result_cannot_expand_simulation_axis_through_raw_array(operation) -> None:
+def test_elementwise_ufunc_cannot_expand_simulation_axis_through_raw_array() -> None:
     variable = StochasticScalar([1.0])
     original_group = variable.coupled_variable_group
     original_values = asnumpy(variable.values).copy()
     with pytest.raises(ValueError, match="incompatible n_sims"):
-        operation(variable)
+        np.add(variable, np.array([10.0, 20.0, 30.0]))
     assert variable.coupled_variable_group is original_group
     np.testing.assert_array_equal(asnumpy(variable.values), original_values)
+
+
+def test_numpy_array_functions_changing_axis_length_do_not_couple() -> None:
+    variable = StochasticScalar([1.0, 3.0, 6.0, 10.0])
+    original_group = variable.coupled_variable_group
+    difference = np.diff(variable)
+    assert not isinstance(difference, StochasticScalar)
+    np.testing.assert_array_equal(asnumpy(difference), [2.0, 3.0, 4.0])
+
+    singleton = StochasticScalar([1.0])
+    singleton_group = singleton.coupled_variable_group
+    expanded = np.where(singleton > 0, np.array([10.0, 20.0, 30.0]), 0.0)
+    assert not isinstance(expanded, StochasticScalar)
+    np.testing.assert_array_equal(asnumpy(expanded), [10.0, 20.0, 30.0])
+    assert variable.coupled_variable_group is original_group
+    assert singleton.coupled_variable_group is singleton_group
 
 
 def test_length_changing_reduceat_returns_array_without_coupling() -> None:
