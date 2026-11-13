@@ -66,7 +66,7 @@ def test_poisson_probability_preserves_parameter_ancestry(method: str, stochasti
     value = 2.0 if method == "cdf" else 0.75
     argument = StochasticScalar([value] * 3) if stochastic_argument else value
     result = dist.cdf(argument) if method == "cdf" else dist.invcdf(argument)
-    expected = special.pdtr(value, [1.0, 2.0, 3.0]) if method == "cdf" else special.pdtrik(value, [1.0, 2.0, 3.0])
+    expected = special.pdtr(value, [1.0, 2.0, 3.0]) if method == "cdf" else stats.poisson.ppf(value, [1.0, 2.0, 3.0])
     assert isinstance(result, StochasticScalar)
     assert result.coupled_variable_group is mean.coupled_variable_group
     if isinstance(argument, StochasticScalar):
