@@ -146,7 +146,7 @@ class StochasticScalar(ProteusStochasticVariable):
 
             if keepdims or (axis is not None and hasattr(result, "shape") and result.shape):
                 if getattr(result, "ndim", None) == 1 and len(result) != self.n_sims:
-                    return result
+                    return StochasticScalar(result)
                 return self._wrap_result_with_coupling(result, inputs)
 
             # Standard reduction returns scalar directly
@@ -160,7 +160,7 @@ class StochasticScalar(ProteusStochasticVariable):
                     if destination is not buffer:
                         destination[...] = xp.asarray(buffer) if isinstance(destination, xp.ndarray) else buffer
             if method == "reduceat" and getattr(result, "ndim", None) == 1 and len(result) != self.n_sims:
-                return result
+                return StochasticScalar(result)
             return self._wrap_result_with_coupling(result, inputs)
 
         # Handle regular element-wise operations
@@ -214,7 +214,8 @@ class StochasticScalar(ProteusStochasticVariable):
         if getattr(result, "ndim", None) != 1:
             return result
         if len(result) != self.n_sims:
-            return result
+            # These values are not aligned with the original simulation axis.
+            return StochasticScalar(result)
         return self._wrap_result_with_coupling(result, args)
 
     def __array__(self, dtype: t.Any = None, copy: bool | None = None) -> npt.NDArray[t.Any]:
