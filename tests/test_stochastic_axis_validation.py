@@ -132,9 +132,10 @@ def test_three_level_distribution_chain_retains_values_and_ancestry_after_reorde
         variable.coupled_variable_group is common_group
         for variable in (scale, probability, level_one, level_two, result)
     )
-    original = {id(variable): asnumpy(variable.values).copy() for variable in (
-        shape, scale, probability, level_one, level_two, result
-    )}
+    original = {
+        id(variable): asnumpy(variable.values).copy()
+        for variable in (shape, scale, probability, level_one, level_two, result)
+    }
     scores = [3, 0, 2, 1]
     ranking = np.argsort(original[id(result)], kind="stable")
     selection = ranking[np.argsort(np.argsort(scores, kind="stable"), kind="stable")]
