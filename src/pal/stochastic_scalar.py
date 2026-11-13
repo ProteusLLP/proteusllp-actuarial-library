@@ -475,6 +475,10 @@ class StochasticScalar(ProteusStochasticVariable):
             return scalar_result
         if getattr(result_array, "ndim", None) != 1:
             return result_array
+        if len(result_array) != self.n_sims:
+            raise ValueError(
+                f"Stochastic result has incompatible n_sims (expected {self.n_sims}, got {len(result_array)})"
+            )
 
         wrapped_result = StochasticScalar(result_array)
         for input in inputs:
