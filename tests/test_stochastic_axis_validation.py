@@ -48,6 +48,23 @@ def test_numpy_where_rejects_broadcasting_stochastic_scenarios_atomically() -> N
     _assert_separate_and_unchanged(condition, values)
 
 
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda item: np.add(item, np.array([10.0, 20.0, 30.0])),
+        lambda item: np.where(item > 0, np.array([10.0, 20.0, 30.0]), 0.0),
+    ],
+)
+def test_stochastic_result_cannot_expand_simulation_axis_through_raw_array(operation) -> None:
+    variable = StochasticScalar([1.0])
+    original_group = variable.coupled_variable_group
+    original_values = asnumpy(variable.values).copy()
+    with pytest.raises(ValueError, match="incompatible n_sims"):
+        operation(variable)
+    assert variable.coupled_variable_group is original_group
+    np.testing.assert_array_equal(asnumpy(variable.values), original_values)
+
+
 @pytest.mark.parametrize("method", ["cdf", "invcdf"])
 def test_gamma_probability_methods_reject_mismatched_parameter_axes(method: str) -> None:
     shape = StochasticScalar([1.0, 2.0, 3.0])
