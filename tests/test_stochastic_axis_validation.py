@@ -65,6 +65,16 @@ def test_stochastic_result_cannot_expand_simulation_axis_through_raw_array(opera
     np.testing.assert_array_equal(asnumpy(variable.values), original_values)
 
 
+def test_length_changing_reduceat_returns_array_without_coupling() -> None:
+    source = StochasticScalar([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+    group = source.coupled_variable_group
+    reduced = np.add.reduceat(source, [0, 3, 5])
+    assert not isinstance(reduced, StochasticScalar)
+    np.testing.assert_allclose(asnumpy(reduced), [6.0, 9.0, 21.0])
+    assert source.coupled_variable_group is group
+    assert len(group) == 1
+
+
 @pytest.mark.parametrize("method", ["cdf", "invcdf"])
 def test_gamma_probability_methods_reject_mismatched_parameter_axes(method: str) -> None:
     shape = StochasticScalar([1.0, 2.0, 3.0])
