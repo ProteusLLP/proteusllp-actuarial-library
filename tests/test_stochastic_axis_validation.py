@@ -62,15 +62,17 @@ def test_numpy_array_functions_changing_axis_length_do_not_couple() -> None:
     variable = StochasticScalar([1.0, 3.0, 6.0, 10.0])
     original_group = variable.coupled_variable_group
     difference = np.diff(variable)
-    assert not isinstance(difference, StochasticScalar)
-    np.testing.assert_array_equal(asnumpy(difference), [2.0, 3.0, 4.0])
+    assert isinstance(difference, StochasticScalar)
+    assert difference.coupled_variable_group is not original_group
+    np.testing.assert_array_equal(asnumpy(difference.values), [2.0, 3.0, 4.0])
 
     singleton = StochasticScalar([1.0])
     condition = singleton > 0
     singleton_group = singleton.coupled_variable_group
     expanded = np.where(condition, np.array([10.0, 20.0, 30.0]), 0.0)
-    assert not isinstance(expanded, StochasticScalar)
-    np.testing.assert_array_equal(asnumpy(expanded), [10.0, 20.0, 30.0])
+    assert isinstance(expanded, StochasticScalar)
+    assert expanded.coupled_variable_group is not singleton_group
+    np.testing.assert_array_equal(asnumpy(expanded.values), [10.0, 20.0, 30.0])
     assert variable.coupled_variable_group is original_group
     assert singleton.coupled_variable_group is singleton_group
 
@@ -79,8 +81,9 @@ def test_length_changing_reduceat_returns_array_without_coupling() -> None:
     source = StochasticScalar([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
     group = source.coupled_variable_group
     reduced = np.add.reduceat(source, [0, 3, 5])
-    assert not isinstance(reduced, StochasticScalar)
-    np.testing.assert_allclose(asnumpy(reduced), [6.0, 9.0, 21.0])
+    assert isinstance(reduced, StochasticScalar)
+    assert reduced.coupled_variable_group is not group
+    np.testing.assert_allclose(asnumpy(reduced.values), [6.0, 9.0, 21.0])
     assert source.coupled_variable_group is group
     assert len(group) == 1
 
