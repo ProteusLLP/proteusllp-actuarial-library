@@ -31,6 +31,7 @@ from scipy.stats import geninvgauss
 
 # Local imports
 from ._compat import override
+from .couplings import validate_stochastic_axes
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
 from ._value_arrays import stochastic_array
 from .config import config
@@ -58,9 +59,12 @@ ReturnType = t.Union[int, float, StochasticScalar]
 def _special_call(function: t.Callable[..., t.Any], *args: t.Any) -> t.Any:
     """Call a SciPy-compatible special function on active-backend values."""
     stochastic_args = [arg for arg in args if isinstance(arg, StochasticScalar)]
+    validate_stochastic_axes(stochastic_args)
     processed_args = [arg.values if isinstance(arg, StochasticScalar) else to_backend(arg) for arg in args]
     result = function(*processed_args)
     if stochastic_args and getattr(result, "ndim", None) == 1:
+        if len(result) != stochastic_args[0].n_sims:
+            raise ValueError("Special function result has incompatible n_sims")
         wrapped = StochasticScalar(result)
         for arg in stochastic_args:
             wrapped.coupled_variable_group.merge(arg.coupled_variable_group)
@@ -80,6 +84,7 @@ def _discrete_count_ppf(
     """
     arguments = (u, *params)
     stochastic_args = [arg for arg in arguments if isinstance(arg, StochasticScalar)]
+    validate_stochastic_axes(stochastic_args)
     host_args = [asnumpy(arg.values if isinstance(arg, StochasticScalar) else arg) for arg in arguments]
     result = xp.asarray(function(*host_args))
     if isinstance(u, StochasticScalar):
@@ -87,6 +92,8 @@ def _discrete_count_ppf(
     elif u == 0:
         result = xp.zeros_like(result)
     if stochastic_args:
+        if getattr(result, "ndim", None) != 1 or len(result) != stochastic_args[0].n_sims:
+            raise ValueError("Discrete quantile result has incompatible n_sims")
         wrapped = StochasticScalar(result)
         for arg in stochastic_args:
             wrapped.coupled_variable_group.merge(arg.coupled_variable_group)
@@ -146,16 +153,20 @@ class DistributionBase:
         if n_sims is None:
             n_sims = config.n_sims
 
+        stochastic_params = [param for param in self._params.values() if isinstance(param, StochasticScalar)]
+        validate_stochastic_axes(stochastic_params, n_sims=n_sims)
+
         if rng is None:
             rng = config.rng
         if rng is None:
             raise RuntimeError("No random number generator is configured")
 
         result = self._generate(n_sims, rng)
+        if result.n_sims != n_sims:
+            raise ValueError("Generated result has incompatible n_sims")
         # Merge coupled variable groups from parameters if applicable.
-        for param in self._params.values():
-            if isinstance(param, StochasticScalar):
-                result.coupled_variable_group.merge(param.coupled_variable_group)
+        for param in stochastic_params:
+            result.coupled_variable_group.merge(param.coupled_variable_group)
         return result
 
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
