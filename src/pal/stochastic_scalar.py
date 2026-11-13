@@ -213,6 +213,8 @@ class StochasticScalar(ProteusStochasticVariable):
         # higher-dimensional backend arrays and should remain arrays.
         if getattr(result, "ndim", None) != 1:
             return result
+        if len(result) != self.n_sims:
+            return result
         return self._wrap_result_with_coupling(result, args)
 
     def __array__(self, dtype: t.Any = None, copy: bool | None = None) -> npt.NDArray[t.Any]:
