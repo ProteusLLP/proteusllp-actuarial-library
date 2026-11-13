@@ -214,7 +214,9 @@ class StochasticScalar(ProteusStochasticVariable):
         if getattr(result, "ndim", None) != 1:
             return result
         if len(result) != self.n_sims:
-            # These values are not aligned with the original simulation axis.
+            if func is np.where:
+                raise ValueError("Stochastic result has incompatible n_sims")
+            # Length-changing summaries are independent of the source scenarios.
             return StochasticScalar(result)
         return self._wrap_result_with_coupling(result, args)
 
