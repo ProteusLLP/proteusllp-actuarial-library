@@ -145,6 +145,8 @@ class StochasticScalar(ProteusStochasticVariable):
             axis = kwargs.get("axis", None)
 
             if keepdims or (axis is not None and hasattr(result, "shape") and result.shape):
+                if getattr(result, "ndim", None) == 1 and len(result) != self.n_sims:
+                    return result
                 return self._wrap_result_with_coupling(result, inputs)
 
             # Standard reduction returns scalar directly
@@ -157,6 +159,8 @@ class StochasticScalar(ProteusStochasticVariable):
                 for destination, buffer in zip(out_arrays, kwargs["out"]):
                     if destination is not buffer:
                         destination[...] = xp.asarray(buffer) if isinstance(destination, xp.ndarray) else buffer
+            if method == "reduceat" and getattr(result, "ndim", None) == 1 and len(result) != self.n_sims:
+                return result
             return self._wrap_result_with_coupling(result, inputs)
 
         # Handle regular element-wise operations
