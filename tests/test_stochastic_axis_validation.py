@@ -69,10 +69,8 @@ def test_numpy_array_functions_changing_axis_length_do_not_couple() -> None:
     singleton = StochasticScalar([1.0])
     condition = singleton > 0
     singleton_group = singleton.coupled_variable_group
-    expanded = np.where(condition, np.array([10.0, 20.0, 30.0]), 0.0)
-    assert isinstance(expanded, StochasticScalar)
-    assert expanded.coupled_variable_group is not singleton_group
-    np.testing.assert_array_equal(asnumpy(expanded.values), [10.0, 20.0, 30.0])
+    with pytest.raises(ValueError, match="incompatible n_sims"):
+        np.where(condition, np.array([10.0, 20.0, 30.0]), 0.0)
     assert variable.coupled_variable_group is original_group
     assert singleton.coupled_variable_group is singleton_group
 
