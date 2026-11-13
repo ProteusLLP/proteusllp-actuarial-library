@@ -31,10 +31,10 @@ from scipy.stats import geninvgauss
 
 # Local imports
 from ._compat import override
-from .couplings import validate_stochastic_axes
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
 from ._value_arrays import stochastic_array
 from .config import config
+from .couplings import validate_stochastic_axes
 from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
 
@@ -115,6 +115,12 @@ class DistributionBase:
         """Initialize distribution with parameters."""
         # Store parameters in a private dictionary.
         self._params: dict[str, DistributionParameter] = params
+
+    def _validate_probability_inputs(self, argument: DistributionParameter) -> None:
+        """Reject incompatible scenario-indexed inputs before intermediate calculations."""
+        validate_stochastic_axes(
+            value for value in (argument, *self._params.values()) if isinstance(value, StochasticScalar)
+        )
 
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the cumulative distribution function at x.
@@ -1049,6 +1055,7 @@ class Normal(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
+        self._validate_probability_inputs(x)
         mu, sigma = self._params.values()
         arg = (x - mu) / sigma
         return _special_call(special.ndtr, arg)  # type: ignore[return-value]
@@ -1056,6 +1063,7 @@ class Normal(DistributionBase):
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
+        self._validate_probability_inputs(u)
         mu, sigma = self._params.values()
         return _special_call(special.ndtri, u) * sigma + mu
 
@@ -1087,12 +1095,14 @@ class Logistic(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
+        self._validate_probability_inputs(x)
         mu, sigma = self._params.values()
         return t.cast(ReturnType, 1 / (1 + np.exp(-(x - mu) / sigma)))
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
+        self._validate_probability_inputs(u)
         mu, sigma = self._params.values()
         return t.cast(ReturnType, mu + sigma * np.log(u / (1 - u)))
 
@@ -1126,6 +1136,7 @@ class LogNormal(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
+        self._validate_probability_inputs(x)
         mu, sigma = self._params.values()
         result = _special_call(special.ndtr, (np.log(x) - mu) / sigma)
         return result
@@ -1133,6 +1144,7 @@ class LogNormal(DistributionBase):
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
+        self._validate_probability_inputs(u)
         mu, sigma = self._params.values()
         return np.exp(_special_call(special.ndtri, u) * sigma + mu)
 
@@ -1169,12 +1181,14 @@ class Gamma(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
+        self._validate_probability_inputs(x)
         alpha, theta, loc = self._params.values()
         return _special_call(special.gammainc, alpha, (x - loc) / theta)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
+        self._validate_probability_inputs(u)
         alpha, theta, loc = self._params.values()
         result = _special_call(special.gammaincinv, alpha, u) * theta + loc
         return result
