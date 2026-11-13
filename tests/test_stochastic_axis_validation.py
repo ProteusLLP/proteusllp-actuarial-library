@@ -58,6 +58,26 @@ def test_gamma_probability_methods_reject_mismatched_parameter_axes(method: str)
     _assert_separate_and_unchanged(shape, scale)
 
 
+@pytest.mark.parametrize(
+    ("family", "first_values", "second_values"),
+    [
+        (Gamma, [1.0, 2.0, 3.0], [0.7]),
+        (Normal, [1.0], [0.5, 1.0, 1.5]),
+        (LogNormal, [1.0], [0.5, 1.0, 1.5]),
+    ],
+)
+@pytest.mark.parametrize("method", ["cdf", "invcdf"])
+def test_multi_step_probability_failure_does_not_merge_partial_ancestry(
+    family, first_values, second_values, method: str
+) -> None:
+    first = StochasticScalar(first_values)
+    second = StochasticScalar(second_values)
+    argument = StochasticScalar([0.2, 0.5, 0.8] if method == "invcdf" else [1.5, 2.0, 2.5])
+    with pytest.raises(ValueError, match="matching n_sims"):
+        getattr(family(first, second), method)(argument)
+    _assert_separate_and_unchanged(first, second, argument)
+
+
 @pytest.mark.parametrize("distribution", [Poisson, Binomial, NegBinomial])
 def test_discrete_quantiles_reject_mismatched_axes_atomically(distribution) -> None:
     probability = StochasticScalar([0.2, 0.5, 0.8])
