@@ -231,7 +231,7 @@ class Poisson(DiscreteDistributionBase):
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
         # scipy.special functions support array inputs despite restrictive type stubs
-        (mean,) = self._param_values
+        (mean,) = self._params.values()
         return _special_call(special.pdtr, x, mean)
 
     @override
@@ -1045,7 +1045,7 @@ class Normal(DistributionBase):
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        mu, sigma = self._param_values
+        mu, sigma = self._params.values()
         return _special_call(special.ndtri, u) * sigma + mu
 
 
@@ -1076,14 +1076,14 @@ class Logistic(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        mu, sigma = self._param_values
-        return 1 / (1 + np.exp(-(x - mu) / sigma))
+        mu, sigma = self._params.values()
+        return t.cast(ReturnType, 1 / (1 + np.exp(-(x - mu) / sigma)))
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        mu, sigma = self._param_values
-        return mu + sigma * np.log(u / (1 - u))
+        mu, sigma = self._params.values()
+        return t.cast(ReturnType, mu + sigma * np.log(u / (1 - u)))
 
 
 class LogNormal(DistributionBase):
@@ -1115,14 +1115,14 @@ class LogNormal(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        mu, sigma = self._param_values
+        mu, sigma = self._params.values()
         result = _special_call(special.ndtr, (np.log(x) - mu) / sigma)
         return result
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        mu, sigma = self._param_values
+        mu, sigma = self._params.values()
         return np.exp(_special_call(special.ndtri, u) * sigma + mu)
 
 
@@ -1158,13 +1158,13 @@ class Gamma(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        alpha, theta, loc = self._param_values
+        alpha, theta, loc = self._params.values()
         return _special_call(special.gammainc, alpha, (x - loc) / theta)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        alpha, theta, loc = self._param_values
+        alpha, theta, loc = self._params.values()
         result = _special_call(special.gammaincinv, alpha, u) * theta + loc
         return result
 
@@ -1310,14 +1310,14 @@ class InverseGamma(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        alpha, theta, loc = self._param_values
+        alpha, theta, loc = self._params.values()
         return _special_call(special.gammaincc, alpha, np.divide(theta, (x - loc)))  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        alpha, theta, loc = self._param_values
-        return np.divide(theta, _special_call(special.gammainccinv, alpha, u)) + loc
+        alpha, theta, loc = self._params.values()
+        return t.cast(ReturnType, np.divide(theta, _special_call(special.gammainccinv, alpha, u)) + loc)
 
 
 class Pareto(DistributionBase):
@@ -1348,13 +1348,13 @@ class Pareto(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        shape, scale = self._param_values
+        shape, scale = self._params.values()
         return 1 - (x / scale) ** (-shape)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        shape, scale = self._param_values
+        shape, scale = self._params.values()
         return (1 - u) ** (-1 / shape) * scale
 
 
@@ -1727,8 +1727,7 @@ class StudentsT(DistributionBase):
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        params = tuple(self._param_values)
-        nu, mu, sigma = params[0], params[1], params[2]
+        nu, mu, sigma = self._params.values()
 
         # Use the relationship between t-distribution and Beta distribution
         # to support GPU execution via betaincinv.
@@ -1795,7 +1794,7 @@ class InverseGaussian(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        mu, lambda_ = self._param_values
+        mu, lambda_ = self._params.values()
         sqrt_lambda_x = np.sqrt(lambda_ / x)
         term1 = _special_call(special.ndtr, sqrt_lambda_x * (x / mu - 1))
         term2 = np.exp(2 * lambda_ / mu) * _special_call(special.ndtr, -sqrt_lambda_x * (x / mu + 1))
