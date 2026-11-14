@@ -19,7 +19,7 @@ from pal import stats  # type: ignore
 from ._compat import Self
 from ._maths import asnumpy, scalar_or_array, to_backend, xp
 from ._value_arrays import host_values, stochastic_array
-from .couplings import CouplingGroup, ProteusStochasticVariable
+from .couplings import CouplingGroup, ProteusStochasticVariable, validate_stochastic_axes
 from .stats import NumberOrList
 from .types import Numeric, ScipyNumeric
 
@@ -105,6 +105,7 @@ class StochasticScalar(ProteusStochasticVariable):
             #
             var_pos = var_not_stochastic_scalar.index(True)
             return inputs[var_pos].__array_ufunc__(ufunc, method, *inputs, **kwargs)
+        validate_stochastic_axes(arg for arg in inputs if isinstance(arg, StochasticScalar))
         is_host = (
             host_values(self.values)
             or any(host_values(x.values if isinstance(x, StochasticScalar) else x) for x in inputs)
@@ -144,6 +145,8 @@ class StochasticScalar(ProteusStochasticVariable):
             axis = kwargs.get("axis", None)
 
             if keepdims or (axis is not None and hasattr(result, "shape") and result.shape):
+                if getattr(result, "ndim", None) == 1 and len(result) != self.n_sims:
+                    return StochasticScalar(result)
                 return self._wrap_result_with_coupling(result, inputs)
 
             # Standard reduction returns scalar directly
@@ -156,6 +159,8 @@ class StochasticScalar(ProteusStochasticVariable):
                 for destination, buffer in zip(out_arrays, kwargs["out"]):
                     if destination is not buffer:
                         destination[...] = xp.asarray(buffer) if isinstance(destination, xp.ndarray) else buffer
+            if method == "reduceat" and getattr(result, "ndim", None) == 1 and len(result) != self.n_sims:
+                return StochasticScalar(result)
             return self._wrap_result_with_coupling(result, inputs)
 
         # Handle regular element-wise operations
@@ -183,6 +188,7 @@ class StochasticScalar(ProteusStochasticVariable):
         Raises:
             NotImplementedError: If the function is not supported
         """
+        validate_stochastic_axes(arg for arg in args if isinstance(arg, StochasticScalar))
         # Extract PAL values and move any NumPy operands to the active backend.
         is_host = host_values(self.values) or any(
             host_values(x.values if isinstance(x, StochasticScalar) else x) for x in args
@@ -207,6 +213,11 @@ class StochasticScalar(ProteusStochasticVariable):
         # higher-dimensional backend arrays and should remain arrays.
         if getattr(result, "ndim", None) != 1:
             return result
+        if len(result) != self.n_sims:
+            if func is np.where:
+                raise ValueError("Stochastic result has incompatible n_sims")
+            # Length-changing summaries are independent of the source scenarios.
+            return StochasticScalar(result)
         return self._wrap_result_with_coupling(result, args)
 
     def __array__(self, dtype: t.Any = None, copy: bool | None = None) -> npt.NDArray[t.Any]:
@@ -473,6 +484,10 @@ class StochasticScalar(ProteusStochasticVariable):
             return scalar_result
         if getattr(result_array, "ndim", None) != 1:
             return result_array
+        if len(result_array) != self.n_sims:
+            raise ValueError(
+                f"Stochastic result has incompatible n_sims (expected {self.n_sims}, got {len(result_array)})"
+            )
 
         wrapped_result = StochasticScalar(result_array)
         for input in inputs:
