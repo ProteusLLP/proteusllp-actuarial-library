@@ -16,7 +16,7 @@ import numpy.typing as npt
 import scipy.stats
 from scipy.special import gamma
 
-from . import ProteusVariable, StochasticScalar
+from . import ProteusVariable, StochasticScalar, _fra1
 from ._maths import asnumpy, special
 from ._maths import xp as np
 
@@ -403,6 +403,125 @@ class ArchimedeanCopula(Copula, ABC):
 
         # Calculate the copula samples
         return np.log(u) / latent_samples[np.newaxis]
+
+
+class FRA1Copula(Copula):
+    r"""Full-range Archimedean type I (FRA1) copula.
+
+    FRA1 is the two-parameter Archimedean family introduced by Hua (2026).
+    The parameter :math:`\eta` controls lower-tail dependence and
+    :math:`\theta` controls upper-tail dependence, with both parameters in
+    :math:`[-1, 1)`. Positive values produce asymptotic dependence in the
+    corresponding tail, while non-positive values give asymptotic independence
+    with a continuously varying tail order.
+
+    The generator is completely monotone, so it defines an Archimedean copula in
+    every finite dimension. For two dimensions, PAL uses the inverse conditional
+    sampler described by Hua (2026). For higher dimensions, PAL uses the
+    Marshall-Olkin frailty representation, with the one-dimensional FRA1 frailty
+    distribution obtained by numerical inversion of its Laplace transform.
+
+    The upper-tail dependence coefficient is
+
+    .. math::
+
+        \lambda_U =
+        \begin{cases}
+        0, & \theta \leq 0,\\
+        2 - 2^{1-\theta}, & \theta > 0,
+        \end{cases}
+
+    and the lower-tail dependence coefficient is
+
+    .. math::
+
+        \lambda_L =
+        \begin{cases}
+        0, & \eta \leq 0,\\
+        2^{-(1-\eta)/\eta}, & \eta > 0.
+        \end{cases}
+
+    The independence copula is obtained at :math:`\eta=\theta=-1`.
+
+    References:
+        Hua, L. (2026). "A new tractable Archimedean copula for full-range
+        tail dependence." arXiv:2609.18742.
+        Marshall, A. W. and Olkin, I. (1988). "Families of multivariate
+        distributions." Journal of the American Statistical Association.
+        Ridout, M. S. (2009). "Generating random numbers from a distribution
+        specified by its Laplace transform." Statistics and Computing.
+    """
+
+    def __init__(self, eta: float, theta: float, dimension: int = 2) -> None:
+        """Initialize an FRA1 copula.
+
+        Args:
+            eta: Lower-tail parameter in [-1, 1).
+            theta: Upper-tail parameter in [-1, 1).
+            dimension: Number of variables, at least 2.
+
+        Raises:
+            ValueError: If a parameter lies outside its supported range.
+        """
+        eta = float(eta)
+        theta = float(theta)
+        if not -1.0 <= eta < 1.0:
+            raise ValueError("Eta must be in the range [-1, 1)")
+        if not -1.0 <= theta < 1.0:
+            raise ValueError("Theta must be in the range [-1, 1)")
+        if dimension < 2:
+            raise ValueError("Dimension must be at least 2")
+        self.eta = eta
+        self.theta = theta
+        self.dimension = dimension
+
+    @property
+    def lower_tail_dependence(self) -> float:
+        """Return the lower-tail dependence coefficient."""
+        if self.eta <= 0.0:
+            return 0.0
+        return 2.0 ** (-(1.0 - self.eta) / self.eta)
+
+    @property
+    def upper_tail_dependence(self) -> float:
+        """Return the upper-tail dependence coefficient."""
+        if self.theta <= 0.0:
+            return 0.0
+        return 2.0 - 2.0 ** (1.0 - self.theta)
+
+    @property
+    def lower_tail_order(self) -> float:
+        """Return the lower-tail order for the bivariate copula."""
+        return max(2.0 ** (-self.eta), 1.0)
+
+    @property
+    def upper_tail_order(self) -> float:
+        """Return the upper-tail order for the bivariate copula."""
+        return max(1.0 - self.theta, 1.0)
+
+    def generate(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate uniform samples from the FRA1 copula."""
+        return self._generate_base(n_sims, rng)
+
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        if self.dimension < 2:
+            raise ValueError("FRA1Copula requires at least two variables")
+
+        if self.dimension > 2:
+            return _fra1.generate_multivariate(self.dimension, n_sims, rng, self.eta, self.theta)
+
+        uniforms = rng.uniform(size=(2, n_sims))
+        if self.eta == -1.0 and self.theta == -1.0:
+            return uniforms
+
+        tiny = np.finfo(np.float64).tiny
+        eps = np.finfo(np.float64).eps
+        conditioning = np.clip(uniforms[0], tiny, 1.0 - eps)
+        probability = np.clip(uniforms[1], tiny, 1.0 - eps)
+        dependent = _fra1.conditional_ppf(probability, conditioning, self.eta, self.theta)
+        return np.stack((dependent, conditioning))
 
 
 class ClaytonCopula(ArchimedeanCopula):
