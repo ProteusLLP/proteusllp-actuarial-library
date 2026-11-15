@@ -55,3 +55,13 @@ def test_random_access_supports_nonnumeric_values_after_copula_reordering() -> N
     values = asnumpy(events.values)
     for sim in range(4):
         assert_array_equal(events[sim].values, values[indices == sim])
+
+
+def test_random_access_benchmark_matches_full_scan_baseline() -> None:
+    from benchmarks.benchmark_core import build_workload
+
+    fast = build_workload("freqsev_random_access", 40)()
+    baseline = build_workload("freqsev_random_access_mask_baseline", 40)()
+    assert len(fast) == len(baseline)
+    for actual, expected in zip(fast, baseline):
+        assert_array_equal(actual.values, expected.values)
