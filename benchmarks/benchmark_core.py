@@ -29,6 +29,7 @@ from pal.frequency_severity import FreqSevSims, FrequencySeverityModel, _get_sim
 DEFAULT_CASES = (
     "event_indexing",
     "freqsev_random_access",
+    "freqsev_random_access_mask_baseline",
     "stochastic_arithmetic",
     "aggregate",
     "occurrence",
@@ -78,10 +79,13 @@ def build_workload(name: str, n_sims: int) -> Callable[[], Any]:
     sim_index = _get_sims_of_events(xp.asarray(counts_cpu))
     event_values = xp.asarray(rng.lognormal(9, 0.9, size=int(counts_cpu.sum())))
     losses = FreqSevSims(sim_index, event_values, n_sims)
-    if name == "freqsev_random_access":
+    if name in ("freqsev_random_access", "freqsev_random_access_mask_baseline"):
         # Fixed random lookups include empty scenarios. Timing excludes fixture setup.
         lookups = rng.integers(0, n_sims, size=32)
-        return lambda: [losses[int(i)] for i in lookups]
+        if name == "freqsev_random_access":
+            return lambda: [losses[int(i)] for i in lookups]
+        # Original full-scan indexing, on the same fixtures and hardware.
+        return lambda: [StochasticScalar(losses.values[(losses.sim_index == int(i)).nonzero()]) for i in lookups]
     if name == "aggregate":
         return losses.aggregate
     if name == "occurrence":
