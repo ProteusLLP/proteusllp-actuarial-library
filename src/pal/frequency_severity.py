@@ -251,6 +251,9 @@ class FreqSevSims(_ProteusStochasticVariable):
                 f"Length mismatch: sim_index has {len(self.sim_index)} elements "
                 f"but values has {len(self.values)} elements"
             )
+        # Compute this only if random access is requested. Copula reordering
+        # can relabel simulations and invalidate sorted event indices.
+        self._index_is_sorted: bool | None = None
 
     def __str__(self):
         return "Simulation Index\n" + str(self.sim_index) + "\n Values\n" + str(self.values)
@@ -266,16 +269,30 @@ class FreqSevSims(_ProteusStochasticVariable):
         reverse_ordering = xp.empty(len(new_order), dtype=int)
         reverse_ordering[new_order] = xp.arange(len(new_order), dtype=int)
         self.sim_index = reverse_ordering[self.sim_index]
+        self._index_is_sorted = None
+
+    def _sorted_event_indices(self) -> bool:
+        """Cache whether event indices can support binary search."""
+        if self._index_is_sorted is None:
+            indices = self.sim_index
+            self._index_is_sorted = indices.size < 2 or bool(xp.all(indices[1:] >= indices[:-1]))
+        return self._index_is_sorted
 
     def __getitem__(self, sim_index: int) -> StochasticScalar:
-        """Returns the values of the simulation with the given simulation index."""
-        # get the positions of the given simulation index
-        if isinstance(sim_index, int):  # type: ignore[unecessary-check]
-            indices = asnumpy(self.sim_index) if host_values(self.values) else self.sim_index
-            ints = (indices == sim_index).nonzero()
-            return StochasticScalar(self.values[ints])
-        else:
+        """Return the events in one simulation without scanning sorted indices."""
+        if not isinstance(sim_index, int):  # type: ignore[unecessary-check]
             raise NotImplementedError
+
+        if self._sorted_event_indices():
+            start = int(xp.searchsorted(self.sim_index, sim_index, side="left"))
+            end = int(xp.searchsorted(self.sim_index, sim_index, side="right"))
+            # Slicing normally produces a view, whereas indexing returned a copy.
+            return StochasticScalar(self.values[start:end].copy())
+
+        # Copula reordering may leave event indices unsorted. Retain a
+        # stable mask lookup without sorting or copying the entire event table.
+        indices = asnumpy(self.sim_index) if host_values(self.values) else self.sim_index
+        return StochasticScalar(self.values[(indices == sim_index).nonzero()])
 
     def __len__(self) -> int:
         """Return the number of simulations."""
@@ -292,7 +309,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         # only these counts, never the event values.
         ends = asnumpy(offsets) if xp is not np else offsets
 
-        if indices.size < 2 or bool(xp.all(indices[1:] >= indices[:-1])):
+        if self._sorted_event_indices():
             grouped_values = self.values
         else:
             # Copula reordering may relabel the simulations without sorting
