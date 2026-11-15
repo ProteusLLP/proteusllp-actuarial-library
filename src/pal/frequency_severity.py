@@ -36,6 +36,7 @@ from ._maths import asnumpy, scalar_or_array, to_backend, xp
 from ._value_arrays import host_values, stochastic_array
 from .config import config
 from .couplings import ProteusStochasticVariable as _ProteusStochasticVariable
+from .couplings import validate_stochastic_axes
 from .stochastic_scalar import (
     StochasticScalar,
 )
@@ -130,6 +131,14 @@ class FrequencySeverityModel:
         """
         if n_sims is None:
             n_sims = config.n_sims
+        if n_sims < 1:
+            raise ValueError(f"n_sims must be >= 1, got {n_sims}")
+
+        frequency_params = getattr(self.freq_dist, "_params", {})
+        validate_stochastic_axes(
+            (param for param in frequency_params.values() if isinstance(param, StochasticScalar)),
+            n_sims=n_sims,
+        )
         if rng is None:
             rng = config.rng
         severity_params = getattr(self.sev_dist, "_params", {})
@@ -144,9 +153,16 @@ class FrequencySeverityModel:
                 )
 
         n_events = self.freq_dist.generate(n_sims, rng)
+        counts = n_events.values
+        # A frequency distribution must produce whole, nonnegative claim counts.
+        # Casting first would silently truncate fractional values, and negative
+        # or nonfinite values can corrupt event indexing.
+        if counts.dtype.kind not in "iuf" or bool(
+            xp.any(~xp.isfinite(counts) | (counts < 0) | (counts != xp.floor(counts)))
+        ):
+            raise ValueError("Frequency simulations must contain finite, nonnegative integer counts")
         total_events = int(n_events.sum())
-        # Convert counts to integer event indices before expanding simulation parameters.
-        event_indices = _get_sims_of_events(n_events.values.astype(np.int64))
+        event_indices = _get_sims_of_events(counts.astype(np.int64))
 
         severity_distribution = self.sev_dist
         if stochastic_params:
