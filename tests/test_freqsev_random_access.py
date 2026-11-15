@@ -2,8 +2,8 @@
 
 import numpy as np
 import pytest
-
 from benchmarks.benchmark_core import build_workload
+
 from pal._maths import asnumpy, xp
 from pal.frequency_severity import FreqSevSims
 from tests._assertions import assert_array_equal
