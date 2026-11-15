@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from benchmarks.benchmark_core import build_workload
 from pal._maths import asnumpy, xp
 from pal.frequency_severity import FreqSevSims
 from tests._assertions import assert_array_equal
@@ -58,8 +59,6 @@ def test_random_access_supports_nonnumeric_values_after_copula_reordering() -> N
 
 
 def test_random_access_benchmark_matches_full_scan_baseline() -> None:
-    from benchmarks.benchmark_core import build_workload
-
     fast = build_workload("freqsev_random_access", 40)()
     baseline = build_workload("freqsev_random_access_mask_baseline", 40)()
     assert len(fast) == len(baseline)
