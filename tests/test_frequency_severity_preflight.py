@@ -89,9 +89,7 @@ def test_compound_simulation_preserves_parameter_ancestry_and_event_alignment() 
 def test_zero_claims_preserve_simulation_level_coupling_without_event_temporaries() -> None:
     rate = StochasticScalar([0.0, 0.0, 0.0])
     scale = StochasticScalar([10.0, 20.0, 30.0])
-    result = FrequencySeverityModel(Poisson(rate), Gamma(alpha=2.0, theta=scale)).generate(
-        3, np.random.default_rng(21)
-    )
+    result = FrequencySeverityModel(Poisson(rate), Gamma(alpha=2.0, theta=scale)).generate(3, np.random.default_rng(21))
     assert len(result.values) == 0
     assert_array_equal(result.count(), [0, 0, 0])
     assert result.coupled_variable_group is rate.coupled_variable_group
