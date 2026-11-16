@@ -7,11 +7,13 @@ from scipy import special, stats
 from pal import StochasticScalar
 from pal._maths import asnumpy
 from pal.distributions import (
+    Binomial,
     Gamma,
     InverseGamma,
     InverseGaussian,
     Logistic,
     LogNormal,
+    NegBinomial,
     Normal,
     Pareto,
     Poisson,
@@ -108,3 +110,34 @@ def test_inverse_gaussian_cdf_preserves_parameter_ancestry(stochastic_argument: 
         if isinstance(param, StochasticScalar):
             assert result.coupled_variable_group is param.coupled_variable_group
     assert asnumpy(result.values) == pytest.approx(reference.cdf(2.0))
+
+
+@pytest.mark.parametrize("family", ["binomial", "negative_binomial"])
+@pytest.mark.parametrize("stochastic_argument", [False, True])
+def test_discrete_cdf_preserves_parameter_ancestry(family: str, stochastic_argument: bool) -> None:
+    """CDFs must preserve stochastic count and probability parameters."""
+    n = StochasticScalar([3, 5, 8])
+    p = StochasticScalar([0.25, 0.5, 0.75])
+    dist = Binomial(n, p) if family == "binomial" else NegBinomial(n, p)
+    reference = stats.binom if family == "binomial" else stats.nbinom
+    x = StochasticScalar([1, 2, 3]) if stochastic_argument else 2
+    result = dist.cdf(x)
+    expected = reference.cdf([1, 2, 3] if stochastic_argument else 2, [3, 5, 8], [0.25, 0.5, 0.75])
+    assert isinstance(result, StochasticScalar)
+    assert result.coupled_variable_group is n.coupled_variable_group
+    assert result.coupled_variable_group is p.coupled_variable_group
+    if isinstance(x, StochasticScalar):
+        assert result.coupled_variable_group is x.coupled_variable_group
+    assert asnumpy(result.values) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("family", ["binomial", "negative_binomial"])
+def test_discrete_cdf_rejects_incompatible_axes_without_coupling(family: str) -> None:
+    n = StochasticScalar([3, 5, 8])
+    p = StochasticScalar([0.25, 0.5, 0.75])
+    x = StochasticScalar([1, 2])
+    dist = Binomial(n, p) if family == "binomial" else NegBinomial(n, p)
+    groups = [value.coupled_variable_group for value in (n, p, x)]
+    with pytest.raises(ValueError):
+        dist.cdf(x)
+    assert all(value.coupled_variable_group is group for value, group in zip((n, p, x), groups))
