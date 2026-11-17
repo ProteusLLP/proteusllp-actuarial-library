@@ -24,30 +24,37 @@ from ._maths import asnumpy, special, xp
 
 @dataclasses.dataclass
 class _Block:
-    """Current Sobol point set and next unused coordinate."""
+    """Scrambled direction tables and one Gray-code simulation-index vector.
 
-    points: t.Any
-    permutation: t.Any
-    shifts: t.Any = None
+    No path-by-dimension point matrix is retained. Each coordinate is
+    reconstructed only when requested using the same multidimensional Sobol
+    direction vectors and one shared ordering of simulation indices.
+    """
+
+    gray: t.Any
+    tables: t.Any
+    shifts: t.Any
     dimension: int = 0
 
     @property
     def nbytes(self) -> int:
-        """Memory retained by the design, scrambling and path permutation."""
-        return self.points.nbytes + self.permutation.nbytes + (self.shifts.nbytes if self.shifts is not None else 0)
+        """Memory retained by direction tables, shifts and path indices."""
+        return self.gray.nbytes + self.tables.nbytes + self.shifts.nbytes
 
 
 class RandomizedQMCGenerator:
     """A generator-compatible randomized Sobol sampler for PAL.
 
-    An independently Owen-scrambled Sobol design is created for each block.
+    Independently randomized Sobol designs are created for each block.
     Paths are shuffled together between blocks, preserving all coordinates'
     within-block low-discrepancy structure. Each marginal draw consumes a
     coordinate. Calls producing several components consume one coordinate
     per component, including correlated normals used in copula simulation.
 
-    Different simulation counts use separate designs. The small bounded cache
-    avoids retaining large event-level designs after frequency-severity draws.
+    The generator retains scrambled direction numbers, digital shifts and
+    one Gray-code path-index vector. It reconstructs each coordinate on demand
+    instead of allocating a full paths-by-dimensions point matrix. Different
+    simulation counts use separate bounded-cache designs.
 
     Args:
         seed: Seed for reproducible scrambling and permutations.
@@ -62,61 +69,39 @@ class RandomizedQMCGenerator:
         self.dimensions = dimensions
         self._random = np.random.default_rng(seed)
         self._streams: OrderedDict[int, _Block] = OrderedDict()
-        # Retain only a small memory budget across different path counts.
-        # The active block is kept even if its design alone exceeds the cap.
+        # A small bounded cache avoids keeping path-index arrays of many sizes.
         self.max_cache_bytes = 128 * 1024 * 1024
 
     def new_block(self) -> None:
         """Start independent scrambled, shuffled blocks at coordinate one."""
         self._streams.clear()
 
-    def _next_coordinate(self, n: int) -> np.ndarray:
-        if n < 1:
-            raise ValueError("Simulation count must be positive")
-        block = self._streams.get(n)
-        if block is None or block.dimension == self.dimensions:
-            if n > 2**30:
-                raise ValueError("Sobol sampling supports at most 2**30 simulation paths")
-            if xp is np:
-                seed = int(self._random.integers(0, 2**32, dtype=np.uint64))
-                engine = qmc.Sobol(d=self.dimensions, scramble=True, seed=seed)
-                # Preserve the base-two Sobol balance where n is a power of two.
-                points = engine.random_base2(m=(n - 1).bit_length())[:n]
-                # Retain one row index instead of copying the full d-column
-                # matrix solely to permute paths.
-                block = _Block(points, self._random.permutation(n))
-            else:
-                block = self._gpu_points(n)
-            self._streams[n] = block
-        self._streams.move_to_end(n)
-        while len(self._streams) > 1 and (
-            len(self._streams) > 2 or sum(b.nbytes for b in self._streams.values()) > self.max_cache_bytes
-        ):
-            self._streams.popitem(last=False)
-        if block.shifts is None:
-            result = block.points[block.permutation, block.dimension]
-        else:
-            # cuRAND's Sobol32 output stays in compact uint32 form until a
-            # coordinate is requested. This halves retained GPU memory versus
-            # caching float64 designs and avoids full-matrix permutation copies.
-            values = xp.bitwise_xor(block.points[block.dimension, block.permutation], block.shifts[block.dimension])
-            result = (values.astype(xp.float64) + 0.5) * (2.0**-32)
-        block.dimension += 1
-        return result
+    @staticmethod
+    def _lookup_tables(vectors: np.ndarray) -> np.ndarray:
+        """Build compact 8-bit XOR tables for 32-bit Sobol direction vectors."""
+        dimensions = vectors.shape[0]
+        tables = np.zeros((dimensions, 4, 256), dtype=np.uint32)
+        byte_values = np.arange(256, dtype=np.uint32)
+        for bit in range(32):
+            selected = (byte_values >> (bit % 8)) & 1
+            tables[:, bit // 8, :] ^= vectors[:, bit, None] * selected[None, :]
+        return tables
 
-    def _gpu_points(self, n: int) -> t.Any:
-        """Generate scrambled Sobol points in device memory using NVIDIA cuRAND.
+    def _new_direction_block(self, n: int) -> _Block:
+        """Create one scrambled multidimensional Sobol block without its points."""
+        if xp is np:
+            seed = int(self._random.integers(0, 2**32, dtype=np.uint64))
+            engine = qmc.Sobol(d=self.dimensions, scramble=True, bits=32, seed=seed)
+            # SciPy's scrambled direction numbers and digital shifts are
+            # small, but these attributes are private. Guard their layout
+            # and test the generated coordinates against its public API.
+            vectors = np.asarray(engine._sv, dtype=np.uint32)
+            shifts = np.asarray(engine._shift, dtype=np.uint32)
+            permutation = self._random.permutation(n).astype(np.uint32)
+            gray = permutation ^ (permutation >> 1)
+            tables = self._lookup_tables(vectors)
+            return _Block(gray, tables, shifts)
 
-        CuPy does not expose the multidimensional cuRAND Sobol generator at
-        the random.Generator level. The NVIDIA nvmath bindings expose its host
-        API without requiring PAL to compile or maintain CUDA kernels.
-
-        cuRAND's built-in scramble is fixed rather than controlled by a seed.
-        An independent seeded 32-bit digital shift per coordinate gives
-        randomized, reproducible Sobol blocks, followed by a common row
-        permutation to decorrelate successive blocks. CPU and GPU streams are
-        reproducible separately, but are not bitwise identical.
-        """
         if self.dimensions > 20000:
             raise ValueError("cuRAND supports at most 20000 Sobol dimensions")
         try:
@@ -124,25 +109,52 @@ class RandomizedQMCGenerator:
         except ImportError as exc:
             raise RuntimeError("GPU RQMC requires nvmath-python; install PAL with the gpu extra.") from exc
 
+        vectors = np.asarray(
+            curand.get_direction_vectors32(
+                curand.DirectionVectorSet.SCRAMBLED_DIRECTION_VECTORS_32_JOEKUO6,
+                self.dimensions,
+            ),
+            dtype=np.uint32,
+        )
+        if vectors.shape != (self.dimensions, 32):
+            raise RuntimeError("Unexpected cuRAND Sobol direction-vector layout")
+        shifts_host = np.asarray(curand.get_scramble_constants32(self.dimensions), dtype=np.uint32)
+        # The bundled NVIDIA scrambled directions are fixed. Applying a
+        # separately seeded digital shift per block gives independent RQMC
+        # replications and preserves Sobol balance in each coordinate.
+        shifts_host ^= self._random.integers(0, 2**32, size=self.dimensions, dtype=np.uint32)
         gpu_xp: t.Any = xp
-        padded = 1 << (n - 1).bit_length()
-        generator = curand.create_generator(curand.RngType.QUASI_SCRAMBLED_SOBOL32)
-        try:
-            curand.set_quasi_random_generator_dimensions(generator, self.dimensions)
-            curand.set_stream(generator, gpu_xp.cuda.get_current_stream().ptr)
-            # cuRAND's QUASI_DEFAULT ordering stores all paths of one
-            # coordinate contiguously. It requires an exact multiple of d.
-            raw = gpu_xp.empty((self.dimensions, padded), dtype=gpu_xp.uint32)
-            curand.generate(generator, raw.data.ptr, raw.size)
-        finally:
-            curand.destroy_generator(generator)
-
-        # Keep the digital shift and permutation separate from the raw Sobol
-        # matrix, applying them to each coordinate as it is consumed.
-        shifts = gpu_xp.asarray(self._random.integers(0, 2**32, size=self.dimensions, dtype=np.uint32))
         permutation_seed = int(self._random.integers(0, 2**32, dtype=np.uint64))
-        permutation = gpu_xp.random.RandomState(permutation_seed).permutation(n)
-        return _Block(raw, permutation, shifts)
+        permutation = gpu_xp.random.RandomState(permutation_seed).permutation(n).astype(gpu_xp.uint32)
+        gray = permutation ^ (permutation >> 1)
+        return _Block(gpu_xp.asarray(gray), gpu_xp.asarray(self._lookup_tables(vectors)), gpu_xp.asarray(shifts_host))
+
+    def _next_coordinate(self, n: int) -> t.Any:
+        """Construct one scrambled Sobol coordinate, retaining O(n + d) state."""
+        if n < 1:
+            raise ValueError("Simulation count must be positive")
+        if n > 2**30:
+            raise ValueError("Sobol sampling supports at most 2**30 simulation paths")
+        block = self._streams.get(n)
+        if block is None or block.dimension == self.dimensions:
+            block = self._new_direction_block(n)
+            self._streams[n] = block
+        self._streams.move_to_end(n)
+        while len(self._streams) > 1 and (
+            len(self._streams) > 2 or sum(b.nbytes for b in self._streams.values()) > self.max_cache_bytes
+        ):
+            self._streams.popitem(last=False)
+
+        j = block.dimension
+        values = xp.full((n,), block.shifts[j], dtype=xp.uint32)
+        for byte in range(4):
+            values ^= block.tables[j, byte, (block.gray >> (byte * 8)) & 255]
+        block.dimension += 1
+        if xp is np:
+            return values.astype(np.float64) * (2.0**-32)
+        # cuRAND Sobol32 midpoints stay strictly within (0, 1), avoiding
+        # infinities in inverse-CDF transforms at both endpoints.
+        return (values.astype(xp.float64) + 0.5) * (2.0**-32)
 
     @staticmethod
     def _host(value: t.Any) -> np.ndarray:
