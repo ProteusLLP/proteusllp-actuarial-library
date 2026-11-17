@@ -242,8 +242,10 @@ tutorial for copula density plots and accuracy benchmarks. Blocks use independen
 so the whole model is not a single high-dimensional Sobol design. QMC may help
 some models more than others, and uncertainty estimates should be based on
 independent randomizations rather than treating the simulated paths as IID.
-On NVIDIA GPUs, cuRAND generates Sobol blocks directly in GPU memory with
-seeded digital shifts via the GPU extra's `nvmath-python` dependency (Python
-3.10 to 3.14). Continuous inverse transforms supported by CuPy stay on the device;
-other quantiles may use SciPy on the CPU. CPU and GPU sequences differ.
+PAL reconstructs each scrambled Sobol coordinate on demand from direction
+numbers and Gray-coded simulation indices, without caching a full design matrix.
+On NVIDIA GPUs it obtains direction numbers via cuRAND's `nvmath-python` bindings
+(Python 3.10 to 3.14) and performs reconstruction using CuPy operations.
+Continuous inverse transforms supported by CuPy stay on the device; other
+quantiles may use SciPy on the CPU. CPU and GPU sequences differ.
 
