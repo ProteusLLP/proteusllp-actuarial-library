@@ -185,9 +185,7 @@ def test_inverse_gaussian_dispatch_preserves_two_draw_algorithm():
     n, seed, mu, shape = 128, 937, 2.0, 4.0
     generator = np.random.default_rng(seed)
     nu = generator.normal(0, 1, n) ** 2
-    y = mu + mu**2 * nu / (2 * shape) - mu / (2 * shape) * np.sqrt(
-        4 * mu * shape * nu + mu**2 * nu**2
-    )
+    y = mu + mu**2 * nu / (2 * shape) - mu / (2 * shape) * np.sqrt(4 * mu * shape * nu + mu**2 * nu**2)
     uniforms = generator.uniform(0, 1, n)
     expected = np.where(uniforms <= mu / (mu + y), y, mu**2 / y)
     actual = asnumpy(InverseGaussian(mu=mu, lambda_=shape).generate(n, rng=np.random.default_rng(seed)).values)
