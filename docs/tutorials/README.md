@@ -9,9 +9,9 @@ Library (PAL) with worked examples and outputs.
 |----------|-------------|
 | [Getting Started](getting_started.md) | First steps — distributions, stochastic variables, basic arithmetic and configuration |
 | [Distributions Guide](distributions_guide.md) | Choosing and parameterising severity and frequency distributions |
-| [Monte Carlo and Randomized QMC](randomized_qmc.md) | Scrambled Sobol sampling, copula density comparisons, accuracy and runtime benchmarks |
 | [Frequency-Severity Modelling](frequency_severity_modelling.md) | Compound models, aggregate losses, occurrence maxima and derived statistics |
 | [Coupling Groups, Copulas and Variable Reordering](coupling_groups_and_copulas.md) | Dependency structures, copula families, rank reordering and coupling groups |
+| [Randomized Quasi-Monte Carlo](randomized_qmc.md) | Using Sobol sampling, with copula and convergence illustrations |
 | [Pricing an Excess-of-Loss Reinsurance Program](xol_reinsurance.md) | XoL layers, towers, reinstatements, aggregate limits and net loss calculation |
 | [Property Reinsurance Exposure Rating with MBBEFD](property_exposure_rating.md) | Infer claim frequency from premium and loss ratio, build an empirical MBBEFD policy severity and compare simulation with exposure rating |
 | [XoL Reinstatement Pricing — Mata (2000)](reinstatement_pricing.md) | Reproducing pure premiums and PH transform premiums with reinstatements |
