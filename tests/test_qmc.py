@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from scipy import stats
 
-from pal import config, set_random_seed
+from pal import StochasticScalar, config, set_random_seed
 from pal._maths import asnumpy, xp
 from pal.config import set_sampling_method, start_new_sampling_block
 from pal.copulas import GaussianCopula
@@ -158,6 +158,19 @@ def test_frequency_severity_qmc_uses_a_dimension_per_claim_ordinal():
     _assert_sobol_stratification(first_claim)
     _assert_sobol_stratification(second_claim)
     assert abs(np.corrcoef(first_claim, second_claim)[0, 1]) < 0.08
+
+
+def test_qmc_frequency_severity_preserves_scenario_parameter_coupling():
+    rng = RandomizedQMCGenerator(seed=514, dimensions=3)
+    n = 256
+    scale = StochasticScalar(np.linspace(10.0, 20.0, n))
+    model = FrequencySeverityModel(Binomial(n=2, p=1), Exponential(scale=scale))
+    result = model.generate(n_sims=n, rng=rng)
+
+    assert result.n_sims == n
+    assert scale in result.coupled_variable_group
+    assert np.all(asnumpy(result.values) >= 0)
+    assert np.isclose(np.mean(asnumpy(result.values)), 15.0, rtol=0.1)
 
 
 def test_generalized_inverse_gaussian_uses_sobol():
