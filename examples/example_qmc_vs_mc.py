@@ -51,9 +51,7 @@ def copula_density_chart(n_sims: int = N_SIMS) -> go.Figure:
     fig = make_subplots(
         rows=2,
         cols=2,
-        subplot_titles=[
-            f"{family} · {method.name}" for family in families for method in methods
-        ],
+        subplot_titles=[f"{family} · {method.name}" for family in families for method in methods],
         horizontal_spacing=0.08,
         vertical_spacing=0.13,
     )
@@ -62,7 +60,9 @@ def copula_density_chart(n_sims: int = N_SIMS) -> go.Figure:
         for column, method in enumerate(methods, start=1):
             points = copula_samples(family, method, n_sims, 20261117)
             counts, edges, _ = np.histogram2d(
-                points[:, 0], points[:, 1], bins=GRID_BINS,
+                points[:, 0],
+                points[:, 1],
+                bins=GRID_BINS,
                 range=[[0, 1], [0, 1]],
             )
             density = counts * (GRID_BINS * GRID_BINS / n_sims)
@@ -80,7 +80,8 @@ def copula_density_chart(n_sims: int = N_SIMS) -> go.Figure:
                 coloraxis="coloraxis",
                 hovertemplate="u=%{x:.2f}<br>v=%{y:.2f}<br>Density=%{z:.2f}<extra></extra>",
             ),
-            row=row, col=column,
+            row=row,
+            col=column,
         )
         fig.update_xaxes(title_text="u", range=[0, 1], row=row, col=column)
         fig.update_yaxes(title_text="v", range=[0, 1], row=row, col=column)
@@ -102,10 +103,7 @@ def convergence_chart(sizes: list[int] | None = None, replicates: int = 12) -> g
     report = run_comparison(sizes, replicates=replicates, cases=("gaussian_joint_tail",))
     fig = go.Figure()
     for method in SamplingMethod:
-        rows = [
-            row for row in report["results"]
-            if row["sampling_method"] == method.name
-        ]
+        rows = [row for row in report["results"] if row["sampling_method"] == method.name]
         fig.add_trace(
             go.Scatter(
                 x=[row["n_sims"] for row in rows],
