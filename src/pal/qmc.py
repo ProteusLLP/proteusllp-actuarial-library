@@ -19,7 +19,7 @@ import scipy.special as scipy_special
 import scipy.stats as scipy_stats
 from scipy.stats import qmc
 
-from ._maths import asnumpy, special, xp
+from ._maths import asnumpy, special, to_backend, xp
 
 
 @dataclasses.dataclass
@@ -364,3 +364,83 @@ def _draw_scenarios(rng: t.Any, method: str, *args: t.Any, scenario_axis: int, *
     if isinstance(rng, RandomizedQMCGenerator):
         return draw(*args, scenario_axis=scenario_axis, **kwargs)
     return draw(*args, **kwargs)
+
+
+# Sampling support for PAL distribution classes. Keeping backend selection here
+# means distributions.py can express their sampling parameters without branching
+# on NumPy, CuPy or the randomized Sobol generator.
+
+
+def _rng_value(value: t.Any, rng: t.Any) -> t.Any:
+    """Convert parameters to the backend expected by a random generator."""
+    if type(rng).__module__.startswith("numpy"):
+        return asnumpy(value) if isinstance(value, xp.ndarray) else value
+    return to_backend(value)
+
+
+def _sample_rng(rng: t.Any, method: str, n_sims: int, *parameters: t.Any) -> t.Any:
+    """Sample one PAL distribution on the generator's own backend."""
+    converted = (_rng_value(value, rng) for value in parameters)
+    return getattr(rng, method)(*converted, size=n_sims)
+
+
+def _sample_generalized_beta_prime(
+    rng: t.Any, n_sims: int, a: t.Any, b: t.Any, p: t.Any, q: t.Any
+) -> t.Any:
+    """Sample GB2 as the ratio of two independent unit-scale Gamma variables."""
+    numerator = _sample_rng(rng, "gamma", n_sims, p, 1.0)
+    denominator = _sample_rng(rng, "gamma", n_sims, q, 1.0)
+    return _rng_value(b, rng) * (numerator / denominator) ** (1 / _rng_value(a, rng))
+
+
+def _sample_scaled_beta(
+    rng: t.Any, n_sims: int, alpha: t.Any, beta: t.Any, scale: t.Any, loc: t.Any
+) -> t.Any:
+    """Sample a shifted and scaled beta distribution."""
+    return _sample_rng(rng, "beta", n_sims, alpha, beta) * _rng_value(scale, rng) + _rng_value(loc, rng)
+
+
+def _sample_shifted_gamma(
+    rng: t.Any, n_sims: int, alpha: t.Any, theta: t.Any, loc: t.Any
+) -> t.Any:
+    """Sample a shifted gamma distribution."""
+    return _sample_rng(rng, "gamma", n_sims, alpha, theta) + _rng_value(loc, rng)
+
+
+def _sample_students_t(
+    rng: t.Any, n_sims: int, nu: t.Any, mu: t.Any, sigma: t.Any
+) -> t.Any:
+    """Sample a shifted and scaled Student's t distribution."""
+    return _rng_value(mu, rng) + _rng_value(sigma, rng) * _sample_rng(rng, "standard_t", n_sims, nu)
+
+
+def _sample_inverse_gaussian(rng: t.Any, n_sims: int, mu: t.Any, lambda_: t.Any) -> t.Any:
+    """Sample the inverse Gaussian using the Michael–Schucany–Haas method.
+
+    This construction uses two draws, and therefore two Sobol coordinates when
+    RQMC is active. It retains the ordinary generator semantics under MC.
+    """
+    nu = xp.asarray(_sample_rng(rng, "normal", n_sims, 0, 1) ** 2)
+    y = mu + (mu**2 * nu) / (2 * lambda_) - (mu / (2 * lambda_)) * xp.sqrt(
+        4 * mu * lambda_ * nu + mu**2 * nu**2
+    )
+    u = xp.asarray(_sample_rng(rng, "uniform", n_sims, 0, 1))
+    return xp.where(u <= mu / (mu + y), y, mu**2 / y)
+
+
+def _sample_generalized_inverse_gaussian(
+    rng: t.Any, n_sims: int, p: t.Any, shape: t.Any, scale: t.Any, loc: t.Any
+) -> t.Any:
+    """Use an inverse CDF for RQMC and SciPy's established sampler for MC."""
+    if isinstance(rng, RandomizedQMCGenerator):
+        uniforms = asnumpy(rng.uniform(size=n_sims))
+        result = scipy_stats.geninvgauss.ppf(uniforms, p, shape, loc=loc, scale=scale)
+        return xp.asarray(result)
+    return scipy_stats.geninvgauss.rvs(
+        p, shape, loc=loc, scale=scale, size=n_sims, random_state=rng
+    )
+
+
+def _host_ppf(function: t.Callable[..., t.Any], *parameters: t.Any) -> t.Any:
+    """Run an unsupported GPU quantile on SciPy, then restore PAL's backend."""
+    return xp.asarray(function(*(asnumpy(value) for value in parameters)))
