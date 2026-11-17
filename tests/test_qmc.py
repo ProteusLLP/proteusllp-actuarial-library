@@ -220,3 +220,20 @@ def test_beta_rqmc_quantiles_match_scipy_on_cpu_and_gpu():
     np.testing.assert_allclose(actual, expected, rtol=2e-12, atol=1e-12)
     assert np.all(np.isfinite(actual))
     assert np.mean(actual) == pytest.approx(alpha / (alpha + beta), abs=0.004)
+
+
+def test_qmc_memory_cache_eviction_and_reproducibility():
+    """Memory-based eviction keeps only the active oversized Sobol block."""
+    rng = RandomizedQMCGenerator(seed=981, dimensions=8)
+    reference = RandomizedQMCGenerator(seed=981, dimensions=8)
+    rng.max_cache_bytes = 1000
+    reference.max_cache_bytes = 1000
+    for n in (1024, 1025, 1024):
+        result = rng.random(n)
+        expected = reference.random(n)
+        np.testing.assert_array_equal(asnumpy(result), asnumpy(expected))
+        assert len(rng._streams) == 1
+        block = rng._streams[n]
+        assert block.permutation.size == n
+        assert block.nbytes >= block.points.nbytes
+        _assert_sobol_stratification(result) if n == 1024 else None
