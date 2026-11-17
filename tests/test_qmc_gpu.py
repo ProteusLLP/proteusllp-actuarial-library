@@ -24,6 +24,11 @@ def test_gpu_sobol_coordinates_stay_on_device_and_are_stratified():
 
     assert not np.array_equal(asnumpy(first), asnumpy(next_block))
     assert abs(np.corrcoef(asnumpy(first), asnumpy(next_block))[0, 1]) < 0.08
+    # A two-dimensional (0, 12, 2) Sobol net visits every 64x64
+    # elementary box exactly once. Independent 1D sequences would not.
+    xbins = np.floor(asnumpy(first) * 64).astype(np.int64)
+    ybins = np.floor(asnumpy(second) * 64).astype(np.int64)
+    np.testing.assert_array_equal(np.sort(xbins * 64 + ybins), np.arange(n))
 
 
 @pytest.mark.skipif(xp is np, reason="Native cuRAND Sobol tests require a GPU")
