@@ -8,7 +8,7 @@ from benchmarks.benchmark_sampling import (
     markdown_summary,
     run_comparison,
 )
-from examples.example_qmc_vs_mc import copula_density_chart, convergence_chart
+from examples.example_qmc_vs_mc import convergence_chart, copula_density_chart
 
 
 def test_joint_tail_reference_matches_independence():
