@@ -353,9 +353,7 @@ class StudentsTCopula(EllipticalCopula):
 
     def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         n_vars = self.correlation_matrix.shape[0]
-        normal_samples = self._chol.dot(
-            _draw_scenarios(rng, "standard_normal", size=(n_vars, n_sims), scenario_axis=1)
-        )
+        normal_samples = self._chol.dot(_draw_scenarios(rng, "standard_normal", size=(n_vars, n_sims), scenario_axis=1))
         chi_samples = np.sqrt(rng.gamma(self.dof / 2, 2 / self.dof, size=n_sims))
         return normal_samples / chi_samples[np.newaxis, :]
 
