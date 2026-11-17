@@ -118,3 +118,18 @@ jobs:
 
       - name: Run tests with GPU acceleration
         run: pytest -v --cov=pal --cov-report=term --codeblocks
+
+      - name: Compare MC and RQMC on GPU
+        run: |
+          python -m benchmarks.benchmark_sampling --sizes 1024,4096 --replicates 4 \
+            --output "$RUNNER_TEMP/pal-sampling-gpu.json" \
+            --summary "$RUNNER_TEMP/pal-sampling-gpu.md"
+          cat "$RUNNER_TEMP/pal-sampling-gpu.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pal-sampling-comparison-gpu
+          path: ${{ runner.temp }}/pal-sampling-gpu.*
+          if-no-files-found: ignore
+          retention-days: 30
