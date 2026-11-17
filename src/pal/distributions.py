@@ -497,6 +497,7 @@ class GPD(DistributionBase):
         """Compute cumulative distribution function."""
 
         def evaluate(x, shape, scale, loc):
+            x, shape, scale, loc = (xp.asarray(value) for value in (x, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 z = (x - loc) / scale
                 safe_shape = xp.where(shape == 0, 1.0, shape)
@@ -514,6 +515,7 @@ class GPD(DistributionBase):
         """Compute inverse cumulative distribution function."""
 
         def evaluate(u, shape, scale, loc):
+            u, shape, scale, loc = (xp.asarray(value) for value in (u, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 y = -xp.log1p(-u)
                 safe_shape = xp.where(shape == 0, 1.0, shape)
@@ -1687,6 +1689,7 @@ class GEV(DistributionBase):
         """Compute cumulative distribution function."""
 
         def evaluate(x, shape, scale, loc):
+            x, shape, scale, loc = (xp.asarray(value) for value in (x, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 z = (x - loc) / scale
                 safe_shape = xp.where(shape == 0, 1.0, shape)
@@ -1703,6 +1706,7 @@ class GEV(DistributionBase):
         """Compute inverse cumulative distribution function."""
 
         def evaluate(u, shape, scale, loc):
+            u, shape, scale, loc = (xp.asarray(value) for value in (u, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 y = -xp.log(-xp.log(u))
                 safe_shape = xp.where(shape == 0, 1.0, shape)
