@@ -236,4 +236,5 @@ def test_qmc_memory_cache_eviction_and_reproducibility():
         block = rng._streams[n]
         assert block.permutation.size == n
         assert block.nbytes >= block.points.nbytes
-        _assert_sobol_stratification(result) if n == 1024 else None
+        if n == 1024:
+            _assert_sobol_stratification(result)
