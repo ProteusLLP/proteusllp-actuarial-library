@@ -120,12 +120,15 @@ and variation across *independent* runs.
 - Blocks are independently scrambled and permuted. They avoid an unbounded
   Sobol dimension count, but do not reproduce a single high-dimensional
   low-discrepancy design across blocks.
-- On NVIDIA GPUs, cuRAND generates Sobol blocks in device memory. PAL
-  applies independently seeded digital XOR shifts and whole-row permutations
-  between blocks; CPU and GPU sequences are not bitwise identical. Native GPU
-  generation requires `nvmath-python` (included in `PAL[gpu]` on Python 3.10 to 3.14).
-  Normal, exponential, gamma, beta and chi-squared inverse transforms can use
-  CuPy; discrete and unsupported quantiles still use host SciPy and transfers.
+- PAL generates coordinates on demand from scrambled direction numbers, with
+  only a Gray-code simulation index and small lookup tables retained for each
+  block. It does not store a full simulations-by-dimensions Sobol matrix.
+- On NVIDIA GPUs, PAL obtains scrambled Sobol direction numbers from cuRAND and
+  reconstructs each coordinate in CuPy using seeded digital shifts. CPU and GPU
+  sequences are reproducible separately but are not bitwise identical. The GPU
+  extra requires `nvmath-python` (supported on Python 3.10 to 3.14). Common
+  continuous quantiles stay on the device; discrete and unsupported quantiles
+  can still use SciPy on the CPU.
 - A separate scramble is required for each statistically independent
   replication when assessing error or uncertainty.
 
