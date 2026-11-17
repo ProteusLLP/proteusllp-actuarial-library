@@ -16,9 +16,7 @@ def test_joint_tail_reference_matches_independence():
 
 
 def test_accuracy_comparison_both_sampling_modes():
-    report = run_comparison(
-        sizes=[512], replicates=3, cases=("normal_mean", "gaussian_joint_tail")
-    )
+    report = run_comparison(sizes=[512], replicates=3, cases=("normal_mean", "gaussian_joint_tail"))
     assert report["schema_version"] == 1
     rows = report["results"]
     assert len(rows) == 4
