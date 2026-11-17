@@ -88,6 +88,28 @@ jobs:
           name: codecov-py${{ matrix.python-version }}
           fail_ci_if_error: false
 
+  sampling-comparison:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install PAL
+        run: pip install -e .
+      - name: Compare MC and RQMC error and cost
+        run: |
+          python -m benchmarks.benchmark_sampling --sizes 1024,4096 --replicates 8 \
+            --output "$RUNNER_TEMP/pal-sampling.json" \
+            --summary "$RUNNER_TEMP/pal-sampling.md"
+          cat "$RUNNER_TEMP/pal-sampling.md" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pal-sampling-comparison-cpu
+          path: ${{ runner.temp }}/pal-sampling.*
+          retention-days: 30
+
   docs-math:
     runs-on: ubuntu-latest
 
