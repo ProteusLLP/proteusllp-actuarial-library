@@ -69,7 +69,7 @@ Open `qmc-plots/qmc_copula_densities.html` and
 The figures are Plotly objects and can be modified directly in Python:
 
 ```python
-from examples.example_qmc_vs_mc import copula_density_chart
+from pal.examples.example_qmc_vs_mc import copula_density_chart
 
 fig = copula_density_chart(n_sims=512)
 assert len(fig.data) == 4
