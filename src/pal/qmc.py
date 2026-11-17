@@ -18,14 +18,14 @@ import scipy.special as scipy_special
 import scipy.stats as scipy_stats
 from scipy.stats import qmc
 
-from ._maths import asnumpy, xp
+from ._maths import asnumpy, special, xp
 
 
 @dataclasses.dataclass
 class _Block:
     """Current Sobol point set and next unused coordinate."""
 
-    points: np.ndarray
+    points: t.Any
     dimension: int = 0
 
 
@@ -66,12 +66,14 @@ class RandomizedQMCGenerator:
         if block is None or block.dimension == self.dimensions:
             if n > 2**30:
                 raise ValueError("Sobol sampling supports at most 2**30 simulation paths")
-            seed = int(self._random.integers(0, 2**32, dtype=np.uint64))
-            engine = qmc.Sobol(d=self.dimensions, scramble=True, seed=seed)
-            # Drawing a power of two first gives a balanced design for such n
-            # and a well-defined prefix for arbitrary simulation counts.
-            points = engine.random_base2(m=(n - 1).bit_length())[:n]
-            points = points[self._random.permutation(n)]
+            if xp is np:
+                seed = int(self._random.integers(0, 2**32, dtype=np.uint64))
+                engine = qmc.Sobol(d=self.dimensions, scramble=True, seed=seed)
+                # Preserve the base-two Sobol balance where n is a power of two.
+                points = engine.random_base2(m=(n - 1).bit_length())[:n]
+                points = points[self._random.permutation(n)]
+            else:
+                points = self._gpu_points(n)
             block = _Block(points)
             self._streams[n] = block
         self._streams.move_to_end(n)
@@ -80,6 +82,52 @@ class RandomizedQMCGenerator:
         result = block.points[:, block.dimension].copy()
         block.dimension += 1
         return result
+
+    def _gpu_points(self, n: int) -> t.Any:
+        """Generate scrambled Sobol points in device memory using NVIDIA cuRAND.
+
+        CuPy does not expose the multidimensional cuRAND Sobol generator at
+        the random.Generator level. The NVIDIA nvmath bindings expose its host
+        API without requiring PAL to compile or maintain CUDA kernels.
+
+        cuRAND's built-in scramble is fixed rather than controlled by a seed.
+        An independent seeded 32-bit digital shift per coordinate gives
+        randomized, reproducible Sobol blocks, followed by a common row
+        permutation to decorrelate successive blocks. CPU and GPU streams are
+        reproducible separately, but are not bitwise identical.
+        """
+        if self.dimensions > 20000:
+            raise ValueError("cuRAND supports at most 20000 Sobol dimensions")
+        try:
+            from nvmath.bindings import curand
+        except ImportError as exc:
+            raise RuntimeError(
+                "GPU RQMC requires nvmath-python; install PAL with the gpu extra."
+            ) from exc
+
+        padded = 1 << (n - 1).bit_length()
+        generator = curand.create_generator(curand.RngType.QUASI_SCRAMBLED_SOBOL32)
+        try:
+            curand.set_quasi_random_generator_dimensions(generator, self.dimensions)
+            curand.set_stream(generator, xp.cuda.get_current_stream().ptr)
+            # cuRAND's QUASI_DEFAULT ordering stores all paths of one
+            # coordinate contiguously. It requires an exact multiple of d.
+            raw = xp.empty((self.dimensions, padded), dtype=xp.uint32)
+            curand.generate(generator, raw.data.ptr, raw.size)
+        finally:
+            curand.destroy_generator(generator)
+
+        # A digital XOR shift preserves the Sobol digital net and provides an
+        # independent randomized replicate, unlike a row shuffle alone.
+        shifts = xp.asarray(
+            self._random.integers(0, 2**32, size=(self.dimensions, 1), dtype=np.uint32)
+        )
+        xp.bitwise_xor(raw, shifts, out=raw)
+        permutation_seed = int(self._random.integers(0, 2**32, dtype=np.uint64))
+        permutation = xp.random.RandomState(permutation_seed).permutation(n)
+        # Exact midpoints of 32-bit bins are strictly between zero and one,
+        # avoiding infinities in inverse-CDF transformations.
+        return (raw[:, :n].T[permutation].astype(xp.float64) + 0.5) * (2.0**-32)
 
     @staticmethod
     def _host(value: t.Any) -> np.ndarray:
@@ -90,16 +138,20 @@ class RandomizedQMCGenerator:
         if size is not None:
             shape = (int(np.asarray(size).item()),) if np.isscalar(size) else tuple(int(part) for part in size)
         else:
-            shape = np.broadcast_shapes(*(self._host(parameter).shape for parameter in parameters))
+            # Inspect shapes without transferring stochastic GPU parameters.
+            shape = np.broadcast_shapes(
+                *(parameter.shape if hasattr(parameter, "shape") else np.asarray(parameter).shape
+                  for parameter in parameters)
+            )
         if any(part < 0 for part in shape):
             raise ValueError("Negative sample dimensions are not allowed")
         return shape
 
-    def _uniform_host(self, shape: tuple[int, ...]) -> np.ndarray:
+    def _uniform_values(self, shape: tuple[int, ...]) -> t.Any:
         if not shape:
-            return np.asarray(self._next_coordinate(1)[0])
+            return xp.asarray(self._next_coordinate(1)[0])
         if 0 in shape:
-            return np.empty(shape, dtype=float)
+            return xp.empty(shape, dtype=float)
         # PAL's multivariate generators conventionally have a simulation axis
         # and one or more component axes. The largest axis is the simulation
         # axis (last for (dimensions, n_sims), first for (n_sims, d, d)).
@@ -107,9 +159,9 @@ class RandomizedQMCGenerator:
         n = shape[axis]
         component_shape = shape[:axis] + shape[axis + 1 :]
         count = math.prod(component_shape)
-        data = np.stack([self._next_coordinate(n) for _ in range(count)], axis=1)
+        data = xp.stack([self._next_coordinate(n) for _ in range(count)], axis=1)
         data = data.reshape((n, *component_shape))
-        return np.moveaxis(data, 0, axis)
+        return xp.moveaxis(data, 0, axis)
 
     def _quantiles(
         self,
@@ -117,45 +169,65 @@ class RandomizedQMCGenerator:
         size: t.Any,
         *parameters: t.Any,
         discrete: bool = False,
+        gpu_func: t.Callable[..., t.Any] | None = None,
     ) -> t.Any:
         shape = self._shape(size, *parameters)
-        uniforms = self._uniform_host(shape)
+        uniforms = self._uniform_values(shape)
         # Avoid infinities in inverse CDFs of unbounded distributions.
-        uniforms = np.clip(uniforms, np.nextafter(0.0, 1.0), np.nextafter(1.0, 0.0))
-        result = np.asarray(func(uniforms, *(self._host(param) for param in parameters)))
+        uniforms = xp.clip(uniforms, np.nextafter(0.0, 1.0), np.nextafter(1.0, 0.0))
+        if xp is not np and gpu_func is not None:
+            # Keep the Sobol points, parameters and quantiles on the device.
+            return xp.asarray(gpu_func(uniforms, *(xp.asarray(param) for param in parameters)))
+        # Discrete PPFs and unsupported special functions still use SciPy.
+        result = np.asarray(func(asnumpy(uniforms), *(self._host(param) for param in parameters)))
         if discrete:
             result = result.astype(np.int64)
         return xp.asarray(result)
 
     def random(self, size: t.Any = None) -> t.Any:
         """Draw U(0,1) values, using one coordinate per component."""
-        return xp.asarray(self._uniform_host(self._shape(size)))
+        return self._uniform_values(self._shape(size))
 
     def uniform(self, low: t.Any = 0.0, high: t.Any = 1.0, size: t.Any = None) -> t.Any:
         """Draw continuous uniform values using the active Sobol coordinate."""
         shape = self._shape(size, low, high)
-        lo, hi = self._host(low), self._host(high)
-        return xp.asarray(lo + (hi - lo) * self._uniform_host(shape))
+        lo, hi = xp.asarray(low), xp.asarray(high)
+        return lo + (hi - lo) * self._uniform_values(shape)
 
     def standard_normal(self, size: t.Any = None) -> t.Any:
         """Draw standard normal quantiles."""
-        return self._quantiles(scipy_special.ndtri, size)
+        return self._quantiles(scipy_special.ndtri, size, gpu_func=special.ndtri)
 
     def normal(self, loc: t.Any = 0.0, scale: t.Any = 1.0, size: t.Any = None) -> t.Any:
         """Draw normal quantiles."""
-        return self._quantiles(lambda u, mean, std: mean + std * scipy_special.ndtri(u), size, loc, scale)
+        return self._quantiles(
+            lambda u, mean, std: mean + std * scipy_special.ndtri(u),
+            size, loc, scale,
+            gpu_func=lambda u, mean, std: mean + std * special.ndtri(u),
+        )
 
     def exponential(self, scale: t.Any = 1.0, size: t.Any = None) -> t.Any:
         """Draw exponential quantiles."""
-        return self._quantiles(lambda u, s: -s * np.log1p(-u), size, scale)
+        return self._quantiles(
+            lambda u, s: -s * np.log1p(-u), size, scale,
+            gpu_func=lambda u, s: -s * xp.log1p(-u),
+        )
 
     def gamma(self, shape: t.Any, scale: t.Any = 1.0, size: t.Any = None) -> t.Any:
         """Draw gamma quantiles."""
-        return self._quantiles(lambda u, a, s: scipy_special.gammaincinv(a, u) * s, size, shape, scale)
+        return self._quantiles(
+            lambda u, a, s: scipy_special.gammaincinv(a, u) * s,
+            size, shape, scale,
+            gpu_func=lambda u, a, s: special.gammaincinv(a, u) * s,
+        )
 
     def beta(self, a: t.Any, b: t.Any, size: t.Any = None) -> t.Any:
         """Draw beta quantiles."""
-        return self._quantiles(lambda u, alpha, beta: scipy_special.betaincinv(alpha, beta, u), size, a, b)
+        return self._quantiles(
+            lambda u, alpha, beta: scipy_special.betaincinv(alpha, beta, u),
+            size, a, b,
+            gpu_func=lambda u, alpha, beta: special.betaincinv(alpha, beta, u),
+        )
 
     def poisson(self, lam: t.Any = 1.0, size: t.Any = None) -> t.Any:
         """Draw Poisson quantiles."""
@@ -186,7 +258,11 @@ class RandomizedQMCGenerator:
 
     def chisquare(self, df: t.Any, size: t.Any = None) -> t.Any:
         """Draw chi-squared quantiles."""
-        return self._quantiles(lambda u, degrees: 2 * scipy_special.gammaincinv(degrees / 2, u), size, df)
+        return self._quantiles(
+            lambda u, degrees: 2 * scipy_special.gammaincinv(degrees / 2, u),
+            size, df,
+            gpu_func=lambda u, degrees: 2 * special.gammaincinv(degrees / 2, u),
+        )
 
     def noncentral_chisquare(self, df: t.Any, nonc: t.Any, size: t.Any = None) -> t.Any:
         """Draw noncentral chi-squared quantiles."""
