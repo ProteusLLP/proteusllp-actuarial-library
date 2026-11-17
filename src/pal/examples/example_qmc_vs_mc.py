@@ -28,9 +28,7 @@ RHO = 0.7
 GRID_BINS = 28
 
 
-def copula_samples(
-    family: str, method: SamplingMethod, n_sims: int | None = None, seed: int = 42
-) -> np.ndarray:
+def copula_samples(family: str, method: SamplingMethod, n_sims: int | None = None, seed: int = 42) -> np.ndarray:
     """Generate copula pairs from PAL using its default simulation count."""
     previous = (config.seed, config.sampling_method, config.qmc_dimensions, config.rng)
     try:
@@ -60,9 +58,7 @@ def copula_density_chart(n_sims: int | None = None) -> go.Figure:
     densities = []
     for method in methods:
         points = copula_samples("Gaussian", method, n_sims=n_sims)
-        counts, _, _ = np.histogram2d(
-            points[:, 0], points[:, 1], bins=GRID_BINS, range=((0, 1), (0, 1))
-        )
+        counts, _, _ = np.histogram2d(points[:, 0], points[:, 1], bins=GRID_BINS, range=((0, 1), (0, 1)))
         # A small local smoothing kernel makes the 3D sampling surface legible.
         # This is an empirical density, not the analytical copula density.
         density = counts * GRID_BINS**2 / n_sims
