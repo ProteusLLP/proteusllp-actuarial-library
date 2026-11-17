@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 import itertools
 import typing as t
+from enum import Enum
 
 # third party
 import numpy.typing as npt
@@ -28,6 +29,7 @@ __all__ = [
     "NumericLike",
     "NumericProtocol",
     "RandomGenerator",
+    "SamplingMethod",
     "ScipyNumeric",
     "VectorLike",
 ]
@@ -52,13 +54,20 @@ T_value = t.TypeVar("T_value")
 T_co = t.TypeVar("T_co", covariant=True)
 
 
+class SamplingMethod(str, Enum):
+    """Sampling approaches supported by PAL."""
+
+    MC = "pseudo"
+    RQMC = "rqmc"
+
+
 @dataclasses.dataclass
 class Config:
     """Configuration class for PAL."""
 
     n_sims: int = 10000
     seed: int = 123456789
-    sampling_method: str = "pseudo"
+    sampling_method: SamplingMethod = SamplingMethod.MC
     qmc_dimensions: int = 32
     rng: RandomGenerator = dataclasses.field(init=False)
 
