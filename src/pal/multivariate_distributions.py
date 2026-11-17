@@ -719,7 +719,9 @@ def _bartlett_factor(
         df_values = _rng_value(df.values, rng)
     else:
         df_values = backend.full(n_sims, df, dtype=float)
-    factor = backend.tril(_draw_scenarios(rng, "standard_normal", size=(n_sims, dimension, dimension), scenario_axis=0), k=-1)
+    factor = backend.tril(
+        _draw_scenarios(rng, "standard_normal", size=(n_sims, dimension, dimension), scenario_axis=0), k=-1
+    )
     diagonal_df = df_values[:, None] - backend.arange(dimension)[None, :]
     diagonal = backend.sqrt(_draw_scenarios(rng, "gamma", diagonal_df / 2, 2.0, scenario_axis=0))
     indices = backend.arange(dimension)
