@@ -2,13 +2,11 @@
 
 import numpy as np
 import pytest
-
 from benchmarks.benchmark_sampling import (
     analytic_joint_tail,
     markdown_summary,
     run_comparison,
 )
-
 from examples.example_qmc_vs_mc import convergence_chart, copula_density_chart
 
 
