@@ -100,9 +100,10 @@ def test_gpu_qmc_block_memory_is_compact_and_cache_is_capped():
     draw = rng.random(n)
     block = rng._streams[n]
     assert isinstance(draw, xp.ndarray)
-    assert block.points.dtype == xp.uint32
-    assert block.points.nbytes == n * 32 * 4
-    assert block.nbytes < n * 32 * 8 + n * 8
+    assert block.gray.dtype == xp.uint32
+    assert block.gray.nbytes == n * 4
+    assert block.tables.shape == (32, 4, 256)
+    assert block.nbytes < n * 8 + 32 * 4096
     # An oversized active block survives; a second design evicts the first.
     rng.random(n + 1)
     assert len(rng._streams) == 1
