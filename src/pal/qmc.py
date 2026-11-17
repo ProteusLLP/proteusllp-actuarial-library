@@ -131,8 +131,8 @@ class RandomizedQMCGenerator:
         gray = permutation ^ (permutation >> 1)
         return _Block(gpu_xp.asarray(gray), gpu_xp.asarray(self._lookup_tables(vectors)), gpu_xp.asarray(shifts_host))
 
-    def _next_coordinate(self, n: int) -> t.Any:
-        """Construct one scrambled Sobol coordinate, retaining O(n + d) state."""
+    def _active_block(self, n: int) -> _Block:
+        """Return the next available Sobol block for a simulation count."""
         if n < 1:
             raise ValueError("Simulation count must be positive")
         if n > 2**30:
@@ -146,7 +146,11 @@ class RandomizedQMCGenerator:
             len(self._streams) > 2 or sum(b.nbytes for b in self._streams.values()) > self.max_cache_bytes
         ):
             self._streams.popitem(last=False)
+        return block
 
+    def _next_coordinate(self, n: int) -> t.Any:
+        """Construct one scrambled Sobol coordinate, retaining O(n + d) state."""
+        block = self._active_block(n)
         j = block.dimension
         values = xp.full((n,), block.shifts[j], dtype=xp.uint32)
         for byte in range(4):
@@ -154,9 +158,60 @@ class RandomizedQMCGenerator:
         block.dimension += 1
         if xp is np:
             return values.astype(np.float64) * (2.0**-32)
-        # cuRAND Sobol32 midpoints stay strictly within (0, 1), avoiding
-        # infinities in inverse-CDF transforms at both endpoints.
+        # GPU Sobol32 midpoints avoid the extremes of inverse CDF transforms.
         return (values.astype(xp.float64) + 0.5) * (2.0**-32)
+
+    def _event_uniforms(
+        self, n_sims: int, event_paths: t.Any, event_ordinals: t.Any, max_count: int
+    ) -> t.Any:
+        """Generate exactly the Sobol coordinates used by each active claim.
+
+        A claim belongs to path i and has ordinal k within that path. It
+        consumes the k-th sequential Sobol dimension, sharing the same
+        multidimensional design as a full-path draw for every claim ordinal.
+        Only observed claims are reconstructed; no n_sims-by-max_count matrix
+        or per-ordinal inverse-CDF call is required. Dimension recycling uses
+        exactly the same sequence of independently randomized blocks.
+        """
+        total_events = len(event_paths)
+        if total_events != len(event_ordinals) or max_count < 0:
+            raise ValueError("Event paths, ordinals or maximum claim count are invalid")
+        if total_events == 0:
+            return xp.empty((0,), dtype=xp.float64)
+        if max_count < 1:
+            raise ValueError("Positive claim counts are required for event uniforms")
+
+        uniforms = xp.empty(total_events, dtype=xp.float64)
+        consumed = 0
+        while consumed < max_count:
+            block = self._active_block(n_sims)
+            width = min(self.dimensions - block.dimension, max_count - consumed)
+            # Most compound models fit within one Sobol block. Avoid masks,
+            # sorting and scatter operations in that common case.
+            if consumed == 0 and width == max_count:
+                paths = event_paths
+                dimensions = event_ordinals + block.dimension
+                selected = None
+            else:
+                selected = xp.nonzero((event_ordinals >= consumed) & (event_ordinals < consumed + width))[0]
+                paths = event_paths[selected]
+                dimensions = event_ordinals[selected] - consumed + block.dimension
+
+            gray = block.gray[paths]
+            raw = block.shifts[dimensions].copy()
+            for byte in range(4):
+                raw ^= block.tables[dimensions, byte, (gray >> (byte * 8)) & 255]
+            if xp is np:
+                values = raw.astype(np.float64) * (2.0**-32)
+            else:
+                values = (raw.astype(xp.float64) + 0.5) * (2.0**-32)
+            if selected is None:
+                uniforms[:] = values
+            else:
+                uniforms[selected] = values
+            block.dimension += width
+            consumed += width
+        return uniforms
 
     @staticmethod
     def _host(value: t.Any) -> np.ndarray:
