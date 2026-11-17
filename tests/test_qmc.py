@@ -8,11 +8,9 @@ from pal import config, set_random_seed, set_sampling_method
 from pal._maths import asnumpy, xp
 from pal.config import start_new_sampling_block
 from pal.copulas import GaussianCopula
-from pal.distributions import Gamma, GeneralizedInverseGaussian, Normal, Poisson
+from pal.distributions import Exponential, Gamma, GeneralizedInverseGaussian, Normal, Poisson
 from pal.frequency_severity import FrequencySeverityModel
-from pal.distributions import Exponential
 from pal.qmc import RandomizedQMCGenerator
-from pal.stochastic_scalar import StochasticScalar
 
 
 @pytest.fixture(autouse=True)
