@@ -104,6 +104,15 @@ jobs:
             --output "$RUNNER_TEMP/pal-sampling.json" \
             --summary "$RUNNER_TEMP/pal-sampling.md"
           cat "$RUNNER_TEMP/pal-sampling.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Generate interactive copula comparison charts
+        run: |
+          python examples/example_qmc_vs_mc.py --output "$RUNNER_TEMP/qmc-charts" \
+            --n-sims 8192 --replicates 8
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pal-qmc-copula-charts
+          path: ${{ runner.temp }}/qmc-charts/*.html
+          retention-days: 30
       - uses: actions/upload-artifact@v7
         with:
           name: pal-sampling-comparison-cpu
