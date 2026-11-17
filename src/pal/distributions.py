@@ -37,6 +37,7 @@ from .config import config
 from .couplings import validate_stochastic_axes
 from .qmc import (
     _host_ppf,
+    _inverse_transform_uniforms,
     _sample_generalized_beta_prime,
     _sample_generalized_inverse_gaussian,
     _sample_inverse_gaussian,
@@ -197,7 +198,7 @@ class DistributionBase:
         # Generate uniform random numbers and transform via inverse CDF
         # When n_sims >= 1, rng.uniform(size=n_sims) returns an array,
         # so invcdf also returns an array (SequenceLike) due to overload typing
-        uniform_samples = xp.asarray(rng.uniform(size=n_sims))
+        uniform_samples = _inverse_transform_uniforms(rng, n_sims)
         result = self.invcdf(StochasticScalar(uniform_samples))
         return StochasticScalar(result)
 
@@ -402,7 +403,7 @@ class HyperGeometric(DiscreteDistributionBase):
         n = ngood
         n_total = n_draws
         x_values = x.values if isinstance(x, StochasticScalar) else x
-        result = xp.asarray(hypergeom.cdf(asnumpy(x_values), m, n, n_total))
+        result = _host_ppf(hypergeom.cdf, x_values, m, n, n_total)
         if isinstance(x, StochasticScalar):
             wrapped = StochasticScalar(result)
             wrapped.coupled_variable_group.merge(x.coupled_variable_group)
@@ -418,7 +419,7 @@ class HyperGeometric(DiscreteDistributionBase):
         m = ngood + nbad
         n = ngood
         u_values = u.values if isinstance(u, StochasticScalar) else u
-        result = xp.asarray(hypergeom.ppf(asnumpy(u_values), m, n, n_draws))
+        result = _host_ppf(hypergeom.ppf, u_values, m, n, n_draws)
         if isinstance(u, StochasticScalar):
             wrapped = StochasticScalar(result)
             wrapped.coupled_variable_group.merge(u.coupled_variable_group)
