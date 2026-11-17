@@ -143,9 +143,7 @@ class RandomizedQMCGenerator:
 
     def normal(self, loc: t.Any = 0.0, scale: t.Any = 1.0, size: t.Any = None) -> t.Any:
         """Draw normal quantiles."""
-        return self._quantiles(
-            lambda u, mean, std: mean + std * scipy_special.ndtri(u), size, loc, scale
-        )
+        return self._quantiles(lambda u, mean, std: mean + std * scipy_special.ndtri(u), size, loc, scale)
 
     def exponential(self, scale: t.Any = 1.0, size: t.Any = None) -> t.Any:
         """Draw exponential quantiles."""
@@ -153,9 +151,7 @@ class RandomizedQMCGenerator:
 
     def gamma(self, shape: t.Any, scale: t.Any = 1.0, size: t.Any = None) -> t.Any:
         """Draw gamma quantiles."""
-        return self._quantiles(
-            lambda u, a, s: scipy_special.gammaincinv(a, u) * s, size, shape, scale
-        )
+        return self._quantiles(lambda u, a, s: scipy_special.gammaincinv(a, u) * s, size, shape, scale)
 
     def beta(self, a: t.Any, b: t.Any, size: t.Any = None) -> t.Any:
         """Draw beta quantiles."""
@@ -173,13 +169,15 @@ class RandomizedQMCGenerator:
         """Draw binomial quantiles."""
         return self._quantiles(scipy_stats.binom.ppf, size, n, p, discrete=True)
 
-    def hypergeometric(
-        self, ngood: t.Any, nbad: t.Any, nsample: t.Any, size: t.Any = None
-    ) -> t.Any:
+    def hypergeometric(self, ngood: t.Any, nbad: t.Any, nsample: t.Any, size: t.Any = None) -> t.Any:
         """Draw hypergeometric quantiles."""
         return self._quantiles(
             lambda u, good, bad, sample: scipy_stats.hypergeom.ppf(u, good + bad, good, sample),
-            size, ngood, nbad, nsample, discrete=True
+            size,
+            ngood,
+            nbad,
+            nsample,
+            discrete=True,
         )
 
     def standard_t(self, df: t.Any, size: t.Any = None) -> t.Any:
@@ -188,9 +186,7 @@ class RandomizedQMCGenerator:
 
     def chisquare(self, df: t.Any, size: t.Any = None) -> t.Any:
         """Draw chi-squared quantiles."""
-        return self._quantiles(
-            lambda u, degrees: 2 * scipy_special.gammaincinv(degrees / 2, u), size, df
-        )
+        return self._quantiles(lambda u, degrees: 2 * scipy_special.gammaincinv(degrees / 2, u), size, df)
 
     def noncentral_chisquare(self, df: t.Any, nonc: t.Any, size: t.Any = None) -> t.Any:
         """Draw noncentral chi-squared quantiles."""
@@ -200,15 +196,12 @@ class RandomizedQMCGenerator:
         """Draw logarithmic-series quantiles."""
         return self._quantiles(scipy_stats.logser.ppf, size, p, discrete=True)
 
-    def integers(
-        self, low: t.Any, high: t.Any = None, size: t.Any = None, endpoint: bool = False
-    ) -> t.Any:
+    def integers(self, low: t.Any, high: t.Any = None, size: t.Any = None, endpoint: bool = False) -> t.Any:
         """Draw uniformly distributed integers using quantile mapping."""
         if high is None:
             low, high = 0, low
         if endpoint:
             high = self._host(high) + 1
         return self._quantiles(
-            lambda u, minimum, maximum: np.floor(minimum + (maximum - minimum) * u),
-            size, low, high, discrete=True
+            lambda u, minimum, maximum: np.floor(minimum + (maximum - minimum) * u), size, low, high, discrete=True
         )
