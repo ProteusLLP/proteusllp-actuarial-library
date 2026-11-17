@@ -36,7 +36,6 @@ from ._value_arrays import stochastic_array
 from .config import config
 from .couplings import validate_stochastic_axes
 from .qmc import (
-    _scipy_on_backend,
     _inverse_transform_uniforms,
     _sample_generalized_beta_prime,
     _sample_generalized_inverse_gaussian,
@@ -45,6 +44,7 @@ from .qmc import (
     _sample_scaled_beta,
     _sample_shifted_gamma,
     _sample_students_t,
+    _scipy_on_backend,
 )
 from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
