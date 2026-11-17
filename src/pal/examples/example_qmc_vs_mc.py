@@ -1,12 +1,11 @@
-"""Compare MC and RQMC copula samples with Plotly density heatmaps.
+"""Static Monte Carlo and randomized QMC copula-density comparisons.
 
-Run with:
+The figures use actual PAL copula simulations. With the optional documentation
+dependencies installed (Kaleido and Chrome), run:
+
     python -m pal.examples.example_qmc_vs_mc --output qmc-plots
 
-Creates an interactive HTML heatmap and a convergence comparison chart.
-The figures use the same copulas, parameters and simulation counts for both
-sampling methods. Histograms illustrate the sampled density; they are not
-an estimate of the analytic density's pointwise error.
+This writes static SVG surfaces and a static convergence chart, not HTML.
 """
 
 from __future__ import annotations
@@ -25,16 +24,17 @@ from pal._maths import asnumpy
 from pal.config import SamplingMethod, set_sampling_method
 from pal.copulas import GaussianCopula, StudentsTCopula
 
-N_SIMS = 8192
 RHO = 0.7
-GRID_BINS = 32
+GRID_BINS = 28
 
 
-def copula_samples(family: str, method: SamplingMethod, n_sims: int, seed: int) -> np.ndarray:
-    """Return a pair of uniform copula margins on the host."""
+def copula_samples(
+    family: str, method: SamplingMethod, n_sims: int | None = None, seed: int = 42
+) -> np.ndarray:
+    """Generate copula pairs from PAL using its default simulation count."""
     previous = (config.seed, config.sampling_method, config.qmc_dimensions, config.rng)
     try:
-        set_sampling_method(method, dimensions=32)
+        set_sampling_method(method)
         set_random_seed(seed)
         correlation = [[1.0, RHO], [RHO, 1.0]]
         if family == "Gaussian":
@@ -49,60 +49,82 @@ def copula_samples(family: str, method: SamplingMethod, n_sims: int, seed: int) 
         config.seed, config.sampling_method, config.qmc_dimensions, config.rng = previous
 
 
-def copula_density_chart(n_sims: int = N_SIMS) -> go.Figure:
-    """Return matched 2x2 empirical density heatmaps with common scales."""
-    methods = [SamplingMethod.MC, SamplingMethod.RQMC]
-    families = ["Gaussian", "Student t (4 df)"]
-    fig = make_subplots(
-        rows=2,
-        cols=2,
-        subplot_titles=[f"{family} · {method.name}" for family in families for method in methods],
-        horizontal_spacing=0.08,
-        vertical_spacing=0.13,
-    )
-    density_panels: list[tuple[int, int, np.ndarray]] = []
-    for row, family in enumerate(families, start=1):
-        for column, method in enumerate(methods, start=1):
-            points = copula_samples(family, method, n_sims, 20261117)
-            counts, _, _ = np.histogram2d(
-                points[:, 0],
-                points[:, 1],
-                bins=GRID_BINS,
-                range=[[0, 1], [0, 1]],
-            )
-            density = counts * (GRID_BINS * GRID_BINS / n_sims)
-            density_panels.append((row, column, density))
+def copula_density_chart(n_sims: int | None = None) -> go.Figure:
+    """Return matched 3D empirical-density surfaces for MC and RQMC."""
+    if n_sims is None:
+        n_sims = config.n_sims
+    if n_sims < 1:
+        raise ValueError("n_sims must be positive")
 
-    # Use the same colour mapping for all methods and copula families.
-    maximum = float(np.percentile(np.concatenate([x.ravel() for _, _, x in density_panels]), 99.5))
+    methods = (SamplingMethod.MC, SamplingMethod.RQMC)
+    densities = []
+    for method in methods:
+        points = copula_samples("Gaussian", method, n_sims=n_sims)
+        counts, _, _ = np.histogram2d(
+            points[:, 0], points[:, 1], bins=GRID_BINS, range=((0, 1), (0, 1))
+        )
+        # A small local smoothing kernel makes the 3D sampling surface legible.
+        # This is an empirical density, not the analytical copula density.
+        density = counts * GRID_BINS**2 / n_sims
+        padded = np.pad(density, 1, mode="edge")
+        smoothed = (
+            padded[:-2, :-2]
+            + 2 * padded[1:-1, :-2]
+            + padded[2:, :-2]
+            + 2 * padded[:-2, 1:-1]
+            + 4 * padded[1:-1, 1:-1]
+            + 2 * padded[2:, 1:-1]
+            + padded[:-2, 2:]
+            + 2 * padded[1:-1, 2:]
+            + padded[2:, 2:]
+        ) / 16
+        densities.append(smoothed)
+
     centres = (np.arange(GRID_BINS) + 0.5) / GRID_BINS
-    for row, column, density in density_panels:
+    max_density = float(max(density.max() for density in densities))
+    fig = make_subplots(
+        rows=1,
+        cols=2,
+        specs=[[{"type": "scene"}, {"type": "scene"}]],
+        subplot_titles=("Monte Carlo", "Randomized QMC"),
+        horizontal_spacing=0.04,
+    )
+    for col, density in enumerate(densities, start=1):
         fig.add_trace(
-            go.Heatmap(
+            go.Surface(
                 x=centres,
                 y=centres,
                 z=density.T,
-                coloraxis="coloraxis",
-                hovertemplate="u=%{x:.2f}<br>v=%{y:.2f}<br>Density=%{z:.2f}<extra></extra>",
+                cmin=0,
+                cmax=max_density,
+                colorscale="Viridis",
+                showscale=col == 2,
+                colorbar={"title": "Density"} if col == 2 else None,
             ),
-            row=row,
-            col=column,
+            row=1,
+            col=col,
         )
-        fig.update_xaxes(title_text="u", range=[0, 1], row=row, col=column)
-        fig.update_yaxes(title_text="v", range=[0, 1], row=row, col=column)
+        fig.update_scenes(
+            xaxis={"title": "u", "range": [0, 1]},
+            yaxis={"title": "v", "range": [0, 1]},
+            zaxis={"title": "Density", "range": [0, max_density]},
+            camera={"eye": {"x": 1.5, "y": -1.6, "z": 1.1}},
+            aspectratio={"x": 1, "y": 1, "z": 0.6},
+            row=1,
+            col=col,
+        )
     fig.update_layout(
-        title=f"Empirical copula densities: {n_sims:,} paths per panel",
-        coloraxis={"colorscale": "Viridis", "cmin": 0, "cmax": maximum, "colorbar": {"title": "Density"}},
+        title=f"Empirical Gaussian copula densities ({n_sims:,} simulated pairs per panel)",
         template="plotly_white",
-        width=1050,
-        height=920,
-        margin={"l": 80, "r": 105, "t": 115, "b": 65},
+        width=1280,
+        height=650,
+        margin={"l": 10, "r": 75, "t": 90, "b": 10},
     )
     return fig
 
 
 def convergence_chart(sizes: list[int] | None = None, replicates: int = 12) -> go.Figure:
-    """Compare MC and RQMC Gaussian copula joint exceedance errors."""
+    """Compare Gaussian copula joint-tail RMSE under MC and RQMC."""
     if sizes is None:
         sizes = [512, 1024, 2048, 4096, 8192]
     if replicates < 2 or any(n < 1 for n in sizes):
@@ -140,23 +162,21 @@ def convergence_chart(sizes: list[int] | None = None, replicates: int = 12) -> g
 
 
 def main() -> None:
-    """Write the comparison figures as interactive Plotly HTML."""
+    """Write static SVG figures with the optional docs rendering dependencies."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=Path("qmc-plots"))
-    parser.add_argument("--n-sims", type=int, default=N_SIMS)
+    parser.add_argument("--n-sims", type=int, default=None, help="Defaults to PAL's configured simulation count")
     parser.add_argument("--replicates", type=int, default=12)
-    parser.add_argument("--svg", action="store_true", help="Also render SVGs; needs Kaleido and Chrome")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    plots = {
-        "qmc_copula_densities": copula_density_chart(args.n_sims),
+    charts = {
+        "qmc_copula_surface": copula_density_chart(n_sims=args.n_sims),
         "qmc_vs_mc_convergence": convergence_chart(replicates=args.replicates),
     }
-    for name, figure in plots.items():
-        figure.write_html(args.output / f"{name}.html", include_plotlyjs=True)
-        if args.svg:
-            figure.write_image(args.output / f"{name}.svg")
-        print(args.output / f"{name}.html")
+    for name, chart in charts.items():
+        target = args.output / f"{name}.svg"
+        chart.write_image(target)
+        print(target)
 
 
 if __name__ == "__main__":
