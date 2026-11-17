@@ -9,6 +9,7 @@ apply to whole rows so the joint low-discrepancy design within a block survives.
 from __future__ import annotations
 
 import dataclasses
+import importlib
 import math
 import typing as t
 from collections import OrderedDict
@@ -99,31 +100,32 @@ class RandomizedQMCGenerator:
         if self.dimensions > 20000:
             raise ValueError("cuRAND supports at most 20000 Sobol dimensions")
         try:
-            from nvmath.bindings import curand
+            curand: t.Any = importlib.import_module("nvmath.bindings.curand")
         except ImportError as exc:
             raise RuntimeError("GPU RQMC requires nvmath-python; install PAL with the gpu extra.") from exc
 
+        gpu_xp: t.Any = xp
         padded = 1 << (n - 1).bit_length()
         generator = curand.create_generator(curand.RngType.QUASI_SCRAMBLED_SOBOL32)
         try:
             curand.set_quasi_random_generator_dimensions(generator, self.dimensions)
-            curand.set_stream(generator, xp.cuda.get_current_stream().ptr)
+            curand.set_stream(generator, gpu_xp.cuda.get_current_stream().ptr)
             # cuRAND's QUASI_DEFAULT ordering stores all paths of one
             # coordinate contiguously. It requires an exact multiple of d.
-            raw = xp.empty((self.dimensions, padded), dtype=xp.uint32)
+            raw = gpu_xp.empty((self.dimensions, padded), dtype=gpu_xp.uint32)
             curand.generate(generator, raw.data.ptr, raw.size)
         finally:
             curand.destroy_generator(generator)
 
         # A digital XOR shift preserves the Sobol digital net and provides an
         # independent randomized replicate, unlike a row shuffle alone.
-        shifts = xp.asarray(self._random.integers(0, 2**32, size=(self.dimensions, 1), dtype=np.uint32))
-        xp.bitwise_xor(raw, shifts, out=raw)
+        shifts = gpu_xp.asarray(self._random.integers(0, 2**32, size=(self.dimensions, 1), dtype=np.uint32))
+        gpu_xp.bitwise_xor(raw, shifts, out=raw)
         permutation_seed = int(self._random.integers(0, 2**32, dtype=np.uint64))
-        permutation = xp.random.RandomState(permutation_seed).permutation(n)
+        permutation = gpu_xp.random.RandomState(permutation_seed).permutation(n)
         # Exact midpoints of 32-bit bins are strictly between zero and one,
         # avoiding infinities in inverse-CDF transformations.
-        return (raw[:, :n].T[permutation].astype(xp.float64) + 0.5) * (2.0**-32)
+        return (raw[:, :n].T[permutation].astype(gpu_xp.float64) + 0.5) * (2.0**-32)
 
     @staticmethod
     def _host(value: t.Any) -> np.ndarray:
