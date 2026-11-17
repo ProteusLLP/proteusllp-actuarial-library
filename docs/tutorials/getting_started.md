@@ -204,6 +204,8 @@ compatibility.
 
 - [Distributions Guide](distributions_guide.md) — choosing and fitting
   distributions
+- [Monte Carlo and Randomized QMC](randomized_qmc.md) — comparing
+  simulation quality and computational cost
 - [Frequency-Severity Modelling](frequency_severity_modelling.md) —
   compound models and event-level analysis
 - [Coupling Groups, Copulas and Variable Reordering](coupling_groups_and_copulas.md) —
@@ -235,7 +237,8 @@ logical parts of a model. The dimension counter then restarts at one with a
 fresh randomization. PAL handles the block transitions automatically otherwise.
 
 Powers of two are recommended for the strongest Sobol balance properties;
-other simulation counts are supported. Blocks use independent randomizations,
+other simulation counts are supported. See the [MC and RQMC comparison](randomized_qmc.md)
+tutorial for copula density plots and accuracy benchmarks. Blocks use independent randomizations,
 so the whole model is not a single high-dimensional Sobol design. QMC may help
 some models more than others, and uncertainty estimates should be based on
 independent randomizations rather than treating the simulated paths as IID.
