@@ -20,8 +20,14 @@ from pal.copulas import GaussianCopula, GumbelCopula, StudentsTCopula
 from pal.distributions import (
     GPD,
     Beta,
+    Binomial,
     Gamma,
+    GeneralizedBetaPrime,
+    HyperGeometric,
+    InverseGaussian,
     LogNormal,
+    NegBinomial,
+    NonCentralChiSquared,
     Normal,
     Poisson,
     StudentsT,
@@ -149,3 +155,40 @@ def test_date_uniform_generation_in_both_modes(sampling_method: SamplingMethod) 
     assert draws.n_sims == n
     assert days.min() >= np.datetime64("2026-01-01")
     assert days.max() <= np.datetime64("2026-01-31")
+
+
+def test_sampling_dispatch_preserves_numpy_streams():
+    """Moving sampling to qmc.py must preserve ordinary seeded MC draws."""
+    n, seed = 128, 391
+    cases = [
+        (Gamma(alpha=2.5, theta=4, loc=3), lambda g: g.gamma(2.5, 4, size=n) + 3),
+        (Beta(alpha=3, beta=5, scale=7, loc=2), lambda g: g.beta(3, 5, size=n) * 7 + 2),
+        (StudentsT(nu=8, mu=1, sigma=2), lambda g: g.standard_t(8, size=n) * 2 + 1),
+        (Poisson(mean=3.5), lambda g: g.poisson(3.5, size=n)),
+        (NegBinomial(n=4, p=0.3), lambda g: g.negative_binomial(4, 0.3, size=n)),
+        (Binomial(n=12, p=0.6), lambda g: g.binomial(12, 0.6, size=n)),
+        (HyperGeometric(ngood=10, nbad=20, n_draws=4), lambda g: g.hypergeometric(10, 20, 4, size=n)),
+        (NonCentralChiSquared(df=4, nonc=2), lambda g: g.noncentral_chisquare(4, 2, size=n)),
+        (
+            GeneralizedBetaPrime(a=2, b=3, p=4, q=5),
+            lambda g: 3 * (g.gamma(4, 1.0, size=n) / g.gamma(5, 1.0, size=n)) ** 0.5,
+        ),
+    ]
+    for distribution, reference in cases:
+        actual = asnumpy(distribution.generate(n_sims=n, rng=np.random.default_rng(seed)).values)
+        expected = reference(np.random.default_rng(seed))
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_inverse_gaussian_dispatch_preserves_two_draw_algorithm():
+    """The specialized inverse Gaussian construction still uses two draws."""
+    n, seed, mu, shape = 128, 937, 2.0, 4.0
+    generator = np.random.default_rng(seed)
+    nu = generator.normal(0, 1, n) ** 2
+    y = mu + mu**2 * nu / (2 * shape) - mu / (2 * shape) * np.sqrt(
+        4 * mu * shape * nu + mu**2 * nu**2
+    )
+    uniforms = generator.uniform(0, 1, n)
+    expected = np.where(uniforms <= mu / (mu + y), y, mu**2 / y)
+    actual = asnumpy(InverseGaussian(mu=mu, lambda_=shape).generate(n, rng=np.random.default_rng(seed)).values)
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
