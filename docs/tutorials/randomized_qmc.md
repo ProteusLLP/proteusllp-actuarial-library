@@ -123,7 +123,7 @@ and variation across *independent* runs.
 - On NVIDIA GPUs, cuRAND generates Sobol blocks in device memory. PAL
   applies independently seeded digital XOR shifts and whole-row permutations
   between blocks; CPU and GPU sequences are not bitwise identical. Native GPU
-  generation requires `nvmath-python` (included in `PAL[gpu]` on Python 3.10+).
+  generation requires `nvmath-python` (included in `PAL[gpu]` on Python 3.10 to 3.14).
   Normal, exponential, gamma, beta and chi-squared inverse transforms can use
   CuPy; discrete and unsupported quantiles still use host SciPy and transfers.
 - A separate scramble is required for each statistically independent
