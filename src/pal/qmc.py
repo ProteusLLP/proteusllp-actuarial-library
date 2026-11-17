@@ -88,7 +88,7 @@ class RandomizedQMCGenerator:
 
     def _shape(self, size: t.Any, *parameters: t.Any) -> tuple[int, ...]:
         if size is not None:
-            shape = (int(size),) if np.isscalar(size) else tuple(int(part) for part in size)
+            shape = (int(np.asarray(size).item()),) if np.isscalar(size) else tuple(int(part) for part in size)
         else:
             shape = np.broadcast_shapes(*(self._host(parameter).shape for parameter in parameters))
         if any(part < 0 for part in shape):
