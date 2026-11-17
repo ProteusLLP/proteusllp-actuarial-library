@@ -495,8 +495,9 @@ class GPD(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
+
         def evaluate(x, shape, scale, loc):
-            with xp.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 z = (x - loc) / scale
                 safe_shape = xp.where(shape == 0, 1.0, shape)
                 product = xp.where(shape == 0, 0.0, shape * z)
@@ -511,8 +512,9 @@ class GPD(DistributionBase):
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
+
         def evaluate(u, shape, scale, loc):
-            with xp.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 y = -xp.log1p(-u)
                 safe_shape = xp.where(shape == 0, 1.0, shape)
                 z = xp.where(shape == 0, y, xp.expm1(safe_shape * y) / safe_shape)
@@ -1683,8 +1685,9 @@ class GEV(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
+
         def evaluate(x, shape, scale, loc):
-            with xp.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 z = (x - loc) / scale
                 safe_shape = xp.where(shape == 0, 1.0, shape)
                 product = xp.where(shape == 0, 0.0, shape * z)
@@ -1698,8 +1701,9 @@ class GEV(DistributionBase):
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
+
         def evaluate(u, shape, scale, loc):
-            with xp.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 y = -xp.log(-xp.log(u))
                 safe_shape = xp.where(shape == 0, 1.0, shape)
                 z = xp.where(shape == 0, y, xp.expm1(safe_shape * y) / safe_shape)
