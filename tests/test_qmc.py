@@ -234,8 +234,9 @@ def test_qmc_memory_cache_eviction_and_reproducibility():
         np.testing.assert_array_equal(asnumpy(result), asnumpy(expected))
         assert len(rng._streams) == 1
         block = rng._streams[n]
-        assert block.permutation.size == n
-        assert block.nbytes >= block.points.nbytes
+        assert block.gray.size == n
+        assert block.tables.shape == (8, 4, 256)
+        assert block.nbytes == block.gray.nbytes + block.tables.nbytes + block.shifts.nbytes
         if n == 1024:
             _assert_sobol_stratification(result)
 
@@ -271,3 +272,27 @@ def test_invalid_scenario_axis():
     rng = RandomizedQMCGenerator(seed=12, dimensions=2)
     with pytest.raises(ValueError, match="scenario_axis"):
         rng.random(size=(2, 4), scenario_axis=2)
+
+
+def test_lazy_sobol_coordinates_match_scipy_full_design():
+    """Lazy multivariate coordinates must match SciPy LMS+shift Sobol exactly."""
+    from scipy.stats import qmc
+
+    seed, dimensions, n = 814, 4, 1024
+    generator = RandomizedQMCGenerator(seed=seed, dimensions=dimensions)
+    actual = np.column_stack([asnumpy(generator.random(n)) for _ in range(dimensions)])
+    random = np.random.default_rng(seed)
+    sobol_seed = int(random.integers(0, 2**32, dtype=np.uint64))
+    expected = qmc.Sobol(d=dimensions, scramble=True, bits=32, seed=sobol_seed).random_base2(10)
+    expected = expected[random.permutation(n)]
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_sobol_memory_is_linear_in_paths_not_dimensions():
+    """Retained memory is O(n + dimensions), not O(n * dimensions)."""
+    n = 4096
+    rng = RandomizedQMCGenerator(seed=51, dimensions=32)
+    rng.random(n)
+    block = rng._streams[n]
+    assert block.nbytes < 6 * n + 32 * 4096
+    assert not hasattr(block, "points")
