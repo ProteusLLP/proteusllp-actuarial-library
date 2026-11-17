@@ -155,7 +155,7 @@ class RandomizedQMCGenerator:
 
     def beta(self, a: t.Any, b: t.Any, size: t.Any = None) -> t.Any:
         """Draw beta quantiles."""
-        return self._quantiles(scipy_special.betaincinv, size, a, b)
+        return self._quantiles(lambda u, alpha, beta: scipy_special.betaincinv(alpha, beta, u), size, a, b)
 
     def poisson(self, lam: t.Any = 1.0, size: t.Any = None) -> t.Any:
         """Draw Poisson quantiles."""
