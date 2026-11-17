@@ -7,6 +7,7 @@ from benchmarks.benchmark_sampling import (
     markdown_summary,
     run_comparison,
 )
+
 from pal import config
 from pal.examples.example_qmc_vs_mc import convergence_chart, copula_density_chart
 
