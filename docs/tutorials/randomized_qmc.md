@@ -1,13 +1,14 @@
 # Randomized quasi-Monte Carlo
 
-Randomized quasi-Monte Carlo (RQMC) is an alternative to ordinary Monte Carlo.
-It uses scrambled Sobol points to cover the sampling space more evenly and
-can reduce simulation error. PAL handles the Sobol dimensions automatically,
-so **your model code stays the same**.
+Randomized quasi-Monte Carlo (RQMC) uses scrambled Sobol points to cover
+the sampling space more evenly than ordinary Monte Carlo. It can reduce
+simulation error without requiring changes to the model itself.
 
-## Try RQMC
+## Switching sampling methods
 
-Set the sampling method before generating your stochastic variables:
+Set the sampling method before generating your stochastic variables.
+PAL uses the configured default number of simulations when you call
+`generate()` without an argument.
 
 ```python
 from pal import set_random_seed
@@ -17,60 +18,61 @@ from pal.distributions import Gamma, Normal
 set_sampling_method(SamplingMethod.RQMC)
 set_random_seed(42)
 
-claims = Gamma(alpha=2.5, theta=100_000).generate(4096)
-inflation = Normal(mu=0.03, sigma=0.015).generate(4096)
+claims = Gamma(alpha=2.5, theta=100_000).generate()
+inflation = Normal(mu=0.03, sigma=0.015).generate()
 total = claims * (1 + inflation)
 
-assert len(total) == 4096
-
-set_sampling_method(SamplingMethod.MC)  # Restore ordinary Monte Carlo
+set_sampling_method(SamplingMethod.MC)  # Restore Monte Carlo
 ```
 
-For a fair comparison, use the same model and simulation count under both
-sampling methods, varying the seed across independent runs.
+## Comparing copula samples
 
-## What do the samples look like?
+For example, we can generate the same Gaussian copula using both methods.
+The `generate()` calls use PAL's default simulation count.
 
-These heatmaps show two ways of simulating a Gaussian copula with correlation
-0.7. Each panel contains 4,096 simulated pairs, with the same density scale.
+```python
+from pal import set_random_seed
+from pal.config import SamplingMethod, set_sampling_method
+from pal.copulas import GaussianCopula
 
-![Empirical Gaussian copula density under Monte Carlo and randomized Sobol sampling](images/rqmc_gaussian_copula.svg)
+copula = GaussianCopula([[1.0, 0.7], [0.7, 1.0]])
 
-The RQMC points distribute more evenly. The copula dependence is the same;
-the sampling design changes.
+set_sampling_method(SamplingMethod.MC)
+set_random_seed(42)
+u_mc, v_mc = copula.generate()
+
+set_sampling_method(SamplingMethod.RQMC)
+set_random_seed(42)
+u_rqmc, v_rqmc = copula.generate()
+
+set_sampling_method(SamplingMethod.MC)
+```
+
+These 3D surfaces show the **empirical copula density** estimated from each
+set of simulated pairs. Both surfaces use the same axes and height scale.
+
+![Gaussian copula empirical density surfaces under Monte Carlo and randomized quasi-Monte Carlo](images/rqmc_gaussian_copula_surface.svg)
+
+The RQMC surface is typically smoother because its points cover the
+sampling space more evenly. These are estimated densities, not the
+analytical copula density. The static illustration uses 10,000 pairs and
+two-dimensional digitally shifted Sobol sampling; exact PAL samples depend
+on the configured scramble and seed.
 
 ## Does it improve accuracy?
 
-Here the quantity being estimated is the probability that **both** copula
-margins exceed their 90th percentiles. Each point reports root-mean-squared
-error (RMSE) over 24 independent randomizations.
+Here we estimate the probability that **both** Gaussian copula margins exceed
+their 90th percentiles. The chart shows root-mean-squared error across 24
+independent runs.
 
-![Monte Carlo versus randomized Sobol estimation error for a Gaussian copula tail probability](images/rqmc_tail_convergence.svg)
+![Monte Carlo versus randomized quasi-Monte Carlo estimation error for a Gaussian copula tail probability](images/rqmc_tail_convergence.svg)
 
-RQMC improves accuracy in this example. It will not help every model to the
-same extent, particularly with high-dimensional or discontinuous losses.
+RQMC gives a lower error in this example, but the improvement depends on
+the model and the quantity being estimated.
 
-The figures illustrate two-dimensional digitally shifted Sobol sampling. PAL
-uses scrambled multidimensional Sobol blocks, so its exact samples and
-performance measurements will differ. For **interactive Plotly charts generated
-using PAL**, run the packaged example:
-
-<!--pytest-codeblocks:skip-->
-
-```bash
-python -m pal.examples.example_qmc_vs_mc --output qmc-plots
-```
-
-This produces copula density plots for Gaussian and Student-t copulas, plus
-an MC-versus-RQMC convergence chart.
-
-## Two things to remember
-
-**Use powers of two** such as 4,096 or 16,384 when convenient, to retain the
-strongest Sobol balance properties.
-
-**Use independent scrambles to estimate error.** The paths from one RQMC
-run are not independent Monte Carlo observations. Repeat the calculation with
-different seeds when estimating uncertainty.
+**Two practical points:** a power-of-two simulation count gives the strongest
+Sobol balance properties, although PAL's default count also works. To
+estimate uncertainty under RQMC, repeat the model using independent seeds.
+Individual paths in one scrambled design are not independent observations.
 
 For more on dependence, see the [copula tutorial](coupling_groups_and_copulas.md).
