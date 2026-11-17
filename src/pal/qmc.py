@@ -27,7 +27,16 @@ class _Block:
     """Current Sobol point set and next unused coordinate."""
 
     points: t.Any
+    permutation: t.Any
+    shifts: t.Any = None
     dimension: int = 0
+
+    @property
+    def nbytes(self) -> int:
+        """Memory retained by the design, scrambling and path permutation."""
+        return self.points.nbytes + self.permutation.nbytes + (
+            self.shifts.nbytes if self.shifts is not None else 0
+        )
 
 
 class RandomizedQMCGenerator:
@@ -55,6 +64,9 @@ class RandomizedQMCGenerator:
         self.dimensions = dimensions
         self._random = np.random.default_rng(seed)
         self._streams: OrderedDict[int, _Block] = OrderedDict()
+        # Retain only a small memory budget across different path counts.
+        # The active block is kept even if its design alone exceeds the cap.
+        self.max_cache_bytes = 128 * 1024 * 1024
 
     def new_block(self) -> None:
         """Start independent scrambled, shuffled blocks at coordinate one."""
@@ -72,15 +84,25 @@ class RandomizedQMCGenerator:
                 engine = qmc.Sobol(d=self.dimensions, scramble=True, seed=seed)
                 # Preserve the base-two Sobol balance where n is a power of two.
                 points = engine.random_base2(m=(n - 1).bit_length())[:n]
-                points = points[self._random.permutation(n)]
+                # Retain one row index instead of copying the full d-column
+                # matrix solely to permute paths.
+                block = _Block(points, self._random.permutation(n))
             else:
-                points = self._gpu_points(n)
-            block = _Block(points)
+                block = self._gpu_points(n)
             self._streams[n] = block
         self._streams.move_to_end(n)
-        while len(self._streams) > 2:
+        while len(self._streams) > 1 and (
+            len(self._streams) > 2 or sum(b.nbytes for b in self._streams.values()) > self.max_cache_bytes
+        ):
             self._streams.popitem(last=False)
-        result = block.points[:, block.dimension].copy()
+        if block.shifts is None:
+            result = block.points[block.permutation, block.dimension]
+        else:
+            # cuRAND's Sobol32 output stays in compact uint32 form until a
+            # coordinate is requested. This halves retained GPU memory versus
+            # caching float64 designs and avoids full-matrix permutation copies.
+            values = xp.bitwise_xor(block.points[block.dimension, block.permutation], block.shifts[block.dimension])
+            result = (values.astype(xp.float64) + 0.5) * (2.0**-32)
         block.dimension += 1
         return result
 
@@ -117,15 +139,12 @@ class RandomizedQMCGenerator:
         finally:
             curand.destroy_generator(generator)
 
-        # A digital XOR shift preserves the Sobol digital net and provides an
-        # independent randomized replicate, unlike a row shuffle alone.
-        shifts = gpu_xp.asarray(self._random.integers(0, 2**32, size=(self.dimensions, 1), dtype=np.uint32))
-        gpu_xp.bitwise_xor(raw, shifts, out=raw)
+        # Keep the digital shift and permutation separate from the raw Sobol
+        # matrix, applying them to each coordinate as it is consumed.
+        shifts = gpu_xp.asarray(self._random.integers(0, 2**32, size=self.dimensions, dtype=np.uint32))
         permutation_seed = int(self._random.integers(0, 2**32, dtype=np.uint64))
         permutation = gpu_xp.random.RandomState(permutation_seed).permutation(n)
-        # Exact midpoints of 32-bit bins are strictly between zero and one,
-        # avoiding infinities in inverse-CDF transformations.
-        return (raw[:, :n].T[permutation].astype(gpu_xp.float64) + 0.5) * (2.0**-32)
+        return _Block(raw, permutation, shifts)
 
     @staticmethod
     def _host(value: t.Any) -> np.ndarray:
@@ -159,7 +178,11 @@ class RandomizedQMCGenerator:
         n = shape[axis]
         component_shape = shape[:axis] + shape[axis + 1 :]
         count = math.prod(component_shape)
-        data = xp.stack([self._next_coordinate(n) for _ in range(count)], axis=1)
+        if count == 1:
+            return self._next_coordinate(n).reshape(shape)
+        data = xp.empty((n, count), dtype=xp.float64)
+        for component in range(count):
+            data[:, component] = self._next_coordinate(n)
         data = data.reshape((n, *component_shape))
         return xp.moveaxis(data, 0, axis)
 
