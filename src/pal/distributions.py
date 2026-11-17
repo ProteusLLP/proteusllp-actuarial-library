@@ -548,6 +548,7 @@ class Burr(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
+
         def evaluate(x, power, shape, scale, loc):
             x, power, shape, scale, loc = (xp.asarray(v) for v in (x, power, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
@@ -561,6 +562,7 @@ class Burr(DistributionBase):
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
+
         def evaluate(u, power, shape, scale, loc):
             u, power, shape, scale, loc = (xp.asarray(v) for v in (u, power, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
@@ -1587,6 +1589,7 @@ class Weibull(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
+
         def evaluate(x, shape, scale, loc):
             x, shape, scale, loc = (xp.asarray(v) for v in (x, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
@@ -1599,6 +1602,7 @@ class Weibull(DistributionBase):
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
+
         def evaluate(u, shape, scale, loc):
             u, shape, scale, loc = (xp.asarray(v) for v in (u, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
