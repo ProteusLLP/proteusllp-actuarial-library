@@ -126,10 +126,18 @@ jobs:
             --summary "$RUNNER_TEMP/pal-sampling-gpu.md"
           cat "$RUNNER_TEMP/pal-sampling-gpu.md" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Profile large GPU Sobol blocks and Poisson inverse
+        run: |
+          python -m benchmarks.benchmark_qmc_scaling --sizes 131072,1048576 \
+            --output "$RUNNER_TEMP/pal-qmc-scaling-gpu.json"
+          cat "$RUNNER_TEMP/pal-qmc-scaling-gpu.json" >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: pal-sampling-comparison-gpu
-          path: ${{ runner.temp }}/pal-sampling-gpu.*
+          path: |
+            ${{ runner.temp }}/pal-sampling-gpu.*
+            ${{ runner.temp }}/pal-qmc-scaling-gpu.json
           if-no-files-found: ignore
           retention-days: 30
