@@ -49,14 +49,17 @@ def sampling_method(request: pytest.FixtureRequest):
         (Gamma(alpha=3.0, theta=2.0), 6.0, 12.0, 0.10),
         (Beta(alpha=2.0, beta=3.0), 0.4, 0.04, 0.10),
         (Poisson(mean=4.0), 4.0, 4.0, 0.10),
-        (LogNormal(mu=0.0, sigma=0.4), float(np.exp(0.08)), float((np.exp(0.16)-1)*np.exp(0.16)), 0.13),
+        (LogNormal(mu=0.0, sigma=0.4), float(np.exp(0.08)), float((np.exp(0.16) - 1) * np.exp(0.16)), 0.13),
         (StudentsT(nu=7, mu=1, sigma=2), 1.0, 4.0 * 7 / 5, 0.16),
         (GPD(shape=0.2, scale=3, loc=0), 3.75, 3**2 / (0.8**2 * 0.6), 0.25),
     ],
 )
 def test_distribution_moments_in_both_modes(
-    sampling_method: SamplingMethod, distribution: object, expected_mean: float,
-    expected_variance: float, relative_tolerance: float,
+    sampling_method: SamplingMethod,
+    distribution: object,
+    expected_mean: float,
+    expected_variance: float,
+    relative_tolerance: float,
 ) -> None:
     """Check that QMC changes sampling, not the target probability law."""
     n = 16384
