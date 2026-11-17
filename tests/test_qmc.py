@@ -8,7 +8,7 @@ from pal import config, set_random_seed
 from pal._maths import asnumpy, xp
 from pal.config import set_sampling_method, start_new_sampling_block
 from pal.copulas import GaussianCopula
-from pal.distributions import Exponential, Gamma, GeneralizedInverseGaussian, Normal, Poisson
+from pal.distributions import Binomial, Exponential, Gamma, GeneralizedInverseGaussian, Normal, Poisson, Uniform
 from pal.frequency_severity import FrequencySeverityModel
 from pal.qmc import RandomizedQMCGenerator
 
@@ -143,6 +143,21 @@ def test_qmc_frequency_severity_and_copula():
     assert np.all((left > 0) & (left < 1))
     assert np.all((right > 0) & (right < 1))
     assert abs(np.corrcoef(stats.norm.ppf(left), stats.norm.ppf(right))[0, 1] - 0.6) < 0.05
+
+
+def test_frequency_severity_qmc_uses_a_dimension_per_claim_ordinal():
+    """Claims in a simulation must not use unrelated Sobol path rows."""
+    rng = RandomizedQMCGenerator(seed=352, dimensions=3)
+    n = 1024
+    model = FrequencySeverityModel(Binomial(n=2, p=1), Uniform(a=0.0, b=1.0))
+    samples = model.generate(n_sims=n, rng=rng)
+
+    assert np.array_equal(asnumpy(samples.sim_index), np.repeat(np.arange(n), 2))
+    first_claim = asnumpy(samples.values)[0::2]
+    second_claim = asnumpy(samples.values)[1::2]
+    _assert_sobol_stratification(first_claim)
+    _assert_sobol_stratification(second_claim)
+    assert abs(np.corrcoef(first_claim, second_claim)[0, 1]) < 0.08
 
 
 def test_generalized_inverse_gaussian_uses_sobol():
