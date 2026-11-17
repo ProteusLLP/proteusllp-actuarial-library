@@ -111,9 +111,7 @@ class FrequencySeverityModel:
         self.freq_dist = freq_dist
         self.sev_dist = sev_dist
 
-    def _qmc_severities(
-        self, n_sims: int, counts: t.Any, total_events: int, rng: RandomizedQMCGenerator
-    ) -> t.Any:
+    def _qmc_severities(self, n_sims: int, counts: t.Any, total_events: int, rng: RandomizedQMCGenerator) -> t.Any:
         """Sample each claim position from a separate Sobol coordinate.
 
         Event-list rows are not independent QMC paths. Instead, generate each
