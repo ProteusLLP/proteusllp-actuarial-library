@@ -109,21 +109,19 @@ jobs:
           python -m benchmarks.benchmark_qmc_scaling --sizes 131072,1048576 \
             --output "$RUNNER_TEMP/pal-qmc-scaling-cpu.json"
           cat "$RUNNER_TEMP/pal-qmc-scaling-cpu.json" >> "$GITHUB_STEP_SUMMARY"
-      - name: Generate interactive copula comparison charts
+      - name: Benchmark frequency-severity simulation
         run: |
-          python -m examples.example_qmc_vs_mc --output "$RUNNER_TEMP/qmc-charts" \
-            --n-sims 8192 --replicates 8
-      - uses: actions/upload-artifact@v7
-        with:
-          name: pal-qmc-copula-charts
-          path: ${{ runner.temp }}/qmc-charts/*.html
-          retention-days: 30
+          python -m benchmarks.benchmark_frequency_severity --sizes 2048,8192 --replicates 2 \
+            --output "$RUNNER_TEMP/pal-freqsev-cpu.json" \
+            --summary "$RUNNER_TEMP/pal-freqsev-cpu.md"
+          cat "$RUNNER_TEMP/pal-freqsev-cpu.md" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:
           name: pal-sampling-comparison-cpu
           path: |
             ${{ runner.temp }}/pal-sampling.*
             ${{ runner.temp }}/pal-qmc-scaling-cpu.json
+            ${{ runner.temp }}/pal-freqsev-cpu.*
           retention-days: 30
 
   docs-math:
