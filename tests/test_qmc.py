@@ -5,7 +5,7 @@ import pytest
 from scipy import stats
 
 from pal import StochasticScalar, config, set_random_seed
-from pal._maths import asnumpy, xp
+from pal._maths import asnumpy, create_random_generator, xp
 from pal.config import SamplingMethod, set_sampling_method, start_new_sampling_block
 from pal.copulas import GaussianCopula
 from pal.distributions import Binomial, Exponential, Gamma, GeneralizedInverseGaussian, Normal, Poisson, Uniform
@@ -202,8 +202,21 @@ def test_sampling_method_enum_and_string_compatibility():
 
     set_sampling_method(SamplingMethod.MC)
     assert config.sampling_method is SamplingMethod.MC
-    assert isinstance(config.rng, type(np.random.default_rng()))
+    assert isinstance(config.rng, type(create_random_generator(42)))
     set_sampling_method("rqmc")
     assert config.sampling_method is SamplingMethod.RQMC
     set_sampling_method("pseudo")
     assert config.sampling_method is SamplingMethod.MC
+
+
+def test_beta_rqmc_quantiles_match_scipy_on_cpu_and_gpu():
+    """The inverse incomplete beta function takes (alpha, beta, probability)."""
+    rng = RandomizedQMCGenerator(seed=91, dimensions=3)
+    reference = RandomizedQMCGenerator(seed=91, dimensions=3)
+    alpha, beta, n_sims = 2.0, 5.0, 4096
+    uniforms = asnumpy(reference.random(n_sims))
+    expected = stats.beta.ppf(uniforms, alpha, beta)
+    actual = asnumpy(rng.beta(alpha, beta, size=n_sims))
+    np.testing.assert_allclose(actual, expected, rtol=2e-12, atol=1e-12)
+    assert np.all(np.isfinite(actual))
+    assert np.mean(actual) == pytest.approx(alpha / (alpha + beta), abs=0.004)
