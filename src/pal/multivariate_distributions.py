@@ -17,6 +17,7 @@ import numpy.typing as npt
 
 from ._maths import asnumpy, special, to_backend, xp
 from .config import config
+from .qmc import _draw_scenarios
 from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
 from .variables import ProteusVariable
@@ -484,7 +485,7 @@ class MultivariateNormal(MultivariateDistributionBase):
     def _generate_matrix(self, n_sims: int, rng: RandomGenerator) -> t.Any:
         mean = _parameter_matrix(self.mean, n_sims, rng)
         chol = _rng_value(self._chol, rng)
-        normal = rng.standard_normal(size=(self.dimension, n_sims))
+        normal = _draw_scenarios(rng, "standard_normal", size=(self.dimension, n_sims), scenario_axis=1)
         return mean + chol @ normal
 
     def logpdf(self, x: MultivariateInput) -> DensityResult:
@@ -558,7 +559,7 @@ class MultivariateStudentsT(MultivariateDistributionBase):
         mean = _parameter_matrix(self.mean, n_sims, rng)
         nu = _rng_value(self.nu.values if isinstance(self.nu, StochasticScalar) else self.nu, rng)
         chol = _rng_value(self._chol, rng)
-        normal = chol @ rng.standard_normal(size=(self.dimension, n_sims))
+        normal = chol @ _draw_scenarios(rng, "standard_normal", size=(self.dimension, n_sims), scenario_axis=1)
         chi_scale = rng.gamma(nu / 2, 2 / nu, size=n_sims)
         return mean + normal / chi_scale[None, :] ** 0.5
 
@@ -718,9 +719,9 @@ def _bartlett_factor(
         df_values = _rng_value(df.values, rng)
     else:
         df_values = backend.full(n_sims, df, dtype=float)
-    factor = backend.tril(rng.standard_normal(size=(n_sims, dimension, dimension)), k=-1)
+    factor = backend.tril(_draw_scenarios(rng, "standard_normal", size=(n_sims, dimension, dimension), scenario_axis=0), k=-1)
     diagonal_df = df_values[:, None] - backend.arange(dimension)[None, :]
-    diagonal = backend.sqrt(rng.gamma(diagonal_df / 2, 2.0))
+    diagonal = backend.sqrt(_draw_scenarios(rng, "gamma", diagonal_df / 2, 2.0, scenario_axis=0))
     indices = backend.arange(dimension)
     factor[:, indices, indices] = diagonal
     return factor
@@ -951,7 +952,7 @@ class Dirichlet(MultivariateDistributionBase):
 
     def _generate_matrix(self, n_sims: int, rng: RandomGenerator) -> t.Any:
         alpha = _parameter_matrix(self.alpha, n_sims, rng)
-        gamma = rng.gamma(alpha, 1.0)
+        gamma = _draw_scenarios(rng, "gamma", alpha, 1.0, scenario_axis=1)
         return gamma / gamma.sum(axis=0, keepdims=True)
 
     def logpdf(self, x: MultivariateInput) -> DensityResult:
@@ -1018,7 +1019,7 @@ class InvertedDirichlet(MultivariateDistributionBase):
 
     def _generate_matrix(self, n_sims: int, rng: RandomGenerator) -> t.Any:
         alpha = _parameter_matrix(self.alpha, n_sims, rng)
-        gamma = rng.gamma(alpha, 1.0)
+        gamma = _draw_scenarios(rng, "gamma", alpha, 1.0, scenario_axis=1)
         return gamma[:-1] / gamma[-1]
 
     def logpdf(self, x: MultivariateInput) -> DensityResult:
@@ -1087,7 +1088,7 @@ class GeneralizedDirichlet(MultivariateDistributionBase):
     def _generate_matrix(self, n_sims: int, rng: RandomGenerator) -> t.Any:
         alpha = _parameter_matrix(self.alpha, n_sims, rng)
         beta = _parameter_matrix(self.beta, n_sims, rng)
-        breaks = rng.beta(alpha, beta)
+        breaks = _draw_scenarios(rng, "beta", alpha, beta, scenario_axis=1)
         components = []
         backend = np if _is_numpy_rng(rng) else xp
         remainder = backend.ones(n_sims)
@@ -1181,7 +1182,9 @@ class InvertedGeneralizedDirichlet(MultivariateDistributionBase):
     def _generate_matrix(self, n_sims: int, rng: RandomGenerator) -> t.Any:
         alpha = _parameter_matrix(self.alpha, n_sims, rng)
         beta = _parameter_matrix(self.beta, n_sims, rng)
-        ratios = rng.gamma(alpha, 1.0) / rng.gamma(beta, 1.0)
+        ratios = _draw_scenarios(rng, "gamma", alpha, 1.0, scenario_axis=1) / _draw_scenarios(
+            rng, "gamma", beta, 1.0, scenario_axis=1
+        )
         components = []
         backend = np if _is_numpy_rng(rng) else xp
         cumulative = backend.ones(n_sims)
