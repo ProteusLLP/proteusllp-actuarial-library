@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 import plotly.graph_objects as go
-
 from benchmarks.benchmark_frequency_severity import run_benchmarks
+
 from pal.config import SamplingMethod, config
 from pal.examples.example_qmc_vs_mc import copula_density_chart, copula_samples
 
