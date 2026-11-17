@@ -19,6 +19,36 @@ set_random_seed(42)
 `config.n_sims` controls how many Monte Carlo simulations are generated
 globally. `set_random_seed` makes results reproducible.
 
+## Randomized quasi-Monte Carlo sampling
+
+For models where variance reduction is useful, PAL can use independently
+scrambled Sobol sequences in place of pseudorandom numbers. Once enabled,
+distributions and copulas use Sobol coordinates without changing their usual
+generation calls. PAL automatically starts a new, independently scrambled and
+shuffled block after the selected number of coordinates has been used.
+
+```python
+from pal import set_random_seed, set_sampling_method
+from pal.distributions import Normal
+
+set_sampling_method("rqmc", dimensions=32)
+set_random_seed(42)
+loss_factor = Normal(mu=0, sigma=1).generate(n_sims=1024)
+set_sampling_method("pseudo")  # Return to ordinary pseudorandom sampling
+```
+
+You can also use `start_new_sampling_block()` from `pal.config` to separate
+logical parts of a model. The dimension counter then restarts at one with a
+fresh randomization. PAL handles the block transitions automatically otherwise.
+
+Powers of two are recommended for the strongest Sobol balance properties;
+other simulation counts are supported. Blocks use independent randomizations,
+so the whole model is not a single high-dimensional Sobol design. QMC may help
+some models more than others, and uncertainty estimates should be based on
+independent randomizations rather than treating the simulated paths as IID.
+Sobol sequences are generated on the CPU and transferred to the GPU when
+GPU mode is active.
+
 ## Generating Stochastic Variables
 
 Create a loss variable from a LogNormal distribution:
