@@ -111,8 +111,10 @@ class FrequencySeverityModel:
         self.freq_dist = freq_dist
         self.sev_dist = sev_dist
 
-    def _qmc_severities(self, n_sims: int, counts: t.Any, total_events: int, rng: RandomizedQMCGenerator) -> t.Any:
-        """Sample each claim position from a separate Sobol coordinate.
+    def _qmc_severities_ordinal(
+        self, n_sims: int, counts: t.Any, total_events: int, rng: RandomizedQMCGenerator
+    ) -> t.Any:
+        """Sample full scenario vectors for severities without inverse CDFs.
 
         Event-list rows are not independent QMC paths. Instead, generate each
         claim position across simulation paths to retain the intended
@@ -136,6 +138,52 @@ class FrequencySeverityModel:
             else:
                 values[positions] = draw[active]
         return values
+
+    def _qmc_severities(
+        self,
+        n_sims: int,
+        counts: t.Any,
+        event_indices: t.Any,
+        total_events: int,
+        rng: RandomizedQMCGenerator,
+    ) -> t.Any:
+        """Use indexed Sobol claim coordinates and one packed inverse CDF.
+
+        The severity assigned to the k-th claim in simulation i is the
+        k-th QMC severity coordinate for path i. Reconstructing just these
+        observed pairs preserves exactly the same scrambled Sobol design as
+        drawing an entire coordinate for every claim ordinal.
+        """
+        # The inverse Gaussian currently has no inverse-CDF implementation.
+        # Keep its established two-coordinate sampling construction.
+        if total_events == 0 or isinstance(self.sev_dist, distributions.InverseGaussian):
+            return self._qmc_severities_ordinal(n_sims, counts, total_events, rng)
+
+        maximum = int(xp.max(counts))
+        offsets = xp.cumsum(counts) - counts
+        ordinals = xp.arange(total_events, dtype=xp.int64) - offsets[event_indices]
+        uniforms = rng._event_uniforms(n_sims, event_indices, ordinals, maximum)
+        uniforms = xp.clip(uniforms, np.nextafter(0.0, 1.0), np.nextafter(1.0, 0.0))
+
+        severity_distribution = self.sev_dist
+        if any(isinstance(value, StochasticScalar) for value in self.sev_dist._params.values()):
+            # Each claim receives the parameter value of its simulation.
+            # Temporary claim-indexed scalars must not be coupled with the
+            # original simulation-indexed parameters.
+            severity_distribution = copy(self.sev_dist)
+            severity_distribution._params = {
+                name: (
+                    StochasticScalar(
+                        value.values[asnumpy(event_indices) if host_values(value.values) else event_indices]
+                    )
+                    if isinstance(value, StochasticScalar)
+                    else value
+                )
+                for name, value in self.sev_dist._params.items()
+            }
+
+        quantiles = severity_distribution.invcdf(StochasticScalar(uniforms))
+        return quantiles.values if isinstance(quantiles, StochasticScalar) else stochastic_array(quantiles)
 
     def generate(
         self,
@@ -192,7 +240,7 @@ class FrequencySeverityModel:
         event_indices = _get_sims_of_events(counts.astype(np.int64))
 
         if isinstance(rng, RandomizedQMCGenerator):
-            values = self._qmc_severities(n_sims, counts.astype(np.int64), total_events, rng)
+            values = self._qmc_severities(n_sims, counts.astype(np.int64), event_indices, total_events, rng)
             result = FreqSevSims(event_indices, values, n_sims)
             result.coupled_variable_group.merge(n_events.coupled_variable_group)
             for param in stochastic_params.values():
