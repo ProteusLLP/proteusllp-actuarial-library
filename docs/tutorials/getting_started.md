@@ -221,13 +221,13 @@ shuffled block after the selected number of coordinates has been used.
 
 ```python
 from pal import set_random_seed
-from pal.config import set_sampling_method
+from pal.config import SamplingMethod, set_sampling_method
 from pal.distributions import Normal
 
-set_sampling_method("rqmc", dimensions=32)
+set_sampling_method(SamplingMethod.RQMC, dimensions=32)
 set_random_seed(42)
 loss_factor = Normal(mu=0, sigma=1).generate(n_sims=1024)
-set_sampling_method("pseudo")  # Return to ordinary pseudorandom sampling
+set_sampling_method(SamplingMethod.MC)  # Return to ordinary Monte Carlo
 ```
 
 You can also use `start_new_sampling_block()` from `pal.config` to separate
