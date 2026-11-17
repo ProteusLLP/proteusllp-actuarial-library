@@ -120,9 +120,12 @@ and variation across *independent* runs.
 - Blocks are independently scrambled and permuted. They avoid an unbounded
   Sobol dimension count, but do not reproduce a single high-dimensional
   low-discrepancy design across blocks.
-- On GPU the current implementation generates Sobol coordinates and inverse
-  CDFs on the CPU before transferring values to CuPy. It may be slower than
-  native GPU pseudorandom draws for some models.
+- On NVIDIA GPUs, cuRAND generates Sobol blocks in device memory. PAL
+  applies independently seeded digital XOR shifts and whole-row permutations
+  between blocks; CPU and GPU sequences are not bitwise identical. Native GPU
+  generation requires `nvmath-python` (included in `PAL[gpu]` on Python 3.10+).
+  Normal, exponential, gamma, beta and chi-squared inverse transforms can use
+  CuPy; discrete and unsupported quantiles still use host SciPy and transfers.
 - A separate scramble is required for each statistically independent
   replication when assessing error or uncertainty.
 
