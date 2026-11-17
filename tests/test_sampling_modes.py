@@ -96,7 +96,7 @@ def test_copula_marginals_dependence_in_both_modes(sampling_method: SamplingMeth
         copula = StudentsTCopula([[1.0, 0.65], [0.65, 1.0]], dof=6)
         expected_tau = 2 / np.pi * np.arcsin(0.65)
     else:
-        copula = GumbelCopula(theta=2.0)
+        copula = GumbelCopula(theta=2.0, dimension=2)
         expected_tau = 0.5
 
     generated = list(copula.generate(n))
