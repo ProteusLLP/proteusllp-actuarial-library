@@ -32,10 +32,10 @@ from scipy.stats import geninvgauss
 # Local imports
 from ._compat import override
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
-from .qmc import RandomizedQMCGenerator
 from ._value_arrays import stochastic_array
 from .config import config
 from .couplings import validate_stochastic_axes
+from .qmc import RandomizedQMCGenerator
 from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
 
