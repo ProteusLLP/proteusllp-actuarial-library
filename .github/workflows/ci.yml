@@ -148,6 +148,12 @@ jobs:
       - name: Install Chrome for Plotly static export
         run: plotly_get_chrome -y
 
+      - name: Verify static RQMC SVG figure export
+        run: |
+          python -m examples.example_qmc_vs_mc --output "$RUNNER_TEMP/qmc-static" --replicates 2
+          test -s "$RUNNER_TEMP/qmc-static/qmc_copula_surface.svg"
+          test -s "$RUNNER_TEMP/qmc-static/qmc_vs_mc_convergence.svg"
+
       - name: Validate math directive structure
         run: python scripts/check_rst_math.py src docs
 
