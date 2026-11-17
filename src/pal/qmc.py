@@ -279,14 +279,15 @@ class RandomizedQMCGenerator:
         A stochastic or very large intensity retains the SciPy PPF fallback.
         The inverse transform preserves RQMC dependence between coordinates.
         """
-        if xp is not np and np.isscalar(lam) and np.isfinite(lam) and lam >= 0:
+        intensity = float(lam) if isinstance(lam, (int, float, np.integer, np.floating)) else math.nan
+        if xp is not np and math.isfinite(intensity) and intensity >= 0:
             # GPU Sobol32 midpoints never approach 1 more closely than
             # 2**-33. The more extreme (1 - 1e-14) cutoff safely bounds them.
-            bound = scipy_stats.poisson.ppf(1 - 1e-14, lam)
+            bound = scipy_stats.poisson.ppf(1 - 1e-14, intensity)
             if np.isfinite(bound) and bound <= 8192:
                 count = int(bound) + 5
                 # P(X <= k) = gammaincc(k + 1, lambda).
-                cdf = special.gammaincc(xp.arange(count, dtype=xp.float64) + 1, lam)
+                cdf = special.gammaincc(xp.arange(count, dtype=xp.float64) + 1, intensity)
                 uniforms = self._uniform_values(self._shape(size, lam))
                 return xp.searchsorted(cdf, uniforms, side="left").astype(xp.int64)
         return self._quantiles(scipy_stats.poisson.ppf, size, lam, discrete=True)
