@@ -1,7 +1,8 @@
-"""Interactive MC and RQMC copula comparison, runnable from a checkout.
+"""Static MC and RQMC copula density surfaces, runnable from a checkout.
 
-The implementation also ships with PAL so installed users can run
-`python -m pal.examples.example_qmc_vs_mc`.
+The example creates SVG figures, not interactive HTML. Rendering requires
+the optional PAL documentation dependencies (Kaleido and Chrome).
+Installed users can run `python -m pal.examples.example_qmc_vs_mc`.
 """
 
 from pal.examples.example_qmc_vs_mc import main
