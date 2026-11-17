@@ -61,7 +61,7 @@ Run the example from the repository root:
 <!--pytest-codeblocks:skip-->
 
 ```bash
-python examples/example_qmc_vs_mc.py --output qmc-plots
+python -m examples.example_qmc_vs_mc --output qmc-plots
 ```
 
 Open `qmc-plots/qmc_copula_densities.html` and
