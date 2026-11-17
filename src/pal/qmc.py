@@ -91,12 +91,12 @@ class RandomizedQMCGenerator:
         """Create one scrambled multidimensional Sobol block without its points."""
         if xp is np:
             seed = int(self._random.integers(0, 2**32, dtype=np.uint64))
-            engine = qmc.Sobol(d=self.dimensions, scramble=True, bits=32, seed=seed)
+            engine: t.Any = qmc.Sobol(d=self.dimensions, scramble=True, bits=32, seed=seed)
             # SciPy's scrambled direction numbers and digital shifts are
             # small, but these attributes are private. Guard their layout
             # and test the generated coordinates against its public API.
-            vectors = np.asarray(getattr(engine, "_sv"), dtype=np.uint32)
-            shifts = np.asarray(getattr(engine, "_shift"), dtype=np.uint32)
+            vectors = np.asarray(engine._sv, dtype=np.uint32)
+            shifts = np.asarray(engine._shift, dtype=np.uint32)
             if vectors.shape != (self.dimensions, 32) or shifts.shape != (self.dimensions,):
                 raise RuntimeError("Unexpected SciPy Sobol direction-vector layout")
             permutation = self._random.permutation(n).astype(np.uint32)
