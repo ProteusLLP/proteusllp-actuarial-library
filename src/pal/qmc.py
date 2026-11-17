@@ -434,6 +434,6 @@ def _sample_generalized_inverse_gaussian(
     return scipy_stats.geninvgauss.rvs(p, shape, loc=loc, scale=scale, size=n_sims, random_state=rng)
 
 
-def _host_ppf(function: t.Callable[..., t.Any], *parameters: t.Any) -> t.Any:
+def _scipy_on_backend(function: t.Callable[..., t.Any], *parameters: t.Any) -> t.Any:
     """Run an unsupported GPU quantile on SciPy, then restore PAL's backend."""
     return xp.asarray(function(*(asnumpy(value) for value in parameters)))
