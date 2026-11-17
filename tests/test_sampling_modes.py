@@ -18,9 +18,9 @@ from pal._maths import asnumpy, xp
 from pal.config import SamplingMethod, set_sampling_method
 from pal.copulas import GaussianCopula, GumbelCopula, StudentsTCopula
 from pal.distributions import (
+    GPD,
     Beta,
     Gamma,
-    GPD,
     LogNormal,
     Normal,
     Poisson,
