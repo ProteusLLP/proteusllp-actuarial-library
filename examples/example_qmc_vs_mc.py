@@ -18,6 +18,7 @@ import numpy as np
 import plotly.graph_objects as go
 from benchmarks.benchmark_sampling import run_comparison
 from plotly.subplots import make_subplots
+
 from pal import set_random_seed
 from pal._maths import asnumpy
 from pal.config import SamplingMethod, set_sampling_method
