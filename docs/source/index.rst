@@ -127,9 +127,9 @@ A small model, end to end
    tutorials/README
    tutorials/getting_started
    tutorials/distributions_guide
-   tutorials/randomized_qmc
    tutorials/frequency_severity_modelling
    tutorials/coupling_groups_and_copulas
+   tutorials/randomized_qmc
 
 .. toctree::
    :maxdepth: 2
