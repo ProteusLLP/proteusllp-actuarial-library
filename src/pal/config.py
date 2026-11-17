@@ -35,9 +35,7 @@ def set_random_seed(seed: int) -> None:
         config.rng = create_random_generator(seed)
 
 
-def set_sampling_method(
-    method: t.Literal["pseudo", "rqmc"], *, dimensions: int = 32
-) -> None:
+def set_sampling_method(method: t.Literal["pseudo", "rqmc"], *, dimensions: int = 32) -> None:
     """Choose ordinary pseudorandom or randomized Sobol sampling.
 
     In RQMC mode, PAL allocates Sobol coordinates automatically and recycles
