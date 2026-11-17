@@ -32,6 +32,7 @@ from scipy.stats import geninvgauss
 # Local imports
 from ._compat import override
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
+from .qmc import RandomizedQMCGenerator
 from ._value_arrays import stochastic_array
 from .config import config
 from .couplings import validate_stochastic_axes
@@ -2013,6 +2014,12 @@ class GeneralizedInverseGaussian(DistributionBase):
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         """Generate random samples using SciPy's GIG sampler."""
         p, scipy_shape, scipy_scale, loc = self._scipy_params()
+        if isinstance(rng, RandomizedQMCGenerator):
+            # SciPy's rvs requires a NumPy Generator/RandomState; use the
+            # distribution's inverse CDF to keep this draw on a Sobol coordinate.
+            probabilities = asnumpy(rng.uniform(size=n_sims))
+            result = geninvgauss.ppf(probabilities, p, scipy_shape, loc=loc, scale=scipy_scale)
+            return StochasticScalar(xp.asarray(result))
         result = geninvgauss.rvs(
             p,
             scipy_shape,
