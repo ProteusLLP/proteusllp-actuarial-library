@@ -649,6 +649,10 @@ class JoeCopula(ArchimedeanCopula):
 
     def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution."""
+        if self.theta == 1:
+            # Sibuya(1) is degenerate at one. The general sampler draws
+            # Gamma(0) and is undefined at this independence boundary.
+            return np.ones(n_sims)
         return _sibuya_gen(1 / self.theta, n_sims, rng)
 
 
