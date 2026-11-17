@@ -44,10 +44,11 @@ def test_copula_density_chart_has_matching_axes_and_panels():
     fig = copula_density_chart(n_sims=256)
     after = (config.seed, config.sampling_method, config.qmc_dimensions, config.rng)
     assert before == after
-    assert len(fig.data) == 4
-    assert all(trace.type == "heatmap" for trace in fig.data)
-    assert all(trace.coloraxis == "coloraxis" for trace in fig.data)
-    assert all(np.asarray(trace.z).shape == (32, 32) for trace in fig.data)
+    assert len(fig.data) == 2
+    assert all(trace.type == "surface" for trace in fig.data)
+    assert fig.data[0].cmin == fig.data[1].cmin
+    assert fig.data[0].cmax == fig.data[1].cmax
+    assert all(np.asarray(trace.z).shape == (28, 28) for trace in fig.data)
 
 
 def test_convergence_example_returns_two_error_curves():
