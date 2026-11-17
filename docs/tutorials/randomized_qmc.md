@@ -49,7 +49,9 @@ set_sampling_method(SamplingMethod.MC)
 ```
 
 These 3D surfaces show the **empirical copula density** estimated from each
-set of simulated pairs. Both surfaces use the same axes and height scale.
+set of simulated pairs. Both surfaces use the same axes and height scale; the illustrative
+surface heights are capped at a common upper percentile so that the
+corner peaks do not obscure the rest of the surface.
 
 ![Gaussian copula empirical density surfaces under Monte Carlo and randomized quasi-Monte Carlo](images/rqmc_gaussian_copula_surface.svg)
 
