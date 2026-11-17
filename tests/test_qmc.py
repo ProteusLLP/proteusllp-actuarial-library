@@ -275,7 +275,9 @@ def test_invalid_scenario_axis():
 
 
 def test_lazy_sobol_coordinates_match_scipy_full_design():
-    """Lazy multivariate coordinates must match SciPy LMS+shift Sobol exactly."""
+    """Lazy CPU coordinates must match SciPy LMS+shift Sobol exactly."""
+    if xp is not np:
+        pytest.skip("NVIDIA cuRAND uses different scrambled direction vectors from SciPy")
     from scipy.stats import qmc
 
     seed, dimensions, n = 814, 4, 1024
