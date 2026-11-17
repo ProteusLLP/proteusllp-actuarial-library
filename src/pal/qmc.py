@@ -95,8 +95,10 @@ class RandomizedQMCGenerator:
             # SciPy's scrambled direction numbers and digital shifts are
             # small, but these attributes are private. Guard their layout
             # and test the generated coordinates against its public API.
-            vectors = np.asarray(engine._sv, dtype=np.uint32)
-            shifts = np.asarray(engine._shift, dtype=np.uint32)
+            vectors = np.asarray(getattr(engine, "_sv"), dtype=np.uint32)
+            shifts = np.asarray(getattr(engine, "_shift"), dtype=np.uint32)
+            if vectors.shape != (self.dimensions, 32) or shifts.shape != (self.dimensions,):
+                raise RuntimeError("Unexpected SciPy Sobol direction-vector layout")
             permutation = self._random.permutation(n).astype(np.uint32)
             gray = permutation ^ (permutation >> 1)
             tables = self._lookup_tables(vectors)
@@ -118,7 +120,7 @@ class RandomizedQMCGenerator:
         )
         if vectors.shape != (self.dimensions, 32):
             raise RuntimeError("Unexpected cuRAND Sobol direction-vector layout")
-        shifts_host = np.asarray(curand.get_scramble_constants32(self.dimensions), dtype=np.uint32)
+        shifts_host = np.array(curand.get_scramble_constants32(self.dimensions), dtype=np.uint32, copy=True)
         # The bundled NVIDIA scrambled directions are fixed. Applying a
         # separately seeded digital shift per block gives independent RQMC
         # replications and preserves Sobol balance in each coordinate.
