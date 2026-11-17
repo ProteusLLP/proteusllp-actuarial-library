@@ -101,9 +101,7 @@ class RandomizedQMCGenerator:
         try:
             from nvmath.bindings import curand
         except ImportError as exc:
-            raise RuntimeError(
-                "GPU RQMC requires nvmath-python; install PAL with the gpu extra."
-            ) from exc
+            raise RuntimeError("GPU RQMC requires nvmath-python; install PAL with the gpu extra.") from exc
 
         padded = 1 << (n - 1).bit_length()
         generator = curand.create_generator(curand.RngType.QUASI_SCRAMBLED_SOBOL32)
@@ -119,9 +117,7 @@ class RandomizedQMCGenerator:
 
         # A digital XOR shift preserves the Sobol digital net and provides an
         # independent randomized replicate, unlike a row shuffle alone.
-        shifts = xp.asarray(
-            self._random.integers(0, 2**32, size=(self.dimensions, 1), dtype=np.uint32)
-        )
+        shifts = xp.asarray(self._random.integers(0, 2**32, size=(self.dimensions, 1), dtype=np.uint32))
         xp.bitwise_xor(raw, shifts, out=raw)
         permutation_seed = int(self._random.integers(0, 2**32, dtype=np.uint64))
         permutation = xp.random.RandomState(permutation_seed).permutation(n)
@@ -140,8 +136,10 @@ class RandomizedQMCGenerator:
         else:
             # Inspect shapes without transferring stochastic GPU parameters.
             shape = np.broadcast_shapes(
-                *(parameter.shape if hasattr(parameter, "shape") else np.asarray(parameter).shape
-                  for parameter in parameters)
+                *(
+                    parameter.shape if hasattr(parameter, "shape") else np.asarray(parameter).shape
+                    for parameter in parameters
+                )
             )
         if any(part < 0 for part in shape):
             raise ValueError("Negative sample dimensions are not allowed")
@@ -202,14 +200,18 @@ class RandomizedQMCGenerator:
         """Draw normal quantiles."""
         return self._quantiles(
             lambda u, mean, std: mean + std * scipy_special.ndtri(u),
-            size, loc, scale,
+            size,
+            loc,
+            scale,
             gpu_func=lambda u, mean, std: mean + std * special.ndtri(u),
         )
 
     def exponential(self, scale: t.Any = 1.0, size: t.Any = None) -> t.Any:
         """Draw exponential quantiles."""
         return self._quantiles(
-            lambda u, s: -s * np.log1p(-u), size, scale,
+            lambda u, s: -s * np.log1p(-u),
+            size,
+            scale,
             gpu_func=lambda u, s: -s * xp.log1p(-u),
         )
 
@@ -217,7 +219,9 @@ class RandomizedQMCGenerator:
         """Draw gamma quantiles."""
         return self._quantiles(
             lambda u, a, s: scipy_special.gammaincinv(a, u) * s,
-            size, shape, scale,
+            size,
+            shape,
+            scale,
             gpu_func=lambda u, a, s: special.gammaincinv(a, u) * s,
         )
 
@@ -225,7 +229,9 @@ class RandomizedQMCGenerator:
         """Draw beta quantiles."""
         return self._quantiles(
             lambda u, alpha, beta: scipy_special.betaincinv(alpha, beta, u),
-            size, a, b,
+            size,
+            a,
+            b,
             gpu_func=lambda u, alpha, beta: special.betaincinv(alpha, beta, u),
         )
 
@@ -260,7 +266,8 @@ class RandomizedQMCGenerator:
         """Draw chi-squared quantiles."""
         return self._quantiles(
             lambda u, degrees: 2 * scipy_special.gammaincinv(degrees / 2, u),
-            size, df,
+            size,
+            df,
             gpu_func=lambda u, degrees: 2 * special.gammaincinv(degrees / 2, u),
         )
 
