@@ -70,3 +70,40 @@ def test_gpu_common_quantiles_do_not_use_host_scipy(monkeypatch):
         0.5,
         atol=0.02,
     )
+
+
+@pytest.mark.skipif(xp is np, reason="Native GPU Poisson inverse needs CUDA")
+def test_gpu_poisson_quantiles_match_scipy_across_intensities(monkeypatch):
+    """GPU CDF table inversion preserves the exact Poisson discrete quantiles."""
+    rng = RandomizedQMCGenerator(seed=815, dimensions=4)
+    reference = RandomizedQMCGenerator(seed=815, dimensions=4)
+    n_sims = 4096
+
+    def no_host_transfer(_value):
+        raise AssertionError("Constant-intensity Poisson must stay on the GPU")
+
+    monkeypatch.setattr(RandomizedQMCGenerator, "_host", staticmethod(no_host_transfer))
+    for lam in (0.0, 0.05, 0.5, 1.5, 4.0, 20.0, 200.0):
+        u = asnumpy(reference.random(n_sims))
+        expected = stats.poisson.ppf(u, lam).astype(np.int64)
+        result = rng.poisson(lam, size=n_sims)
+        assert isinstance(result, xp.ndarray)
+        np.testing.assert_array_equal(asnumpy(result), expected)
+
+
+@pytest.mark.skipif(xp is np, reason="Native GPU blocks require CUDA")
+def test_gpu_qmc_block_memory_is_compact_and_cache_is_capped():
+    """The generator stores Sobol32 as uint32 and only converts active columns."""
+    n = 4096
+    rng = RandomizedQMCGenerator(seed=771, dimensions=32)
+    rng.max_cache_bytes = 1000
+    draw = rng.random(n)
+    block = rng._streams[n]
+    assert isinstance(draw, xp.ndarray)
+    assert block.points.dtype == xp.uint32
+    assert block.points.nbytes == n * 32 * 4
+    assert block.nbytes < n * 32 * 8 + n * 8
+    # An oversized active block survives; a second design evicts the first.
+    rng.random(n + 1)
+    assert len(rng._streams) == 1
+    assert n + 1 in rng._streams
