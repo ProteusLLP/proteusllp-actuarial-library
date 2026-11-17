@@ -8,6 +8,7 @@ from benchmarks.benchmark_sampling import (
     run_comparison,
 )
 from examples.example_qmc_vs_mc import convergence_chart, copula_density_chart
+from pal import config
 
 
 def test_joint_tail_reference_matches_independence():
@@ -38,7 +39,10 @@ def test_comparison_input_validation():
 
 
 def test_copula_density_chart_has_matching_axes_and_panels():
+    before = (config.seed, config.sampling_method, config.qmc_dimensions, config.rng)
     fig = copula_density_chart(n_sims=256)
+    after = (config.seed, config.sampling_method, config.qmc_dimensions, config.rng)
+    assert before == after
     assert len(fig.data) == 4
     assert all(trace.type == "heatmap" for trace in fig.data)
     assert all(trace.coloraxis == "coloraxis" for trace in fig.data)
