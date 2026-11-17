@@ -36,7 +36,7 @@ from ._value_arrays import stochastic_array
 from .config import config
 from .couplings import validate_stochastic_axes
 from .qmc import (
-    _host_ppf,
+    _scipy_on_backend,
     _inverse_transform_uniforms,
     _sample_generalized_beta_prime,
     _sample_generalized_inverse_gaussian,
@@ -97,7 +97,7 @@ def _discrete_count_ppf(
     stochastic_args = [arg for arg in arguments if isinstance(arg, StochasticScalar)]
     validate_stochastic_axes(stochastic_args)
     values = (arg.values if isinstance(arg, StochasticScalar) else arg for arg in arguments)
-    result = _host_ppf(function, *values)
+    result = _scipy_on_backend(function, *values)
     if isinstance(u, StochasticScalar):
         result = xp.where(u.values == 0, 0, result)
     elif u == 0:
@@ -403,7 +403,7 @@ class HyperGeometric(DiscreteDistributionBase):
         n = ngood
         n_total = n_draws
         x_values = x.values if isinstance(x, StochasticScalar) else x
-        result = _host_ppf(hypergeom.cdf, x_values, m, n, n_total)
+        result = _scipy_on_backend(hypergeom.cdf, x_values, m, n, n_total)
         if isinstance(x, StochasticScalar):
             wrapped = StochasticScalar(result)
             wrapped.coupled_variable_group.merge(x.coupled_variable_group)
@@ -419,7 +419,7 @@ class HyperGeometric(DiscreteDistributionBase):
         m = ngood + nbad
         n = ngood
         u_values = u.values if isinstance(u, StochasticScalar) else u
-        result = _host_ppf(hypergeom.ppf, u_values, m, n, n_draws)
+        result = _scipy_on_backend(hypergeom.ppf, u_values, m, n, n_draws)
         if isinstance(u, StochasticScalar):
             wrapped = StochasticScalar(result)
             wrapped.coupled_variable_group.merge(u.coupled_variable_group)
