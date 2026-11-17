@@ -104,6 +104,11 @@ jobs:
             --output "$RUNNER_TEMP/pal-sampling.json" \
             --summary "$RUNNER_TEMP/pal-sampling.md"
           cat "$RUNNER_TEMP/pal-sampling.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Profile Sobol block memory at actuarial simulation scales
+        run: |
+          python -m benchmarks.benchmark_qmc_scaling --sizes 131072,1048576 \
+            --output "$RUNNER_TEMP/pal-qmc-scaling-cpu.json"
+          cat "$RUNNER_TEMP/pal-qmc-scaling-cpu.json" >> "$GITHUB_STEP_SUMMARY"
       - name: Generate interactive copula comparison charts
         run: |
           python -m examples.example_qmc_vs_mc --output "$RUNNER_TEMP/qmc-charts" \
@@ -116,7 +121,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: pal-sampling-comparison-cpu
-          path: ${{ runner.temp }}/pal-sampling.*
+          path: |
+            ${{ runner.temp }}/pal-sampling.*
+            ${{ runner.temp }}/pal-qmc-scaling-cpu.json
           retention-days: 30
 
   docs-math:
