@@ -166,15 +166,19 @@ class RandomizedQMCGenerator:
             raise ValueError("Negative sample dimensions are not allowed")
         return shape
 
-    def _uniform_values(self, shape: tuple[int, ...]) -> t.Any:
+    def _uniform_values(self, shape: tuple[int, ...], scenario_axis: int | None = None) -> t.Any:
         if not shape:
             return xp.asarray(self._next_coordinate(1)[0])
         if 0 in shape:
             return xp.empty(shape, dtype=float)
-        # PAL's multivariate generators conventionally have a simulation axis
-        # and one or more component axes. The largest axis is the simulation
-        # axis (last for (dimensions, n_sims), first for (n_sims, d, d)).
-        axis = int(np.argmax(shape))
+        # Callers with multidimensional draws should pass the known scenario
+        # axis. A shape heuristic remains for NumPy Generator API compatibility.
+        if scenario_axis is None:
+            axis = int(np.argmax(shape))
+        else:
+            if not -len(shape) <= scenario_axis < len(shape):
+                raise ValueError("scenario_axis must index a dimension of size")
+            axis = scenario_axis % len(shape)
         n = shape[axis]
         component_shape = shape[:axis] + shape[axis + 1 :]
         count = math.prod(component_shape)
@@ -193,9 +197,10 @@ class RandomizedQMCGenerator:
         *parameters: t.Any,
         discrete: bool = False,
         gpu_func: t.Callable[..., t.Any] | None = None,
+        scenario_axis: int | None = None,
     ) -> t.Any:
         shape = self._shape(size, *parameters)
-        uniforms = self._uniform_values(shape)
+        uniforms = self._uniform_values(shape, scenario_axis=scenario_axis)
         # Avoid infinities in inverse CDFs of unbounded distributions.
         uniforms = xp.clip(uniforms, np.nextafter(0.0, 1.0), np.nextafter(1.0, 0.0))
         if xp is not np and gpu_func is not None:
@@ -207,21 +212,25 @@ class RandomizedQMCGenerator:
             result = result.astype(np.int64)
         return xp.asarray(result)
 
-    def random(self, size: t.Any = None) -> t.Any:
+    def random(self, size: t.Any = None, *, scenario_axis: int | None = None) -> t.Any:
         """Draw U(0,1) values, using one coordinate per component."""
-        return self._uniform_values(self._shape(size))
+        return self._uniform_values(self._shape(size), scenario_axis=scenario_axis)
 
-    def uniform(self, low: t.Any = 0.0, high: t.Any = 1.0, size: t.Any = None) -> t.Any:
+    def uniform(
+        self, low: t.Any = 0.0, high: t.Any = 1.0, size: t.Any = None, *, scenario_axis: int | None = None
+    ) -> t.Any:
         """Draw continuous uniform values using the active Sobol coordinate."""
         shape = self._shape(size, low, high)
         lo, hi = xp.asarray(low), xp.asarray(high)
-        return lo + (hi - lo) * self._uniform_values(shape)
+        return lo + (hi - lo) * self._uniform_values(shape, scenario_axis=scenario_axis)
 
-    def standard_normal(self, size: t.Any = None) -> t.Any:
+    def standard_normal(self, size: t.Any = None, *, scenario_axis: int | None = None) -> t.Any:
         """Draw standard normal quantiles."""
-        return self._quantiles(scipy_special.ndtri, size, gpu_func=special.ndtri)
+        return self._quantiles(scipy_special.ndtri, size, gpu_func=special.ndtri, scenario_axis=scenario_axis)
 
-    def normal(self, loc: t.Any = 0.0, scale: t.Any = 1.0, size: t.Any = None) -> t.Any:
+    def normal(
+        self, loc: t.Any = 0.0, scale: t.Any = 1.0, size: t.Any = None, *, scenario_axis: int | None = None
+    ) -> t.Any:
         """Draw normal quantiles."""
         return self._quantiles(
             lambda u, mean, std: mean + std * scipy_special.ndtri(u),
@@ -229,18 +238,22 @@ class RandomizedQMCGenerator:
             loc,
             scale,
             gpu_func=lambda u, mean, std: mean + std * special.ndtri(u),
+            scenario_axis=scenario_axis,
         )
 
-    def exponential(self, scale: t.Any = 1.0, size: t.Any = None) -> t.Any:
+    def exponential(self, scale: t.Any = 1.0, size: t.Any = None, *, scenario_axis: int | None = None) -> t.Any:
         """Draw exponential quantiles."""
         return self._quantiles(
             lambda u, s: -s * np.log1p(-u),
             size,
             scale,
             gpu_func=lambda u, s: -s * xp.log1p(-u),
+            scenario_axis=scenario_axis,
         )
 
-    def gamma(self, shape: t.Any, scale: t.Any = 1.0, size: t.Any = None) -> t.Any:
+    def gamma(
+        self, shape: t.Any, scale: t.Any = 1.0, size: t.Any = None, *, scenario_axis: int | None = None
+    ) -> t.Any:
         """Draw gamma quantiles."""
         return self._quantiles(
             lambda u, a, s: scipy_special.gammaincinv(a, u) * s,
@@ -248,9 +261,12 @@ class RandomizedQMCGenerator:
             shape,
             scale,
             gpu_func=lambda u, a, s: special.gammaincinv(a, u) * s,
+            scenario_axis=scenario_axis,
         )
 
-    def beta(self, a: t.Any, b: t.Any, size: t.Any = None) -> t.Any:
+    def beta(
+        self, a: t.Any, b: t.Any, size: t.Any = None, *, scenario_axis: int | None = None
+    ) -> t.Any:
         """Draw beta quantiles."""
         return self._quantiles(
             lambda u, alpha, beta: scipy_special.betaincinv(alpha, beta, u),
@@ -258,6 +274,7 @@ class RandomizedQMCGenerator:
             a,
             b,
             gpu_func=lambda u, alpha, beta: special.betaincinv(alpha, beta, u),
+            scenario_axis=scenario_axis,
         )
 
     def poisson(self, lam: t.Any = 1.0, size: t.Any = None) -> t.Any:
@@ -303,13 +320,14 @@ class RandomizedQMCGenerator:
         """Draw Student's t quantiles."""
         return self._quantiles(scipy_stats.t.ppf, size, df)
 
-    def chisquare(self, df: t.Any, size: t.Any = None) -> t.Any:
+    def chisquare(self, df: t.Any, size: t.Any = None, *, scenario_axis: int | None = None) -> t.Any:
         """Draw chi-squared quantiles."""
         return self._quantiles(
             lambda u, degrees: 2 * scipy_special.gammaincinv(degrees / 2, u),
             size,
             df,
             gpu_func=lambda u, degrees: 2 * special.gammaincinv(degrees / 2, u),
+            scenario_axis=scenario_axis,
         )
 
     def noncentral_chisquare(self, df: t.Any, nonc: t.Any, size: t.Any = None) -> t.Any:
@@ -329,3 +347,13 @@ class RandomizedQMCGenerator:
         return self._quantiles(
             lambda u, minimum, maximum: np.floor(minimum + (maximum - minimum) * u), size, low, high, discrete=True
         )
+
+
+def _draw_scenarios(
+    rng: t.Any, method: str, *args: t.Any, scenario_axis: int, **kwargs: t.Any
+) -> t.Any:
+    """Tell RQMC which axis holds simulation paths without changing NumPy's API."""
+    draw = getattr(rng, method)
+    if isinstance(rng, RandomizedQMCGenerator):
+        return draw(*args, scenario_axis=scenario_axis, **kwargs)
+    return draw(*args, **kwargs)
