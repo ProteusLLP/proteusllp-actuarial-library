@@ -238,3 +238,36 @@ def test_qmc_memory_cache_eviction_and_reproducibility():
         assert block.nbytes >= block.points.nbytes
         if n == 1024:
             _assert_sobol_stratification(result)
+
+
+def test_explicit_scenario_axis_handles_more_components_than_paths():
+    """Each component receives a Sobol coordinate even when d exceeds n_sims."""
+    n_sims, components = 2, 7
+    rng = RandomizedQMCGenerator(seed=1371, dimensions=16)
+    draws = asnumpy(rng.random(size=(components, n_sims), scenario_axis=1))
+    assert draws.shape == (components, n_sims)
+    for component in draws:
+        _assert_sobol_stratification(component)
+
+    matrices = asnumpy(rng.random(size=(n_sims, 3, 3), scenario_axis=0))
+    assert matrices.shape == (n_sims, 3, 3)
+    for i in range(3):
+        for j in range(3):
+            _assert_sobol_stratification(matrices[:, i, j])
+
+
+def test_multivariate_gaussian_rqmc_with_more_components_than_sims():
+    """The Gaussian copula must preserve the scenario axis for tiny path counts."""
+    rng = RandomizedQMCGenerator(seed=113, dimensions=16)
+    copula = GaussianCopula(np.eye(5))
+    generated = list(copula.generate(2, rng=rng))
+    assert len(generated) == 5
+    for component in generated:
+        _assert_sobol_stratification(component.values)
+
+
+def test_invalid_scenario_axis():
+    """Reject out-of-range scenario-axis declarations."""
+    rng = RandomizedQMCGenerator(seed=12, dimensions=2)
+    with pytest.raises(ValueError, match="scenario_axis"):
+        rng.random(size=(2, 4), scenario_axis=2)
