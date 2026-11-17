@@ -161,9 +161,7 @@ class RandomizedQMCGenerator:
         # GPU Sobol32 midpoints avoid the extremes of inverse CDF transforms.
         return (values.astype(xp.float64) + 0.5) * (2.0**-32)
 
-    def _event_uniforms(
-        self, n_sims: int, event_paths: t.Any, event_ordinals: t.Any, max_count: int
-    ) -> t.Any:
+    def _event_uniforms(self, n_sims: int, event_paths: t.Any, event_ordinals: t.Any, max_count: int) -> t.Any:
         """Generate exactly the Sobol coordinates used by each active claim.
 
         A claim belongs to path i and has ordinal k within that path. It
