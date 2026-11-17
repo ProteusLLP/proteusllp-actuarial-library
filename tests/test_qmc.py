@@ -6,7 +6,7 @@ from scipy import stats
 
 from pal import StochasticScalar, config, set_random_seed
 from pal._maths import asnumpy, xp
-from pal.config import set_sampling_method, start_new_sampling_block
+from pal.config import SamplingMethod, set_sampling_method, start_new_sampling_block
 from pal.copulas import GaussianCopula
 from pal.distributions import Binomial, Exponential, Gamma, GeneralizedInverseGaussian, Normal, Poisson, Uniform
 from pal.frequency_severity import FrequencySeverityModel
@@ -88,7 +88,7 @@ def rng2_uniform_reference(seed, n):
 
 
 def test_distribution_moments_and_seed_api():
-    set_sampling_method("rqmc", dimensions=3)
+    set_sampling_method(SamplingMethod.RQMC, dimensions=3)
     set_random_seed(451)
     n = 4096
     normal = Normal(mu=2, sigma=3).generate(n)
@@ -106,7 +106,7 @@ def test_distribution_moments_and_seed_api():
 
 
 def test_stochastic_parameter_coupling_and_explicit_rng_override():
-    set_sampling_method("rqmc", dimensions=2)
+    set_sampling_method(SamplingMethod.RQMC, dimensions=2)
     set_random_seed(53)
     n = 1024
     base = Normal(mu=0, sigma=1).generate(n)
@@ -126,7 +126,7 @@ def test_stochastic_parameter_coupling_and_explicit_rng_override():
 
 
 def test_qmc_frequency_severity_and_copula():
-    set_sampling_method("rqmc", dimensions=4)
+    set_sampling_method(SamplingMethod.RQMC, dimensions=4)
     set_random_seed(24)
     n = 2048
     sims = FrequencySeverityModel(Poisson(mean=1.5), Exponential(scale=100)).generate(n)
@@ -176,7 +176,7 @@ def test_qmc_frequency_severity_preserves_scenario_parameter_coupling():
 def test_generalized_inverse_gaussian_uses_sobol():
     if xp.__name__ != "numpy":
         pytest.skip("The GIG distribution itself is CPU-only.")
-    set_sampling_method("rqmc", dimensions=2)
+    set_sampling_method(SamplingMethod.RQMC, dimensions=2)
     draw = GeneralizedInverseGaussian(p=-0.5, chi=2, psi=3).generate(128)
     assert np.all(np.isfinite(asnumpy(draw.values)))
     assert np.all(asnumpy(draw.values) > 0)
@@ -187,3 +187,23 @@ def test_invalid_dimensions_and_mode():
         RandomizedQMCGenerator(dimensions=0)
     with pytest.raises(ValueError, match="method"):
         set_sampling_method("halton")
+
+
+def test_sampling_method_enum_and_string_compatibility():
+    """The readable enum is canonical; earlier string inputs still work."""
+    assert SamplingMethod.MC.value == "pseudo"
+    assert SamplingMethod.RQMC.value == "rqmc"
+    set_sampling_method(SamplingMethod.RQMC, dimensions=5)
+    assert config.sampling_method is SamplingMethod.RQMC
+    assert config.qmc_dimensions == 5
+    assert isinstance(config.rng, RandomizedQMCGenerator)
+    set_random_seed(42)
+    assert isinstance(config.rng, RandomizedQMCGenerator)
+
+    set_sampling_method(SamplingMethod.MC)
+    assert config.sampling_method is SamplingMethod.MC
+    assert isinstance(config.rng, type(np.random.default_rng()))
+    set_sampling_method("rqmc")
+    assert config.sampling_method is SamplingMethod.RQMC
+    set_sampling_method("pseudo")
+    assert config.sampling_method is SamplingMethod.MC
