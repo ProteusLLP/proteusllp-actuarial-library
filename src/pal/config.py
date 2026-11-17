@@ -4,8 +4,6 @@ Provides configuration management for random seeding, simulation parameters,
 and global library settings.
 """
 
-import typing as t
-
 from pal._maths import create_random_generator
 from pal.qmc import RandomizedQMCGenerator
 from pal.types import Config, SamplingMethod
