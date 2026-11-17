@@ -15,7 +15,7 @@ See: http://github.com/ProteusLLP/proteus-actuarial-library
 """
 
 from . import distributions as distributions
-from .config import config, set_default_n_sims, set_random_seed, set_sampling_method
+from .config import config, set_default_n_sims, set_random_seed
 from .empirical import Empirical as _Empirical
 from .hyperexponential import HyperExponential as _HyperExponential
 from .multivariate_distributions import Dirichlet as _Dirichlet
@@ -101,7 +101,6 @@ __all__ = [
     "risk_measures",
     "set_default_n_sims",
     "set_random_seed",
-    "set_sampling_method",
     "stats",
     "variables",
 ]
