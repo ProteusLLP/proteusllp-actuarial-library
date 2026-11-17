@@ -34,9 +34,7 @@ class _Block:
     @property
     def nbytes(self) -> int:
         """Memory retained by the design, scrambling and path permutation."""
-        return self.points.nbytes + self.permutation.nbytes + (
-            self.shifts.nbytes if self.shifts is not None else 0
-        )
+        return self.points.nbytes + self.permutation.nbytes + (self.shifts.nbytes if self.shifts is not None else 0)
 
 
 class RandomizedQMCGenerator:
@@ -251,9 +249,7 @@ class RandomizedQMCGenerator:
             scenario_axis=scenario_axis,
         )
 
-    def gamma(
-        self, shape: t.Any, scale: t.Any = 1.0, size: t.Any = None, *, scenario_axis: int | None = None
-    ) -> t.Any:
+    def gamma(self, shape: t.Any, scale: t.Any = 1.0, size: t.Any = None, *, scenario_axis: int | None = None) -> t.Any:
         """Draw gamma quantiles."""
         return self._quantiles(
             lambda u, a, s: scipy_special.gammaincinv(a, u) * s,
@@ -264,9 +260,7 @@ class RandomizedQMCGenerator:
             scenario_axis=scenario_axis,
         )
 
-    def beta(
-        self, a: t.Any, b: t.Any, size: t.Any = None, *, scenario_axis: int | None = None
-    ) -> t.Any:
+    def beta(self, a: t.Any, b: t.Any, size: t.Any = None, *, scenario_axis: int | None = None) -> t.Any:
         """Draw beta quantiles."""
         return self._quantiles(
             lambda u, alpha, beta: scipy_special.betaincinv(alpha, beta, u),
@@ -349,9 +343,7 @@ class RandomizedQMCGenerator:
         )
 
 
-def _draw_scenarios(
-    rng: t.Any, method: str, *args: t.Any, scenario_axis: int, **kwargs: t.Any
-) -> t.Any:
+def _draw_scenarios(rng: t.Any, method: str, *args: t.Any, scenario_axis: int, **kwargs: t.Any) -> t.Any:
     """Tell RQMC which axis holds simulation paths without changing NumPy's API."""
     draw = getattr(rng, method)
     if isinstance(rng, RandomizedQMCGenerator):
