@@ -42,10 +42,11 @@ ScipyNumeric = t.Union[float, int, np.floating, np.integer]
 
 # Type alias for distribution parameters - clean type for documentation
 if t.TYPE_CHECKING:
+    from .qmc import RandomizedQMCGenerator
     from .stochastic_scalar import StochasticScalar
 
 DistributionParameter = t.Union[int, float, "StochasticScalar"]
-RandomGenerator = t.Union[np.random.Generator, np.random.RandomState]
+RandomGenerator = t.Union[np.random.Generator, np.random.RandomState, "RandomizedQMCGenerator"]
 
 T_value = t.TypeVar("T_value")
 T_co = t.TypeVar("T_co", covariant=True)
@@ -57,6 +58,8 @@ class Config:
 
     n_sims: int = 10000
     seed: int = 123456789
+    sampling_method: str = "pseudo"
+    qmc_dimensions: int = 32
     rng: RandomGenerator = dataclasses.field(init=False)
 
     _uid_counter = itertools.count(1)
