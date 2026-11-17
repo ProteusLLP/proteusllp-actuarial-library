@@ -384,6 +384,11 @@ def _sample_rng(rng: t.Any, method: str, n_sims: int, *parameters: t.Any) -> t.A
     return getattr(rng, method)(*converted, size=n_sims)
 
 
+def _inverse_transform_uniforms(rng: t.Any, n_sims: int) -> t.Any:
+    """Generate probability inputs on PAL's active backend for inverse CDFs."""
+    return xp.asarray(_sample_rng(rng, "uniform", n_sims))
+
+
 def _sample_generalized_beta_prime(
     rng: t.Any, n_sims: int, a: t.Any, b: t.Any, p: t.Any, q: t.Any
 ) -> t.Any:
