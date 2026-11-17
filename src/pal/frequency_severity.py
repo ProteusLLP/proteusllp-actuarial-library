@@ -37,6 +37,7 @@ from ._value_arrays import host_values, stochastic_array
 from .config import config
 from .couplings import ProteusStochasticVariable as _ProteusStochasticVariable
 from .couplings import validate_stochastic_axes
+from .qmc import RandomizedQMCGenerator
 from .stochastic_scalar import (
     StochasticScalar,
 )
@@ -110,6 +111,34 @@ class FrequencySeverityModel:
         self.freq_dist = freq_dist
         self.sev_dist = sev_dist
 
+    def _qmc_severities(
+        self, n_sims: int, counts: t.Any, total_events: int, rng: RandomizedQMCGenerator
+    ) -> t.Any:
+        """Sample each claim position from a separate Sobol coordinate.
+
+        Event-list rows are not independent QMC paths. Instead, generate each
+        claim position across simulation paths to retain the intended
+        within-simulation joint severity distribution.
+        """
+        offsets = xp.cumsum(counts) - counts
+        max_count = int(xp.max(counts))
+        values: t.Any = None
+        # One draw also preserves string/date dtypes when no claims occur.
+        for claim in range(max(1, max_count)):
+            draw = self.sev_dist.generate(n_sims, rng).values
+            if values is None:
+                backend = np if host_values(draw) else xp
+                values = backend.empty(total_events, dtype=draw.dtype)
+            if claim >= max_count:
+                continue
+            active = counts > claim
+            positions = offsets[active] + claim
+            if host_values(draw):
+                values[asnumpy(positions)] = draw[asnumpy(active)]
+            else:
+                values[positions] = draw[active]
+        return values
+
     def generate(
         self,
         n_sims: int | None = None,
@@ -163,6 +192,14 @@ class FrequencySeverityModel:
             raise ValueError("Frequency simulations must contain finite, nonnegative integer counts")
         total_events = int(n_events.sum())
         event_indices = _get_sims_of_events(counts.astype(np.int64))
+
+        if isinstance(rng, RandomizedQMCGenerator):
+            values = self._qmc_severities(n_sims, counts.astype(np.int64), total_events, rng)
+            result = FreqSevSims(event_indices, values, n_sims)
+            result.coupled_variable_group.merge(n_events.coupled_variable_group)
+            for param in stochastic_params.values():
+                result.coupled_variable_group.merge(param.coupled_variable_group)
+            return result
 
         severity_distribution = self.sev_dist
         if stochastic_params:
