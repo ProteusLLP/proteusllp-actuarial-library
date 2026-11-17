@@ -1,7 +1,7 @@
 """Compare MC and RQMC copula samples with Plotly density heatmaps.
 
 Run from the repository root:
-    python examples/example_qmc_vs_mc.py --output qmc-plots
+    python -m examples.example_qmc_vs_mc --output qmc-plots
 
 Creates an interactive HTML heatmap and a convergence comparison chart.
 The figures use the same copulas, parameters and simulation counts for both
