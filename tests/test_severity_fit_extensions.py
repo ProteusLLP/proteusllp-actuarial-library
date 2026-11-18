@@ -5,8 +5,8 @@ import pytest
 from scipy import integrate, stats
 
 from pal.distributions import (
-    Burr,
     GPD,
+    Burr,
     Gamma,
     InverseBurr,
     InverseGamma,
