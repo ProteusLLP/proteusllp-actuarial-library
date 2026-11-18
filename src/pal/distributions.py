@@ -1840,6 +1840,59 @@ class InverseWeibull(DistributionBase):
         return self._loc + self._scale * (-1 / np.log(u)) ** (1 / self._shape)  # type: ignore[return-value]
 
 
+class LogGamma(DistributionBase):
+    r"""Log-gamma severity distribution, with log(X) gamma distributed.
+
+    For X >= 1, F(x) = P(Y <= log(x)) where Y follows a Gamma
+    distribution with shape alpha and scale beta. When beta >= 1,
+    the expectation of X is infinite.
+    """
+
+    def __init__(self, alpha: DistributionParameter, beta: DistributionParameter) -> None:
+        """Initialise a log-gamma distribution with positive parameters."""
+        super().__init__(alpha=alpha, beta=beta)
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[LogGamma]:
+        """Estimate a log-gamma distribution by maximum likelihood."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return the expected loss in excess of the given threshold."""
+        return mean_excess(self, threshold)
+
+    @override
+    def cdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log-gamma cumulative distribution function."""
+        def evaluate(values: t.Any, alpha: t.Any, beta: t.Any) -> t.Any:
+            values, alpha, beta = (xp.asarray(v) for v in (values, alpha, beta))
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                z = xp.log(xp.maximum(values, 1.0)) / beta
+                result = special.gammainc(alpha, z)
+                return xp.where((alpha > 0) & (beta > 0), xp.where(values >= 1.0, result, 0.0), xp.nan)
+
+        return _special_call(evaluate, x, *self._params.values())
+
+    @override
+    def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Compute log-gamma quantiles from the inverse incomplete gamma."""
+        def evaluate(values: t.Any, alpha: t.Any, beta: t.Any) -> t.Any:
+            values, alpha, beta = (xp.asarray(v) for v in (values, alpha, beta))
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                result = xp.exp(beta * special.gammaincinv(alpha, values))
+                valid = (alpha > 0) & (beta > 0) & (values >= 0) & (values <= 1)
+                return xp.where(valid, result, xp.nan)
+
+        return _special_call(evaluate, u, *self._params.values())
+
+
 class GEV(DistributionBase):
     r"""Generalized Extreme Value Distribution.
 
@@ -2505,6 +2558,7 @@ AVAILABLE_CONTINUOUS_DISTRIBUTIONS: dict[str, t.Any] = {
     "logistic": Logistic,
     "lognormal": LogNormal,
     "loglogistic": LogLogistic,
+    "loggamma": LogGamma,
     "mbbefd": MBBEFD,
     "noncentralchisquared": NonCentralChiSquared,
     "normal": Normal,
