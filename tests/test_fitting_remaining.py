@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from scipy import integrate, stats
 
+from pal._maths import asnumpy
 from pal.distributions import (
     MBBEFD,
     Bernoulli,
@@ -207,7 +208,7 @@ def test_categorical_mle_preserves_labels_and_unobserved_categories() -> None:
 def test_mbbefd_mixed_atom_likelihood_and_mean_excess() -> None:
     rng = np.random.default_rng(86)
     baseline = MBBEFD(g=5.0, b=0.5)
-    samples = np.asarray(baseline.invcdf(rng.random(350)))
+    samples = asnumpy(baseline.invcdf(rng.random(350)))
     fitted = MBBEFD.fit(samples)
     assert fitted.converged
     assert np.isfinite(fitted.log_likelihood)
