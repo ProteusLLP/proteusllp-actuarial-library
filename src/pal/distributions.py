@@ -563,14 +563,32 @@ class Burr(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        power, shape, scale, loc = self._params.values()
-        return 1 - (1 + ((x - loc) / scale) ** power) ** (-shape)
+
+        def evaluate(x, power, shape, scale, loc):
+            x, power, shape, scale, loc = (xp.asarray(v) for v in (x, power, shape, scale, loc))
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                z = xp.maximum((x - loc) / scale, 0.0)
+                log_term = xp.logaddexp(0.0, power * xp.log(z))
+                result = -xp.expm1(-shape * log_term)
+                return xp.where((power > 0) & (shape > 0) & (scale > 0), result, xp.nan)
+
+        return _special_call(evaluate, x, *self._params.values())
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        power, shape, scale, loc = self._params.values()
-        return scale * (((1 / (1 - u)) ** (1 / shape) - 1) ** (1 / power)) + loc
+
+        def evaluate(u, power, shape, scale, loc):
+            u, power, shape, scale, loc = (xp.asarray(v) for v in (u, power, shape, scale, loc))
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                y = -xp.log1p(-u) / shape
+                # log(expm1(y)) without overflow for large y.
+                log_term = y + xp.log(-xp.expm1(-y))
+                result = loc + scale * xp.exp(log_term / power)
+                valid = (power > 0) & (shape > 0) & (scale > 0) & (u >= 0) & (u <= 1)
+                return xp.where(valid, result, xp.nan)
+
+        return _special_call(evaluate, u, *self._params.values())
 
 
 class GeneralizedBetaPrime(DistributionBase):
@@ -1577,15 +1595,27 @@ class Weibull(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        shape, scale, loc = self._params.values()
-        y = ((x - loc) / scale) ** shape
-        return -np.expm1(-y)  # type: ignore[return-value]
+
+        def evaluate(x, shape, scale, loc):
+            x, shape, scale, loc = (xp.asarray(v) for v in (x, shape, scale, loc))
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                z = xp.maximum((x - loc) / scale, 0.0)
+                result = -xp.expm1(-(z**shape))
+                return xp.where((shape > 0) & (scale > 0), result, xp.nan)
+
+        return _special_call(evaluate, x, *self._params.values())
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        shape, scale, loc = self._params.values()
-        return loc + scale * (-np.log(1 - u)) ** (1 / shape)  # type: ignore[return-value]
+
+        def evaluate(u, shape, scale, loc):
+            u, shape, scale, loc = (xp.asarray(v) for v in (u, shape, scale, loc))
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                result = loc + scale * (-xp.log1p(-u)) ** (1 / shape)
+                return xp.where((shape > 0) & (scale > 0) & (u >= 0) & (u <= 1), result, xp.nan)
+
+        return _special_call(evaluate, u, *self._params.values())
 
 
 class InverseWeibull(DistributionBase):
