@@ -197,7 +197,8 @@ def _fit_continuous(
             return stats.t(df=p["nu"], loc=p["mu"], scale=p["sigma"])
 
     else:
-        assert family == "NonCentralChiSquared"
+        if family != "NonCentralChiSquared":
+            raise ValueError(f"Unsupported continuous fitting family: {family}")
         starts = [
             [np.log(max(mu / 2, 0.5)), np.sqrt(max(mu / 2, 0.1))],
             [np.log(max(mu, 0.5)), 0.0],
@@ -289,7 +290,6 @@ def _fit_discrete(
         variance = float(np.average((x - mu) ** 2, weights=w))
         if variance <= mu:
             raise ValueError("negative binomial finite-size MLE requires overdispersed counts")
-        rough_n = max(mu * mu / (variance - mu), 1e-5)
 
         def profile(log_n: float) -> float:
             n_value = float(np.exp(log_n))
