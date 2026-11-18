@@ -62,9 +62,7 @@ def test_other_fits_match_independent_censored_likelihood(cls, params, frozen) -
     else:
         ref = stats.invweibull(pars["shape"], scale=pars["scale"])
     expected = (
-        np.sum(ref.logpdf(observed[~censored]))
-        + np.sum(ref.logsf(observed[censored]))
-        - len(observed) * ref.logsf(4.0)
+        np.sum(ref.logpdf(observed[~censored])) + np.sum(ref.logsf(observed[censored])) - len(observed) * ref.logsf(4.0)
     )
     assert fitted.log_likelihood == pytest.approx(expected, rel=1e-10, abs=1e-9)
     assert fitted.aic == pytest.approx(-2 * expected + 2 * (2 if cls not in {Burr, InverseBurr} else 3))
@@ -152,12 +150,9 @@ def test_loggamma_distribution_and_censored_fit_against_transformed_gamma() -> N
 def test_loggamma_mean_excess_matches_transformed_gamma_moment() -> None:
     model = LogGamma(alpha=2.0, beta=0.25)
     d = 3.0
-    reference = (
-        (1 - 0.25) ** (-2)
-        * stats.gamma.sf(np.log(d), a=2, scale=0.25 / (1 - 0.25))
-        / stats.gamma.sf(np.log(d), a=2, scale=0.25)
-        - d
-    )
+    reference = (1 - 0.25) ** (-2) * stats.gamma.sf(np.log(d), a=2, scale=0.25 / (1 - 0.25)) / stats.gamma.sf(
+        np.log(d), a=2, scale=0.25
+    ) - d
     assert model.mean_excess(d) == pytest.approx(reference)
     assert np.isinf(LogGamma(alpha=2.0, beta=1.0).mean_excess(3.0))
 
@@ -174,9 +169,7 @@ def test_gpd_free_location_matches_truncated_censored_likelihood() -> None:
     assert pars["loc"] < observed.min()
     ref = stats.genpareto(c=pars["shape"], loc=pars["loc"], scale=pars["scale"])
     expected = (
-        np.sum(ref.logpdf(observed[~censored]))
-        + np.sum(ref.logsf(observed[censored]))
-        - len(observed) * ref.logsf(3.0)
+        np.sum(ref.logpdf(observed[~censored])) + np.sum(ref.logsf(observed[censored])) - len(observed) * ref.logsf(3.0)
     )
     assert fitted.log_likelihood == pytest.approx(expected, abs=1e-7)
     assert fitted.distribution.cdf(15.0) == pytest.approx(ref.cdf(15.0), rel=1e-10)
