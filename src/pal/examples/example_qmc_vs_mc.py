@@ -68,7 +68,13 @@ def univariate_cdf_chart(n_sims: int | None = None, seed: int = 42) -> go.Figure
     reference = norm.cdf(grid)
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.72, 0.28], vertical_spacing=0.12)
     fig.add_trace(
-        go.Scatter(x=grid, y=reference, name="Exact normal CDF", mode="lines", line={"color": "#8798ae", "dash": "dash"}),
+        go.Scatter(
+            x=grid,
+            y=reference,
+            name="Exact normal CDF",
+            mode="lines",
+            line={"color": "#8798ae", "dash": "dash"},
+        ),
         row=1,
         col=1,
     )
