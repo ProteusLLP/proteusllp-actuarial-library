@@ -167,6 +167,8 @@ def fit_distribution(
     if free_location:
         if family != "GPD":
             raise ValueError("free_location is supported only for GPD")
+        if threshold > 0:
+            raise ValueError("The GPD location is not identifiable from a left-truncated sample")
         return _fit_gpd_free_location(distribution, x, c, w, threshold)
     if family in _OTHER_FAMILIES:
         return _fit_other(distribution, x, c, w, threshold)
