@@ -22,7 +22,7 @@ from ._maths import xp as np
 
 # Local imports
 from .config import config
-from .qmc import RandomizedQMCGenerator, _draw_scenarios
+from .qmc import RandomizedQMCGenerator, _draw_active_scenarios, _draw_scenarios
 from .types import RandomGenerator
 
 
@@ -890,10 +890,14 @@ class GalambosCopula(Copula):
 
             # ``size`` arguments require a host integer. Transfer only this
             # scalar count; all simulation arrays remain on the device.
-            m = int(active.sum().item())
+            active_indices = np.flatnonzero(active)
+            m = int(active_indices.size)
 
-            # Directions on simplex for active samples: iid exponentials
-            e = _draw_scenarios(rng, "exponential", scale=1.0, size=(d, m), scenario_axis=1)
+            # Every iteration consumes coordinates of the original n_sims
+            # design, even when the number of active paths has decreased.
+            e = _draw_active_scenarios(
+                rng, "exponential", n_sims, active_indices, scale=1.0, size=(d, m), scenario_axis=1
+            )
             e_sum = e.sum(axis=0, keepdims=True)
 
             # Candidate contribution for Y on active rows
@@ -905,7 +909,9 @@ class GalambosCopula(Copula):
             y[:, active] = y_active
 
             # Advance the Poisson times and radii for active rows only
-            t[active] += rng.exponential(scale=1.0, size=m)
+            t[active] += _draw_active_scenarios(
+                rng, "exponential", n_sims, active_indices, scale=1.0, size=m
+            )
             r[active] = c_th * (t[active] ** (-self.theta))
 
         # Map max stable representation to uniforms:
@@ -1237,13 +1243,12 @@ class HuslerReissCopula(Copula):
             na = idx.size
 
             # 1. Sample anchor indices T ~ Uniform{0,...,d-1}
-            integers = getattr(rng, "integers", getattr(rng, "randint", None))
-            if integers is None:
-                raise TypeError("Random number generator must provide integers or randint")
-            t = integers(low=0, high=d, size=na)
+            t = _draw_active_scenarios(rng, "integers", n_sims, idx, low=0, high=d, size=na)
 
             # 2. Sample Gaussian W ~ N(0, sigma^2 * R) for active sims
-            g = _draw_scenarios(rng, "standard_normal", size=(na, d), scenario_axis=0)
+            g = _draw_active_scenarios(
+                rng, "standard_normal", n_sims, idx, size=(na, d), scenario_axis=0
+            )
             w = g @ chol.T  # shape (na, d)
 
             # 3. Construct Y according to P_{x_T} (Proposition 4 / Remark 2):
@@ -1263,7 +1268,9 @@ class HuslerReissCopula(Copula):
             z[idx] = np.maximum(z[idx], contrib)
 
             # 6. Next Poisson point: zeta^{-1} += Exp(rate = d)
-            e = rng.exponential(scale=1.0 / d, size=na)
+            e = _draw_active_scenarios(
+                rng, "exponential", n_sims, idx, scale=1.0 / d, size=na
+            )
             zeta_inv[idx] += e
             zeta[idx] = 1.0 / zeta_inv[idx]
 
@@ -1569,8 +1576,12 @@ class ExtremalTCopula(Copula):
                 # --- Generate Y anchored at j ---
 
                 # 1. Chi-Square & Normal
-                chi_sq_j = rng.chisquare(df=nu + 1.0, size=(1, n_proc))
-                z_sub_j = _draw_scenarios(rng, "normal", size=(d - 1, n_proc), scenario_axis=1)
+                chi_sq_j = _draw_active_scenarios(
+                    rng, "chisquare", n_sims, process_idx, df=nu + 1.0, size=(1, n_proc), scenario_axis=1
+                )
+                z_sub_j = _draw_active_scenarios(
+                    rng, "normal", n_sims, process_idx, size=(d - 1, n_proc), scenario_axis=1
+                )
 
                 # 2. Cholesky & Scale
                 normal_dev = l_sub @ z_sub_j
@@ -1612,7 +1623,9 @@ class ExtremalTCopula(Copula):
                     samp[:, final_acc_idx] = np.maximum(acc_curr, acc_cand)
 
                 # Increment Poisson Process
-                current_zeta[process_idx] += rng.exponential(1.0, size=n_proc)
+                current_zeta[process_idx] += _draw_active_scenarios(
+                    rng, "exponential", n_sims, process_idx, scale=1.0, size=n_proc
+                )
 
         # --- 5. Final Transform ---
         # Transpose back to (n_samples, d) for standard format
