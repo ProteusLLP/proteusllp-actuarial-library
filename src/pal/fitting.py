@@ -503,14 +503,27 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         start = max(float(d), float(lower))
         log_start_sf = float(frozen.logsf(start))
         log_start_pdf = float(frozen.logpdf(start))
-        with np.errstate(over="ignore", under="ignore", invalid="ignore"):
-            local_scale = float(np.exp(log_start_sf - log_start_pdf))
+        tail_probability = float(frozen.sf(start))
+        # The conditional median gives a representative tail width even if
+        # the density at the attachment is vanishingly small.
+        local_scale = np.nan
+        if tail_probability > 0:
+            median = float(frozen.isf(tail_probability * 0.5))
+            local_scale = median - start
+        if not np.isfinite(local_scale) or local_scale <= 0:
+            with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+                local_scale = float(np.exp(log_start_sf - log_start_pdf))
         if not np.isfinite(local_scale) or local_scale <= 0:
             local_scale = max(abs(start) * 0.1, 1.0)
         remaining = upper - start
         limit = remaining / local_scale if np.isfinite(remaining) else np.inf
 
-        def conditional_survival(u: float) -> float:
+        def conditional_survival(
+            u: float,
+            start: float = start,
+            local_scale: float = local_scale,
+            log_start_sf: float = log_start_sf,
+        ) -> float:
             x = start + local_scale * u
             return float(np.exp(float(frozen.logsf(x)) - log_start_sf))
 
@@ -521,7 +534,7 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
             epsrel=1e-9,
             limit=300,
         )
-        if not np.isfinite(area) or not np.isfinite(error) or error > 1e-7 * max(1.0, abs(area)):
+        if not np.isfinite(area) or area < 0 or not np.isfinite(error) or error > 1e-7 * max(1.0, abs(area)):
             raise ArithmeticError(f"Mean excess integration did not converge for {family} at {d}")
         result[index] = (start - d) + float(np.exp(log_start_sf - float(frozen.logsf(d)))) * local_scale * area
     return float(result) if result.ndim == 0 else result
