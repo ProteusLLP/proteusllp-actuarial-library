@@ -137,6 +137,15 @@ def test_every_copula_has_correct_margins_and_median_dependence(copula, median_p
         config.seed, config.rng, config.sampling_method, config.qmc_dimensions = original
 
 
+def test_active_draw_preserves_legacy_randint_monte_carlo() -> None:
+    """CuPy RandomState, like NumPy's legacy RNG, provides randint, not integers."""
+    legacy = np.random.RandomState(823)
+    reference = np.random.RandomState(823)
+    chosen = xp.asarray([0, 3, 9, 12])
+    actual = _draw_active_scenarios(legacy, "integers", 32, chosen, low=0, high=7, size=4)
+    np.testing.assert_array_equal(asnumpy(actual), reference.randint(low=0, high=7, size=4))
+
+
 @pytest.mark.parametrize("dimensions", [2, 4, 16])
 def test_active_sobol_coordinates_equal_complete_design(dimensions: int) -> None:
     """Shrinking path sets cannot create independent Sobol designs."""
