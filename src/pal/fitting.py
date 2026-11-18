@@ -10,7 +10,7 @@ import typing as t
 from dataclasses import dataclass
 
 import numpy as np
-from scipy import integrate, optimize, stats
+from scipy import integrate, optimize, special, stats
 
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
@@ -172,6 +172,8 @@ def fit_distribution(
         return _fit_gpd_free_location(distribution, x, c, w, threshold)
     if family == "Exponential":
         return _fit_exponential(distribution, x, c, w, threshold)
+    if family == "GeneralizedBetaPrime":
+        return _fit_gb2(distribution, x, c, w, threshold)
     if family in _OTHER_FAMILIES:
         return _fit_other(distribution, x, c, w, threshold)
     total = float(np.sum(w))
@@ -281,6 +283,7 @@ _OTHER_FAMILIES = (
     "Exponential",
     "InverseExponential",
     "InverseParalogistic",
+    "GeneralizedBetaPrime",
 )
 
 
@@ -479,11 +482,12 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         if isinstance(value, StochasticScalar):
             raise ValueError("mean excess requires scalar distribution parameters")
         pars[key] = float(value)
-    frozen = None if family == "LogGamma" else _frozen_distribution(family, pars)
+    frozen = None if family in {"LogGamma", "GeneralizedBetaPrime"} else _frozen_distribution(family, pars)
     inputs = np.asarray(threshold, dtype=float)
     result = np.full(inputs.shape, np.nan, dtype=float)
     inf_mean = (
-        (family == "LogGamma" and pars["beta"] >= 1.0)
+        (family == "GeneralizedBetaPrime" and pars["a"] * pars["q"] <= 1.0)
+        or (family == "LogGamma" and pars["beta"] >= 1.0)
         or (family == "Pareto" and pars["shape"] <= 1.0)
         or (family == "GPD" and pars["shape"] >= 1.0)
         or (family == "Burr" and pars["power"] * pars["shape"] <= 1.0)
@@ -495,7 +499,10 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         or family == "InverseExponential"
         or (family == "InverseParalogistic" and pars["shape"] <= 1.0)
     )
-    lower, upper = (1.0, np.inf) if frozen is None else frozen.support()
+    if family == "GeneralizedBetaPrime":
+        lower, upper = 0.0, np.inf
+    else:
+        lower, upper = (1.0, np.inf) if frozen is None else frozen.support()
     for index, d in np.ndenumerate(inputs):
         if not np.isfinite(d):
             continue
@@ -503,6 +510,9 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
             continue
         if inf_mean:
             result[index] = np.inf
+            continue
+        if family == "GeneralizedBetaPrime":
+            result[index] = _gb2_mean_excess(pars, float(d))
             continue
         if family == "LogGamma":
             alpha, beta = pars["alpha"], pars["beta"]
@@ -659,3 +669,102 @@ def _fit_exponential(
         n_censored=int(np.sum(censored)),
         threshold=threshold,
     )
+
+
+def _gb2_terms(x: np.ndarray, pars: dict[str, float]) -> tuple[np.ndarray, np.ndarray]:
+    """Log-density and log-survival for the generalised beta prime family."""
+    a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
+    log_ratio = np.log(x / b)
+    log_power = a * log_ratio
+    log_pdf = np.log(a / b) - special.betaln(p, q) + (a * p - 1) * log_ratio
+    log_pdf -= (p + q) * np.logaddexp(0.0, log_power)
+    survival_argument = special.expit(-log_power)
+    log_sf = np.log(special.betainc(q, p, survival_argument))
+    return log_pdf, log_sf
+
+
+def _fit_gb2(
+    distribution: type[_T],
+    x: np.ndarray,
+    censored: np.ndarray,
+    weights: np.ndarray,
+    threshold: float,
+) -> FitResult[_T]:
+    """Fit the four-parameter GB2 distribution in log-parameter coordinates."""
+    base_scale = float(np.median(x))
+    starts = (
+        (1.0, base_scale, 1.0, 2.0),
+        (2.0, base_scale, 1.0, 1.0),
+        (1.0, base_scale, 2.0, 3.0),
+        (0.7, base_scale, 2.0, 2.0),
+    )
+
+    def transform(params: np.ndarray) -> dict[str, float]:
+        return dict(zip(("a", "b", "p", "q"), (float(np.exp(v)) for v in params)))
+
+    def likelihood(params: dict[str, float]) -> float:
+        pdf, sf = _gb2_terms(x, params)
+        if threshold > 0:
+            _, log_sf_thresh = _gb2_terms(np.array([threshold]), params)
+            truncation = float(log_sf_thresh[0])
+        else:
+            truncation = 0.0
+        terms = np.where(censored, sf, pdf) - truncation
+        ll = float(np.sum(weights * terms))
+        return ll if np.isfinite(ll) else -np.inf
+
+    def objective(v: np.ndarray) -> float:
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
+            ll = likelihood(transform(v))
+        return -ll if np.isfinite(ll) else 1e100
+
+    candidates = [
+        optimize.minimize(
+            objective,
+            np.log(start),
+            method="Nelder-Mead",
+            options={"maxiter": 6000, "xatol": 1e-7, "fatol": 1e-7},
+        )
+        for start in starts
+    ]
+    best = min(candidates, key=lambda fit: float(fit.fun))
+    if not np.isfinite(best.fun) or best.fun >= 1e100:
+        raise RuntimeError("No finite generalised beta prime fit")
+    pars = transform(best.x)
+    ll = likelihood(pars)
+    total_weight = float(np.sum(weights))
+    aic = 8 - 2 * ll
+    frequency = bool(np.all(weights == np.floor(weights)))
+    aicc = aic + 40 / (total_weight - 5) if frequency and total_weight > 5 else np.nan
+    return FitResult(
+        distribution=distribution(**pars),
+        parameters=pars,
+        log_likelihood=ll,
+        aic=aic,
+        aicc=aicc,
+        converged=bool(best.success),
+        n_observations=len(x),
+        n_censored=int(np.sum(censored)),
+        threshold=threshold,
+    )
+
+
+def _gb2_mean_excess(pars: dict[str, float], attachment: float) -> float:
+    """The GB2 mean excess from complementary incomplete beta moments."""
+    a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
+    if a * q <= 1:
+        return np.inf
+    log_ratio = a * (np.log(max(attachment, 0.0)) - np.log(b)) if attachment > 0 else -np.inf
+    z = special.expit(-log_ratio)
+    survival = float(special.betainc(q, p, z))
+    excess_moment = float(special.betainc(q - 1 / a, p + 1 / a, z))
+    if survival <= 0 or excess_moment <= 0:
+        return np.nan
+    log_conditional_mean = (
+        np.log(b)
+        + special.betaln(p + 1 / a, q - 1 / a)
+        - special.betaln(p, q)
+        + np.log(excess_moment)
+        - np.log(survival)
+    )
+    return float(np.exp(log_conditional_mean) - attachment)
