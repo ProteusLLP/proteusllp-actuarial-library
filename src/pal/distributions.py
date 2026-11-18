@@ -1962,6 +1962,22 @@ class GEV(DistributionBase):
         loc: Location parameter :math:`\mu` (default 0).
     """
 
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[GEV]:
+        """Fit parameters by maximum likelihood with truncation and censoring."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Calculate the theoretical mean residual loss above an attachment."""
+        return mean_excess(self, threshold)
+
     def __init__(
         self,
         shape: DistributionParameter,
@@ -2253,6 +2269,22 @@ class GeneralizedInverseGaussian(DistributionBase):
         CDF evaluation, inverse CDF evaluation, and random generation are
         currently supported on the CPU only.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[GeneralizedInverseGaussian]:
+        """Fit parameters by maximum likelihood with truncation and censoring."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Calculate the theoretical mean residual loss above an attachment."""
+        return mean_excess(self, threshold)
 
     def __init__(
         self,
