@@ -263,6 +263,7 @@ _OTHER_FAMILIES = (
     "InverseBurr",
     "InverseGamma",
     "InverseWeibull",
+    "LogGamma",
 )
 
 
@@ -309,7 +310,9 @@ def _fit_other(
     median = float(np.median(x))
     variance = float(np.average((x - mean) ** 2, weights=weights))
     scale = max(median, np.finfo(float).tiny)
-    if family == "Weibull":
+    if family == "LogGamma":
+        names = ("alpha", "beta")
+    elif family == "Weibull":
         names = ("shape", "scale")
     elif family == "Burr":
         names = ("power", "shape", "scale")
@@ -327,7 +330,16 @@ def _fit_other(
         names = ("shape", "scale")
 
     starts: list[list[float]]
-    if family == "InverseGaussian":
+    if family == "LogGamma":
+        if np.any(x < 1.0):
+            raise ValueError("log-gamma observations must be at least one")
+        logs = np.log(x)
+        log_mean = float(np.average(logs, weights=weights))
+        log_var = float(np.average((logs - log_mean) ** 2, weights=weights))
+        alpha = max(log_mean**2 / max(log_var, np.finfo(float).tiny), 0.1)
+        beta = max(log_var / max(log_mean, np.finfo(float).tiny), 0.01)
+        starts = [[np.log(alpha), np.log(beta)], [0.0, 0.0], [np.log(2.0), np.log(beta)]]
+    elif family == "InverseGaussian":
         lam = max(mean**3 / max(variance, np.finfo(float).tiny), np.finfo(float).tiny)
         starts = [[np.log(mean), np.log(lam)], [np.log(mean), np.log(mean)]]
     elif family in {"Burr", "InverseBurr"}:
@@ -350,11 +362,24 @@ def _fit_other(
         return pars
 
     def loglik(pars: dict[str, float]) -> float:
-        frozen = _frozen_distribution(family, pars)
-        base = float(frozen.logsf(threshold)) if threshold > 0 else 0.0
+        if family == "LogGamma":
+            log_x = np.log(x)
+            alpha, beta = pars["alpha"], pars["beta"]
+            base = (
+                float(stats.gamma.logsf(np.log(threshold), a=alpha, scale=beta))
+                if threshold > 1.0 else 0.0
+            )
+            terms = np.where(
+                censored,
+                stats.gamma.logsf(log_x, a=alpha, scale=beta),
+                stats.gamma.logpdf(log_x, a=alpha, scale=beta) - log_x,
+            ) - base
+        else:
+            frozen = _frozen_distribution(family, pars)
+            base = float(frozen.logsf(threshold)) if threshold > 0 else 0.0
+            terms = np.where(censored, frozen.logsf(x), frozen.logpdf(x)) - base
         if not np.isfinite(base):
             return -np.inf
-        terms = np.where(censored, frozen.logsf(x), frozen.logpdf(x)) - base
         value = float(np.dot(weights, terms))
         return value if np.isfinite(value) else -np.inf
 
@@ -423,11 +448,12 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
     if any(not np.isscalar(value) for value in params.values()):
         raise ValueError("mean excess requires scalar distribution parameters")
     pars = {key: float(value) for key, value in params.items()}
-    frozen = _frozen_distribution(family, pars)
+    frozen = None if family == "LogGamma" else _frozen_distribution(family, pars)
     inputs = np.asarray(threshold, dtype=float)
     result = np.full(inputs.shape, np.nan, dtype=float)
     inf_mean = (
-        (family == "Pareto" and pars["shape"] <= 1.0)
+        (family == "LogGamma" and pars["beta"] >= 1.0)
+        or (family == "Pareto" and pars["shape"] <= 1.0)
         or (family == "GPD" and pars["shape"] >= 1.0)
         or (family == "Burr" and pars["power"] * pars["shape"] <= 1.0)
         or (family == "LogLogistic" and pars["shape"] <= 1.0)
@@ -436,14 +462,24 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         or (family == "InverseGamma" and pars["alpha"] <= 1.0)
         or (family == "InverseWeibull" and pars["shape"] <= 1.0)
     )
-    lower, upper = frozen.support()
+    lower, upper = (1.0, np.inf) if frozen is None else frozen.support()
     for index, d in np.ndenumerate(inputs):
         if not np.isfinite(d):
             continue
-        if d >= upper or frozen.logsf(float(d)) == -np.inf:
+        if d >= upper or (frozen is not None and frozen.logsf(float(d)) == -np.inf):
             continue
         if inf_mean:
             result[index] = np.inf
+            continue
+        if family == "LogGamma":
+            alpha, beta = pars["alpha"], pars["beta"]
+            log_cutoff = max(np.log(max(float(d), 1.0)), 0.0)
+            log_num = (
+                -alpha * np.log1p(-beta)
+                + stats.gamma.logsf(log_cutoff, a=alpha, scale=beta / (1.0 - beta))
+            )
+            log_den = stats.gamma.logsf(log_cutoff, a=alpha, scale=beta)
+            result[index] = float(np.exp(log_num - log_den)) - d
             continue
         if family == "Pareto":
             alpha, xm = pars["shape"], pars["scale"]
