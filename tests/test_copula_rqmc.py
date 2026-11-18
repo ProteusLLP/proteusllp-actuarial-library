@@ -1,0 +1,171 @@
+"""Statistical and scenario-alignment tests for every PAL copula under MC/RQMC.
+
+These tests use a known bivariate copula diagonal as an independent reference.
+The median joint CDF tests dependence without relying on an unreliable
+extreme-quantile estimate from a small random sample. Separate RQMC tests check
+that sequential draws retain the identity of active paths in iterative samplers.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+import pytest
+from scipy import stats
+
+from pal import config, set_random_seed
+from pal._maths import asnumpy, xp
+from pal.config import SamplingMethod, set_sampling_method
+from pal.copulas import (
+    ClaytonCopula,
+    ExtremalTCopula,
+    FrankCopula,
+    GalambosCopula,
+    GaussianCopula,
+    GumbelCopula,
+    HuslerReissCopula,
+    JoeCopula,
+    MM1Copula,
+    PlackettCopula,
+    StudentsTCopula,
+)
+from pal.qmc import RandomizedQMCGenerator, _draw_active_scenarios
+
+
+def _copula_examples():
+    """Bivariate examples paired with their theoretical C(0.5, 0.5)."""
+    rho = 0.6
+    theta_frank = 3.0
+    theta_joe = 2.0
+    delta = 2.0
+    lambda_hr = 0.75
+    nu = 3.0
+    ext_t = 2 * stats.t.cdf(-math.sqrt((nu + 1) * (1 - rho) / (1 + rho)), df=nu + 1)
+    ratio = (math.exp(-theta_frank / 2) - 1) ** 2 / (math.exp(-theta_frank) - 1)
+    return [
+        pytest.param(
+            GaussianCopula([[1, rho], [rho, 1]]),
+            0.25 + math.asin(rho) / (2 * math.pi),
+            id="gaussian",
+        ),
+        pytest.param(
+            StudentsTCopula([[1, rho], [rho, 1]], dof=nu),
+            0.25 + math.asin(rho) / (2 * math.pi),
+            id="student-t",
+        ),
+        pytest.param(ClaytonCopula(1.5, 2), (2 ** 2.5 - 1) ** (-1 / 1.5), id="clayton"),
+        pytest.param(GumbelCopula(2.0, 2), 2 ** (-math.sqrt(2)), id="gumbel"),
+        pytest.param(FrankCopula(theta_frank, 2), -math.log1p(ratio) / theta_frank, id="frank"),
+        pytest.param(
+            JoeCopula(theta_joe, 2),
+            1 - (1 - (1 - 0.5 ** theta_joe) ** 2) ** (1 / theta_joe),
+            id="joe",
+        ),
+        pytest.param(PlackettCopula(delta), math.sqrt(delta) / (2 * (math.sqrt(delta) + 1)), id="plackett"),
+        pytest.param(
+            MM1Copula([[1, None], [1.7, 1]], theta=1.3),
+            2 ** (-2 ** (1 / (1.7 * 1.3))),
+            id="mm1",
+        ),
+        pytest.param(GalambosCopula(2.0, 2), 0.25 * 2 ** (2 ** (-0.5)), id="galambos"),
+        pytest.param(
+            HuslerReissCopula(xp.asarray([[0.0, lambda_hr], [lambda_hr, 0.0]])),
+            2 ** (-2 * stats.norm.cdf(lambda_hr)),
+            id="husler-reiss",
+        ),
+        pytest.param(
+            ExtremalTCopula(xp.asarray([[1.0, rho], [rho, 1.0]]), nu),
+            2 ** (-(2 - ext_t)),
+            id="extremal-t",
+        ),
+    ]
+
+
+@pytest.mark.parametrize("copula,median_probability", _copula_examples())
+@pytest.mark.parametrize("method", [SamplingMethod.MC, SamplingMethod.RQMC], ids=["mc", "rqmc"])
+def test_every_copula_has_correct_margins_and_median_dependence(copula, median_probability: float, method) -> None:
+    """Run all copulas through both generators and check the target joint law."""
+    original = (config.seed, config.rng, config.sampling_method, config.qmc_dimensions)
+    try:
+        set_sampling_method(method, dimensions=16)
+        set_random_seed(4223)
+        n_sims = 4096
+        samples = list(copula.generate(n_sims))
+        assert len(samples) == 2
+        u, v = (asnumpy(sample.values) for sample in samples)
+        assert u.shape == (n_sims,) and v.shape == (n_sims,)
+        assert np.all(np.isfinite(u)) and np.all(np.isfinite(v))
+        assert np.all((u >= 0) & (u <= 1))
+        assert np.all((v >= 0) & (v <= 1))
+
+        # The one-dimensional CDF and centre-of-unit-square probability have
+        # known analytic references for every family in the matrix.
+        for margin in (u, v):
+            for quantile in (0.25, 0.5, 0.75):
+                assert np.mean(margin <= quantile) == pytest.approx(quantile, abs=0.047)
+        assert np.mean((u <= 0.5) & (v <= 0.5)) == pytest.approx(median_probability, abs=0.05)
+        assert samples[0].coupled_variable_group is samples[1].coupled_variable_group
+    finally:
+        config.seed, config.rng, config.sampling_method, config.qmc_dimensions = original
+
+
+@pytest.mark.parametrize("dimensions", [2, 4, 16])
+def test_active_sobol_coordinates_equal_complete_design(dimensions: int) -> None:
+    """Shrinking path sets cannot create independent Sobol designs."""
+    n = 128
+    selected = [xp.asarray([0, 5, 37, 88, 127]), xp.asarray([5, 88]), xp.asarray([37])]
+    full = RandomizedQMCGenerator(seed=581, dimensions=dimensions)
+    active = RandomizedQMCGenerator(seed=581, dimensions=dimensions)
+    for indices in selected:
+        expected = asnumpy(full.random(n))[asnumpy(indices)]
+        actual = asnumpy(active._active_uniforms(n, indices, (len(indices),), scenario_axis=0))
+        np.testing.assert_array_equal(actual, expected)
+
+    indices = selected[0]
+    expected = asnumpy(full.random(size=(3, n), scenario_axis=1))[:, asnumpy(indices)]
+    actual = asnumpy(active._active_uniforms(n, indices, (3, len(indices)), scenario_axis=1))
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(asnumpy(active.random(n)), asnumpy(full.random(n)))
+    assert set(active._streams) == {n}
+
+
+@pytest.mark.parametrize("method", ["integers", "normal", "exponential", "chisquare", "standard_normal"])
+def test_active_sobol_inverse_transforms_match_full_path_draws(method: str) -> None:
+    n = 128
+    indices = xp.asarray([0, 3, 23, 119])
+    params = {
+        "integers": {"low": 0, "high": 5},
+        "normal": {"loc": 1.0, "scale": 2.5},
+        "exponential": {"scale": 1.5},
+        "chisquare": {"df": 4.5},
+        "standard_normal": {},
+    }[method]
+    full = RandomizedQMCGenerator(seed=701, dimensions=8)
+    active = RandomizedQMCGenerator(seed=701, dimensions=8)
+    expected = asnumpy(getattr(full, method)(size=n, **params))[asnumpy(indices)]
+    got = asnumpy(_draw_active_scenarios(active, method, n, indices, size=len(indices), **params))
+    np.testing.assert_allclose(got, expected, rtol=3e-12, atol=3e-12)
+    np.testing.assert_array_equal(asnumpy(active.random(n)), asnumpy(full.random(n)))
+
+
+@pytest.mark.parametrize(
+    "copula",
+    [
+        GalambosCopula(1.0, 2),
+        HuslerReissCopula(xp.asarray([[0.0, 0.7], [0.7, 0.0]])),
+        ExtremalTCopula(xp.asarray([[1.0, 0.6], [0.6, 1.0]]), 3.0),
+    ],
+    ids=["galambos", "husler-reiss", "extremal-t"],
+)
+def test_iterative_copulas_keep_one_sobol_path_stream(copula) -> None:
+    """All active-set sizes consume the original path-indexed Sobol stream."""
+    n = 512
+    first_rng = RandomizedQMCGenerator(seed=1211, dimensions=8)
+    second_rng = RandomizedQMCGenerator(seed=1211, dimensions=8)
+    first = list(copula.generate(n_sims=n, rng=first_rng))
+    second = list(copula.generate(n_sims=n, rng=second_rng))
+    for a, b in zip(first, second):
+        np.testing.assert_array_equal(asnumpy(a.values), asnumpy(b.values))
+    assert set(first_rng._streams) == {n}
+    assert set(second_rng._streams) == {n}
