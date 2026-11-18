@@ -9,7 +9,7 @@ from benchmarks.benchmark_sampling import (
 )
 
 from pal import config
-from pal.examples.example_qmc_vs_mc import convergence_chart, copula_density_chart
+from pal.examples.example_qmc_vs_mc import convergence_chart, copula_density_chart, univariate_cdf_chart
 
 
 def test_joint_tail_reference_matches_independence():
