@@ -366,7 +366,7 @@ def _fit_other(
         starts = [[np.log(1.0), np.log(scale)], [np.log(2.0), np.log(scale)], [np.log(0.75), np.log(scale)]]
 
     def make_params(raw: np.ndarray) -> dict[str, float]:
-        pars = dict(zip(names, (float(np.exp(value)) for value in raw)))
+        pars: dict[str, float] = dict(zip(names, (float(np.exp(value)) for value in raw)))
         if family not in {"InverseGaussian", "LogGamma"}:
             pars["loc"] = 0.0
         return pars
@@ -455,7 +455,9 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
     if family not in (*_SUPPORTED, *_OTHER_FAMILIES):
         raise ValueError(f"No mean excess implementation for {family}")
     params = distribution._params
-    if any(not np.isscalar(value) for value in params.values()):
+    from .stochastic_scalar import StochasticScalar
+
+    if any(isinstance(value, StochasticScalar) for value in params.values()):
         raise ValueError("mean excess requires scalar distribution parameters")
     pars = {key: float(value) for key, value in params.items()}
     frozen = None if family == "LogGamma" else _frozen_distribution(family, pars)
@@ -498,6 +500,7 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
             result[index] = (base - d) + (sigma + xi * (base - loc)) / (1.0 - xi)
             continue
 
+        assert frozen is not None
         # Scale by the local inverse hazard. Integrating in units of tail
         # width prevents quadrature missing a narrow tail at a high threshold.
         start = max(float(d), float(lower))
