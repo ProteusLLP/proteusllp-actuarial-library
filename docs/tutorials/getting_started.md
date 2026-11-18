@@ -204,9 +204,48 @@ compatibility.
 
 - [Distributions Guide](distributions_guide.md) — choosing and fitting
   distributions
+- [Monte Carlo and Randomized QMC](randomized_qmc.md) — comparing
+  simulation quality and computational cost
 - [Frequency-Severity Modelling](frequency_severity_modelling.md) —
   compound models and event-level analysis
 - [Coupling Groups, Copulas and Variable Reordering](coupling_groups_and_copulas.md) —
   dependency structures
 - [Pricing an XoL Reinsurance Program](xol_reinsurance.md) — layers,
   towers and reinstatements
+
+## Randomized quasi-Monte Carlo sampling
+
+For models where variance reduction is useful, PAL can use independently
+scrambled Sobol sequences in place of pseudorandom numbers. Once enabled,
+distributions and copulas use Sobol coordinates without changing their usual
+generation calls. PAL automatically starts a new, independently scrambled and
+shuffled block after the selected number of coordinates has been used.
+
+```python
+from pal import set_random_seed
+from pal.config import SamplingMethod, set_sampling_method
+from pal.distributions import Normal
+
+set_sampling_method(SamplingMethod.RQMC, dimensions=32)
+set_random_seed(42)
+loss_factor = Normal(mu=0, sigma=1).generate(n_sims=1024)
+set_sampling_method(SamplingMethod.MC)  # Return to ordinary Monte Carlo
+```
+
+You can also use `start_new_sampling_block()` from `pal.config` to separate
+logical parts of a model. The dimension counter then restarts at one with a
+fresh randomization. PAL handles the block transitions automatically otherwise.
+
+Powers of two are recommended for the strongest Sobol balance properties;
+other simulation counts are supported. See the [MC and RQMC comparison](randomized_qmc.md)
+tutorial for copula density plots and accuracy benchmarks. Blocks use independent randomizations,
+so the whole model is not a single high-dimensional Sobol design. QMC may help
+some models more than others, and uncertainty estimates should be based on
+independent randomizations rather than treating the simulated paths as IID.
+PAL reconstructs each scrambled Sobol coordinate on demand from direction
+numbers and Gray-coded simulation indices, without caching a full design matrix.
+On NVIDIA GPUs it obtains direction numbers via cuRAND's `nvmath-python` bindings
+(Python 3.10 to 3.14) and performs reconstruction using CuPy operations.
+Continuous inverse transforms supported by CuPy stay on the device; other
+quantiles may use SciPy on the CPU. CPU and GPU sequences differ.
+
