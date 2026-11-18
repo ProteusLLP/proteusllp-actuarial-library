@@ -228,7 +228,10 @@ def fit_distribution(
     if not np.isfinite(ll):
         raise RuntimeError(f"Fitted {family} has an invalid log-likelihood")
     model = distribution(**parameters)
-    k = 1 if family == "Pareto" and threshold > 0 else (2 if family == "Pareto" else len(parameters) - int(family == "GPD"))
+    if family == "Pareto":
+        k = 1 if threshold > 0 else 2
+    else:
+        k = len(parameters) - int(family == "GPD")
     aic = 2.0 * k - 2.0 * ll
     # AICc is defined for integer frequency weights, including repeated rows.
     is_frequency_weight = bool(np.all(w == np.floor(w)))
