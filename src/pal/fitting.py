@@ -46,6 +46,8 @@ def _prepare(
     threshold: float,
     censored: t.Sequence[bool] | np.ndarray | None,
     weights: t.Sequence[float] | np.ndarray | None,
+    *,
+    allow_any_real: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Validate sample alignment, truncation and frequency weights."""
     x = np.asarray(observations, dtype=np.float64)
@@ -53,7 +55,7 @@ def _prepare(
         raise ValueError("observations must be a nonempty one-dimensional array")
     if not np.isfinite(threshold) or threshold < 0:
         raise ValueError("threshold must be finite and non-negative")
-    if not np.all(np.isfinite(x)) or np.any(x <= 0):
+    if not np.all(np.isfinite(x)) or (not allow_any_real and np.any(x <= 0)):
         raise ValueError("observations must be finite and strictly positive")
     if censored is None:
         c = np.zeros(x.size, dtype=bool)
@@ -71,7 +73,7 @@ def _prepare(
     if not np.any(keep):
         raise ValueError("at least one observation must have positive weight")
     x, c, w = x[keep], c[keep], w[keep]
-    if np.any(x < threshold) or np.any((x == threshold) & ~c):
+    if threshold > 0 and (np.any(x < threshold) or np.any((x == threshold) & ~c)):
         raise ValueError("observations must exceed threshold unless censored at threshold")
     if not np.any(~c):
         raise ValueError("at least one uncensored observation is required for fitting")
@@ -163,7 +165,7 @@ def fit_distribution(
     if family not in (*_SUPPORTED, *_OTHER_FAMILIES):
         raise ValueError(f"Unsupported fitting family {family!r}; expected one of {_SUPPORTED + _OTHER_FAMILIES}")
     threshold = float(threshold)
-    x, c, w = _prepare(observations, threshold, censored, weights)
+    x, c, w = _prepare(observations, threshold, censored, weights, allow_any_real=family == "GEV")
     if free_location:
         if family != "GPD":
             raise ValueError("free_location is supported only for GPD")
@@ -284,6 +286,8 @@ _OTHER_FAMILIES = (
     "InverseExponential",
     "InverseParalogistic",
     "GeneralizedBetaPrime",
+    "GeneralizedInverseGaussian",
+    "GEV",
 )
 
 
@@ -320,6 +324,11 @@ def _frozen_distribution(family: str, params: dict[str, float]) -> t.Any:
         return stats.invweibull(c=1.0, scale=p["scale"], loc=p["loc"])
     if family == "InverseParalogistic":
         return stats.burr(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"])
+    if family == "GeneralizedInverseGaussian":
+        return stats.geninvgauss(p=p["p"], b=np.sqrt(p["chi"] * p["psi"]),
+                                scale=np.sqrt(p["chi"] / p["psi"]), loc=p["loc"])
+    if family == "GEV":
+        return stats.genextreme(c=-p["shape"], loc=p["loc"], scale=p["scale"])
     raise ValueError(f"Unsupported severity family: {family}")
 
 
@@ -336,7 +345,11 @@ def _fit_other(
     median = float(np.median(x))
     variance = float(np.average((x - mean) ** 2, weights=weights))
     scale = max(median, np.finfo(float).tiny)
-    if family in {"Exponential", "InverseExponential"}:
+    if family == "GeneralizedInverseGaussian":
+        names = ("p", "chi", "psi")
+    elif family == "GEV":
+        names = ("shape", "scale", "loc")
+    elif family in {"Exponential", "InverseExponential"}:
         names = ("scale",)
     elif family == "LogGamma":
         names = ("alpha", "beta")
@@ -358,7 +371,15 @@ def _fit_other(
         names = ("shape", "scale")
 
     starts: list[list[float]]
-    if family in {"Exponential", "InverseExponential"}:
+    if family == "GeneralizedInverseGaussian":
+        starts = [[-0.5, np.log(scale), np.log(1.0 / scale)],
+                  [0.5, np.log(scale), np.log(1.0 / scale)]]
+    elif family == "GEV":
+        spread = max(float(np.std(x)), 0.01)
+        starts = [[0.0, np.log(spread), median],
+                  [0.2, np.log(spread), median],
+                  [-0.2, np.log(spread), median]]
+    elif family in {"Exponential", "InverseExponential"}:
         starts = [[np.log(max(mean, 1e-10))]]
     elif family == "LogGamma":
         if np.any(x < 1.0):
@@ -386,6 +407,11 @@ def _fit_other(
         starts = [[np.log(1.0), np.log(scale)], [np.log(2.0), np.log(scale)], [np.log(0.75), np.log(scale)]]
 
     def make_params(raw: np.ndarray) -> dict[str, float]:
+        if family == "GeneralizedInverseGaussian":
+            return {"p": float(raw[0]), "chi": float(np.exp(raw[1])),
+                    "psi": float(np.exp(raw[2])), "loc": 0.0}
+        if family == "GEV":
+            return {"shape": float(raw[0]), "scale": float(np.exp(raw[1])), "loc": float(raw[2])}
         pars: dict[str, float] = dict(zip(names, (float(np.exp(value)) for value in raw)))
         if family not in {"InverseGaussian", "LogGamma"}:
             pars["loc"] = 0.0
@@ -486,7 +512,8 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
     inputs = np.asarray(threshold, dtype=float)
     result = np.full(inputs.shape, np.nan, dtype=float)
     inf_mean = (
-        (family == "GeneralizedBetaPrime" and pars["a"] * pars["q"] <= 1.0)
+        (family == "GEV" and pars["shape"] >= 1.0)
+        or (family == "GeneralizedBetaPrime" and pars["a"] * pars["q"] <= 1.0)
         or (family == "LogGamma" and pars["beta"] >= 1.0)
         or (family == "Pareto" and pars["shape"] <= 1.0)
         or (family == "GPD" and pars["shape"] >= 1.0)
