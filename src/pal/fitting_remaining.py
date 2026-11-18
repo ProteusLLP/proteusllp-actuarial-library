@@ -157,9 +157,9 @@ def _fit_continuous(
         raise ValueError(f"{family} parameters cannot be fitted to a constant sample")
 
     if family == "Normal" and not np.any(c) and threshold is None:
-        params = {"mu": mu, "sigma": std}
+        estimates = {"mu": mu, "sigma": std}
         ll = float(np.sum(w * stats.norm.logpdf(x, loc=mu, scale=std)))
-        return _result(cls(**params), params, ll, w, k=2, method="analytic_mle")
+        return _result(cls(**estimates), estimates, ll, w, k=2, method="analytic_mle")
 
     if family == "Beta":
         y = (x - loc) / scale
@@ -489,7 +489,7 @@ def _fit_categorical(
         "probabilities": probabilities.tolist(),
     }
     return _result(
-        cls(values=labels, probabilities=probabilities),
+        t.cast(_T, t.cast(t.Any, cls)(values=labels, probabilities=probabilities)),
         params,
         ll,
         w,
@@ -528,15 +528,16 @@ def mean_excess_remaining(
         if not np.isfinite(d):
             continue
         if family == "MBBEFD":
+            model = t.cast(t.Any, distribution)
             if d >= 1:
                 continue
-            expected = float(distribution.mean())
+            expected = float(model.mean())
             if d < 0:
                 result[index] = expected - d
             else:
-                survival = 1.0 - float(distribution.cdf(d))
+                survival = 1.0 - float(model.cdf(d))
                 if survival > 0:
-                    result[index] = expected * (1.0 - float(distribution.exposure_curve(d))) / survival
+                    result[index] = expected * (1.0 - float(model.exposure_curve(d))) / survival
             continue
         if family == "Uniform":
             a, b = pars["a"], pars["b"]
