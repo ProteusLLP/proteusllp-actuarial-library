@@ -364,7 +364,7 @@ class Binomial(DiscreteDistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
-        n: int,
+        n: int | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Binomial]:
         """Estimate distribution parameters from observed values."""
@@ -427,8 +427,8 @@ class HyperGeometric(DiscreteDistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
-        population_size: int,
-        n_draws: int,
+        population_size: int | None = None,
+        n_draws: int | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[HyperGeometric]:
         """Estimate distribution parameters from observed values."""
@@ -841,7 +841,9 @@ class Beta(DistributionBase):
         scale: float = 1.0,
     ) -> FitResult[Beta]:
         """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold, loc=loc, scale=scale)
+        return fit_remaining(
+            cls, observations, weights=weights, censored=censored, threshold=threshold, loc=loc, scale=scale
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return conditional expected numeric excess above an attachment."""
