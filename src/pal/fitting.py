@@ -130,6 +130,7 @@ def fit_distribution(
     threshold: float = 0.0,
     censored: t.Sequence[bool] | np.ndarray | None = None,
     weights: t.Sequence[float] | np.ndarray | None = None,
+    free_location: bool = False,
 ) -> FitResult[_T]:
     """Fit a supported PAL distribution by maximum likelihood.
 
@@ -142,6 +143,8 @@ def fit_distribution(
         censored: Indicators for right-censored observations.
         weights: Non-negative observation weights. Integer weights represent
             repeated observations for information criteria.
+        free_location: Fit the three-parameter GPD when True. Only supported
+            for GPD; the location defaults to the reporting threshold.
 
     Returns:
         Fitted distribution with maximum-likelihood diagnostics.
@@ -161,6 +164,10 @@ def fit_distribution(
         raise ValueError(f"Unsupported fitting family {family!r}; expected one of {_SUPPORTED + _OTHER_FAMILIES}")
     threshold = float(threshold)
     x, c, w = _prepare(observations, threshold, censored, weights)
+    if free_location:
+        if family != "GPD":
+            raise ValueError("free_location is supported only for GPD")
+        return _fit_gpd_free_location(distribution, x, c, w, threshold)
     if family in _OTHER_FAMILIES:
         return _fit_other(distribution, x, c, w, threshold)
     total = float(np.sum(w))
@@ -518,3 +525,68 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
             raise ArithmeticError(f"Mean excess integration did not converge for {family} at {d}")
         result[index] = (start - d) + float(np.exp(log_start_sf - float(frozen.logsf(d)))) * local_scale * area
     return float(result) if result.ndim == 0 else result
+
+
+def _fit_gpd_free_location(
+    distribution: type[_T],
+    x: np.ndarray,
+    c: np.ndarray,
+    w: np.ndarray,
+    threshold: float,
+) -> FitResult[_T]:
+    """Estimate GPD shape, scale and location subject to support constraints."""
+    smallest = float(np.min(x))
+    delta = max(smallest * 1e-8, 1e-9)
+    max_loc = smallest - delta
+    average_excess = float(np.average(x - threshold, weights=w))
+    start_scale = max(average_excess, delta)
+    base_loc = min(threshold, max_loc - delta)
+
+    def transform(raw: np.ndarray) -> dict[str, float]:
+        # Keeping the location below the smallest observation avoids invalid
+        # density evaluations. The truncation correction is retained.
+        return {
+            "shape": float(raw[0]),
+            "scale": float(np.exp(raw[1])),
+            "loc": float(max_loc - np.exp(raw[2])),
+        }
+
+    def objective(raw: np.ndarray) -> float:
+        with np.errstate(over="ignore", divide="ignore", invalid="ignore", under="ignore"):
+            ll = _log_likelihood("GPD", transform(raw), x, c, w, threshold)
+        return -ll if np.isfinite(ll) else 1e100
+
+    distance = max(max_loc - base_loc, delta)
+    starts = [
+        [0.0, np.log(start_scale), np.log(distance)],
+        [0.3, np.log(start_scale), np.log(distance)],
+        [-0.2, np.log(start_scale), np.log(distance)],
+    ]
+    results = [
+        optimize.minimize(
+            objective,
+            np.asarray(start, dtype=float),
+            method="Nelder-Mead",
+            options={"maxiter": 5000, "xatol": 1e-7, "fatol": 1e-7},
+        )
+        for start in starts
+    ]
+    best = min(results, key=lambda item: float(item.fun))
+    if best.fun >= 1e100 or not np.isfinite(best.fun):
+        raise RuntimeError("Unable to obtain a finite three-parameter GPD fit")
+    params = transform(best.x)
+    ll = _log_likelihood("GPD", params, x, c, w, threshold)
+    n = float(np.sum(w))
+    aic = 6.0 - 2.0 * ll
+    aicc = aic + 24.0 / (n - 4) if np.all(w == np.floor(w)) and n > 4 else np.nan
+    return FitResult(
+        distribution=distribution(**params),
+        parameters=params,
+        log_likelihood=ll,
+        aic=aic,
+        aicc=aicc,
+        converged=bool(best.success),
+        n_observations=len(x),
+        n_censored=int(np.sum(c)),
+        threshold=threshold,
+    )
