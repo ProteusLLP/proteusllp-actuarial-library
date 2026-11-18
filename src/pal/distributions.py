@@ -494,18 +494,34 @@ class GPD(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        shape, scale, loc = self._params.values()
-        if abs(shape) <= TOLERANCE:
-            result = 1 - np.exp(-(x - loc) / scale)
-        else:
-            result = 1 - (1 + shape * (x - loc) / scale) ** (-1 / shape)
-        return result  # type: ignore[return-value]
+
+        def evaluate(x, shape, scale, loc):
+            x, shape, scale, loc = (xp.asarray(value) for value in (x, shape, scale, loc))
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                z = (x - loc) / scale
+                safe_shape = xp.where(shape == 0, 1.0, shape)
+                product = xp.where(shape == 0, 0.0, shape * z)
+                log_survival = xp.where(shape == 0, -z, -xp.log1p(product) / safe_shape)
+                result = -xp.expm1(log_survival)
+                result = xp.where((shape < 0) & (product <= -1), 1.0, result)
+                result = xp.where(z < 0, 0.0, result)
+                return xp.where(scale > 0, result, xp.nan)
+
+        return _special_call(evaluate, x, *self._params.values())
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        shape, scale, loc = self._params.values()
-        return (np.exp(np.log(1 - u) * (-shape)) - 1) * (scale / shape) + loc  # type: ignore[return-value]
+
+        def evaluate(u, shape, scale, loc):
+            u, shape, scale, loc = (xp.asarray(value) for value in (u, shape, scale, loc))
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                y = -xp.log1p(-u)
+                safe_shape = xp.where(shape == 0, 1.0, shape)
+                z = xp.where(shape == 0, y, xp.expm1(safe_shape * y) / safe_shape)
+                return xp.where((scale > 0) & (u >= 0) & (u <= 1), loc + scale * z, xp.nan)
+
+        return _special_call(evaluate, u, *self._params.values())
 
 
 class Burr(DistributionBase):
@@ -1661,26 +1677,33 @@ class GEV(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        shape, scale, loc = self._params.values()
-        z = (x - loc) / scale
-        if abs(shape) <= TOLERANCE:
-            # Gumbel case (ξ = 0)
-            return np.exp(-np.exp(-z))  # type: ignore[return-value]
-        else:
-            # Fréchet (ξ > 0) or Weibull (ξ < 0) case
-            t = 1 + shape * z
-            return np.exp(-np.power(t, -1 / shape))  # type: ignore[return-value]
+
+        def evaluate(x, shape, scale, loc):
+            x, shape, scale, loc = (xp.asarray(value) for value in (x, shape, scale, loc))
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                z = (x - loc) / scale
+                safe_shape = xp.where(shape == 0, 1.0, shape)
+                product = xp.where(shape == 0, 0.0, shape * z)
+                log_power = xp.where(shape == 0, -z, -xp.log1p(product) / safe_shape)
+                result = xp.exp(-xp.exp(log_power))
+                result = xp.where((shape != 0) & (product <= -1), xp.where(shape > 0, 0.0, 1.0), result)
+                return xp.where(scale > 0, result, xp.nan)
+
+        return _special_call(evaluate, x, *self._params.values())
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
-        shape, scale, loc = self._params.values()
-        if abs(shape) <= TOLERANCE:
-            # Gumbel case (ξ = 0)
-            return loc - scale * np.log(-np.log(u))  # type: ignore[return-value]
-        else:
-            # Fréchet (ξ > 0) or Weibull (ξ < 0) case
-            return loc + scale * (np.power(-np.log(u), -shape) - 1) / shape  # type: ignore[return-value]
+
+        def evaluate(u, shape, scale, loc):
+            u, shape, scale, loc = (xp.asarray(value) for value in (u, shape, scale, loc))
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                y = -xp.log(-xp.log(u))
+                safe_shape = xp.where(shape == 0, 1.0, shape)
+                z = xp.where(shape == 0, y, xp.expm1(safe_shape * y) / safe_shape)
+                return xp.where((scale > 0) & (u >= 0) & (u <= 1), loc + scale * z, xp.nan)
+
+        return _special_call(evaluate, u, *self._params.values())
 
 
 class StudentsT(DistributionBase):
