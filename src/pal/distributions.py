@@ -515,9 +515,12 @@ class Bernoulli(Binomial):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        n: int | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Bernoulli]:
         """Estimate distribution parameters from observed values."""
+        if n not in (None, 1):
+            raise ValueError("Bernoulli has exactly one trial")
         return fit_remaining(cls, observations, weights=weights)
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
