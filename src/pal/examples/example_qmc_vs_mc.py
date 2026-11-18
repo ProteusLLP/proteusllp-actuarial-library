@@ -1,4 +1,4 @@
-"""Static Monte Carlo and randomized QMC copula-density comparisons.
+"""Static Monte Carlo and randomized QMC CDF and copula-density comparisons.
 
 The figures use actual PAL copula simulations. With the optional documentation
 dependencies installed (Kaleido and Chrome), run:
@@ -23,6 +23,7 @@ from pal import config, set_random_seed
 from pal._maths import asnumpy
 from pal.config import SamplingMethod, set_sampling_method
 from pal.copulas import GaussianCopula, StudentsTCopula
+from pal.distributions import Normal
 
 RHO = 0.7
 GRID_BINS = 28
@@ -45,6 +46,63 @@ def copula_samples(family: str, method: SamplingMethod, n_sims: int | None = Non
         return np.stack([asnumpy(item.values) for item in values], axis=1)
     finally:
         config.seed, config.sampling_method, config.qmc_dimensions, config.rng = previous
+
+
+def univariate_cdf_chart(n_sims: int | None = None, seed: int = 42) -> go.Figure:
+    """Show the empirical normal CDF and its sampling error under MC/RQMC."""
+    if n_sims is None:
+        n_sims = config.n_sims
+    if n_sims < 1:
+        raise ValueError("n_sims must be positive")
+    previous = (config.seed, config.sampling_method, config.qmc_dimensions, config.rng)
+    samples: dict[SamplingMethod, np.ndarray] = {}
+    try:
+        for method in SamplingMethod:
+            set_sampling_method(method)
+            set_random_seed(seed)
+            samples[method] = np.sort(asnumpy(Normal(mu=0, sigma=1).generate(n_sims=n_sims).values))
+    finally:
+        config.seed, config.sampling_method, config.qmc_dimensions, config.rng = previous
+
+    grid = np.linspace(-3.5, 3.5, 281)
+    reference = norm.cdf(grid)
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.72, 0.28], vertical_spacing=0.12)
+    fig.add_trace(
+        go.Scatter(x=grid, y=reference, name="Exact normal CDF", mode="lines", line={"color": "#8798ae", "dash": "dash"}),
+        row=1,
+        col=1,
+    )
+    for method, color in ((SamplingMethod.MC, "#c96c40"), (SamplingMethod.RQMC, "#2163bc")):
+        empirical = np.searchsorted(samples[method], grid, side="right") / n_sims
+        fig.add_trace(
+            go.Scatter(x=grid, y=empirical, name=method.name, mode="lines", line={"color": color}),
+            row=1,
+            col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=grid,
+                y=100 * (empirical - reference),
+                name=f"{method.name} deviation",
+                mode="lines",
+                line={"color": color},
+                showlegend=False,
+            ),
+            row=2,
+            col=1,
+        )
+    fig.add_hline(y=0, line_color="#9cabbc", line_width=1, row=2, col=1)
+    fig.update_yaxes(title_text="Cumulative probability", range=[0, 1], row=1, col=1)
+    fig.update_yaxes(title_text="CDF error (pp)", row=2, col=1)
+    fig.update_xaxes(title_text="Standard normal quantile", row=2, col=1)
+    fig.update_layout(
+        title=f"Normal distribution: Monte Carlo versus randomized Sobol ({n_sims:,} draws)",
+        template="plotly_white",
+        width=1050,
+        height=650,
+        margin={"l": 80, "r": 50, "t": 90, "b": 65},
+    )
+    return fig
 
 
 def copula_density_chart(n_sims: int | None = None) -> go.Figure:
@@ -104,8 +162,8 @@ def copula_density_chart(n_sims: int | None = None) -> go.Figure:
             xaxis={"title": "u", "range": [0, 1]},
             yaxis={"title": "v", "range": [0, 1]},
             zaxis={"title": "Density", "range": [0, max_density]},
-            camera={"eye": {"x": 1.5, "y": -1.6, "z": 1.1}},
-            aspectratio={"x": 1, "y": 1, "z": 0.6},
+            camera={"eye": {"x": 1.7, "y": -1.1, "z": 1.8}},
+            aspectratio={"x": 1, "y": 1, "z": 0.7},
             row=1,
             col=col,
         )
@@ -166,6 +224,7 @@ def main() -> None:
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     charts = {
+        "qmc_univariate_cdf": univariate_cdf_chart(n_sims=args.n_sims),
         "qmc_copula_surface": copula_density_chart(n_sims=args.n_sims),
         "qmc_vs_mc_convergence": convergence_chart(replicates=args.replicates),
     }
