@@ -238,6 +238,7 @@ def test_generalized_beta_prime_mle_and_mean_excess() -> None:
     )
     known = GeneralizedBetaPrime(a=power, b=scale, p=p, q=q)
     for d in (0.0, 3.0, 10.0):
+
         def survival(x: float) -> float:
             return float(stats.betaprime.sf((x / scale) ** power, p, q))
         expectation, _ = integrate.quad(survival, d, np.inf, epsrel=1e-8)
@@ -258,7 +259,8 @@ def test_generalized_inverse_gaussian_fitting_and_mean_excess() -> None:
     assert np.isfinite(fitted.log_likelihood)
     assert params["chi"] > 0 and params["psi"] > 0
     ref_fitted = stats.geninvgauss(
-        p=params["p"], b=np.sqrt(params["chi"] * params["psi"]),
+        p=params["p"],
+        b=np.sqrt(params["chi"] * params["psi"]),
         scale=np.sqrt(params["chi"] / params["psi"]),
     )
     assert fitted.distribution.cdf(5.0) == pytest.approx(ref_fitted.cdf(5.0), rel=1e-8)
