@@ -531,7 +531,8 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
             result[index] = (base - d) + (sigma + xi * (base - loc)) / (1.0 - xi)
             continue
 
-        assert frozen is not None
+        if frozen is None:
+            raise ValueError(f"No continuous survival function for {family}")
         # Scale by the local inverse hazard. Integrating in units of tail
         # width prevents quadrature missing a narrow tail at a high threshold.
         start = max(float(d), float(lower))
