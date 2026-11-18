@@ -255,3 +255,83 @@ def test_every_copula_can_reorder_coupled_stochastic_variables_under_rqmc(copula
         assert first.coupled_variable_group is derived.coupled_variable_group
     finally:
         config.seed, config.rng, config.sampling_method, config.qmc_dimensions = original
+
+
+@pytest.mark.parametrize("copula,expected_median", _copula_examples())
+@pytest.mark.parametrize("n", [3, 257])
+def test_every_copula_rqmc_stream_and_reproducibility(copula, expected_median: float, n: int) -> None:
+    """Small and non-power-of-two designs must retain the scenario axis."""
+    first_rng = RandomizedQMCGenerator(seed=917, dimensions=2)
+    second_rng = RandomizedQMCGenerator(seed=917, dimensions=2)
+    different_rng = RandomizedQMCGenerator(seed=918, dimensions=2)
+    first = list(copula.generate(n, rng=first_rng))
+    second = list(copula.generate(n, rng=second_rng))
+    different = list(copula.generate(n, rng=different_rng))
+    assert len(first) == len(second) == len(different) == 2
+    for a, b, c in zip(first, second, different):
+        assert isinstance(a.values, xp.ndarray)
+        assert a.values.shape == (n,)
+        assert np.all(np.isfinite(asnumpy(a.values)))
+        np.testing.assert_array_equal(asnumpy(a.values), asnumpy(b.values))
+        assert not np.array_equal(asnumpy(a.values), asnumpy(c.values))
+    assert set(first_rng._streams) == {n}
+    assert set(second_rng._streams) == {n}
+    np.testing.assert_array_equal(asnumpy(first_rng.random(n)), asnumpy(second_rng.random(n)))
+
+
+def _multivariate_examples():
+    rho = 0.6
+    matrix = [[1.0, rho, rho], [rho, 1.0, rho], [rho, rho, 1.0]]
+    lam = 0.75
+    nu = 3.0
+    theta = 1.5
+    ext_t = 2 * stats.t.cdf(-math.sqrt((nu + 1) * (1 - rho) / (1 + rho)), df=nu + 1)
+    elliptical = 0.25 + math.asin(rho) / (2 * math.pi)
+    return [
+        pytest.param(GaussianCopula(matrix), elliptical, id="gaussian"),
+        pytest.param(StudentsTCopula(matrix, dof=nu), elliptical, id="student-t"),
+        pytest.param(ClaytonCopula(theta, 3), (2 ** (theta + 1) - 1) ** (-1 / theta), id="clayton"),
+        pytest.param(GumbelCopula(2.0, 3), 2 ** (-math.sqrt(2)), id="gumbel"),
+        pytest.param(
+            FrankCopula(3.0, 3),
+            -math.log1p(math.expm1(-1.5) ** 2 / math.expm1(-3.0)) / 3,
+            id="frank",
+        ),
+        pytest.param(JoeCopula(2.0, 3), 1 - math.sqrt(1 - 0.75**2), id="joe"),
+        pytest.param(
+            MM1Copula([[1.0, 1.7, 1.7], [1.7, 1.0, 1.7], [1.7, 1.7, 1.0]], theta=1.3),
+            2 ** (-((2 ** (1 / 1.7) + 2) / 2) ** (1 / 1.3)),
+            id="mm1",
+        ),
+        pytest.param(GalambosCopula(2.0, 3), 2 ** (-(2 - 2 ** (-0.5))), id="galambos"),
+        pytest.param(
+            HuslerReissCopula(xp.asarray([[0.0, lam, lam], [lam, 0.0, lam], [lam, lam, 0.0]])),
+            2 ** (-2 * stats.norm.cdf(lam)),
+            id="husler-reiss",
+        ),
+        pytest.param(ExtremalTCopula(xp.asarray(matrix), nu), 2 ** (-(2 - ext_t)), id="extremal-t"),
+    ]
+
+
+@pytest.mark.parametrize("copula,expected_median", _multivariate_examples())
+@pytest.mark.parametrize("dimensions", [2, 16])
+def test_multivariate_copula_pairwise_law_across_sobol_blocks(copula, expected_median: float, dimensions: int) -> None:
+    """Every pair must retain its bivariate law even when coordinates span blocks."""
+    n = 4096
+    rng = RandomizedQMCGenerator(seed=721, dimensions=dimensions)
+    variables = list(copula.generate(n, rng=rng))
+    assert len(variables) == 3
+    values = [asnumpy(variable.values) for variable in variables]
+    for variable, margin in zip(variables, values):
+        assert isinstance(variable.values, xp.ndarray)
+        assert margin.shape == (n,)
+        assert np.all(np.isfinite(margin))
+        assert np.all((margin >= 0) & (margin <= 1))
+        assert variable.coupled_variable_group is variables[0].coupled_variable_group
+        for q in (0.1, 0.5, 0.9):
+            assert np.mean(margin <= q) == pytest.approx(q, abs=0.05)
+    for i in range(3):
+        for j in range(i):
+            actual = np.mean((values[i] <= 0.5) & (values[j] <= 0.5))
+            assert actual == pytest.approx(expected_median, abs=0.05)
+    assert set(rng._streams) == {n}
