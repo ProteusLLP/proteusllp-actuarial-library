@@ -34,6 +34,25 @@ from pal.distributions import Gamma, LogNormal
 from pal.qmc import RandomizedQMCGenerator, _draw_active_scenarios
 
 
+def _extreme_value_diagonal_exponent(copula) -> float | None:
+    """Return C(u,u)=u**theta on the diagonal for a max-stable copula."""
+    if isinstance(copula, GumbelCopula):
+        return 2 ** (1 / copula.theta)
+    if isinstance(copula, MM1Copula) and copula.dimension == 2:
+        return 2 ** (1 / (copula.theta * copula.delta_matrix[1][0]))
+    if isinstance(copula, GalambosCopula):
+        return 2 - 2 ** (-1 / copula.theta)
+    if isinstance(copula, HuslerReissCopula):
+        lam = float(asnumpy(copula.adjusted_lambda_matrix)[0, 1])
+        return 2 * stats.norm.cdf(lam)
+    if isinstance(copula, ExtremalTCopula):
+        rho = float(asnumpy(copula.correlation_matrix)[0, 1])
+        nu = copula.nu
+        threshold = -math.sqrt((nu + 1) * (1 - rho) / (1 + rho))
+        return 2 - 2 * stats.t.cdf(threshold, df=nu + 1)
+    return None
+
+
 def _copula_examples():
     """Bivariate examples paired with their theoretical C(0.5, 0.5)."""
     rho = 0.6
@@ -106,6 +125,13 @@ def test_every_copula_has_correct_margins_and_median_dependence(copula, median_p
             for quantile in (0.25, 0.5, 0.75):
                 assert np.mean(margin <= quantile) == pytest.approx(quantile, abs=0.047)
         assert np.mean((u <= 0.5) & (v <= 0.5)) == pytest.approx(median_probability, abs=0.05)
+        exponent = _extreme_value_diagonal_exponent(copula)
+        if exponent is not None:
+            # Unlike an asymptotic tail-dependence estimate, the finite-q
+            # joint exceedance probability 1 - 2q + C(q,q) is exact here.
+            q = 0.9
+            expected_joint_tail = 1 - 2 * q + q**exponent
+            assert np.mean((u > q) & (v > q)) == pytest.approx(expected_joint_tail, abs=0.027)
         assert samples[0].coupled_variable_group is samples[1].coupled_variable_group
     finally:
         config.seed, config.rng, config.sampling_method, config.qmc_dimensions = original
