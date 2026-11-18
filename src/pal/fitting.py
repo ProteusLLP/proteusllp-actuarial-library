@@ -586,16 +586,27 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
             x = start + local_scale * u
             return float(np.exp(float(frozen.logsf(x)) - log_start_sf))
 
-        area, error = integrate.quad(
-            conditional_survival,
-            0.0,
-            limit,
-            epsrel=1e-9,
-            limit=300,
-        )
+        if family == "GeneralizedInverseGaussian":
+            # SciPy's GIG survival may suffer cancellation in the far tail.
+            # Integrate the conditional density instead, avoiding noisy S(x).
+            def scaled_excess_density(
+                u: float,
+                start: float = start,
+                local_scale: float = local_scale,
+                log_start_sf: float = log_start_sf,
+            ) -> float:
+                x = start + local_scale * u
+                return float(u * np.exp(float(frozen.logpdf(x)) - log_start_sf))
+
+            area, error = integrate.quad(scaled_excess_density, 0.0, limit, epsrel=1e-9, limit=300)
+            excess = local_scale**2 * area
+        else:
+            area, error = integrate.quad(conditional_survival, 0.0, limit, epsrel=1e-9, limit=300)
+            excess = local_scale * area
+
         if not np.isfinite(area) or area < 0 or not np.isfinite(error) or error > 1e-7 * max(1.0, abs(area)):
             raise ArithmeticError(f"Mean excess integration did not converge for {family} at {d}")
-        result[index] = (start - d) + float(np.exp(log_start_sf - float(frozen.logsf(d)))) * local_scale * area
+        result[index] = (start - d) + float(np.exp(log_start_sf - float(frozen.logsf(d)))) * excess
     return float(result) if result.ndim == 0 else result
 
 
