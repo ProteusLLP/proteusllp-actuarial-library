@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from benchmarks.benchmark_frequency_severity import run_benchmarks
 
 from pal.config import SamplingMethod, config
-from pal.examples.example_qmc_vs_mc import copula_density_chart, copula_samples
+from pal.examples.example_qmc_vs_mc import copula_density_chart, copula_samples, univariate_cdf_chart
 
 
 def test_frequency_severity_benchmark_covers_cpu_and_rqmc_paths():
