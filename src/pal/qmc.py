@@ -161,9 +161,7 @@ class RandomizedQMCGenerator:
         # GPU Sobol32 midpoints avoid the extremes of inverse CDF transforms.
         return (values.astype(xp.float64) + 0.5) * (2.0**-32)
 
-    def _active_uniforms(
-        self, n_sims: int, path_indices: t.Any, size: tuple[int, ...], *, scenario_axis: int
-    ) -> t.Any:
+    def _active_uniforms(self, n_sims: int, path_indices: t.Any, size: tuple[int, ...], *, scenario_axis: int) -> t.Any:
         """Take Sobol coordinates for selected paths of the original design.
 
         Each component advances the *n_sims* stream once, even when only a
