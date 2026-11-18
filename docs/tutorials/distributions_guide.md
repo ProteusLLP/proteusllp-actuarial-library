@@ -9,7 +9,9 @@ and use them.
 ```python
 import numpy as np
 
-from pal import config, distributions, set_random_seed
+from pal import config, set_random_seed
+from pal.distributions import Gamma, LogNormal, Poisson
+from pal.multivariate_distributions import InverseWishart, MultivariateStudentsT
 
 config.n_sims = 10_000
 set_random_seed(42)
@@ -23,7 +25,7 @@ Every distribution has a `generate()` method that returns a
 <!--pytest-codeblocks:cont-->
 
 ```python
-loss = distributions.LogNormal(mu=10, sigma=1.5).generate()
+loss = LogNormal(mu=10, sigma=1.5).generate()
 
 loss.mean()                           # => 68,673
 loss.std()                            # => 205,459
@@ -41,7 +43,7 @@ generate samples:
 <!--pytest-codeblocks:cont-->
 
 ```python
-ln = distributions.LogNormal(mu=10, sigma=1.5)
+ln = LogNormal(mu=10, sigma=1.5)
 
 ln.cdf(50_000)       # => 0.7076  (P(X ≤ 50,000))
 ln.invcdf(0.5)       # => 22,026  (median)
@@ -69,6 +71,8 @@ validating simulation results.
 | `LogLogistic` | `shape`, `scale`, `loc=0` | Income distributions, survival |
 | `Logistic` | `mu`, `sigma` | Growth models |
 | `Uniform` | `a`, `b` | Equal-likelihood scenarios |
+| `Uniform` | `a`, `b` | Numeric values or dates sampled uniformly between bounds |
+| `Categorical` | `values`, `probabilities` | Regions, claim types and other categories |
 | `InverseGamma` | `alpha`, `theta`, `loc=0` | Bayesian priors |
 | `GeneralizedInverseGaussian` | `p`, `chi`, `psi`, `loc=0` | Flexible positive, right-skewed risks |
 | `MBBEFD` | `g`, `b` | Property exposure rating and capped loss-to-value ratios |
@@ -107,7 +111,7 @@ Multivariate samples contain one `StochasticScalar` per named component:
 <!--pytest-codeblocks:cont-->
 
 ```python
-economic_factors = distributions.MultivariateStudentsT(
+economic_factors = MultivariateStudentsT(
     nu=6,
     mean=[0.02, 0.04],
     scale=[[0.0004, 0.0001], [0.0001, 0.0025]],
@@ -129,7 +133,7 @@ variable contains matrix rows and each row contains the corresponding columns:
 <!--pytest-codeblocks:cont-->
 
 ```python
-covariance = distributions.InverseWishart(
+covariance = InverseWishart(
     df=10,
     scale=[[0.04, 0.01], [0.01, 0.09]],
     component_names=["property", "casualty"],
@@ -211,8 +215,8 @@ Distribution parameters can themselves be stochastic. Pass a
 set_random_seed(42)
 
 # Uncertain claim rate: mean is itself random
-uncertain_rate = distributions.Gamma(alpha=25, theta=2).generate()
-claims = distributions.Poisson(mean=uncertain_rate).generate()
+uncertain_rate = Gamma(alpha=25, theta=2).generate()
+claims = Poisson(mean=uncertain_rate).generate()
 ```
 
 This produces over-dispersed counts because the Poisson mean varies
@@ -227,7 +231,7 @@ operations:
 <!--pytest.mark.skip-->
 
 ```python
-loss = distributions.LogNormal(mu=14, sigma=0.5).generate()
+loss = LogNormal(mu=14, sigma=0.5).generate()
 
 # Arithmetic
 with_expenses = loss * 1.10
@@ -238,9 +242,23 @@ loss.mean()
 loss.std()
 loss.percentile([25, 50, 75, 95, 99, 99.5])
 
-# Visualisation
-loss.show_cdf("Loss Distribution")
+# Visualisation of generated simulations
+cdf_fig = loss.cdf_plot("Loss Distribution")
+cdf_fig.show()
+
+histogram_fig = loss.histogram_plot("Loss Distribution")
+histogram_fig.show()
 ```
+
+```{only} html
+![Empirical CDF of the simulated loss](../_static/generated/distributions_guide_cdf.svg)
+
+![Histogram of the simulated loss](../_static/generated/distributions_guide_histogram.svg)
+```
+
+The naming deliberately distinguishes analytical distribution methods such as
+`ln.cdf(x)`, which calculate probabilities, from simulation plotting methods
+such as `loss.cdf_plot()`, which return Plotly figures.
 
 ## See Also
 

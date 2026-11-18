@@ -2,183 +2,121 @@
 
 # Development Guide
 
-This project uses pip for dependency installation and Docker devcontainers for development.
+PAL can be developed in a standard Python environment or in the supplied Docker devcontainers. The devcontainer is convenient for local development but is not a prerequisite for cloud coding agents or other automated environments.
 
-## Getting Started
+Coding agents should read [`AGENTS.md`](../AGENTS.md) before making changes. The project configuration, Makefile and CI workflows are authoritative when prose documentation differs from executable configuration.
 
-### Prerequisites
-- Docker
-- VS Code with [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+## Standard Python setup
 
-### Setup Development Environment
-
-1. **Open in devcontainer**:
-   - Open the project in VS Code
-   - Command Palette → "Dev Containers: Reopen in Container"
-   - Wait for the container to build.
-
-2. **Verify setup**:
-   ```bash
-   python --version
-   pip --version
-   pytest --version
-   ```
-
-The devcontainer installs the project in editable mode with the test, development, and documentation extras:
+Create or activate a Python environment supported by `pyproject.toml`, then install PAL in editable mode with the development extras:
 
 ```bash
-pip install -e ".[test,dev,docs]"
+python -m pip install -e ".[test,dev,docs]"
 ```
 
-## Managing Dependencies
-
-Dependencies are declared in `pyproject.toml` using standard Python project metadata.
-
-- **Core dependencies**: required runtime dependencies such as NumPy, SciPy, Plotly and pandas.
-- **Optional dependencies**:
-  - `gpu`: CUDA support with `cupy-cuda12x`.
-  - `docs`: documentation build dependencies.
-  - `test`: testing tools.
-  - `dev`: development and static-analysis tools.
-
-After changing `pyproject.toml`, reinstall the project and the extras you need. For a full development environment:
+Verify the environment with:
 
 ```bash
-pip install -e ".[test,dev,docs]"
+python --version
+python -m pytest --version
+make help
 ```
 
-For GPU support:
+For GPU support in a compatible CUDA environment:
 
 ```bash
-pip install -e ".[gpu]"
+python -m pip install -e ".[test,dev,docs,gpu]"
 ```
 
-Or combine extras when required:
+## Devcontainer setup
+
+For a reproducible local environment, open the repository in VS Code and choose **Dev Containers: Reopen in Container**. The devcontainer installs the project in editable mode.
+
+The established local container may be named `pal-devcontainer`. If it is already running, commands can also be invoked from the host, for example:
 
 ```bash
-pip install -e ".[test,dev,docs,gpu]"
+docker exec pal-devcontainer make test-fast
 ```
 
-## Versioning
+Do not assume that named container exists in a fresh cloud or CI environment.
 
-Versions are automatically managed from Git tags by `setuptools-scm`; no manual version update is required.
+## Development commands
 
-- `dynamic = ["version"]` in `pyproject.toml` enables dynamic versioning.
-- A tag such as `v1.0.0` produces version `1.0.0`.
-- Commits between releases receive an automatically generated development version.
-
-### Creating a release
-
-1. Tag the release: `git tag v1.0.0`
-2. Push the tag: `git push origin v1.0.0`
-3. Create a GitHub Release from that tag. The release workflow publishes the package to PyPI.
-
-### Check the installed version
-
-```bash
-pip show proteusllp-actuarial-library
-```
-
-## Release Process
-
-### Use PEP 440-Compliant Versions
-
-Use a PEP 440-compliant version format, for example:
-
-- `v0.0.1a1` (alpha)
-- `v0.0.1b1` (beta)
-- `v0.0.1rc1` (release candidate)
-- `v0.0.1.dev1` (development)
-- `v0.0.1.post1` (post-release)
-
-Avoid arbitrary suffixes such as `-test`.
-
-For pre-release versions, use GitHub's "Set as pre-release" option when creating the release.
-
-## Running Tests
-
-### From VS Code Terminal
-
-```bash
-# Run all tests
-pytest
-
-# Run a specific test file
-pytest tests/test_variables.py
-
-# Run with verbose output
-pytest -v
-
-# Run tests with coverage
-pytest --cov=pal
-
-# Run tests in parallel
-pytest -n auto
-
-# Execute documentation code blocks
-pytest --codeblocks
-```
-
-### From VS Code Test Explorer
-
-1. Open the Test Explorer panel.
-2. Click "Configure Python Tests" if prompted.
-3. Select `pytest` as the test framework.
-
-## Static Analysis and Type Checking
-
-PAL uses Pyright for static type checking and Ruff for linting and formatting.
-
-```bash
-make lint
-make format
-make typecheck
-```
-
-The same tools can also be run directly from the activated project environment.
-
-## Development Commands
-
-Run the Makefile commands from inside the devcontainer:
+The `Makefile` is the canonical interface for routine validation:
 
 ```bash
 make help
 make lint
-make format
+make format-check
 make typecheck
+make static-analysis
+make test-fast
 make test
+make check
 make build
 ```
 
-## Container Architecture
+Use focused tests while iterating:
 
-The project uses separate CPU and GPU development containers. Both install PAL into the container using pip in editable mode, so changes to the source tree are immediately available.
+```bash
+pytest tests/test_variables.py
+pytest tests/test_variables.py::test_name
+```
+
+Documentation code blocks can be exercised with `pytest-codeblocks` as configured by the project and CI.
+
+## Dependencies
+
+Dependencies are declared in `pyproject.toml` using standard Python project metadata.
+
+- `gpu`: CUDA/CuPy support.
+- `docs`: documentation build dependencies.
+- `test`: pytest and test tooling.
+- `dev`: linting, type checking, security and development tools.
+
+After changing dependencies, reinstall the relevant editable extras.
+
+## Static analysis
+
+PAL uses Ruff for linting/formatting, Pyright for type checking, Bandit for security checks and Vulture for dead-code detection. Run these through `make static-analysis` so local validation matches project configuration.
+
+## CPU and GPU development
+
+PAL has separate CPU and GPU CI paths. A backend-sensitive change is not fully validated by CPU tests alone. Follow the root and `src/pal/AGENTS.md` guidance and run the relevant GPU workflow or equivalent CUDA tests.
+
+## Versioning and releases
+
+Versions are generated from Git tags by `setuptools-scm`; do not edit a version constant manually.
+
+Use PEP 440-compliant release tags such as:
+
+- `v0.0.1a1`
+- `v0.0.1b1`
+- `v0.0.1rc1`
+- `v0.0.1`
+
+A normal release process is:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Then create the corresponding GitHub Release. The release workflow publishes the package to PyPI.
 
 ## Troubleshooting
 
-### Dependencies Not Found
-
-Reinstall the editable package with the required extras:
+If dependencies are missing, reinstall the editable package:
 
 ```bash
-pip install -e ".[test,dev,docs]"
+python -m pip install -e ".[test,dev,docs]"
 ```
 
-If the devcontainer itself has changed, rebuild it with "Dev Containers: Rebuild Container".
+If a devcontainer configuration changed, rebuild the container. In a non-container environment, diagnose the Python environment directly rather than attempting to find `pal-devcontainer`.
 
-### Container Won't Start
+## See also
 
-Rebuild the relevant container without cache if necessary.
-
-## See Also
-
-- [Usage Guide](usage.md) - Comprehensive examples and API documentation
-- [Examples](../examples/) - Example scripts showing library usage
-- [Main README](../README.md) - Project overview and installation
-
-## References
-
-- [pip Documentation](https://pip.pypa.io/)
-- [Python Packaging User Guide](https://packaging.python.org/)
-- [Dev Containers Documentation](https://containers.dev/)
-- [VS Code Dev Containers](https://code.visualstudio.com/docs/devcontainers/containers)
+- [Usage Guide](usage.md)
+- [Examples](../examples/)
+- [Repository agent guide](../AGENTS.md)
+- [Type-system architecture](structure.md)

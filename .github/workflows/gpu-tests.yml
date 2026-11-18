@@ -77,9 +77,10 @@ jobs:
           python - <<'PY'
           import cupy
           import numpy
-          from pal import Normal, set_random_seed
+          from pal import set_random_seed
           from pal._maths import xp
           from pal.config import config
+          from pal.distributions import Normal
 
           if xp is not cupy:
               raise RuntimeError("PAL did not select the CuPy backend")
@@ -117,3 +118,34 @@ jobs:
 
       - name: Run tests with GPU acceleration
         run: pytest -v --cov=pal --cov-report=term --codeblocks
+
+      - name: Compare MC and RQMC on GPU
+        run: |
+          python -m benchmarks.benchmark_sampling --sizes 1024,4096 --replicates 4 \
+            --output "$RUNNER_TEMP/pal-sampling-gpu.json" \
+            --summary "$RUNNER_TEMP/pal-sampling-gpu.md"
+          cat "$RUNNER_TEMP/pal-sampling-gpu.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Profile large GPU Sobol blocks and Poisson inverse
+        run: |
+          python -m benchmarks.benchmark_qmc_scaling --sizes 131072,1048576 \
+            --output "$RUNNER_TEMP/pal-qmc-scaling-gpu.json"
+          cat "$RUNNER_TEMP/pal-qmc-scaling-gpu.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Benchmark frequency-severity on GPU
+        run: |
+          python -m benchmarks.benchmark_frequency_severity --sizes 2048,8192 --replicates 2 \
+            --output "$RUNNER_TEMP/pal-freqsev-gpu.json" \
+            --summary "$RUNNER_TEMP/pal-freqsev-gpu.md"
+          cat "$RUNNER_TEMP/pal-freqsev-gpu.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pal-sampling-comparison-gpu
+          path: |
+            ${{ runner.temp }}/pal-sampling-gpu.*
+            ${{ runner.temp }}/pal-qmc-scaling-gpu.json
+            ${{ runner.temp }}/pal-freqsev-gpu.*
+          if-no-files-found: ignore
+          retention-days: 30

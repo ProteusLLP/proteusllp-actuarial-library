@@ -6,7 +6,7 @@ and conditional operations.
 
 import numpy as np
 
-from pal import FreqSevSims
+from pal.frequency_severity import FreqSevSims
 
 x = FreqSevSims(np.array([0, 0, 0, 0]), np.array([100000, 800000, 500000, 200000]), 0)
 

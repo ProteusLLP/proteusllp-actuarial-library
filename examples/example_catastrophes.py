@@ -1,17 +1,20 @@
 import math
+from importlib.resources import files
 
 import numpy as np
 import pandas as pd  # type: ignore
 
 import pal.maths as pnp
-from pal import config, distributions
-from pal.variables import FreqSevSims, ProteusVariable
+from pal import config
+from pal.distributions import Normal
+from pal.frequency_severity import FreqSevSims
+from pal.variables import ProteusVariable
 
 n_sims = 100_000
 config.n_sims = n_sims
 lobs = ["Motor", "Property", "Liability", "Marine", "Aviation"]
 # load the cat ylts
-df = pd.read_csv("data/catastrophes/cat_ylt.csv", index_col=0)  # type: ignore[misc]
+df = pd.read_csv(files("pal").joinpath("data", "catastrophes", "cat_ylt.csv").open("r"), index_col=0)  # type: ignore[misc]
 # upsample the cat ylts to the correct number of simulations
 ylt_sims = 10000
 up_sample_factor = math.ceil(n_sims / ylt_sims)
@@ -28,7 +31,7 @@ cat_losses = ProteusVariable(
     },
 )
 
-inflation_rate = distributions.Normal(0.05, 0.02).generate()
+inflation_rate = Normal(0.05, 0.02).generate()
 
 scaled_cat_losses_by_lob = cat_losses * (1 + inflation_rate)
 
@@ -36,4 +39,4 @@ scaled_cat_losses = scaled_cat_losses_by_lob.sum()
 
 recoveries = pnp.minimum(pnp.maximum(scaled_cat_losses - 10000000, 0), 10000000)
 
-recoveries.aggregate().show_cdf()
+recoveries.aggregate().cdf_plot().show()

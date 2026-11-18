@@ -1,26 +1,34 @@
-"""Static type-checking guardrail for pal exports.
+"""Static type-checking guardrail for PAL's documented public imports.
 
-This file exists purely so pyright verifies that `pal` exports the symbols that
-users (and our examples/tests) commonly import from the top-level package.
-
-If `src/pal/__init__.pyi` drifts from the runtime API, pyright should fail here.
+This file exists purely so pyright verifies the imports that users and examples
+should rely on from the installed package.
 """
 
 # pyright: reportUnusedImport=false
 
-from pal import (  # noqa: F401
+from pal import (
     FreqSevSims,
+    FrequencySeverityModel,
     ProteusVariable,
     StochasticScalar,
-    XoL,
-    XoLTower,
     config,
-    copulas,
-    distributions,
-    frequency_severity,
-    maths,
-    risk_measures,
     set_default_n_sims,
     set_random_seed,
-    stats,
+)
+from pal.contracts import XoL, XoLTower
+from pal.copulas import GaussianCopula
+from pal.distributions import Gamma
+
+_ = (
+    config,
+    set_default_n_sims,
+    set_random_seed,
+    XoL,
+    XoLTower,
+    GaussianCopula,
+    Gamma,
+    FreqSevSims,
+    FrequencySeverityModel,
+    ProteusVariable,
+    StochasticScalar,
 )

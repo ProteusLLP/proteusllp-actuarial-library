@@ -4,7 +4,9 @@ import numpy as np
 import pytest
 import scipy.stats
 
-from pal import (
+from pal import set_random_seed
+from pal._maths import asnumpy, xp
+from pal.multivariate_distributions import (
     Dirichlet,
     GeneralizedDirichlet,
     InverseWishart,
@@ -13,12 +15,10 @@ from pal import (
     Multinomial,
     MultivariateNormal,
     MultivariateStudentsT,
-    ProteusVariable,
-    StochasticScalar,
     Wishart,
-    set_random_seed,
 )
-from pal._maths import asnumpy, xp
+from pal.stochastic_scalar import StochasticScalar
+from pal.variables import ProteusVariable
 
 
 def _sample_matrix(samples: ProteusVariable[StochasticScalar]) -> np.ndarray:

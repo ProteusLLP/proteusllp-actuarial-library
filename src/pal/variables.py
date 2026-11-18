@@ -46,6 +46,7 @@ Example:
 # standard library imports
 from __future__ import annotations
 
+import itertools
 import os
 import typing as t
 from numbers import Number
@@ -57,6 +58,7 @@ import pandas as pd
 import plotly.graph_objects as go  # type: ignore
 import plotly.io as pio  # type: ignore
 import scipy.stats
+from plotly.subplots import make_subplots  # type: ignore
 
 from . import maths as pnp
 
@@ -85,29 +87,43 @@ def _format_number(val: int | float) -> str:
     return f"{val:.6g}"
 
 
+def _resample_freqsev(value: FreqSevSims, indices: StochasticScalar) -> FreqSevSims:
+    """Select complete frequency-severity simulations using positional indices."""
+    source_counts = xp.bincount(value.sim_index, minlength=value.n_sims)
+    source_starts = xp.cumsum(source_counts) - source_counts
+
+    target_indices = indices.values.astype(int)
+    # A copula can relabel events without placing them back in simulation order.
+    source_order = xp.argsort(value.sim_index, kind="stable")
+    target_counts = source_counts[target_indices]
+    target_starts = source_starts[target_indices]
+
+    new_sim_index = xp.repeat(xp.arange(indices.n_sims, dtype=int), target_counts)
+    target_event_starts = xp.cumsum(target_counts) - target_counts
+    within_target_offsets = xp.arange(new_sim_index.size, dtype=int) - xp.repeat(target_event_starts, target_counts)
+    source_positions = source_order[xp.repeat(target_starts, target_counts) + within_target_offsets]
+
+    result = FreqSevSims(
+        sim_index=new_sim_index,
+        values=value.values[asnumpy(source_positions) if isinstance(value.values, np.ndarray) else source_positions],
+        n_sims=indices.n_sims,
+    )
+    result.coupled_variable_group.merge(indices.coupled_variable_group)
+    return result
+
+
 class ProteusVariable(t.Generic[T]):
     """A generic, homogeneous container for multivariate variables in simulations.
 
-    ProteusVariable is a hierarchical structure that holds multiple variables of
-    the SAME type (homogeneous container). Each instance must contain either all
-    scalars, all vectors (like StochasticScalar), or all nested ProteusVariables
-    - but never a mix of different types.
+        ProteusVariable is a hierarchical structure that holds multiple variables of
+        the same type (homogeneous container). Each instance must contain either all
+        scalars, all vectors (like StochasticScalar), or all nested ProteusVariable
+        instances.
 
-    Type Parameter:
-        T: The type of values stored. By convention, T should be a ScalarOrVector
-           type (NumericLike | VectorLike), though the parameter is unconstrained
-           to allow flexible type inference. Usage with non-ScalarOrVector types
-           may not be fully supported by all operations.
-
-    Key Features:
-    - **Homogeneous**: All values in a single instance must be the same type.
-      Like List[T], you cannot mix types within one container.
-    - **Type Safety**: Operations like mean() return type T, preserving type
-      information through the computation.
-    - **Nesting**: ProteusVariable containing ProteusVariable enables hierarchical
-      data structures (e.g., risks by region by peril)
-    - **Dictionary Access**: Sub-elements accessed via [] notation with
-      string keys or integer indices
+    Notes:
+                - All values in a single instance must be the same type.
+                - Nested ProteusVariable instances enable hierarchical structures.
+                - Prefer NumPy/SciPy functions for statistics, e.g. ``np.mean(var)``.
 
     Examples:
         >>> # Homogeneous scalar container
@@ -138,11 +154,12 @@ class ProteusVariable(t.Generic[T]):
         >>> # mixed = ProteusVariable(values={"a": 100, "b": StochasticScalar([1])})
         >>> # This would violate homogeneity and cause type errors
 
-    Note: Statistical operations should be performed using numpy and scipy functions
-    directly on ProteusVariable instances. For example:
-    - Use np.percentile(variable, p)
-    - Use np.mean(variable)
-    - Use pal.stats.tvar(variable, p)
+    Statistical operations should be performed using NumPy and SciPy functions
+    directly on ProteusVariable instances. For example::
+
+        np.percentile(variable, p)
+        np.mean(variable)
+        pal.stats.tvar(variable, p)
     """
 
     dim_name: str
@@ -189,11 +206,11 @@ class ProteusVariable(t.Generic[T]):
                         self.dimensions.append(dimension)
 
             if self.n_sims is None:
-                if isinstance(value, ProteusStochasticVariable):
+                if isinstance(value, (ProteusStochasticVariable, ProteusVariable)):
                     self.n_sims = value.n_sims
                 else:
                     self.n_sims = 1
-            elif isinstance(value, ProteusStochasticVariable):
+            elif isinstance(value, (ProteusStochasticVariable, ProteusVariable)):
                 if value.n_sims != self.n_sims:
                     if self.n_sims == 1:
                         self.n_sims = value.n_sims
@@ -570,7 +587,145 @@ class ProteusVariable(t.Generic[T]):
     def __ne__(self, other: object) -> Self:  # type: ignore[override]
         return t.cast(Self, self._binary_operation(other, lambda a, b: a != b))
 
-    def __getitem__(self, key: int | str) -> T:
+    def _stochastic_getitem(self, selector: StochasticScalar | FreqSevSims) -> StochasticScalar | FreqSevSims:
+        """Select a container entry separately for each simulation or event.
+
+        String selectors refer to named entries. Integer selectors refer to
+        entry positions, as for ordinary indexing.
+        """
+        if not self.values:
+            raise ValueError("Cannot select from an empty ProteusVariable")
+
+        labels = selector.values
+        keys = list(self.values)
+        if labels.dtype.kind in "iu":
+            # Keep numeric selectors on the active array backend, and check
+            # unsigned values before any narrowing cast could wrap them.
+            if labels.dtype.kind == "u":
+                invalid = labels >= len(keys)
+            else:
+                invalid = (labels < -len(keys)) | (labels >= len(keys))
+            if bool(xp.any(invalid)):
+                raise IndexError("Stochastic ProteusVariable index is out of range")
+            positions = labels.astype(xp.intp) % len(keys)
+        elif labels.dtype.kind in "US":
+            host_labels = asnumpy(labels)
+            lookup = {name: i for i, name in enumerate(keys)}
+            missing = set(np.unique(host_labels)) - lookup.keys()
+            if missing:
+                raise KeyError(f"Unknown {self.dim_name} keys: {sorted(missing)!r}")
+            positions = xp.asarray(
+                np.fromiter((lookup[name] for name in host_labels), dtype=np.intp, count=len(host_labels))
+            )
+        else:
+            raise TypeError("Stochastic ProteusVariable keys must contain strings or integers")
+
+        leaves = t.cast(list[t.Any], list(self.values.values()))
+        is_event_values = all(isinstance(x, FreqSevSims) for x in leaves)
+        if any(isinstance(x, ProteusVariable) for x in leaves):
+            raise TypeError("Stochastic selection of nested ProteusVariables is not supported")
+        if is_event_values and isinstance(selector, FreqSevSims):
+            for value in leaves:
+                if value.n_sims != selector.n_sims or not bool(xp.array_equal(value.sim_index, selector.sim_index)):
+                    raise ValueError("Event selectors require matching event indices")
+        elif not is_event_values and any(isinstance(x, FreqSevSims) for x in leaves):
+            raise TypeError("ProteusVariable entries must have a common stochastic type")
+
+        if isinstance(selector, StochasticScalar) and is_event_values:
+            event_indices: list[t.Any] = []
+            event_values: list[t.Any] = []
+            for i, value in enumerate(leaves):
+                if value.n_sims != selector.n_sims:
+                    raise ValueError("Simulation counts do not match")
+                mask = positions[value.sim_index] == i
+                if not bool(xp.any(mask)):
+                    continue
+                event_indices.append(value.sim_index[mask])
+                event_values.append(value.values[asnumpy(mask) if isinstance(value.values, np.ndarray) else mask])
+            first = leaves[0]
+            if event_indices:
+                indices = xp.concatenate(event_indices)
+                event_dtype = np.result_type(*(x.dtype for x in event_values))
+                if event_dtype.kind in "USMm":
+                    values = np.concatenate([asnumpy(x) for x in event_values]).astype(event_dtype, copy=False)
+                elif event_dtype.kind in "biufc":
+                    values = xp.concatenate([xp.asarray(x) for x in event_values]).astype(event_dtype, copy=False)
+                else:
+                    raise TypeError("Selected event values must have compatible dtypes")
+                order = xp.argsort(indices, kind="stable")
+                values = values[asnumpy(order) if isinstance(values, np.ndarray) else order]
+                indices = indices[order]
+            else:
+                indices = xp.asarray([], dtype=int)
+                values = first.values[:0]
+            result: StochasticScalar | FreqSevSims = FreqSevSims(indices, values, selector.n_sims)
+        else:
+            # Select one leaf at each scenario or event, retaining the input shape.
+            first = leaves[0]
+            selected_indices = [i for i in range(len(leaves)) if bool(xp.any(positions == i))]
+            dtypes = [
+                value.values.dtype if isinstance(value, ProteusStochasticVariable) else np.asarray(value).dtype
+                for value in (leaves[i] for i in selected_indices)
+            ]
+            if not dtypes:
+                first = leaves[0]
+                dtypes = [
+                    first.values.dtype if isinstance(first, ProteusStochasticVariable) else np.asarray(first).dtype
+                ]
+            try:
+                dtype = np.result_type(*dtypes)
+            except TypeError as exc:
+                raise TypeError("Stochastic lookup values must have compatible dtypes") from exc
+            if dtype.kind == "O":
+                raise TypeError("Stochastic lookup values must have compatible dtypes")
+            use_host = dtype.kind in "USMm"
+            chosen = (np if use_host else xp).empty(len(positions), dtype=dtype)
+            for i, value in enumerate(leaves):
+                mask = positions == i
+                if not bool(xp.any(mask)):
+                    continue
+                target = asnumpy(mask) if use_host else mask
+                if isinstance(value, FreqSevSims):
+                    source = value.values
+                    selected = source[asnumpy(mask) if isinstance(source, np.ndarray) else mask]
+                elif isinstance(value, StochasticScalar):
+                    if value.n_sims == 1:
+                        selected = value.values[0]
+                    elif value.n_sims == selector.n_sims:
+                        if isinstance(selector, FreqSevSims):
+                            source_idx = selector.sim_index[mask]
+                            if isinstance(value.values, np.ndarray):
+                                source_idx = asnumpy(source_idx)
+                            selected = value.values[source_idx]
+                        else:
+                            selected = value.values[asnumpy(mask) if isinstance(value.values, np.ndarray) else mask]
+                    else:
+                        raise ValueError("Simulation counts do not match")
+                else:
+                    selected = value
+                if use_host and isinstance(selected, xp.ndarray):
+                    selected = asnumpy(selected)
+                chosen[target] = selected
+            if isinstance(selector, FreqSevSims):
+                result = FreqSevSims(selector.sim_index, chosen, selector.n_sims)
+            else:
+                result = StochasticScalar(chosen)
+
+        result.coupled_variable_group.merge(selector.coupled_variable_group)
+        for value in leaves:
+            if isinstance(value, ProteusStochasticVariable) and value.n_sims == result.n_sims:
+                result.coupled_variable_group.merge(value.coupled_variable_group)
+        return result
+
+    @t.overload
+    def __getitem__(self, key: int | str) -> T: ...
+
+    @t.overload
+    def __getitem__(self, key: StochasticScalar | FreqSevSims) -> StochasticScalar | FreqSevSims: ...
+
+    def __getitem__(self, key: int | str | StochasticScalar | FreqSevSims) -> T | StochasticScalar | FreqSevSims:
+        if isinstance(key, (StochasticScalar, FreqSevSims)):
+            return self._stochastic_getitem(key)
         # FIXME: This assumes that the ordering of the values never changes. At the
         # moment, this is not true. The values are stored in mutable container!
         if isinstance(key, int):
@@ -631,16 +786,42 @@ class ProteusVariable(t.Generic[T]):
         )
 
     def upsample(self, n_sims: int) -> ProteusVariable[T]:
-        """Upsample the variable to the specified number of simulations."""
+        """Upsample stochastic leaves recursively while preserving coupling groups."""
         if self.n_sims == n_sims:
             return self
-        return ProteusVariable(
-            dim_name=self.dim_name,
-            values={
-                key: (value.upsample(n_sims) if isinstance(value, ProteusStochasticVariable) else value)
-                for key, value in self.values.items()
-            },
-        )
+        return self._upsample(n_sims, {})
+
+    def _upsample(
+        self,
+        n_sims: int,
+        group_indices: dict[int, StochasticScalar],
+    ) -> ProteusVariable[T]:
+        new_values: dict[str, t.Any] = {}
+
+        for key, value in self.values.items():
+            if isinstance(value, ProteusVariable):
+                new_values[key] = value._upsample(n_sims, group_indices)
+                continue
+
+            if isinstance(value, StochasticScalar):
+                if value.n_sims is None:
+                    raise ValueError(f"Variable {key} has None n_sims, cannot upsample")
+                group_id = id(value.coupled_variable_group)
+                if group_id not in group_indices:
+                    group_indices[group_id] = StochasticScalar(xp.arange(n_sims, dtype=int) % value.n_sims)
+                new_values[key] = value[group_indices[group_id]]
+                continue
+
+            if isinstance(value, FreqSevSims):
+                group_id = id(value.coupled_variable_group)
+                if group_id not in group_indices:
+                    group_indices[group_id] = StochasticScalar(xp.arange(n_sims, dtype=int) % value.n_sims)
+                new_values[key] = _resample_freqsev(value, group_indices[group_id])
+                continue
+
+            new_values[key] = value
+
+        return ProteusVariable(dim_name=self.dim_name, values=new_values)  # type: ignore[arg-type, return-value]
 
     def sum(self) -> T:
         """Return the sum across the outer dimension."""
@@ -842,7 +1023,7 @@ class ProteusVariable(t.Generic[T]):
 
         return result  # type: ignore
 
-    def correlation_matrix(self, correlation_type: str = "spearman") -> list[list[float]]:
+    def correlation_matrix(self, correlation_type: str = "spearman") -> npt.NDArray[np.float64]:
         """Compute correlation matrix between variables."""
         # validate type
         correlation_type = correlation_type.lower()
@@ -853,68 +1034,335 @@ class ProteusVariable(t.Generic[T]):
         if not hasattr(self[0], "values"):
             raise TypeError(f"First element must have 'values' attribute, got {type(self[0]).__name__}")
         n = len(self.values)
-        result: list[list[float]] = [[0.0] * n] * n
-        values: list[npt.NDArray[t.Any]] = [
-            asnumpy(getattr(self[i], "values", self[i])) for i in range(len(self.values))
-        ]
-        if correlation_type.lower() in ["spearman", "kendall"]:
-            # rank the variables first
-            for i, value in enumerate(values):
-                values[i] = scipy.stats.rankdata(value)  # type: ignore[assignment]
+        values: list[npt.NDArray[t.Any]] = [asnumpy(getattr(self[i], "values", self[i])) for i in range(n)]
 
         if correlation_type == "kendall":
-            for i, value1 in enumerate(values):
-                for j, value2 in enumerate(values):
-                    result[i][j] = float(
-                        scipy.stats.kendalltau(value1, value2).statistic  # type: ignore[arg-type]
+            result = np.empty((n, n), dtype=float)
+            for i in range(n):
+                for j in range(i, n):
+                    tau = float(
+                        scipy.stats.kendalltau(values[i], values[j]).statistic  # type: ignore[arg-type]
                     )
-        else:
-            result = np.corrcoef(values).tolist()
+                    result[i, j] = tau
+                    result[j, i] = tau
+            return result
 
-        return result
+        if correlation_type == "spearman":
+            values = [
+                scipy.stats.rankdata(value)  # type: ignore[misc]
+                for value in values
+            ]
 
-    def show_histogram(self, title: str | None = None) -> None:
-        """Show a histogram of the variable values.
+        return np.atleast_2d(np.corrcoef(values))
 
-        Args:
-            title (str | None): The title of the histogram. If None, no title is set.
-
-        """
-        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
-            return
-        fig = go.Figure(layout=go.Layout(title=title))
-        for label, value in self.values.items():
-            try:
-                # Type ignore: plotly-stubs has incomplete type information
-                fig.add_trace(go.Histogram(x=value.values(), name=label))  # type: ignore[union-attr,misc]
-            except AttributeError:
-                # not all values are ProteusVariable or StochasticScalar and therefore
-                # do not have a values() method.
-                pass
-        # Type ignore: plotly-stubs has incomplete type information
-        fig.show()  # type: ignore[misc]
-
-    def show_cdf(self, title: str | None = None) -> None:
-        """Plot the cumulative distribution function (cdf) of the variable values.
+    def histogram_plot(self, title: str | None = None) -> go.Figure:
+        """Return overlaid Plotly histograms for the contained variables.
 
         Args:
-            title: Optional title for the cdf. If None, no title is set.
+            title: Optional title for the histogram.
+
+        Returns:
+            A Plotly figure.
+
+        Raises:
+            TypeError: If the variable does not contain numeric or ``StochasticScalar`` values.
         """
-        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() == "true":
-            return
+        items = self._stochastic_scalar_items()
         fig = go.Figure(layout=go.Layout(title=title))
-        for label, value in self.values.items():
-            if not isinstance(value, (ProteusVariable, ProteusStochasticVariable)):
-                raise TypeError(f"{type(value).__name__} does not support CDF plotting. ")
-            if value.n_sims is None or value.n_sims <= 1:
-                raise ValueError("CDF can only be plotted for variables with multiple simulations.")
+        for label, value in items:
+            # Passing the PAL object directly preserves Plotly's backend-neutral
+            # array serialization, including GPU-backed stochastic scalars.
+            fig.add_trace(go.Histogram(x=value, name=label))
+        return fig
+
+    def show_histogram(self, title: str | None = None) -> go.Figure:
+        """Show and return histograms for the contained variables.
+
+        This method is retained for backwards compatibility. New code can use
+        :meth:`histogram_plot` and explicitly call ``.show()`` when required.
+
+        Args:
+            title: Optional title for the histogram.
+
+        Returns:
+            The Plotly figure that was displayed.
+        """
+        fig = self.histogram_plot(title=title)
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
             # Type ignore: plotly-stubs has incomplete type information
-            fig.add_trace(  # type: ignore[misc]
+            fig.show()  # type: ignore[misc]
+        return fig
+
+    def box_plot(
+        self,
+        title: str | None = None,
+        lower_percentile: float = 0.5,
+        upper_percentile: float = 99.5,
+    ) -> go.Figure:
+        """Return overlaid Plotly box plots for the contained variables.
+
+        The boxes show the first quartile, median, and third quartile. Whiskers
+        show the configured lower and upper percentiles, and the mean is marked
+        on each box. Raw simulation points and outliers are not displayed.
+
+        Args:
+            title: Optional title for the box plot.
+            lower_percentile: Lower whisker percentile, from 0 to 100.
+            upper_percentile: Upper whisker percentile, from 0 to 100.
+
+        Returns:
+            A Plotly figure.
+
+        Raises:
+            TypeError: If the variable does not contain numeric or ``StochasticScalar`` values.
+            ValueError: If the whisker percentiles are outside 0 to 100 or out of order.
+        """
+        if not 0 <= lower_percentile <= upper_percentile <= 100:
+            raise ValueError("Whisker percentiles must satisfy 0 <= lower_percentile <= upper_percentile <= 100.")
+
+        items = self._stochastic_scalar_items()
+        fig = go.Figure(
+            layout=go.Layout(
+                title=title,
+                xaxis=go.layout.XAxis(title=self.dim_name),
+                yaxis=go.layout.YAxis(title="Value"),
+            )
+        )
+        box_color = "#2F6B7C"
+        for label, value in items:
+            quartiles = t.cast(list[float], value.percentile([25, 50, 75]))
+            fig.add_trace(
+                go.Box(
+                    x=[label],
+                    q1=[quartiles[0]],
+                    median=[quartiles[1]],
+                    q3=[quartiles[2]],
+                    lowerfence=[value.percentile(lower_percentile)],
+                    upperfence=[value.percentile(upper_percentile)],
+                    mean=[float(value.mean())],
+                    boxpoints=False,
+                    orientation="v",
+                    marker={"color": box_color},
+                    line={"color": box_color},
+                    name=label,
+                    showlegend=False,
+                )
+            )
+        return fig
+
+    def show_box_plot(
+        self,
+        title: str | None = None,
+        lower_percentile: float = 0.5,
+        upper_percentile: float = 99.5,
+    ) -> go.Figure:
+        """Show and return box plots for the contained variables.
+
+        This method is retained for consistency with the other plotting helpers.
+        New code can use :meth:`box_plot` and explicitly call ``.show()`` when required.
+
+        Args:
+            title: Optional title for the box plot.
+            lower_percentile: Lower whisker percentile, from 0 to 100.
+            upper_percentile: Upper whisker percentile, from 0 to 100.
+
+        Returns:
+            The Plotly figure that was displayed.
+        """
+        fig = self.box_plot(
+            title=title,
+            lower_percentile=lower_percentile,
+            upper_percentile=upper_percentile,
+        )
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
+            # Type ignore: plotly-stubs has incomplete type information
+            fig.show()  # type: ignore[misc]
+        return fig
+
+    def percentile_fan_plot(
+        self,
+        title: str | None = None,
+        percentiles: t.Sequence[float] = (
+            0.1,
+            0.5,
+            1.0,
+            2.5,
+            5.0,
+            10.0,
+            25.0,
+            50.0,
+            75.0,
+            90.0,
+            95.0,
+            97.5,
+            98.0,
+            99.0,
+            99.5,
+        ),
+    ) -> go.Figure:
+        """Return a percentile fan plot across the contained dimensions.
+
+        The percentile sequence must be sorted, contain 50, and have a central
+        percentile with an equal number of percentiles on either side. Shaded
+        bands are drawn between each pair of adjacent percentile levels,
+        followed by the median and mean lines.
+
+        Args:
+            title: Optional title for the plot.
+            percentiles: Ordered percentile levels from 0 to 100. The default
+                draws fourteen adjacent bands from 0.1-0.5 through 99-99.5.
+
+        Returns:
+            A Plotly figure.
+
+        Raises:
+            TypeError: If the variable does not contain numeric or ``StochasticScalar`` values.
+            ValueError: If the percentiles are invalid for a fan plot.
+        """
+        percentile_values = tuple(percentiles)
+        if (
+            len(percentile_values) < 3
+            or len(percentile_values) % 2 == 0
+            or any(not 0 <= percentile <= 100 for percentile in percentile_values)
+            or tuple(sorted(percentile_values)) != percentile_values
+            or percentile_values[len(percentile_values) // 2] != 50
+        ):
+            raise ValueError(
+                "percentiles must be sorted, contain 50 as the central percentile, "
+                "and have an equal number of levels on either side."
+            )
+
+        items = self._stochastic_scalar_items()
+        labels = [label for label, _ in items]
+        fig = go.Figure(
+            layout=go.Layout(
+                title=title,
+                xaxis=go.layout.XAxis(title=self.dim_name),
+                yaxis=go.layout.YAxis(title="Value"),
+            )
+        )
+        pair_count = len(percentile_values) - 1
+        outer_color = (0, 188, 254)
+        inner_color = (28, 45, 145)
+
+        def band_color(index: int) -> str:
+            band_center = index + 0.5
+            center = pair_count / 2
+            distance_from_center = abs(band_center - center)
+            outer_distance = center - 0.5
+            fraction = 1 - max(distance_from_center - 0.5, 0) / max(outer_distance - 0.5, 1)
+            channels = [
+                round(outer_channel + fraction * (inner_channel - outer_channel))
+                for outer_channel, inner_channel in zip(outer_color, inner_color)
+            ]
+            return "#" + "".join(f"{channel:02X}" for channel in channels)
+
+        def transparent_band_color(color: str) -> str:
+            return f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.56)"
+
+        for band_index in range(pair_count):
+            lower_percentile = percentile_values[band_index]
+            upper_percentile = percentile_values[band_index + 1]
+            lower_values = [value.percentile(lower_percentile) for _, value in items]
+            upper_values = [value.percentile(upper_percentile) for _, value in items]
+            color = band_color(band_index)
+            band_name = f"{lower_percentile:g}-{upper_percentile:g}th percentile"
+            fig.add_trace(
                 go.Scatter(
-                    # Type ignore: value.values is known to exist due to isinstance
-                    # check
-                    x=np.sort(asnumpy(value.values)),  # type: ignore[attr-defined]
-                    y=np.arange(value.n_sims) / value.n_sims,
+                    x=labels,
+                    y=lower_values,
+                    mode="lines",
+                    line={"color": color, "width": 0},
+                    name=band_name,
+                    legendgroup=band_name,
+                    showlegend=False,
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=labels,
+                    y=upper_values,
+                    mode="lines",
+                    line={"color": color, "width": 0},
+                    fill="tonexty",
+                    fillcolor=transparent_band_color(color),
+                    name=band_name,
+                    legendgroup=band_name,
+                    legendgrouptitle={"text": "Percentile bands"} if band_index == 0 else None,
+                )
+            )
+
+        median_values = [value.percentile(50.0) for _, value in items]
+        mean_values = [float(value.mean()) for _, value in items]
+        fig.add_trace(
+            go.Scatter(
+                x=labels,
+                y=median_values,
+                mode="lines+markers",
+                line={"color": "#163B4D", "width": 2},
+                name="Median",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=labels,
+                y=mean_values,
+                mode="lines+markers",
+                line={"color": "#E76F2F", "width": 2, "dash": "dash"},
+                name="Mean",
+            )
+        )
+        return fig
+
+    def show_percentile_fan_plot(
+        self,
+        title: str | None = None,
+        percentiles: t.Sequence[float] = (
+            0.1,
+            0.5,
+            1.0,
+            2.5,
+            5.0,
+            10.0,
+            25.0,
+            50.0,
+            75.0,
+            90.0,
+            95.0,
+            97.5,
+            98.0,
+            99.0,
+            99.5,
+        ),
+    ) -> go.Figure:
+        """Show and return a percentile fan plot for the contained variables."""
+        fig = self.percentile_fan_plot(title=title, percentiles=percentiles)
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
+            # Type ignore: plotly-stubs has incomplete type information
+            fig.show()  # type: ignore[misc]
+        return fig
+
+    def cdf_plot(self, title: str | None = None) -> go.Figure:
+        """Return empirical CDF plots for the contained variables.
+
+        Args:
+            title: Optional title for the CDF plot.
+
+        Returns:
+            A Plotly figure.
+
+        Raises:
+            TypeError: If the variable does not contain numeric or ``StochasticScalar`` values.
+        """
+        items = self._stochastic_scalar_items()
+        fig = go.Figure(layout=go.Layout(title=title))
+        for label, value in items:
+            sorted_values = StochasticScalar(xp.sort(value.values))
+            cumulative_probabilities = StochasticScalar(xp.arange(value.n_sims) / value.n_sims)
+            fig.add_trace(
+                go.Scatter(
+                    x=sorted_values,
+                    y=cumulative_probabilities,
                     name=label,
                 )
             )
@@ -922,8 +1370,165 @@ class ProteusVariable(t.Generic[T]):
         fig.update_xaxes(title_text="Value")  # type: ignore[misc]
         # Type ignore: plotly-stubs has incomplete type information
         fig.update_yaxes(title_text="Cumulative Probability")  # type: ignore[misc]
-        # Type ignore: plotly-stubs has incomplete type information
-        fig.show()  # type: ignore[misc]
+        return fig
+
+    def show_cdf(self, title: str | None = None) -> go.Figure:
+        """Show and return empirical CDFs for the contained variables.
+
+        This method is retained for backwards compatibility. New code can use
+        :meth:`cdf_plot` and explicitly call ``.show()`` when required.
+
+        Args:
+            title: Optional title for the CDF plot.
+
+        Returns:
+            The Plotly figure that was displayed.
+        """
+        fig = self.cdf_plot(title=title)
+        if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
+            # Type ignore: plotly-stubs has incomplete type information
+            fig.show()  # type: ignore[misc]
+        return fig
+
+    def rank_scatter_plot(self, frames: bool = False, title: str | None = None) -> go.Figure:
+        """Return pairwise scatter plots of simulation ranks.
+
+        Each unordered pair of contained ``StochasticScalar`` variables is plotted.
+        By default the pairs are shown together as a triangular subplot matrix. When
+        ``frames=True``, one pair is shown at a time using Plotly frames with a slider.
+
+        Args:
+            frames: Show one variable pair per Plotly frame instead of subplots.
+            title: Optional figure title.
+
+        Returns:
+            A Plotly figure.
+        """
+        return self._pair_scatter(use_ranks=True, frames=frames, title=title)
+
+    def value_scatter_plot(self, frames: bool = False, title: str | None = None) -> go.Figure:
+        """Return pairwise scatter plots of simulated values.
+
+        Each unordered pair of contained ``StochasticScalar`` variables is plotted.
+        By default the pairs are shown together as a triangular subplot matrix. When
+        ``frames=True``, one pair is shown at a time using Plotly frames with a slider.
+
+        Args:
+            frames: Show one variable pair per Plotly frame instead of subplots.
+            title: Optional figure title.
+
+        Returns:
+            A Plotly figure.
+        """
+        return self._pair_scatter(use_ranks=False, frames=frames, title=title)
+
+    def _stochastic_scalar_items(self) -> list[tuple[str, StochasticScalar]]:
+        """Return top-level stochastic values, treating numeric values as constants."""
+        items: list[tuple[str, StochasticScalar]] = []
+        for label, value in self.values.items():
+            if isinstance(value, StochasticScalar):
+                items.append((label, value))
+            elif isinstance(value, Number) and not isinstance(value, complex):
+                numeric_value = t.cast(int | float, value)
+                items.append((label, StochasticScalar([float(numeric_value)])))
+            else:
+                raise TypeError(
+                    "Plotting requires a ProteusVariable containing numeric or StochasticScalar "
+                    f"values; {label!r} contains {type(value).__name__}."
+                )
+        return items
+
+    def _pair_scatter(self, use_ranks: bool, frames: bool, title: str | None) -> go.Figure:
+        """Build a pairwise rank or value scatter figure."""
+        items = self._stochastic_scalar_items()
+        if len(items) < 2:
+            raise ValueError("Pairwise scatter plots require at least two variables.")
+
+        pairs = list(itertools.combinations(range(len(items)), 2))
+
+        def axis_title(label: str) -> str:
+            return f"Rank - {label}" if use_ranks else label
+
+        def scatter_trace(i: int, j: int) -> go.Scattergl:
+            label_x, value_x = items[i]
+            label_y, value_y = items[j]
+            x = value_x.ranks if use_ranks else value_x
+            y = value_y.ranks if use_ranks else value_y
+            return go.Scattergl(
+                x=x,
+                y=y,
+                mode="markers",
+                marker={"size": 4, "opacity": 0.5},
+                name=f"{label_x} vs {label_y}",
+                showlegend=False,
+            )
+
+        if frames:
+            frame_objects: list[go.Frame] = []
+            for i, j in pairs:
+                label_x, _ = items[i]
+                label_y, _ = items[j]
+                pair_name = f"{label_x} vs {label_y}"
+                frame_objects.append(
+                    go.Frame(
+                        name=pair_name,
+                        data=[scatter_trace(i, j)],
+                        layout=go.Layout(
+                            xaxis={"title": axis_title(label_x)},
+                            yaxis={"title": axis_title(label_y)},
+                        ),
+                    )
+                )
+
+            first_i, first_j = pairs[0]
+            first_x, _ = items[first_i]
+            first_y, _ = items[first_j]
+            slider_steps = [
+                {
+                    "args": [
+                        [frame.name],
+                        {
+                            "frame": {"duration": 0, "redraw": True},
+                            "mode": "immediate",
+                            "transition": {"duration": 0},
+                        },
+                    ],
+                    "label": frame.name,
+                    "method": "animate",
+                }
+                for frame in frame_objects
+            ]
+            return go.Figure(
+                data=[scatter_trace(first_i, first_j)],
+                frames=frame_objects,
+                layout=go.Layout(
+                    title=title,
+                    xaxis={"title": axis_title(first_x)},
+                    yaxis={"title": axis_title(first_y)},
+                    sliders=[{"active": 0, "steps": slider_steps}],
+                ),
+            )
+
+        grid_size = len(items) - 1
+        subplot_titles = [""] * (grid_size * grid_size)
+        for i, j in pairs:
+            label_x, _ = items[i]
+            label_y, _ = items[j]
+            subplot_titles[i * grid_size + (j - 1)] = f"{label_x} vs {label_y}"
+
+        fig = make_subplots(rows=grid_size, cols=grid_size, subplot_titles=subplot_titles)
+        for i, j in pairs:
+            label_x, _ = items[i]
+            label_y, _ = items[j]
+            row = i + 1
+            col = j
+            fig.add_trace(scatter_trace(i, j), row=row, col=col)
+            # Type ignore: plotly-stubs has incomplete type information
+            fig.update_xaxes(title_text=axis_title(label_x), row=row, col=col)  # type: ignore[misc]
+            fig.update_yaxes(title_text=axis_title(label_y), row=row, col=col)  # type: ignore[misc]
+
+        fig.update_layout(title=title, showlegend=False)
+        return fig
 
     def _binary_operation(
         self,
@@ -969,7 +1574,9 @@ class ProteusVariable(t.Generic[T]):
                 # Extract all values and return a new StochasticScalar with those
                 # indices
                 indices = sim_no.values.astype(int)
-                return StochasticScalar(x.values[indices])
+                if isinstance(x, FreqSevSims):
+                    return _resample_freqsev(x, sim_no)
+                return StochasticScalar(x.values[asnumpy(indices) if isinstance(x.values, np.ndarray) else indices])
 
             # Handle the main case: extract value at specific simulation index
             if isinstance(sim_no, int):  # type: ignore[redundant-expr]

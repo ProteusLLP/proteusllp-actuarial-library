@@ -1,0 +1,109 @@
+name: Performance benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      sizes:
+        description: "Comma-separated simulation counts"
+        type: string
+        default: "10000,100000"
+      run_gpu:
+        description: "Also benchmark on the dedicated GPU runner"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 7 * * 1"
+  pull_request:
+    branches: [main]
+    paths:
+      - "benchmarks/**"
+      - ".github/workflows/performance.yml"
+      - "src/pal/frequency_severity.py"
+
+permissions:
+  contents: read
+
+jobs:
+  cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install PAL
+        run: pip install -e .
+      - name: Benchmark CPU
+        env:
+          BENCH_SIZES: ${{ inputs.sizes || '10000,100000' }}
+        run: |
+          python -m benchmarks.benchmark_core --sizes "$BENCH_SIZES" \
+            --output "$RUNNER_TEMP/pal-cpu.json" --summary "$RUNNER_TEMP/pal-cpu.md"
+      - name: Profile CPU memory
+        run: |
+          python -m benchmarks.profile_memory \
+            --cases aggregate,occurrence,compound_generation,xol_layer,end_to_end,portfolio \
+            --sizes 10000,100000 \
+            --output "$RUNNER_TEMP/pal-memory-cpu.json" \
+            --summary "$RUNNER_TEMP/pal-memory-cpu.md"
+      - name: Publish CPU benchmark summary
+        if: always()
+        run: |
+          for report in "$RUNNER_TEMP/pal-cpu.md" "$RUNNER_TEMP/pal-memory-cpu.md"; do
+            if [ -f "$report" ]; then
+              cat "$report" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pal-performance-cpu
+          path: |
+            ${{ runner.temp }}/pal-cpu.*
+            ${{ runner.temp }}/pal-memory-cpu.*
+          retention-days: 30
+
+  gpu:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_gpu && github.ref == 'refs/heads/main'
+    runs-on: proteus-gpu
+    timeout-minutes: 35
+    env:
+      PAL_USE_GPU: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install PAL and CuPy
+        run: pip install -e ".[gpu]" "cupy-cuda12x[ctk]"
+      - name: Benchmark GPU
+        env:
+          BENCH_SIZES: ${{ inputs.sizes || '10000,100000' }}
+        run: |
+          nvidia-smi
+          python -m benchmarks.benchmark_core --sizes "$BENCH_SIZES" \
+            --output "$RUNNER_TEMP/pal-gpu.json" --summary "$RUNNER_TEMP/pal-gpu.md"
+      - name: Profile GPU memory
+        run: |
+          python -m benchmarks.profile_memory \
+            --cases aggregate,occurrence,compound_generation,xol_layer,end_to_end,portfolio \
+            --sizes 10000,100000 \
+            --output "$RUNNER_TEMP/pal-memory-gpu.json" \
+            --summary "$RUNNER_TEMP/pal-memory-gpu.md"
+      - name: Publish GPU benchmark summary
+        if: always()
+        run: |
+          for report in "$RUNNER_TEMP/pal-gpu.md" "$RUNNER_TEMP/pal-memory-gpu.md"; do
+            if [ -f "$report" ]; then
+              cat "$report" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pal-performance-gpu
+          path: |
+            ${{ runner.temp }}/pal-gpu.*
+            ${{ runner.temp }}/pal-memory-gpu.*
+          retention-days: 30

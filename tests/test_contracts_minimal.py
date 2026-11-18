@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from pal import FreqSevSims
 from pal.contracts import XoL, XoLTower
+from pal.frequency_severity import FreqSevSims
 
 
 def test_xol_print_summary(capsys):

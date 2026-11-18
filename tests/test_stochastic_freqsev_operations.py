@@ -219,7 +219,7 @@ def test_scalar_rpow_freqsev(simple_freqsev, simple_scalar):
 def test_coupling_chain_operations():
     """Test that coupling groups are maintained across a chain of operations."""
     fs1 = FreqSevSims(np.array([0, 0, 1]), np.array([10, 20, 30]), n_sims=2)
-    fs2 = FreqSevSims(np.array([0, 1, 1]), np.array([5, 15, 25]), n_sims=2)
+    fs2 = FreqSevSims(np.array([0, 0, 1]), np.array([5, 15, 25]), n_sims=2)
     sc1 = StochasticScalar([2, 3])
     sc2 = StochasticScalar([10, 20])
 
@@ -245,7 +245,7 @@ def test_coupling_independent_groups():
     fs1 = FreqSevSims(np.array([0, 0, 1]), np.array([10, 20, 30]), n_sims=2)
     sc1 = StochasticScalar([2, 3])
 
-    fs2 = FreqSevSims(np.array([0, 1, 1]), np.array([5, 15, 25]), n_sims=2)
+    fs2 = FreqSevSims(np.array([0, 0, 1]), np.array([5, 15, 25]), n_sims=2)
     sc2 = StochasticScalar([10, 20])
 
     # Create two independent operations

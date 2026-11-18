@@ -19,11 +19,12 @@ pip install proteusllp-actuarial-library
 
 ## About This Package
 
-This mirror package automatically installs and re-exports all functionality from `proteusllp-actuarial-library`. Your existing code will continue to work without changes:
+This mirror package automatically installs the current `proteusllp-actuarial-library` package and exposes the same `pal` API:
 
 ```python
-# Still works with this mirror package
-from pal import StochasticScalar
+from pal.variables import StochasticScalar
+
+variable = StochasticScalar([1, 2, 3])
 ```
 
 ## Documentation

@@ -26,14 +26,18 @@ from __future__ import annotations
 
 import typing as t
 from collections.abc import Callable
+from copy import copy
 
 import numpy as np
 import numpy.typing as npt
 
 from . import distributions
-from ._maths import scalar_or_array, to_backend, xp
+from ._maths import asnumpy, scalar_or_array, to_backend, xp
+from ._value_arrays import host_values, stochastic_array
 from .config import config
 from .couplings import ProteusStochasticVariable as _ProteusStochasticVariable
+from .couplings import validate_stochastic_axes
+from .qmc import RandomizedQMCGenerator
 from .stochastic_scalar import (
     StochasticScalar,
 )
@@ -79,6 +83,11 @@ def _get_sims_of_events(
     Returns:
         np.ndarray: Array of simulation indices for each event.
     """
+    if xp is np:
+        # Avoid binary searches for each event on CPU. The repeated simulation
+        # indices are the same as the cumulative-count search, including gaps.
+        return np.repeat(np.arange(len(n_events_by_sim), dtype=np.int64), n_events_by_sim)
+
     cumulative_n_events = n_events_by_sim.cumsum()
     total_events = cumulative_n_events[-1]
     event_no = t.cast(npt.NDArray[np.int64], xp.arange(total_events))
@@ -102,6 +111,80 @@ class FrequencySeverityModel:
         self.freq_dist = freq_dist
         self.sev_dist = sev_dist
 
+    def _qmc_severities_ordinal(
+        self, n_sims: int, counts: t.Any, total_events: int, rng: RandomizedQMCGenerator
+    ) -> t.Any:
+        """Sample full scenario vectors for severities without inverse CDFs.
+
+        Event-list rows are not independent QMC paths. Instead, generate each
+        claim position across simulation paths to retain the intended
+        within-simulation joint severity distribution.
+        """
+        offsets = xp.cumsum(counts) - counts
+        max_count = int(xp.max(counts))
+        values: t.Any = None
+        # One draw also preserves string/date dtypes when no claims occur.
+        for claim in range(max(1, max_count)):
+            draw = self.sev_dist.generate(n_sims, rng).values
+            if values is None:
+                backend = np if host_values(draw) else xp
+                values = backend.empty(total_events, dtype=draw.dtype)
+            if claim >= max_count:
+                continue
+            active = counts > claim
+            positions = offsets[active] + claim
+            if host_values(draw):
+                values[asnumpy(positions)] = draw[asnumpy(active)]
+            else:
+                values[positions] = draw[active]
+        return values
+
+    def _qmc_severities(
+        self,
+        n_sims: int,
+        counts: t.Any,
+        event_indices: t.Any,
+        total_events: int,
+        rng: RandomizedQMCGenerator,
+    ) -> t.Any:
+        """Use indexed Sobol claim coordinates and one packed inverse CDF.
+
+        The severity assigned to the k-th claim in simulation i is the
+        k-th QMC severity coordinate for path i. Reconstructing just these
+        observed pairs preserves exactly the same scrambled Sobol design as
+        drawing an entire coordinate for every claim ordinal.
+        """
+        # The inverse Gaussian currently has no inverse-CDF implementation.
+        # Keep its established two-coordinate sampling construction.
+        if total_events == 0 or isinstance(self.sev_dist, distributions.InverseGaussian):
+            return self._qmc_severities_ordinal(n_sims, counts, total_events, rng)
+
+        maximum = int(xp.max(counts))
+        offsets = xp.cumsum(counts) - counts
+        ordinals = xp.arange(total_events, dtype=xp.int64) - offsets[event_indices]
+        uniforms = rng._event_uniforms(n_sims, event_indices, ordinals, maximum)
+        uniforms = xp.clip(uniforms, np.nextafter(0.0, 1.0), np.nextafter(1.0, 0.0))
+
+        severity_distribution = self.sev_dist
+        if any(isinstance(value, StochasticScalar) for value in self.sev_dist._params.values()):
+            # Each claim receives the parameter value of its simulation.
+            # Temporary claim-indexed scalars must not be coupled with the
+            # original simulation-indexed parameters.
+            severity_distribution = copy(self.sev_dist)
+            severity_distribution._params = {
+                name: (
+                    StochasticScalar(
+                        value.values[asnumpy(event_indices) if host_values(value.values) else event_indices]
+                    )
+                    if isinstance(value, StochasticScalar)
+                    else value
+                )
+                for name, value in self.sev_dist._params.items()
+            }
+
+        quantiles = severity_distribution.invcdf(StochasticScalar(uniforms))
+        return quantiles.values if isinstance(quantiles, StochasticScalar) else stochastic_array(quantiles)
+
     def generate(
         self,
         n_sims: int | None = None,
@@ -116,20 +199,80 @@ class FrequencySeverityModel:
             config.rng if None.
 
         Returns:
-        - FreqSevSims: Object containing the generated simulations.
+            Object containing the generated simulations.
+
+        Stochastic severity parameters have one value per simulation. Every
+        claim in a simulation uses that simulation's parameter values.
         """
         if n_sims is None:
             n_sims = config.n_sims
+        if n_sims < 1:
+            raise ValueError(f"n_sims must be >= 1, got {n_sims}")
+
+        frequency_params = getattr(self.freq_dist, "_params", {})
+        validate_stochastic_axes(
+            (param for param in frequency_params.values() if isinstance(param, StochasticScalar)),
+            n_sims=n_sims,
+        )
         if rng is None:
             rng = config.rng
+        severity_params = getattr(self.sev_dist, "_params", {})
+        stochastic_params = {
+            name: param for name, param in severity_params.items() if isinstance(param, StochasticScalar)
+        }
+        for name, param in stochastic_params.items():
+            if param.n_sims != n_sims:
+                raise ValueError(
+                    f"Stochastic severity parameter {name!r} must have one value per simulation "
+                    f"({n_sims} values), got {param.n_sims}"
+                )
+
         n_events = self.freq_dist.generate(n_sims, rng)
-        total_events = n_events.sum()
-        sev = self.sev_dist.generate(int(total_events), rng)
-        # Convert n_events to integers since _get_sims_of_events expects integer counts
-        # but n_events.values comes from distributions which return floating arrays
-        result = FreqSevSims(_get_sims_of_events(n_events.values.astype(np.int64)), sev.values, n_sims)
+        counts = n_events.values
+        # A frequency distribution must produce whole, nonnegative claim counts.
+        # Casting first would silently truncate fractional values, and negative
+        # or nonfinite values can corrupt event indexing.
+        if counts.dtype.kind not in "iuf" or bool(
+            xp.any(~xp.isfinite(counts) | (counts < 0) | (counts != xp.floor(counts)))
+        ):
+            raise ValueError("Frequency simulations must contain finite, nonnegative integer counts")
+        total_events = int(n_events.sum())
+        event_indices = _get_sims_of_events(counts.astype(np.int64))
+
+        if isinstance(rng, RandomizedQMCGenerator):
+            values = self._qmc_severities(n_sims, counts.astype(np.int64), event_indices, total_events, rng)
+            result = FreqSevSims(event_indices, values, n_sims)
+            result.coupled_variable_group.merge(n_events.coupled_variable_group)
+            for param in stochastic_params.values():
+                result.coupled_variable_group.merge(param.coupled_variable_group)
+            return result
+
+        severity_distribution = self.sev_dist
+        if stochastic_params:
+            # Generate one severity per claim, using the parameter values of that
+            # claim's simulation. Do not modify the reusable distribution instance.
+            severity_distribution = copy(self.sev_dist)
+            sample_indices = event_indices if total_events else xp.asarray([0], dtype=int)
+            severity_distribution._params = {
+                name: (
+                    StochasticScalar(
+                        param.values[asnumpy(sample_indices) if host_values(param.values) else sample_indices]
+                    )
+                    if isinstance(param, StochasticScalar)
+                    else param
+                )
+                for name, param in severity_params.items()
+            }
+
+        # Draw once even when there are no events to preserve nonnumeric severity types.
+        sev = severity_distribution.generate(max(1, total_events), rng)
+        values = sev.values[:total_events]
+        result = FreqSevSims(event_indices, values, n_sims)
         result.coupled_variable_group.merge(n_events.coupled_variable_group)
-        result.coupled_variable_group.merge(sev.coupled_variable_group)
+        # Event-level temporary parameters cannot join a simulation-level group:
+        # reordering that group must act on the FreqSevSims event indices instead.
+        for param in stochastic_params.values():
+            result.coupled_variable_group.merge(param.coupled_variable_group)
         return result
 
 
@@ -174,7 +317,7 @@ class FreqSevSims(_ProteusStochasticVariable):
     def __init__(
         self,
         sim_index: np.ndarray | list[int],
-        values: np.ndarray | list[float | int],
+        values: npt.ArrayLike,
         n_sims: int,
     ):
         """Create a new FreqSevSims object out the list of simulation indices.
@@ -195,7 +338,11 @@ class FreqSevSims(_ProteusStochasticVariable):
         """
         super().__init__()
         self.sim_index = xp.asarray(sim_index)
-        self.values = xp.asarray(values)
+        # NumPy infers float for an empty list, but empty event indices
+        # must remain suitable for indexed reductions and bincount.
+        if self.sim_index.size == 0:
+            self.sim_index = self.sim_index.astype(int)
+        self.values = stochastic_array(values)
         self.n_sims = n_sims  # type: ignore
 
         if len(self.sim_index) != len(self.values):
@@ -223,7 +370,8 @@ class FreqSevSims(_ProteusStochasticVariable):
         """Returns the values of the simulation with the given simulation index."""
         # get the positions of the given simulation index
         if isinstance(sim_index, int):  # type: ignore[unecessary-check]
-            ints = xp.where(self.sim_index == sim_index)
+            indices = asnumpy(self.sim_index) if host_values(self.values) else self.sim_index
+            ints = (indices == sim_index).nonzero()
             return StochasticScalar(self.values[ints])
         else:
             raise NotImplementedError
@@ -233,9 +381,29 @@ class FreqSevSims(_ProteusStochasticVariable):
         return self.n_sims
 
     def __iter__(self) -> t.Iterator[StochasticScalar]:
-        """Iterate over the simulations."""
-        for i in range(self.n_sims):
-            yield self[i]
+        """Iterate over the simulations, preserving each simulation's event order."""
+        # __getitem__ scans the entire event-index array on each access.
+        # Group once rather than repeating that scan for every simulation.
+        indices = self.sim_index.astype(xp.int64, copy=False)
+        counts = xp.bincount(indices, minlength=self.n_sims)
+        offsets = xp.cumsum(counts)
+        # Python iteration requires host integer slice offsets. On CUDA, copy
+        # only these counts, never the event values.
+        ends = asnumpy(offsets) if xp is not np else offsets
+
+        if indices.size < 2 or bool(xp.all(indices[1:] >= indices[:-1])):
+            grouped_values = self.values
+        else:
+            # Copula reordering may relabel the simulations without sorting
+            # the events. A stable sort retains their original within-sim order.
+            order = xp.argsort(indices, kind="stable")
+            grouped_values = self.values[asnumpy(order) if host_values(self.values) else order]
+
+        start = 0
+        for end in ends:
+            end = int(end)
+            yield StochasticScalar(grouped_values[start:end].copy())
+            start = end
 
     def _reduce_over_events(self, operation: ReductionOperation) -> StochasticScalar:
         """Apply a reduction operation over events for each simulation.
@@ -252,6 +420,8 @@ class FreqSevSims(_ProteusStochasticVariable):
         Raises:
             ValueError: If n_sims is not set
         """
+        if host_values(self.values):
+            raise TypeError("Event values must be numeric for aggregation")
         _result = xp.zeros(self.n_sims)
         operation(_result, self.sim_index, self.values)
         result = StochasticScalar(_result)
@@ -355,39 +525,95 @@ class FreqSevSims(_ProteusStochasticVariable):
         result.coupled_variable_group.merge(self.coupled_variable_group)
         return result
 
-    def _extract_array_for_ufunc(self, x: t.Any) -> npt.NDArray[np.floating]:
+    def _extract_array_for_ufunc(self, x: t.Any, host: bool | None = None) -> npt.NDArray[np.floating]:
         """Extract array values from various input types for ufunc operations.
 
         Args:
             x: Input value that could be FreqSevSims, StochasticScalar, ndarray,
                or scalar
+            host: Whether operands should be extracted as NumPy host arrays.
 
         Returns:
             Array values aligned with simulation indices
         """
+        if host is None:
+            host = host_values(self.values) or host_values(
+                x.values if isinstance(x, (FreqSevSims, StochasticScalar)) else x
+            )
+        indices = asnumpy(self.sim_index) if host else self.sim_index
         if isinstance(x, FreqSevSims):
-            return x.values
+            return asnumpy(x.values) if host else x.values
         elif isinstance(x, StochasticScalar):
-            return x.values[self.sim_index]
+            values = asnumpy(x.values) if host else x.values
+            return values[indices]
         elif isinstance(x, (np.ndarray, xp.ndarray)):
-            backend_array = to_backend(x)
-            # Type ignore: Pyright can't infer the exact dtype of indexed arrays
-            return backend_array[self.sim_index]  # type: ignore[misc]
+            backend_array = asnumpy(x) if host else to_backend(x)
+            return backend_array[indices]  # type: ignore[misc]
         else:
             # Scalar value - return as-is
             return x
 
+    def _validate_event_layout(self, *operands: t.Any) -> None:
+        """Reject event-wise operations on different scenario/event assignments."""
+        for other in operands:
+            if not isinstance(other, FreqSevSims) or other is self:
+                continue
+            if self.n_sims != other.n_sims or (
+                self.sim_index is not other.sim_index and not bool(xp.array_equal(self.sim_index, other.sim_index))
+            ):
+                raise ValueError("Event simulation indices must match for event-wise operations")
+
     def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any) -> FreqSevSims:
-        _inputs = tuple(self._extract_array_for_ufunc(x) for x in inputs)
+        where_mask = kwargs.get("where")
+        self._validate_event_layout(*inputs, *(kwargs.get("out") or ()), where_mask)
+        host = (
+            host_values(self.values)
+            or any(host_values(x.values if isinstance(x, (FreqSevSims, StochasticScalar)) else x) for x in inputs)
+            or host_values(kwargs.get("where"))
+        )
+        _inputs = tuple(self._extract_array_for_ufunc(x, host) for x in inputs)
+        if host:
+            _inputs = tuple(asnumpy(x) if isinstance(x, xp.ndarray) else x for x in _inputs)
+            ufunc = getattr(np, ufunc.__name__, ufunc)
         out = kwargs.get("out", ())
+        out_arrays: tuple[t.Any, ...] = ()
         if out:
-            kwargs["out"] = tuple(x.values for x in out)
-        result = getattr(ufunc, method)(*_inputs, **kwargs)
+            out_arrays = tuple(x.values if isinstance(x, FreqSevSims) else x for x in out)
+            kwargs["out"] = (
+                tuple(asnumpy(x).copy() if isinstance(x, xp.ndarray) else x for x in out_arrays) if host else out_arrays
+            )
+        if "where" in kwargs:
+            if isinstance(where_mask, (FreqSevSims, StochasticScalar)):
+                kwargs["where"] = self._extract_array_for_ufunc(where_mask, host)
+            elif host:
+                kwargs["where"] = asnumpy(where_mask)
+        if xp is not np and not host and method == "__call__" and "where" in kwargs:
+            # CuPy ufuncs do not accept the NumPy "where" keyword. Keep the
+            # mask and the output on the device, preserving unselected values.
+            mask = xp.asarray(kwargs["where"])
+            if isinstance(where_mask, (FreqSevSims, StochasticScalar, np.ndarray, xp.ndarray)) and not np.can_cast(
+                mask.dtype, np.bool_, casting="safe"
+            ):
+                raise TypeError("where mask cannot be safely cast to bool")
+            unmasked_kwargs = {key: value for key, value in kwargs.items() if key not in ("where", "out")}
+            calculated = getattr(ufunc, method)(*_inputs, **unmasked_kwargs)
+            if out_arrays and out_arrays[0] is not None:
+                destination = out_arrays[0]
+                xp.copyto(destination, calculated, casting=kwargs.get("casting", "same_kind"), where=mask)
+                result = destination
+            else:
+                result = xp.where(mask, calculated, xp.empty_like(calculated))
+        else:
+            result = getattr(ufunc, method)(*_inputs, **kwargs)
+        if out and host:
+            for destination, buffer in zip(out_arrays, kwargs["out"]):
+                if destination is not buffer:
+                    destination[...] = xp.asarray(buffer) if isinstance(destination, xp.ndarray) else buffer
         scalar_result = scalar_or_array(result)
         if scalar_result is not result:
             return scalar_result  # type: ignore[return-value]
         result = FreqSevSims(self.sim_index, result, self.n_sims)
-        for input in inputs:
+        for input in (*inputs, where_mask, *out):
             if isinstance(input, _ProteusStochasticVariable):
                 input.coupled_variable_group.merge(self.coupled_variable_group)
         result.coupled_variable_group.merge(self.coupled_variable_group)
@@ -422,14 +648,23 @@ class FreqSevSims(_ProteusStochasticVariable):
         ):
             raise NotImplementedError(f"Function {func.__name__} not supported")
 
+        if func is not np.array_equal:
+            self._validate_event_layout(*args)
+
         # Special handling for mean - aggregate first, then take mean
         if func is np.mean and len(args) == 1 and args[0] is self:
             return func(self.aggregate(), **kwargs)
 
         # Extract values from FreqSevSims objects, leave others as-is
-        processed_args = tuple(x.values if isinstance(x, FreqSevSims) else to_backend(x) for x in args)
+        host = host_values(self.values) or any(host_values(x.values if isinstance(x, FreqSevSims) else x) for x in args)
+        processed_args = tuple(
+            (asnumpy(x.values) if isinstance(x, FreqSevSims) else asnumpy(x) if isinstance(x, xp.ndarray) else x)
+            if host
+            else (x.values if isinstance(x, FreqSevSims) else to_backend(x))
+            for x in args
+        )
         if func is np.where:
-            processed_args = (xp.asarray(processed_args[0]), *processed_args[1:])
+            processed_args = ((np if host else xp).asarray(processed_args[0]), *processed_args[1:])
 
         result = func(*processed_args, **kwargs)
 
@@ -442,6 +677,9 @@ class FreqSevSims(_ProteusStochasticVariable):
         # Otherwise create a new FreqSevSims object with the result
         new_freq_sev = FreqSevSims(self.sim_index, result, self.n_sims)
         new_freq_sev.coupled_variable_group.merge(self.coupled_variable_group)
+        for argument in args:
+            if isinstance(argument, _ProteusStochasticVariable):
+                new_freq_sev.coupled_variable_group.merge(argument.coupled_variable_group)
         return new_freq_sev
 
     def __repr__(self):
@@ -456,26 +694,32 @@ class FreqSevSims(_ProteusStochasticVariable):
         Returns:
             True if compatible, False otherwise
         """
-        return isinstance(other, FreqSevSims) and bool(xp.array_equal(self.sim_index, other.sim_index))
+        return (
+            isinstance(other, FreqSevSims)
+            and self.n_sims == other.n_sims
+            and bool(xp.array_equal(self.sim_index, other.sim_index))
+        )
 
     def upsample(self, n_sims: int) -> FreqSevSims:
-        """Upsamples the FreqSevSims object to the given number of simulations.
+        """Resample complete event lists by cycling through source simulations.
 
-        Args:
-            n_sims: Target number of simulations
-
-        Returns:
-            New FreqSevSims object with upsampled data
-
-        Raises:
-            ValueError: If self.n_sims is None
+        The events belonging to each source simulation are copied as a unit.
+        Within-simulation event order is preserved, including for unsorted inputs.
         """
+        if n_sims < 1 or self.n_sims < 1:
+            raise ValueError("n_sims must be positive for frequency-severity resampling")
         if n_sims == self.n_sims:
             return self.copy()
-        sim_index = xp.repeat(self.sim_index, n_sims // self.n_sims)
-        values = xp.repeat(self.values, n_sims // self.n_sims)
-        if n_sims % self.n_sims > 0:
-            sim_index = xp.concatenate((sim_index, self.sim_index[self.sim_index < n_sims % self.n_sims]))
-            values = xp.concatenate((values, self.values[self.sim_index < n_sims % self.n_sims]))
-        sim_index = sim_index + xp.arange(len(sim_index)) % n_sims
+
+        source_sims = xp.arange(n_sims, dtype=int) % self.n_sims
+        source_counts = xp.bincount(self.sim_index, minlength=self.n_sims)
+        target_counts = source_counts[source_sims]
+        sim_index = xp.repeat(xp.arange(n_sims, dtype=int), target_counts)
+        source_event_order = xp.argsort(self.sim_index, kind="stable")
+        source_starts = xp.cumsum(source_counts) - source_counts
+        target_starts = xp.cumsum(target_counts) - target_counts
+        within_event = xp.arange(len(sim_index)) - xp.repeat(target_starts, target_counts)
+        source_positions = source_starts[source_sims[sim_index]] + within_event
+        event_positions = source_event_order[source_positions]
+        values = self.values[asnumpy(event_positions) if host_values(self.values) else event_positions]
         return FreqSevSims(sim_index, values, n_sims)

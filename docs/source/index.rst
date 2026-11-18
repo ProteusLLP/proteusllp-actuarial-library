@@ -117,6 +117,7 @@ A small model, end to end
    :hidden:
 
    usage
+   ai_assistants
 
 .. toctree::
    :maxdepth: 2
@@ -127,10 +128,19 @@ A small model, end to end
    tutorials/getting_started
    tutorials/distributions_guide
    tutorials/frequency_severity_modelling
-   tutorials/operational_risk_lda
    tutorials/coupling_groups_and_copulas
+   tutorials/randomized_qmc
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Examples
+   :hidden:
+
+   tutorials/operational_risk_lda
    tutorials/xol_reinsurance
+   tutorials/property_exposure_rating
    tutorials/reinstatement_pricing
+   tutorials/odp_claims_reserving
    tutorials/risk_measures_and_allocation
 
 .. toctree::

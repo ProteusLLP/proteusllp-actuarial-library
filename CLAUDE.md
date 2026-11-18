@@ -1,93 +1,11 @@
 # Claude Development Guide
 
-This file contains project-specific information to help Claude work effectively with this codebase.
+The canonical development instructions for this repository are in [`AGENTS.md`](./AGENTS.md).
 
-## Development Environment
+Before making changes:
 
-This project uses Docker for consistent development environments.
+1. Read the root `AGENTS.md`.
+2. Read the nearest nested `AGENTS.md` for each area you modify (`src/pal/`, `tests/` or `docs/`).
+3. Follow `pyproject.toml`, `Makefile` and CI workflows when configuration or commands differ from prose documentation.
 
-### Command Execution Guidelines
-
-**Run INSIDE the Docker container (`pal-devcontainer`):**
-- All `make` commands (lint, test, typecheck, etc.)
-- Python commands
-- Package builds
-
-**Run on the HOST machine:**
-- Git commands (`git add`, `git commit`, `git push`, etc.)
-- GitHub CLI (`gh` commands for issues, PRs, etc.)
-- File editing (though this works in both environments)
-
-### Docker Commands
-
-The container name is configured in `.devcontainer/devcontainer.json` as `pal-devcontainer`:
-
-<!--pytest.mark.skip-->
-
-```bash
-# All development commands (run inside container):
-# Lint code
-docker exec pal-devcontainer make lint
-
-# Auto-fix lint issues
-docker exec pal-devcontainer make lint-fix
-
-# Run tests
-docker exec pal-devcontainer make test
-
-# Type checking
-docker exec pal-devcontainer make typecheck
-```
-
-### Python Execution
-
-<!--pytest.mark.skip-->
-
-```bash
-# Run Python scripts
-docker exec pal-devcontainer python script.py
-
-# Run examples
-docker exec pal-devcontainer python examples/example_catastrophes.py
-```
-
-<!--pytest.mark.skip-->
-
-### Finding Your Container
-```bash
-# List running containers
-docker ps
-
-# Filter by the devcontainer name
-docker ps --filter name=pal-devcontainer
-```
-
-## Code Style
-
-**IMPORTANT**:
-- Do not add cruft comments like "# mean() removed - use numpy.mean() instead". When removing code, just remove it cleanly without leaving placeholder comments.
-- **No nested imports** - Always import modules at the top of the file, not inside functions. Nested imports hide import errors and delay them until runtime instead of catching them at load time.
-
-**See [STYLE_GUIDE.md](./STYLE_GUIDE.md) for all coding standards including:**
-- Line length (88 characters max) - IMPORTANT: Never exceed 88 characters
-- Type annotations
-- Comments (explain WHY, not WHAT)
-- Docstring format
-- Import ordering
-- No trailing whitespace at end of lines
-- No unnecessary blank lines
-
-### Linting Workflow
-1. Run: `docker exec pal-devcontainer make lint`
-2. For auto-fixable errors: `docker exec pal-devcontainer make lint-fix`
-3. Manually fix remaining errors following [STYLE_GUIDE.md](./STYLE_GUIDE.md)
-4. **All lint errors must be fixed** (no warnings allowed in CI)
-
-## Project Structure
-
-- `pal/` - Main library code
-- `tests/` - Test suite
-- `examples/` - Usage examples
-- `pyproject.toml` - Project configuration including ruff lint rules
-- `STYLE_GUIDE.md` - **All coding standards and examples**
-- `docs/structure.md` - **Type system architecture and design principles**
+This file is intentionally small so that Claude-specific guidance cannot drift from the instructions used by other coding agents.

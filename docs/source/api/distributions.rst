@@ -17,6 +17,8 @@ Discrete distributions
    pal.distributions.Bernoulli
    pal.distributions.Empirical
 
+   pal.distributions.Categorical
+
 Continuous distributions
 ------------------------
 
@@ -26,6 +28,7 @@ Continuous distributions
 
    pal.distributions.GPD
    pal.distributions.Burr
+   pal.distributions.GeneralizedBetaPrime
    pal.distributions.Beta
    pal.distributions.MBBEFD
    pal.distributions.Normal
@@ -53,7 +56,7 @@ Multivariate distributions
 --------------------------
 
 Multivariate samples are returned as a :class:`pal.variables.ProteusVariable`
-with one named :class:`pal.stochastic_scalar.StochasticScalar` per component.
+with one named :class:`pal.variables.StochasticScalar` per component.
 
 .. autosummary::
    :toctree: distributions

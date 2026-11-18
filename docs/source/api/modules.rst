@@ -7,6 +7,7 @@ This section contains the complete API reference for the Proteus Actuarial Libra
    :maxdepth: 3
 
    variables
+   stochastic_scalar
    distributions
    frequency_severity
    copulas

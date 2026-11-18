@@ -1,13 +1,16 @@
-# Configuration file for the Sphinx documentation builder.
-#
-# For the full list of built-in configuration values, see the documentation:
-# https://www.sphinx-doc.org/en/master/usage/configuration.html
+"""Configuration file for the Sphinx documentation builder.
+
+For the full list of built-in configuration values, see the documentation:
+https://www.sphinx-doc.org/en/master/usage/configuration.html
+"""
 
 import os
+import re
 import sys
 
-# Add the parent directory to the path so we can import the package
+# Add the source package and local Sphinx extensions to the import path.
 sys.path.insert(0, os.path.abspath("../../src"))
+sys.path.insert(0, os.path.abspath("_ext"))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -31,6 +34,7 @@ version = ".".join(release.split(".")[:2])
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
+    "pal_llms",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
@@ -44,7 +48,9 @@ extensions = [
 
 # MyST parser settings for markdown support
 myst_enable_extensions = [
+    "amsmath",
     "colon_fence",
+    "dollarmath",
     "deflist",
 ]
 
@@ -61,7 +67,9 @@ mathjax4_config = {
 }
 
 templates_path = ["_templates"]
-exclude_patterns = []
+exclude_patterns = [
+    "api/pal*.rst",
+]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
@@ -137,11 +145,16 @@ napoleon_numpy_docstring = True
 napoleon_include_init_with_doc = True
 
 # Intersphinx mapping
-intersphinx_mapping = {
-    "python": ("https://docs.python.org/3", None),
-    "numpy": ("https://numpy.org/doc/stable/", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
-}
+# In many environments (CI, offline devcontainers) we cannot fetch inventories.
+# Keep it opt-in to avoid noisy warnings when building with -W.
+if os.environ.get("PAL_DOCS_INTERSPHINX") == "1":
+    intersphinx_mapping = {
+        "python": ("https://docs.python.org/3", None),
+        "numpy": ("https://numpy.org/doc/stable/", None),
+        "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    }
+else:
+    intersphinx_mapping = {}
 
 # Autosummary settings
 autosummary_generate = True  # Enable autosummary generation
@@ -149,3 +162,94 @@ autosummary_imported_members = True
 
 # Master document (for older Sphinx/RTD compatibility)
 master_doc = "index"
+
+
+_INLINE_DOLLAR_MATH_RE = re.compile(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)")
+
+
+def _convert_dollar_math_in_docstring(lines: list[str]) -> list[str]:
+    """Convert $...$ / $$...$$ to Sphinx math in autodoc docstrings.
+
+    Sphinx renders math via docutils nodes. MyST's ``dollarmath`` only applies to
+    Markdown sources, not to Python docstrings (which are parsed as reST).
+
+    This hook lets us write dollar-math consistently in docstrings and tutorials.
+    It is intentionally conservative: it avoids transforming inside fenced or
+    literal code blocks.
+    """
+    out: list[str] = []
+    in_fenced_code = False
+    literal_pending = False
+    in_literal_block = False
+    in_display_math = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped.startswith("```"):
+            in_fenced_code = not in_fenced_code
+            out.append(line)
+            continue
+
+        if in_fenced_code:
+            out.append(line)
+            continue
+
+        if in_display_math:
+            if stripped == "$$":
+                in_display_math = False
+                out.append("")
+            else:
+                out.append("   " + line)
+            continue
+
+        if stripped == "$$":
+            in_display_math = True
+            out.append(".. math::")
+            out.append("")
+            continue
+
+        if in_literal_block:
+            if stripped and not line[:1].isspace():
+                in_literal_block = False
+            else:
+                out.append(line)
+                continue
+
+        if literal_pending:
+            if stripped == "":
+                out.append(line)
+                continue
+            if line[:1].isspace():
+                in_literal_block = True
+                out.append(line)
+                continue
+            literal_pending = False
+
+        if stripped.startswith(".. code-block::") or stripped.startswith(".. literalinclude::"):
+            literal_pending = True
+            out.append(line)
+            continue
+
+        if stripped.endswith("::"):
+            literal_pending = True
+            out.append(line)
+            continue
+
+        def repl(match: re.Match[str]) -> str:
+            expr = match.group(1).strip()
+            return f":math:`{expr}`"
+
+        out.append(_INLINE_DOLLAR_MATH_RE.sub(repl, line))
+
+    return out
+
+
+def setup(app):
+    """Setup function for the Sphinx extension."""
+
+    def _autodoc_process_docstring(app, what, name, obj, options, lines):  # noqa: ANN001
+        converted = _convert_dollar_math_in_docstring(list(lines))
+        lines[:] = converted
+
+    app.connect("autodoc-process-docstring", _autodoc_process_docstring)
