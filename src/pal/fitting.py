@@ -430,7 +430,12 @@ def _fit_other(
         else:
             frozen = _frozen_distribution(family, pars)
             base = float(frozen.logsf(threshold)) if threshold > 0 else 0.0
-            terms = np.where(censored, frozen.logsf(x), frozen.logpdf(x)) - base
+            terms = np.empty_like(x)
+            if np.any(~censored):
+                terms[~censored] = frozen.logpdf(x[~censored])
+            if np.any(censored):
+                terms[censored] = frozen.logsf(x[censored])
+            terms -= base
         if not np.isfinite(base):
             return -np.inf
         value = float(np.dot(weights, terms))
