@@ -56,9 +56,11 @@ validating simulation results.
 ## Fitting claim severity distributions
 
 Severity distributions can be estimated from observed claim sizes using
-maximum likelihood. Supported families include Pareto, GPD, lognormal,
-gamma, Weibull, Burr, log-logistic, inverse Gaussian, paralogistic,
-inverse Burr, inverse gamma, inverse Weibull (Fréchet) and log-gamma.
+maximum likelihood. Supported families include Pareto, GPD, lognormal, gamma,
+Weibull, Burr, log-logistic, inverse Gaussian, paralogistic,
+inverse Burr, inverse gamma, inverse Weibull (Fréchet), log-gamma,
+exponential, inverse exponential, inverse paralogistic, generalized beta
+prime (GB2), generalized inverse Gaussian and generalized extreme value (GEV).
 Fitting returns a PAL distribution, estimated parameters and likelihood
 diagnostics.
 
@@ -87,7 +89,7 @@ threshold by default. Pass `free_location=True` to `GPD.fit(...)` to
 estimate all three parameters from an untruncated sample. With left
 truncation, GPD location and scale are not separately identifiable, so
 PAL rejects a free location when a positive threshold is supplied.
-Other supported shifted distributions are fitted with zero location.
+Other supported shifted positive severity distributions are fitted with zero location. GEV estimates its location.
 
 `fitted.log_likelihood`, `fitted.aic`, `fitted.aicc` and
 `fitted.converged` provide initial model-fit diagnostics. AICc is available
