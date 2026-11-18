@@ -84,8 +84,10 @@ exceeding its recorded limit, rather than a density at that limit. Optional
 `weights` support repeated observations or other non-negative observation
 weights; zero-weight rows are ignored. The GPD location is fixed at the
 threshold by default. Pass `free_location=True` to `GPD.fit(...)` to
-estimate all three parameters. Other supported shifted distributions
-are fitted with zero location.
+estimate all three parameters from an untruncated sample. With left
+truncation, GPD location and scale are not separately identifiable, so
+PAL rejects a free location when a positive threshold is supplied.
+Other supported shifted distributions are fitted with zero location.
 
 `fitted.log_likelihood`, `fitted.aic`, `fitted.aicc` and
 `fitted.converged` provide initial model-fit diagnostics. AICc is available
