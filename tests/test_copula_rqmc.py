@@ -300,7 +300,7 @@ def _multivariate_examples():
         pytest.param(JoeCopula(2.0, 3), 1 - math.sqrt(1 - 0.75**2), id="joe"),
         pytest.param(
             MM1Copula([[1.0, 1.7, 1.7], [1.7, 1.0, 1.7], [1.7, 1.7, 1.0]], theta=1.3),
-            2 ** (-((2 ** (1 / 1.7) + 2) / 2) ** (1 / 1.3)),
+            2 ** (-(((2 ** (1 / 1.7) + 2) / 2) ** (1 / 1.3))),
             id="mm1",
         ),
         pytest.param(GalambosCopula(2.0, 3), 2 ** (-(2 - 2 ** (-0.5))), id="galambos"),
