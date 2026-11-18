@@ -367,7 +367,7 @@ def _fit_other(
 
     def make_params(raw: np.ndarray) -> dict[str, float]:
         pars = dict(zip(names, (float(np.exp(value)) for value in raw)))
-        if family not in {"InverseGaussian"}:
+        if family not in {"InverseGaussian", "LogGamma"}:
             pars["loc"] = 0.0
         return pars
 
