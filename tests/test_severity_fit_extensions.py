@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from scipy import integrate, stats
 
+from pal._maths import xp
 from pal.distributions import (
     GEV,
     GPD,
@@ -264,7 +265,12 @@ def test_generalized_inverse_gaussian_fitting_and_mean_excess() -> None:
         b=np.sqrt(params["chi"] * params["psi"]),
         scale=np.sqrt(params["chi"] / params["psi"]),
     )
-    assert fitted.distribution.cdf(5.0) == pytest.approx(ref_fitted.cdf(5.0), rel=1e-8)
+    if xp.__name__ == "cupy":
+        # GIG probability methods are currently CPU-only; fitting and mean excess are not.
+        with pytest.raises(NotImplementedError, match="not supported on GPU"):
+            fitted.distribution.cdf(5.0)
+    else:
+        assert fitted.distribution.cdf(5.0) == pytest.approx(ref_fitted.cdf(5.0), rel=1e-8)
     expected = (
         np.sum(ref_fitted.logpdf(np.minimum(raw, 20.0)[~censored]))
         + np.sum(ref_fitted.logsf(np.minimum(raw, 20.0)[censored]))
