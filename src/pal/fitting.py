@@ -10,7 +10,7 @@ import typing as t
 from dataclasses import dataclass
 
 import numpy as np
-from scipy import optimize, stats
+from scipy import integrate, optimize, stats
 
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
@@ -157,10 +157,12 @@ def fit_distribution(
         The other families use deterministic numerical optimisation.
     """
     family = distribution.__name__
-    if family not in _SUPPORTED:
-        raise ValueError(f"Unsupported fitting family {family!r}; expected one of {_SUPPORTED}")
+    if family not in (*_SUPPORTED, *_OTHER_FAMILIES):
+        raise ValueError(f"Unsupported fitting family {family!r}; expected one of {_SUPPORTED + _OTHER_FAMILIES}")
     threshold = float(threshold)
     x, c, w = _prepare(observations, threshold, censored, weights)
+    if family in _OTHER_FAMILIES:
+        return _fit_other(distribution, x, c, w, threshold)
     total = float(np.sum(w))
     mean = float(np.average(x, weights=w))
     variance = float(np.average((x - mean) ** 2, weights=w))
@@ -247,3 +249,237 @@ def fit_distribution(
         n_censored=int(np.sum(c)),
         threshold=threshold,
     )
+
+
+# The additional severity families use PAL's established zero-location
+# parameterisations. Location is fixed at zero unless GPD has its location
+# fixed at the truncation threshold.
+_OTHER_FAMILIES = (
+    "Weibull",
+    "Burr",
+    "LogLogistic",
+    "InverseGaussian",
+    "Paralogistic",
+    "InverseBurr",
+    "InverseGamma",
+    "InverseWeibull",
+)
+
+
+def _frozen_distribution(family: str, params: dict[str, float]) -> t.Any:
+    """Build an independent SciPy reference distribution for inference."""
+    p = params
+    if family == "Pareto":
+        return stats.pareto(b=p["shape"], scale=p["scale"])
+    if family == "GPD":
+        return stats.genpareto(c=p["shape"], loc=p["loc"], scale=p["scale"])
+    if family == "LogNormal":
+        return stats.lognorm(s=p["sigma"], scale=np.exp(p["mu"]))
+    if family == "Gamma":
+        return stats.gamma(a=p["alpha"], scale=p["theta"])
+    if family == "Weibull":
+        return stats.weibull_min(c=p["shape"], scale=p["scale"], loc=p["loc"])
+    if family == "Burr":
+        return stats.burr12(c=p["power"], d=p["shape"], scale=p["scale"], loc=p["loc"])
+    if family == "LogLogistic":
+        return stats.fisk(c=p["shape"], scale=p["scale"], loc=p["loc"])
+    if family == "InverseGaussian":
+        return stats.invgauss(mu=p["mu"] / p["lambda_"], scale=p["lambda_"])
+    if family == "Paralogistic":
+        return stats.burr12(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"])
+    if family == "InverseBurr":
+        return stats.burr(c=p["power"], d=p["shape"], scale=p["scale"], loc=p["loc"])
+    if family == "InverseGamma":
+        return stats.invgamma(a=p["alpha"], scale=p["theta"], loc=p["loc"])
+    if family == "InverseWeibull":
+        return stats.invweibull(c=p["shape"], scale=p["scale"], loc=p["loc"])
+    raise ValueError(f"Unsupported severity family: {family}")
+
+
+def _fit_other(
+    distribution: type[_T],
+    x: np.ndarray,
+    censored: np.ndarray,
+    weights: np.ndarray,
+    threshold: float,
+) -> FitResult[_T]:
+    """Fit additional two- and three-parameter severity distributions."""
+    family = distribution.__name__
+    mean = float(np.average(x, weights=weights))
+    median = float(np.median(x))
+    variance = float(np.average((x - mean) ** 2, weights=weights))
+    scale = max(median, np.finfo(float).tiny)
+    if family == "Weibull":
+        names = ("shape", "scale")
+    elif family == "Burr":
+        names = ("power", "shape", "scale")
+    elif family == "LogLogistic":
+        names = ("shape", "scale")
+    elif family == "InverseGaussian":
+        names = ("mu", "lambda_")
+    elif family == "Paralogistic":
+        names = ("shape", "scale")
+    elif family == "InverseBurr":
+        names = ("power", "shape", "scale")
+    elif family == "InverseGamma":
+        names = ("alpha", "theta")
+    else:
+        names = ("shape", "scale")
+
+    starts: list[list[float]]
+    if family == "InverseGaussian":
+        lam = max(mean**3 / max(variance, np.finfo(float).tiny), np.finfo(float).tiny)
+        starts = [[np.log(mean), np.log(lam)], [np.log(mean), np.log(mean)]]
+    elif family in {"Burr", "InverseBurr"}:
+        starts = [
+            [np.log(1.5), np.log(1.5), np.log(scale)],
+            [0.0, 0.0, np.log(scale)],
+            [np.log(2.5), 0.0, np.log(scale)],
+            [0.0, np.log(2.5), np.log(scale)],
+        ]
+    elif family == "InverseGamma":
+        alpha = max(mean * mean / max(variance, np.finfo(float).tiny) + 2.0, 1.5)
+        starts = [[np.log(alpha), np.log(max(mean * (alpha - 1.0), 1e-12))], [0.0, np.log(scale)]]
+    else:
+        starts = [[np.log(1.0), np.log(scale)], [np.log(2.0), np.log(scale)], [np.log(0.75), np.log(scale)]]
+
+    def make_params(raw: np.ndarray) -> dict[str, float]:
+        pars = dict(zip(names, (float(np.exp(value)) for value in raw)))
+        if family not in {"InverseGaussian"}:
+            if family in {"Burr", "InverseBurr", "Weibull", "InverseWeibull", "InverseGamma", "LogLogistic", "Paralogistic"}:
+                pars["loc"] = 0.0
+        return pars
+
+    def loglik(pars: dict[str, float]) -> float:
+        frozen = _frozen_distribution(family, pars)
+        base = float(frozen.logsf(threshold)) if threshold > 0 else 0.0
+        if not np.isfinite(base):
+            return -np.inf
+        terms = np.where(censored, frozen.logsf(x), frozen.logpdf(x)) - base
+        value = float(np.dot(weights, terms))
+        return value if np.isfinite(value) else -np.inf
+
+    def objective(raw: np.ndarray) -> float:
+        with np.errstate(all="ignore"):
+            val = loglik(make_params(raw))
+        return -val if np.isfinite(val) else 1e100
+
+    results = [
+        optimize.minimize(
+            objective,
+            np.asarray(start, dtype=np.float64),
+            method="Nelder-Mead",
+            options={"maxiter": 5000, "xatol": 1e-7, "fatol": 1e-7},
+        )
+        for start in starts
+    ]
+    best = min(results, key=lambda item: float(item.fun))
+    if best.fun >= 1e100 or not np.isfinite(best.fun):
+        raise RuntimeError(f"Unable to obtain finite {family} likelihood")
+    pars = make_params(best.x)
+    ll = loglik(pars)
+    model = distribution(**pars)
+    n_params = len(names)
+    total_weight = float(np.sum(weights))
+    aic = 2 * n_params - 2 * ll
+    is_frequency = bool(np.all(weights == np.floor(weights)))
+    aicc = (
+        aic + 2 * n_params * (n_params + 1) / (total_weight - n_params - 1)
+        if is_frequency and total_weight > n_params + 1
+        else np.nan
+    )
+    return FitResult(
+        distribution=model,
+        parameters=pars,
+        log_likelihood=ll,
+        aic=aic,
+        aicc=aicc,
+        converged=bool(best.success),
+        n_observations=len(x),
+        n_censored=int(np.sum(censored)),
+        threshold=threshold,
+    )
+
+
+def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -> float | np.ndarray:
+    """Calculate E[X - d | X > d] at the supplied thresholds.
+
+    Args:
+        distribution: A PAL severity distribution with fixed, scalar parameters.
+        threshold: One or more attachment levels d.
+
+    Returns:
+        Mean residual loss for each threshold. Infinite means produce infinity,
+        and thresholds beyond a finite upper endpoint return NaN.
+
+    Notes:
+        Closed forms are used for Pareto and GPD. For other severity families,
+        stable conditional survival integration avoids subtracting close tail
+        expectations. This function uses the CPU, without sampling.
+    """
+    family = type(distribution).__name__
+    if family not in (*_SUPPORTED, *_OTHER_FAMILIES):
+        raise ValueError(f"No mean excess implementation for {family}")
+    params = distribution._params
+    if any(not np.isscalar(value) for value in params.values()):
+        raise ValueError("mean excess requires scalar distribution parameters")
+    pars = {key: float(value) for key, value in params.items()}
+    frozen = _frozen_distribution(family, pars)
+    inputs = np.asarray(threshold, dtype=float)
+    result = np.full(inputs.shape, np.nan, dtype=float)
+    inf_mean = (
+        (family == "Pareto" and pars["shape"] <= 1.0)
+        or (family == "GPD" and pars["shape"] >= 1.0)
+        or (family == "Burr" and pars["power"] * pars["shape"] <= 1.0)
+        or (family == "LogLogistic" and pars["shape"] <= 1.0)
+        or (family == "Paralogistic" and pars["shape"] <= 1.0)
+        or (family == "InverseBurr" and pars["power"] <= 1.0)
+        or (family == "InverseGamma" and pars["alpha"] <= 1.0)
+        or (family == "InverseWeibull" and pars["shape"] <= 1.0)
+    )
+    lower, upper = frozen.support()
+    for index, d in np.ndenumerate(inputs):
+        if not np.isfinite(d):
+            continue
+        if d >= upper or frozen.logsf(float(d)) == -np.inf:
+            continue
+        if inf_mean:
+            result[index] = np.inf
+            continue
+        if family == "Pareto":
+            alpha, xm = pars["shape"], pars["scale"]
+            result[index] = max(xm - d, 0.0) + max(d, xm) / (alpha - 1.0)
+            continue
+        if family == "GPD":
+            xi, sigma, loc = pars["shape"], pars["scale"], pars["loc"]
+            base = max(float(d), loc)
+            result[index] = (base - d) + (sigma + xi * (base - loc)) / (1.0 - xi)
+            continue
+
+        # Scale by the local inverse hazard. Integrating in units of tail
+        # width prevents quadrature missing a narrow tail at a high threshold.
+        start = max(float(d), float(lower))
+        log_start_sf = float(frozen.logsf(start))
+        log_start_pdf = float(frozen.logpdf(start))
+        with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+            local_scale = float(np.exp(log_start_sf - log_start_pdf))
+        if not np.isfinite(local_scale) or local_scale <= 0:
+            local_scale = max(abs(start) * 0.1, 1.0)
+        remaining = upper - start
+        limit = remaining / local_scale if np.isfinite(remaining) else np.inf
+
+        def conditional_survival(u: float) -> float:
+            x = start + local_scale * u
+            return float(np.exp(float(frozen.logsf(x)) - log_start_sf))
+
+        area, error = integrate.quad(
+            conditional_survival,
+            0.0,
+            limit,
+            epsrel=1e-9,
+            limit=300,
+        )
+        if not np.isfinite(area) or not np.isfinite(error) or error > 1e-7 * max(1.0, abs(area)):
+            raise ArithmeticError(f"Mean excess integration did not converge for {family} at {d}")
+        result[index] = (start - d) + float(np.exp(log_start_sf - float(frozen.logsf(d)))) * local_scale * area
+    return float(result) if result.ndim == 0 else result
