@@ -197,7 +197,6 @@ def test_iterative_copulas_preserve_multivariate_qmc_structure(copula) -> None:
     assert set(rng._streams) == {n}
 
 
-
 @pytest.mark.parametrize("copula,expected_median", _copula_examples())
 def test_every_copula_can_reorder_coupled_stochastic_variables_under_rqmc(copula, expected_median: float) -> None:
     """Applying a copula must retain both exact marginal samples and chained values."""
