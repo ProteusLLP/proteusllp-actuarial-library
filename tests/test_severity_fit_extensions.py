@@ -9,6 +9,7 @@ from pal.distributions import (
     Burr,
     Exponential,
     Gamma,
+    GeneralizedBetaPrime,
     InverseBurr,
     InverseExponential,
     InverseParalogistic,
@@ -214,3 +215,29 @@ def test_extra_severity_fit_matches_scipy(cls, reference, parameter_names) -> No
     if cls is InverseParalogistic:
         assert np.isinf(InverseParalogistic(shape=0.8, scale=4.0).mean_excess(5.0))
         assert cls(shape=2.2, scale=4.0).mean_excess(5.0) > 0
+
+
+def test_generalized_beta_prime_mle_and_mean_excess() -> None:
+    """Validate GB2 inference against the beta-prime transformation."""
+    rng = np.random.default_rng(114)
+    power, scale, p, q = 1.5, 8.0, 2.0, 2.5
+    losses = scale * stats.betaprime.rvs(p, q, size=350, random_state=rng) ** (1.0 / power)
+    losses = losses[losses > 3.0]
+    censored = losses > 20.0
+    fitted = GeneralizedBetaPrime.fit(np.minimum(losses, 20.0), threshold=3.0, censored=censored)
+    assert np.isfinite(fitted.log_likelihood)
+    assert fitted.aic == pytest.approx(8 - 2 * fitted.log_likelihood)
+    params = fitted.parameters
+    assert set(params) == {"a", "b", "p", "q"}
+    assert all(v > 0 for v in params.values())
+    model = fitted.distribution
+    assert model.cdf(8.0) == pytest.approx(
+        stats.betaprime.cdf((8.0 / params["b"]) ** params["a"], params["p"], params["q"])
+    )
+    known = GeneralizedBetaPrime(a=power, b=scale, p=p, q=q)
+    for d in (0.0, 3.0, 10.0):
+        def survival(x: float) -> float:
+            return float(stats.betaprime.sf((x / scale) ** power, p, q))
+        expectation, _ = integrate.quad(survival, d, np.inf, epsrel=1e-8)
+        assert known.mean_excess(d) == pytest.approx(expectation / survival(d), rel=5e-6)
+    assert np.isinf(GeneralizedBetaPrime(a=0.5, b=scale, p=p, q=1.0).mean_excess(10.0))
