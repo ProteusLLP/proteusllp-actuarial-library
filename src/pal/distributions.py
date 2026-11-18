@@ -1034,7 +1034,7 @@ class MBBEFD(DistributionBase):
         candidates = (argument, *self._params.values())
         stochastic_inputs = [value for value in candidates if isinstance(value, StochasticScalar)]
         if not stochastic_inputs:
-            return float(result)
+            return t.cast(ReturnType, scalar_or_array(result))
 
         wrapped = StochasticScalar(result)
         for value in stochastic_inputs:
