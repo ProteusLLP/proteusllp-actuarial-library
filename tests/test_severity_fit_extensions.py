@@ -160,10 +160,9 @@ def test_loggamma_mean_excess_matches_transformed_gamma_moment() -> None:
 def test_gpd_free_location_matches_truncated_censored_likelihood() -> None:
     rng = np.random.default_rng(756)
     original = stats.genpareto.rvs(c=0.25, loc=2.0, scale=5.0, size=1200, random_state=rng)
-    original = original[original > 3.0]
     censored = original > 25.0
     observed = np.minimum(original, 25.0)
-    fitted = GPD.fit(observed, threshold=3.0, censored=censored, free_location=True)
+    fitted = GPD.fit(observed, censored=censored, free_location=True)
     pars = fitted.parameters
     assert fitted.aic == pytest.approx(6 - 2 * fitted.log_likelihood)
     assert pars["loc"] < observed.min()
@@ -172,4 +171,6 @@ def test_gpd_free_location_matches_truncated_censored_likelihood() -> None:
         np.sum(ref.logpdf(observed[~censored])) + np.sum(ref.logsf(observed[censored])) - len(observed) * ref.logsf(3.0)
     )
     assert fitted.log_likelihood == pytest.approx(expected, abs=1e-7)
+    with pytest.raises(ValueError, match="not identifiable"):
+        GPD.fit(observed, threshold=3.0, censored=censored, free_location=True)
     assert fitted.distribution.cdf(15.0) == pytest.approx(ref.cdf(15.0), rel=1e-10)
