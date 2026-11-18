@@ -41,6 +41,8 @@ The same idea extends to dependent variables. For example, this generates
 two uniform marginals from a Gaussian copula with correlation 0.7:
 
 ```python
+from pal import set_random_seed
+from pal.config import SamplingMethod, set_sampling_method
 from pal.copulas import GaussianCopula
 
 copula = GaussianCopula([[1.0, 0.7], [0.7, 1.0]])
