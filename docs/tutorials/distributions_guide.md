@@ -53,6 +53,40 @@ ln.invcdf(0.995)     # => 1,049,416  (99.5th percentile)
 These are useful for quick calculations, curve-fitting checks and
 validating simulation results.
 
+## Fitting claim severity distributions
+
+The Pareto, Generalised Pareto (GPD), lognormal and gamma distributions can
+be estimated from observed claim sizes using maximum likelihood. Fitting
+returns the PAL distribution, estimated parameters and log-likelihood
+diagnostics.
+
+```python
+import numpy as np
+
+from pal.distributions import Pareto
+
+losses = np.array([12.0, 15.0, 21.0, 36.0, 60.0])
+censored = np.array([False, False, False, True, True])
+
+fitted = Pareto.fit(losses, threshold=10.0, censored=censored)
+shape = fitted.parameters["shape"]
+tail_probability = 1.0 - fitted.distribution.cdf(50.0)
+assert shape > 0 and 0 <= tail_probability <= 1
+```
+
+The reporting threshold conditions the likelihood on losses above that
+amount. An observation marked as censored contributes the probability of
+exceeding its recorded limit, rather than a density at that limit. Optional
+`weights` support repeated observations or other non-negative observation
+weights; zero-weight rows are ignored. The GPD location is fixed at the
+threshold. Gamma is fitted with a zero location.
+
+`fitted.log_likelihood`, `fitted.aic`, `fitted.aicc` and
+`fitted.converged` provide initial model-fit diagnostics. AICc is available
+for integer frequency weights with sufficient observations. Numerical fitting
+runs on the CPU using SciPy; the resulting PAL distribution supports the usual
+simulation and probability methods.
+
 ## Available Distributions
 
 ### Severity (Continuous) Distributions
