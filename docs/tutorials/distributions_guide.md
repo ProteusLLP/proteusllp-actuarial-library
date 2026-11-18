@@ -113,60 +113,6 @@ It is undefined at and beyond a finite upper endpoint. The calculation uses
 analytical expressions where available and numerical survival integration for
 the remaining distributions.
 
-## Fitting the other PAL distributions
-
-Fitting is available for every concrete PAL distribution class. Count and
-discrete distributions use probability mass likelihoods, rather than the
-continuous-severity likelihood. Poisson, binomial (with a known number of
-trials), Bernoulli and unconstrained Normal have analytical estimators.
-Negative binomial, noncentral chi-squared, Student's t, logistic and
-other families use deterministic likelihood optimisation.
-
-The following examples show the different interfaces:
-
-```python
-from pal.distributions import Binomial, Categorical, Normal, Poisson
-
-poisson_fit = Poisson.fit([0, 1, 0, 3, 2, 1])
-binomial_fit = Binomial.fit([1, 3, 2, 0, 4], n=8)
-normal_fit = Normal.fit([-1.5, 0.2, 1.0, 1.8, 3.1])
-category_fit = Categorical.fit(["motor", "property", "motor"])
-
-assert poisson_fit.parameters["mean"] > 0
-assert 0 < binomial_fit.parameters["p"] < 1
-assert normal_fit.parameters["sigma"] > 0
-assert category_fit.parameters["probabilities"] == [2 / 3, 1 / 3]
-```
-
-For binomial fitting, the trial count `n` must be known. Hypergeometric
-fitting requires `population_size` and `n_draws`, and estimates the integer
-number of successes in the population. An unconstrained negative binomial
-has no finite size estimate at the Poisson boundary, so PAL rejects
-samples that do not exhibit overdispersion.
-
-`Beta.fit(..., loc=..., scale=...)` estimates both shape parameters
-conditional on a specified support interval, which defaults to (0, 1).
-Normal, logistic, Student's t, noncentral chi-squared and Beta support
-right censoring and left truncation. The other non-severity families
-currently fit complete observations.
-
-Uniform distribution fitting uses the observed numeric minimum and maximum
-as the maximum-likelihood interval endpoints. Date-valued Uniform also
-supports an inclusive calendar-date range. Categorical fitting preserves
-observed label order; optionally supply `values=[...]` to fix the category
-set and retain unobserved categories with zero estimated probability.
-The fitted result holds category labels and probabilities, or date endpoints,
-alongside its PAL distribution.
-
-MBBEFD fitting accounts for the discrete probability of a total policy
-loss at exactly one as well as its continuous severity density. Estimating
-both parameters requires interior observations and at least one total loss.
-
-Numeric distributions provide a theoretical `mean_excess(attachment)`
-method, including the count distributions. This is undefined for categorical
-labels or temporal Uniform distributions, where excess has no established
-numeric loss interpretation.
-
 ## Available Distributions
 
 ### Severity (Continuous) Distributions
@@ -374,6 +320,60 @@ histogram_fig.show()
 The naming deliberately distinguishes analytical distribution methods such as
 `ln.cdf(x)`, which calculate probabilities, from simulation plotting methods
 such as `loss.cdf_plot()`, which return Plotly figures.
+
+## Fitting the other PAL distributions
+
+Fitting is available for every concrete PAL distribution class. Count and
+discrete distributions use probability mass likelihoods, rather than the
+continuous-severity likelihood. Poisson, binomial (with a known number of
+trials), Bernoulli and unconstrained Normal have analytical estimators.
+Negative binomial, noncentral chi-squared, Student's t, logistic and
+other families use deterministic likelihood optimisation.
+
+The following examples show the different interfaces:
+
+```python
+from pal.distributions import Binomial, Categorical, Normal, Poisson
+
+poisson_fit = Poisson.fit([0, 1, 0, 3, 2, 1])
+binomial_fit = Binomial.fit([1, 3, 2, 0, 4], n=8)
+normal_fit = Normal.fit([-1.5, 0.2, 1.0, 1.8, 3.1])
+category_fit = Categorical.fit(["motor", "property", "motor"])
+
+assert poisson_fit.parameters["mean"] > 0
+assert 0 < binomial_fit.parameters["p"] < 1
+assert normal_fit.parameters["sigma"] > 0
+assert category_fit.parameters["probabilities"] == [2 / 3, 1 / 3]
+```
+
+For binomial fitting, the trial count `n` must be known. Hypergeometric
+fitting requires `population_size` and `n_draws`, and estimates the integer
+number of successes in the population. An unconstrained negative binomial
+has no finite size estimate at the Poisson boundary, so PAL rejects
+samples that do not exhibit overdispersion.
+
+`Beta.fit(..., loc=..., scale=...)` estimates both shape parameters
+conditional on a specified support interval, which defaults to (0, 1).
+Normal, logistic, Student's t, noncentral chi-squared and Beta support
+right censoring and left truncation. The other non-severity families
+currently fit complete observations.
+
+Uniform distribution fitting uses the observed numeric minimum and maximum
+as the maximum-likelihood interval endpoints. Date-valued Uniform also
+supports an inclusive calendar-date range. Categorical fitting preserves
+observed label order; optionally supply `values=[...]` to fix the category
+set and retain unobserved categories with zero estimated probability.
+The fitted result holds category labels and probabilities, or date endpoints,
+alongside its PAL distribution.
+
+MBBEFD fitting accounts for the discrete probability of a total policy
+loss at exactly one as well as its continuous severity density. Estimating
+both parameters requires interior observations and at least one total loss.
+
+Numeric distributions provide a theoretical `mean_excess(attachment)`
+method, including the count distributions. This is undefined for categorical
+labels or temporal Uniform distributions, where excess has no established
+numeric loss interpretation.
 
 ## See Also
 
