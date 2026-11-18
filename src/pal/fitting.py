@@ -186,6 +186,7 @@ def fit_distribution(
             mu0 = float(np.average(logs, weights=w))
             sigma0 = float(np.sqrt(np.average((logs - mu0) ** 2, weights=w)))
             starts = [[mu0, np.log(max(sigma0, 0.01))]]
+
             def transform(p: np.ndarray) -> dict[str, float]:
                 return {"mu": float(p[0]), "sigma": float(np.exp(p[1]))}
         elif family == "Gamma":
@@ -195,6 +196,7 @@ def fit_distribution(
                 [0.0, np.log(mean)],
                 [np.log(2.0), np.log(mean / 2.0)],
             ]
+
             def transform(p: np.ndarray) -> dict[str, float]:
                 return {"alpha": float(np.exp(p[0])), "theta": float(np.exp(p[1]))}
         else:
@@ -211,6 +213,7 @@ def fit_distribution(
                 [0.5, np.log(mean_exc)],
                 [-0.2, np.log(mean_exc * 1.5)],
             ]
+
             def transform(p: np.ndarray) -> dict[str, float]:
                 return {"shape": float(p[0]), "scale": float(np.exp(p[1])), "loc": threshold}
 
@@ -372,15 +375,15 @@ def _fit_other(
         if family == "LogGamma":
             log_x = np.log(x)
             alpha, beta = pars["alpha"], pars["beta"]
-            base = (
-                float(stats.gamma.logsf(np.log(threshold), a=alpha, scale=beta))
-                if threshold > 1.0 else 0.0
+            base = float(stats.gamma.logsf(np.log(threshold), a=alpha, scale=beta)) if threshold > 1.0 else 0.0
+            terms = (
+                np.where(
+                    censored,
+                    stats.gamma.logsf(log_x, a=alpha, scale=beta),
+                    stats.gamma.logpdf(log_x, a=alpha, scale=beta) - log_x,
+                )
+                - base
             )
-            terms = np.where(
-                censored,
-                stats.gamma.logsf(log_x, a=alpha, scale=beta),
-                stats.gamma.logpdf(log_x, a=alpha, scale=beta) - log_x,
-            ) - base
         else:
             frozen = _frozen_distribution(family, pars)
             base = float(frozen.logsf(threshold)) if threshold > 0 else 0.0
@@ -481,10 +484,7 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         if family == "LogGamma":
             alpha, beta = pars["alpha"], pars["beta"]
             log_cutoff = max(np.log(max(float(d), 1.0)), 0.0)
-            log_num = (
-                -alpha * np.log1p(-beta)
-                + stats.gamma.logsf(log_cutoff, a=alpha, scale=beta / (1.0 - beta))
-            )
+            log_num = -alpha * np.log1p(-beta) + stats.gamma.logsf(log_cutoff, a=alpha, scale=beta / (1.0 - beta))
             log_den = stats.gamma.logsf(log_cutoff, a=alpha, scale=beta)
             result[index] = float(np.exp(log_num - log_den)) - d
             continue
