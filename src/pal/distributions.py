@@ -35,6 +35,17 @@ from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
 from ._value_arrays import stochastic_array
 from .config import config
 from .couplings import validate_stochastic_axes
+from .qmc import (
+    _inverse_transform_uniforms,
+    _sample_generalized_beta_prime,
+    _sample_generalized_inverse_gaussian,
+    _sample_inverse_gaussian,
+    _sample_rng,
+    _sample_scaled_beta,
+    _sample_shifted_gamma,
+    _sample_students_t,
+    _scipy_on_backend,
+)
 from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
 
@@ -85,8 +96,8 @@ def _discrete_count_ppf(
     arguments = (u, *params)
     stochastic_args = [arg for arg in arguments if isinstance(arg, StochasticScalar)]
     validate_stochastic_axes(stochastic_args)
-    host_args = [asnumpy(arg.values if isinstance(arg, StochasticScalar) else arg) for arg in arguments]
-    result = xp.asarray(function(*host_args))
+    values = (arg.values if isinstance(arg, StochasticScalar) else arg for arg in arguments)
+    result = _scipy_on_backend(function, *values)
     if isinstance(u, StochasticScalar):
         result = xp.where(u.values == 0, 0, result)
     elif u == 0:
@@ -99,13 +110,6 @@ def _discrete_count_ppf(
             wrapped.coupled_variable_group.merge(arg.coupled_variable_group)
         return wrapped
     return t.cast(ReturnType, scalar_or_array(result))
-
-
-def _rng_value(value: t.Any, rng: t.Any) -> t.Any:
-    """Place a parameter on the array backend used by the supplied generator."""
-    if type(rng).__module__.startswith("numpy"):
-        return asnumpy(value) if isinstance(value, xp.ndarray) else value
-    return to_backend(value)
 
 
 class DistributionBase:
@@ -194,7 +198,7 @@ class DistributionBase:
         # Generate uniform random numbers and transform via inverse CDF
         # When n_sims >= 1, rng.uniform(size=n_sims) returns an array,
         # so invcdf also returns an array (SequenceLike) due to overload typing
-        uniform_samples = xp.asarray(rng.uniform(size=n_sims))
+        uniform_samples = _inverse_transform_uniforms(rng, n_sims)
         result = self.invcdf(StochasticScalar(uniform_samples))
         return StochasticScalar(result)
 
@@ -260,7 +264,7 @@ class Poisson(DiscreteDistributionBase):
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         (mean,) = self._param_values
-        return StochasticScalar(rng.poisson(_rng_value(mean, rng), n_sims))
+        return StochasticScalar(_sample_rng(rng, "poisson", n_sims, mean))
 
 
 class NegBinomial(DiscreteDistributionBase):
@@ -306,7 +310,7 @@ class NegBinomial(DiscreteDistributionBase):
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         n, p = self._param_values
-        return StochasticScalar(rng.negative_binomial(_rng_value(n, rng), _rng_value(p, rng), size=n_sims))
+        return StochasticScalar(_sample_rng(rng, "negative_binomial", n_sims, n, p))
 
 
 class Binomial(DiscreteDistributionBase):
@@ -348,7 +352,7 @@ class Binomial(DiscreteDistributionBase):
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         n, p = self._param_values
-        return StochasticScalar(rng.binomial(_rng_value(n, rng), _rng_value(p, rng), n_sims))
+        return StochasticScalar(_sample_rng(rng, "binomial", n_sims, n, p))
 
 
 class HyperGeometric(DiscreteDistributionBase):
@@ -399,7 +403,7 @@ class HyperGeometric(DiscreteDistributionBase):
         n = ngood
         n_total = n_draws
         x_values = x.values if isinstance(x, StochasticScalar) else x
-        result = xp.asarray(hypergeom.cdf(asnumpy(x_values), m, n, n_total))
+        result = _scipy_on_backend(hypergeom.cdf, x_values, m, n, n_total)
         if isinstance(x, StochasticScalar):
             wrapped = StochasticScalar(result)
             wrapped.coupled_variable_group.merge(x.coupled_variable_group)
@@ -415,7 +419,7 @@ class HyperGeometric(DiscreteDistributionBase):
         m = ngood + nbad
         n = ngood
         u_values = u.values if isinstance(u, StochasticScalar) else u
-        result = xp.asarray(hypergeom.ppf(asnumpy(u_values), m, n, n_draws))
+        result = _scipy_on_backend(hypergeom.ppf, u_values, m, n, n_draws)
         if isinstance(u, StochasticScalar):
             wrapped = StochasticScalar(result)
             wrapped.coupled_variable_group.merge(u.coupled_variable_group)
@@ -426,12 +430,7 @@ class HyperGeometric(DiscreteDistributionBase):
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         ngood, nbad, n_draws = self._param_values
         return StochasticScalar(
-            rng.hypergeometric(
-                t.cast(int, ngood),
-                t.cast(int, nbad),
-                t.cast(int, n_draws),
-                n_sims,
-            )
+            _sample_rng(rng, "hypergeometric", n_sims, t.cast(int, ngood), t.cast(int, nbad), t.cast(int, n_draws))
         )
 
 
@@ -655,9 +654,7 @@ class GeneralizedBetaPrime(DistributionBase):
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         """Sample via a ratio of independent unit-scale gamma variates."""
         a, b, p, q = self._param_values
-        numerator = rng.gamma(_rng_value(p, rng), 1.0, size=n_sims)
-        denominator = rng.gamma(_rng_value(q, rng), 1.0, size=n_sims)
-        return StochasticScalar(_rng_value(b, rng) * (numerator / denominator) ** (1 / _rng_value(a, rng)))
+        return StochasticScalar(_sample_generalized_beta_prime(rng, n_sims, a, b, p, q))
 
 
 class Beta(DistributionBase):
@@ -714,10 +711,7 @@ class Beta(DistributionBase):
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         alpha, beta, scale, loc = self._param_values
-        return StochasticScalar(
-            rng.beta(_rng_value(alpha, rng), _rng_value(beta, rng), n_sims) * _rng_value(scale, rng)
-            + _rng_value(loc, rng)
-        )
+        return StochasticScalar(_sample_scaled_beta(rng, n_sims, alpha, beta, scale, loc))
 
 
 class MBBEFD(DistributionBase):
@@ -1212,10 +1206,7 @@ class Gamma(DistributionBase):
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         alpha, theta, loc = self._param_values
-        result = StochasticScalar(
-            rng.gamma(_rng_value(alpha, rng), _rng_value(theta, rng), size=n_sims) + _rng_value(loc, rng)
-        )
-        return result
+        return StochasticScalar(_sample_shifted_gamma(rng, n_sims, alpha, theta, loc))
 
 
 class NonCentralChiSquared(DistributionBase):
@@ -1313,8 +1304,7 @@ class NonCentralChiSquared(DistributionBase):
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         """Generate random samples on the backend used by the random generator."""
         df, nonc = self._validated_params()
-        result = rng.noncentral_chisquare(_rng_value(df, rng), _rng_value(nonc, rng), size=n_sims)
-        return StochasticScalar(result)
+        return StochasticScalar(_sample_rng(rng, "noncentral_chisquare", n_sims, df, nonc))
 
 
 class InverseGamma(DistributionBase):
@@ -1795,11 +1785,7 @@ class StudentsT(DistributionBase):
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         """Generate samples using the active backend's Student's t sampler."""
         nu, mu, sigma = self._param_values
-        nu = _rng_value(nu, rng)
-        mu = _rng_value(mu, rng)
-        sigma = _rng_value(sigma, rng)
-        samples = rng.standard_t(nu, size=n_sims)
-        return StochasticScalar(mu + sigma * samples)
+        return StochasticScalar(_sample_students_t(rng, n_sims, nu, mu, sigma))
 
 
 class InverseGaussian(DistributionBase):
@@ -1872,15 +1858,7 @@ class InverseGaussian(DistributionBase):
             The American Statistician 30, 88-90.
         """
         mu, lambda_ = self._param_values
-        # Generate chi-squared(1) samples
-        nu = xp.asarray(rng.normal(0, 1, n_sims) ** 2)
-        y = mu + (mu**2 * nu) / (2 * lambda_) - (mu / (2 * lambda_)) * np.sqrt(4 * mu * lambda_ * nu + mu**2 * nu**2)
-
-        # Random selection step
-        u = xp.asarray(rng.uniform(0, 1, n_sims))
-        x = np.where(u <= mu / (mu + y), y, mu**2 / y)
-
-        return StochasticScalar(x)
+        return StochasticScalar(_sample_inverse_gaussian(rng, n_sims, mu, lambda_))
 
 
 class GeneralizedInverseGaussian(DistributionBase):
@@ -2036,15 +2014,7 @@ class GeneralizedInverseGaussian(DistributionBase):
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
         """Generate random samples using SciPy's GIG sampler."""
         p, scipy_shape, scipy_scale, loc = self._scipy_params()
-        result = geninvgauss.rvs(
-            p,
-            scipy_shape,
-            loc=loc,
-            scale=scipy_scale,
-            size=n_sims,
-            random_state=rng,
-        )
-        return StochasticScalar(result)
+        return StochasticScalar(_sample_generalized_inverse_gaussian(rng, n_sims, p, scipy_shape, scipy_scale, loc))
 
 
 class Exponential(DistributionBase):

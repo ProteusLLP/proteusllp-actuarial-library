@@ -37,6 +37,7 @@ from ._value_arrays import host_values, stochastic_array
 from .config import config
 from .couplings import ProteusStochasticVariable as _ProteusStochasticVariable
 from .couplings import validate_stochastic_axes
+from .qmc import RandomizedQMCGenerator
 from .stochastic_scalar import (
     StochasticScalar,
 )
@@ -110,6 +111,80 @@ class FrequencySeverityModel:
         self.freq_dist = freq_dist
         self.sev_dist = sev_dist
 
+    def _qmc_severities_ordinal(
+        self, n_sims: int, counts: t.Any, total_events: int, rng: RandomizedQMCGenerator
+    ) -> t.Any:
+        """Sample full scenario vectors for severities without inverse CDFs.
+
+        Event-list rows are not independent QMC paths. Instead, generate each
+        claim position across simulation paths to retain the intended
+        within-simulation joint severity distribution.
+        """
+        offsets = xp.cumsum(counts) - counts
+        max_count = int(xp.max(counts))
+        values: t.Any = None
+        # One draw also preserves string/date dtypes when no claims occur.
+        for claim in range(max(1, max_count)):
+            draw = self.sev_dist.generate(n_sims, rng).values
+            if values is None:
+                backend = np if host_values(draw) else xp
+                values = backend.empty(total_events, dtype=draw.dtype)
+            if claim >= max_count:
+                continue
+            active = counts > claim
+            positions = offsets[active] + claim
+            if host_values(draw):
+                values[asnumpy(positions)] = draw[asnumpy(active)]
+            else:
+                values[positions] = draw[active]
+        return values
+
+    def _qmc_severities(
+        self,
+        n_sims: int,
+        counts: t.Any,
+        event_indices: t.Any,
+        total_events: int,
+        rng: RandomizedQMCGenerator,
+    ) -> t.Any:
+        """Use indexed Sobol claim coordinates and one packed inverse CDF.
+
+        The severity assigned to the k-th claim in simulation i is the
+        k-th QMC severity coordinate for path i. Reconstructing just these
+        observed pairs preserves exactly the same scrambled Sobol design as
+        drawing an entire coordinate for every claim ordinal.
+        """
+        # The inverse Gaussian currently has no inverse-CDF implementation.
+        # Keep its established two-coordinate sampling construction.
+        if total_events == 0 or isinstance(self.sev_dist, distributions.InverseGaussian):
+            return self._qmc_severities_ordinal(n_sims, counts, total_events, rng)
+
+        maximum = int(xp.max(counts))
+        offsets = xp.cumsum(counts) - counts
+        ordinals = xp.arange(total_events, dtype=xp.int64) - offsets[event_indices]
+        uniforms = rng._event_uniforms(n_sims, event_indices, ordinals, maximum)
+        uniforms = xp.clip(uniforms, np.nextafter(0.0, 1.0), np.nextafter(1.0, 0.0))
+
+        severity_distribution = self.sev_dist
+        if any(isinstance(value, StochasticScalar) for value in self.sev_dist._params.values()):
+            # Each claim receives the parameter value of its simulation.
+            # Temporary claim-indexed scalars must not be coupled with the
+            # original simulation-indexed parameters.
+            severity_distribution = copy(self.sev_dist)
+            severity_distribution._params = {
+                name: (
+                    StochasticScalar(
+                        value.values[asnumpy(event_indices) if host_values(value.values) else event_indices]
+                    )
+                    if isinstance(value, StochasticScalar)
+                    else value
+                )
+                for name, value in self.sev_dist._params.items()
+            }
+
+        quantiles = severity_distribution.invcdf(StochasticScalar(uniforms))
+        return quantiles.values if isinstance(quantiles, StochasticScalar) else stochastic_array(quantiles)
+
     def generate(
         self,
         n_sims: int | None = None,
@@ -163,6 +238,14 @@ class FrequencySeverityModel:
             raise ValueError("Frequency simulations must contain finite, nonnegative integer counts")
         total_events = int(n_events.sum())
         event_indices = _get_sims_of_events(counts.astype(np.int64))
+
+        if isinstance(rng, RandomizedQMCGenerator):
+            values = self._qmc_severities(n_sims, counts.astype(np.int64), event_indices, total_events, rng)
+            result = FreqSevSims(event_indices, values, n_sims)
+            result.coupled_variable_group.merge(n_events.coupled_variable_group)
+            for param in stochastic_params.values():
+                result.coupled_variable_group.merge(param.coupled_variable_group)
+            return result
 
         severity_distribution = self.sev_dist
         if stochastic_params:

@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 import itertools
 import typing as t
+from enum import Enum
 
 # third party
 import numpy.typing as npt
@@ -28,6 +29,7 @@ __all__ = [
     "NumericLike",
     "NumericProtocol",
     "RandomGenerator",
+    "SamplingMethod",
     "ScipyNumeric",
     "VectorLike",
 ]
@@ -42,13 +44,21 @@ ScipyNumeric = t.Union[float, int, np.floating, np.integer]
 
 # Type alias for distribution parameters - clean type for documentation
 if t.TYPE_CHECKING:
+    from .qmc import RandomizedQMCGenerator
     from .stochastic_scalar import StochasticScalar
 
 DistributionParameter = t.Union[int, float, "StochasticScalar"]
-RandomGenerator = t.Union[np.random.Generator, np.random.RandomState]
+RandomGenerator = t.Union[np.random.Generator, np.random.RandomState, "RandomizedQMCGenerator"]
 
 T_value = t.TypeVar("T_value")
 T_co = t.TypeVar("T_co", covariant=True)
+
+
+class SamplingMethod(str, Enum):
+    """Sampling approaches supported by PAL."""
+
+    MC = "pseudo"
+    RQMC = "rqmc"
 
 
 @dataclasses.dataclass
@@ -57,6 +67,8 @@ class Config:
 
     n_sims: int = 10000
     seed: int = 123456789
+    sampling_method: SamplingMethod = SamplingMethod.MC
+    qmc_dimensions: int = 32
     rng: RandomGenerator = dataclasses.field(init=False)
 
     _uid_counter = itertools.count(1)
