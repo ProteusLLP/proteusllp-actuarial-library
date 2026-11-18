@@ -36,6 +36,7 @@ from ._value_arrays import stochastic_array
 from .config import config
 from .couplings import validate_stochastic_axes
 from .fitting import fit_distribution, mean_excess
+from .fitting_remaining import fit_remaining, mean_excess_remaining
 from .qmc import (
     _inverse_transform_uniforms,
     _sample_generalized_beta_prime,
@@ -246,6 +247,20 @@ class Poisson(DiscreteDistributionBase):
         mean: Mean number of events :math:`\lambda`.
     """
 
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[Poisson]:
+        """Estimate distribution parameters from observed values."""
+        return fit_remaining(cls, observations, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return conditional expected numeric excess above an attachment."""
+        return mean_excess_remaining(self, threshold)
+
     def __init__(self, mean: DistributionParameter) -> None:
         """Initialize Poisson distribution with mean parameter."""
         super().__init__(mean=mean)
@@ -283,6 +298,20 @@ class NegBinomial(DiscreteDistributionBase):
 
     Often used to model overdispersed count data.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[NegBinomial]:
+        """Estimate distribution parameters from observed values."""
+        return fit_remaining(cls, observations, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return conditional expected numeric excess above an attachment."""
+        return mean_excess_remaining(self, threshold)
 
     def __init__(
         self,
@@ -329,6 +358,21 @@ class Binomial(DiscreteDistributionBase):
 
     Models the number of successes in a fixed number of independent Bernoulli trials.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        n: int,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[Binomial]:
+        """Estimate distribution parameters from observed values."""
+        return fit_remaining(cls, observations, weights=weights, n=n)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return conditional expected numeric excess above an attachment."""
+        return mean_excess_remaining(self, threshold)
 
     def __init__(self, n: DistributionParameter, p: DistributionParameter) -> None:
         """Initialize binomial distribution.
@@ -377,6 +421,22 @@ class HyperGeometric(DiscreteDistributionBase):
         nbad: Number of bad items :math:`N-K`.
         n_draws: Number of items drawn :math:`n`.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        population_size: int,
+        n_draws: int,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[HyperGeometric]:
+        """Estimate distribution parameters from observed values."""
+        return fit_remaining(cls, observations, weights=weights, population_size=population_size, n_draws=n_draws)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return conditional expected numeric excess above an attachment."""
+        return mean_excess_remaining(self, threshold)
 
     def __init__(
         self,
@@ -449,6 +509,20 @@ class Bernoulli(Binomial):
 
     Models a single trial with two possible outcomes: success (1) or failure (0).
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[Bernoulli]:
+        """Estimate distribution parameters from observed values."""
+        return fit_remaining(cls, observations, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return conditional expected numeric excess above an attachment."""
+        return mean_excess_remaining(self, threshold)
 
     def __init__(self, p: DistributionParameter) -> None:
         """Initialize Bernoulli distribution.
@@ -755,6 +829,24 @@ class Beta(DistributionBase):
         loc: Location parameter :math:`\mu` (default 0.0).
     """
 
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        threshold: float | None = None,
+        loc: float = 0.0,
+        scale: float = 1.0,
+    ) -> FitResult[Beta]:
+        """Estimate distribution parameters from observed values."""
+        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold, loc=loc, scale=scale)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return conditional expected numeric excess above an attachment."""
+        return mean_excess_remaining(self, threshold)
+
     def __init__(
         self,
         alpha: DistributionParameter,
@@ -875,6 +967,20 @@ class MBBEFD(DistributionBase):
         Bernegger, S. (1997). The Swiss Re Exposure Curves and the MBBEFD
         Distribution Class. ASTIN Bulletin 27(1), 99--111.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[MBBEFD]:
+        """Estimate distribution parameters from observed values."""
+        return fit_remaining(cls, observations, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return conditional expected numeric excess above an attachment."""
+        return mean_excess_remaining(self, threshold)
 
     def __init__(
         self,
@@ -1145,6 +1251,22 @@ class Normal(DistributionBase):
         f(x) = \frac{1}{\sigma\sqrt{2\pi}} \exp\left(-\frac{(x-\mu)^2}{2\sigma^2}\right)
     """
 
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        threshold: float | None = None,
+    ) -> FitResult[Normal]:
+        """Estimate distribution parameters from observed values."""
+        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return conditional expected numeric excess above an attachment."""
+        return mean_excess_remaining(self, threshold)
+
     def __init__(self, mu: DistributionParameter, sigma: DistributionParameter) -> None:
         """Initialize normal distribution.
 
@@ -1184,6 +1306,22 @@ class Logistic(DistributionBase):
 
     The logistic distribution has heavier tails than the normal distribution.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        threshold: float | None = None,
+    ) -> FitResult[Logistic]:
+        """Estimate distribution parameters from observed values."""
+        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return conditional expected numeric excess above an attachment."""
+        return mean_excess_remaining(self, threshold)
 
     def __init__(self, mu: DistributionParameter, sigma: DistributionParameter) -> None:
         """Initialize logistic distribution.
@@ -1375,6 +1513,22 @@ class NonCentralChiSquared(DistributionBase):
         Random generation supports both CPU and GPU execution. CDF and inverse
         CDF evaluation are currently supported on the CPU only.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        threshold: float | None = None,
+    ) -> FitResult[NonCentralChiSquared]:
+        """Estimate distribution parameters from observed values."""
+        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return conditional expected numeric excess above an attachment."""
+        return mean_excess_remaining(self, threshold)
 
     def __init__(
         self,
@@ -2053,6 +2207,22 @@ class StudentsT(DistributionBase):
         sigma: Scale parameter :math:`\sigma` (default 1).
     """
 
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        threshold: float | None = None,
+    ) -> FitResult[StudentsT]:
+        """Estimate distribution parameters from observed values."""
+        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return conditional expected numeric excess above an attachment."""
+        return mean_excess_remaining(self, threshold)
+
     def __init__(
         self,
         nu: DistributionParameter,
@@ -2437,6 +2607,20 @@ class Uniform(DistributionBase):
         b: Upper bound, of the same kind as `a`.
     """
 
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[t.Any] | np.ndarray,
+        *,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[Uniform]:
+        """Estimate distribution parameters from observed values."""
+        return fit_remaining(cls, observations, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return conditional expected numeric excess above an attachment."""
+        return mean_excess_remaining(self, threshold)
+
     def __init__(
         self,
         a: float | dt.date | np.datetime64,
@@ -2519,6 +2703,17 @@ class Categorical(DistributionBase):
     The supplied order defines the cumulative probabilities used by `cdf`
     and `invcdf`.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[t.Any] | np.ndarray,
+        *,
+        values: t.Sequence[t.Any] | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[Categorical]:
+        """Estimate distribution parameters from observed values."""
+        return fit_remaining(cls, observations, weights=weights, values=values)
 
     def __init__(
         self,
