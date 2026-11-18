@@ -7,8 +7,11 @@ from scipy import integrate, stats
 from pal.distributions import (
     GPD,
     Burr,
+    Exponential,
     Gamma,
     InverseBurr,
+    InverseExponential,
+    InverseParalogistic,
     InverseGamma,
     InverseGaussian,
     InverseWeibull,
@@ -174,3 +177,40 @@ def test_gpd_free_location_matches_truncated_censored_likelihood() -> None:
     with pytest.raises(ValueError, match="not identifiable"):
         GPD.fit(observed, threshold=3.0, censored=censored, free_location=True)
     assert fitted.distribution.cdf(15.0) == pytest.approx(ref.cdf(15.0), rel=1e-10)
+
+
+def test_exponential_fit_is_exact_for_censored_truncated_observations() -> None:
+    x = np.array([2.0, 5.0, 11.0, 13.0])
+    c = np.array([False, False, True, False])
+    w = np.array([1.0, 2.0, 3.0, 1.0])
+    fitted = Exponential.fit(x, threshold=1.0, censored=c, weights=w)
+    expected_scale = np.sum(w * (x - 1.0)) / np.sum(w[~c])
+    assert fitted.converged
+    assert fitted.parameters["scale"] == pytest.approx(expected_scale)
+    assert fitted.distribution.mean_excess(5.0) == pytest.approx(expected_scale)
+    assert fitted.log_likelihood == pytest.approx(
+        -np.sum(w[~c]) * np.log(expected_scale) - np.sum(w * (x - 1.0)) / expected_scale
+    )
+
+
+@pytest.mark.parametrize(
+    ("cls", "reference", "parameter_names"),
+    [
+        (InverseExponential, stats.invweibull(c=1.0, scale=4.0), ("scale",)),
+        (InverseParalogistic, stats.burr(c=2.2, d=2.2, scale=4.0), ("shape", "scale")),
+    ],
+)
+def test_extra_severity_fit_matches_scipy(cls, reference, parameter_names) -> None:
+    rng = np.random.default_rng(628)
+    raw = reference.rvs(size=450, random_state=rng)
+    raw = raw[raw > 2.0]
+    c = raw > 15.0
+    fitted = cls.fit(np.minimum(raw, 15.0), threshold=2.0, censored=c)
+    assert fitted.converged
+    for name in parameter_names:
+        assert fitted.parameters[name] > 0
+    assert np.isfinite(fitted.log_likelihood)
+    assert np.isinf(InverseExponential(scale=4.0).mean_excess(5.0))
+    if cls is InverseParalogistic:
+        assert np.isinf(InverseParalogistic(shape=0.8, scale=4.0).mean_excess(5.0))
+        assert cls(shape=2.2, scale=4.0).mean_excess(5.0) > 0
