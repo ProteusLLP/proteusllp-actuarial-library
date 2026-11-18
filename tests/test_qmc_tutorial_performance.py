@@ -34,6 +34,16 @@ def test_static_copula_example_uses_surface_plots():
     assert all(isinstance(trace, go.Surface) for trace in figure.data)
     assert figure.data[0].cmax == figure.data[1].cmax
     assert figure.data[0].cmin == figure.data[1].cmin
+    assert figure.layout.scene.camera.eye.z >= 1.5
+    assert figure.layout.scene2.camera.eye.z >= 1.5
+
+
+def test_univariate_cdf_example_uses_common_x_grid():
+    """The univariate display must compare MC, RQMC and the same exact CDF."""
+    chart = univariate_cdf_chart(n_sims=128)
+    assert len(chart.data) == 5
+    assert np.array_equal(chart.data[0].x, chart.data[1].x)
+    assert np.array_equal(chart.data[1].x, chart.data[2].x)
 
 
 def test_copula_samples_restore_sampling_configuration():
