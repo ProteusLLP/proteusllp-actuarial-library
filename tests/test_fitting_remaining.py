@@ -111,9 +111,7 @@ def test_beta_fits_fixed_support_and_censored_truncation() -> None:
     assert fit.log_likelihood == pytest.approx(expected)
     d = 0.4
     area, _ = integrate.quad(stats.beta(2.5, 4.0).sf, d, 1.0)
-    assert Beta(alpha=2.5, beta=4.0).mean_excess(d) == pytest.approx(
-        area / stats.beta.sf(d, 2.5, 4.0)
-    )
+    assert Beta(alpha=2.5, beta=4.0).mean_excess(d) == pytest.approx(area / stats.beta.sf(d, 2.5, 4.0))
     with pytest.raises(ValueError, match="open support"):
         Beta.fit([0.0, 0.4, 0.8])
 
@@ -129,9 +127,7 @@ def test_normal_analytic_mle_and_tail_mean_excess() -> None:
     assert fit.log_likelihood == pytest.approx(np.dot(w, stats.norm.logpdf(x, mu, sigma)))
     d = 1.5
     z = (d - mu) / sigma
-    assert fit.distribution.mean_excess(d) == pytest.approx(
-        mu - d + sigma * stats.norm.pdf(z) / stats.norm.sf(z)
-    )
+    assert fit.distribution.mean_excess(d) == pytest.approx(mu - d + sigma * stats.norm.pdf(z) / stats.norm.sf(z))
     with pytest.raises(ValueError, match="constant"):
         Normal.fit([2.0, 2.0, 2.0])
 
@@ -146,9 +142,7 @@ def test_logistic_mle_and_conditional_mean() -> None:
     assert result.log_likelihood == pytest.approx(np.sum(stats.logistic.logpdf(sample, mu, sigma)))
     d = 0.3
     area, _ = integrate.quad(stats.logistic(loc=mu, scale=sigma).sf, d, np.inf)
-    assert result.distribution.mean_excess(d) == pytest.approx(
-        area / stats.logistic.sf(d, mu, sigma)
-    )
+    assert result.distribution.mean_excess(d) == pytest.approx(area / stats.logistic.sf(d, mu, sigma))
 
 
 def test_students_t_mle_and_infinite_mean_boundary() -> None:
@@ -178,9 +172,7 @@ def test_noncentral_chi_squared_mle_and_excess() -> None:
     assert fitted.log_likelihood == pytest.approx(np.sum(stats.ncx2.logpdf(sample, df, nc)))
     reference = stats.ncx2(4.0, 3.0)
     area, _ = integrate.quad(reference.sf, 4.0, np.inf)
-    assert NonCentralChiSquared(df=4.0, nonc=3.0).mean_excess(4.0) == pytest.approx(
-        area / reference.sf(4.0), rel=1e-6
-    )
+    assert NonCentralChiSquared(df=4.0, nonc=3.0).mean_excess(4.0) == pytest.approx(area / reference.sf(4.0), rel=1e-6)
 
 
 def test_uniform_numeric_and_calendar_dates() -> None:
