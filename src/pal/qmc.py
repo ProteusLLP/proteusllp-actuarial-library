@@ -161,6 +161,47 @@ class RandomizedQMCGenerator:
         # GPU Sobol32 midpoints avoid the extremes of inverse CDF transforms.
         return (values.astype(xp.float64) + 0.5) * (2.0**-32)
 
+    def _active_uniforms(
+        self, n_sims: int, path_indices: t.Any, size: tuple[int, ...], *, scenario_axis: int
+    ) -> t.Any:
+        """Take Sobol coordinates for selected paths of the original design.
+
+        Each component advances the *n_sims* stream once, even when only a
+        subset of paths remains active in an iterative simulation algorithm.
+        The direction lookup evaluates only those active rows. Consequently,
+        shrinking active sets do not start unrelated Sobol sequences, and all
+        paths in one iteration share the same coordinate.
+        """
+        if not size:
+            raise ValueError("Active draws require at least one scenario axis")
+        if not -len(size) <= scenario_axis < len(size):
+            raise ValueError("scenario_axis must index size")
+        axis = scenario_axis % len(size)
+        indices = xp.asarray(path_indices, dtype=xp.int64)
+        if len(indices) != size[axis]:
+            raise ValueError("Active path count must agree with the scenario axis")
+        if len(indices) == 0:
+            return xp.empty(size, dtype=xp.float64)
+        if bool(xp.any((indices < 0) | (indices >= n_sims))):
+            raise ValueError("Active simulation indices must be within the original design")
+
+        component_shape = size[:axis] + size[axis + 1 :]
+        count = math.prod(component_shape)
+        data = xp.empty((len(indices), count), dtype=xp.float64)
+        for component in range(count):
+            block = self._active_block(n_sims)
+            j = block.dimension
+            gray = block.gray[indices]
+            raw = xp.full((len(indices),), block.shifts[j], dtype=xp.uint32)
+            for byte in range(4):
+                raw ^= block.tables[j, byte, (gray >> (byte * 8)) & 255]
+            block.dimension += 1
+            if xp is np:
+                data[:, component] = raw.astype(np.float64) * (2.0**-32)
+            else:
+                data[:, component] = (raw.astype(xp.float64) + 0.5) * (2.0**-32)
+        return xp.moveaxis(data.reshape((len(indices), *component_shape)), 0, axis)
+
     def _event_uniforms(self, n_sims: int, event_paths: t.Any, event_ordinals: t.Any, max_count: int) -> t.Any:
         """Generate exactly the Sobol coordinates used by each active claim.
 
@@ -409,6 +450,43 @@ class RandomizedQMCGenerator:
         return self._quantiles(
             lambda u, minimum, maximum: np.floor(minimum + (maximum - minimum) * u), size, low, high, discrete=True
         )
+
+
+def _draw_active_scenarios(
+    rng: t.Any,
+    method: str,
+    n_sims: int,
+    path_indices: t.Any,
+    *,
+    size: int | tuple[int, ...],
+    scenario_axis: int = 0,
+    **kwargs: t.Any,
+) -> t.Any:
+    """Sample active paths without losing their original Sobol row identity.
+
+    For ordinary Monte Carlo, keep the existing draw behaviour. Under RQMC,
+    produce the requested marginal transform using coordinates selected from
+    the n_sims-path design. No new stream is allocated for the active count.
+    """
+    if not isinstance(rng, RandomizedQMCGenerator):
+        return _draw_scenarios(rng, method, size=size, scenario_axis=scenario_axis, **kwargs)
+
+    shape = (size,) if isinstance(size, int) else size
+    uniforms = rng._active_uniforms(n_sims, path_indices, shape, scenario_axis=scenario_axis)
+    uniforms = xp.clip(uniforms, np.nextafter(0.0, 1.0), np.nextafter(1.0, 0.0))
+    if method == "standard_normal":
+        return special.ndtri(uniforms)
+    if method == "normal":
+        return kwargs.get("loc", 0.0) + kwargs.get("scale", 1.0) * special.ndtri(uniforms)
+    if method == "exponential":
+        return -kwargs.get("scale", 1.0) * xp.log1p(-uniforms)
+    if method == "chisquare":
+        return 2 * special.gammaincinv(kwargs["df"] / 2, uniforms)
+    if method == "integers":
+        low = kwargs["low"]
+        high = kwargs["high"]
+        return xp.floor(low + (high - low) * uniforms).astype(xp.int64)
+    raise NotImplementedError(f"Active RQMC draws do not support {method!r}")
 
 
 def _draw_scenarios(rng: t.Any, method: str, *args: t.Any, scenario_axis: int, **kwargs: t.Any) -> t.Any:
