@@ -170,6 +170,8 @@ def fit_distribution(
         if threshold > 0:
             raise ValueError("The GPD location is not identifiable from a left-truncated sample")
         return _fit_gpd_free_location(distribution, x, c, w, threshold)
+    if family == "Exponential":
+        return _fit_exponential(distribution, x, c, w, threshold)
     if family in _OTHER_FAMILIES:
         return _fit_other(distribution, x, c, w, threshold)
     total = float(np.sum(w))
@@ -276,6 +278,9 @@ _OTHER_FAMILIES = (
     "InverseGamma",
     "InverseWeibull",
     "LogGamma",
+    "Exponential",
+    "InverseExponential",
+    "InverseParalogistic",
 )
 
 
@@ -306,6 +311,12 @@ def _frozen_distribution(family: str, params: dict[str, float]) -> t.Any:
         return stats.invgamma(a=p["alpha"], scale=p["theta"], loc=p["loc"])
     if family == "InverseWeibull":
         return stats.invweibull(c=p["shape"], scale=p["scale"], loc=p["loc"])
+    if family == "Exponential":
+        return stats.expon(scale=p["scale"], loc=p["loc"])
+    if family == "InverseExponential":
+        return stats.invweibull(c=1.0, scale=p["scale"], loc=p["loc"])
+    if family == "InverseParalogistic":
+        return stats.burr(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"])
     raise ValueError(f"Unsupported severity family: {family}")
 
 
@@ -322,7 +333,9 @@ def _fit_other(
     median = float(np.median(x))
     variance = float(np.average((x - mean) ** 2, weights=weights))
     scale = max(median, np.finfo(float).tiny)
-    if family == "LogGamma":
+    if family in {"Exponential", "InverseExponential"}:
+        names = ("scale",)
+    elif family == "LogGamma":
         names = ("alpha", "beta")
     elif family == "Weibull":
         names = ("shape", "scale")
@@ -342,7 +355,9 @@ def _fit_other(
         names = ("shape", "scale")
 
     starts: list[list[float]]
-    if family == "LogGamma":
+    if family in {"Exponential", "InverseExponential"}:
+        starts = [[np.log(max(mean, 1e-10))]]
+    elif family == "LogGamma":
         if np.any(x < 1.0):
             raise ValueError("log-gamma observations must be at least one")
         logs = np.log(x)
@@ -477,6 +492,8 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         or (family == "InverseBurr" and pars["power"] <= 1.0)
         or (family == "InverseGamma" and pars["alpha"] <= 1.0)
         or (family == "InverseWeibull" and pars["shape"] <= 1.0)
+        or family == "InverseExponential"
+        or (family == "InverseParalogistic" and pars["shape"] <= 1.0)
     )
     lower, upper = (1.0, np.inf) if frozen is None else frozen.support()
     for index, d in np.ndenumerate(inputs):
@@ -608,5 +625,37 @@ def _fit_gpd_free_location(
         converged=bool(best.success),
         n_observations=len(x),
         n_censored=int(np.sum(c)),
+        threshold=threshold,
+    )
+
+
+def _fit_exponential(
+    distribution: type[_T],
+    x: np.ndarray,
+    censored: np.ndarray,
+    weights: np.ndarray,
+    threshold: float,
+) -> FitResult[_T]:
+    """Use the exact censored MLE for an exponential above the threshold."""
+    events = float(np.sum(weights[~censored]))
+    total = float(np.sum(weights * (x - threshold)))
+    if events <= 0 or total <= 0:
+        raise ValueError("Exponential scale is not identifiable")
+    scale = total / events
+    params = {"scale": scale, "loc": 0.0}
+    ll = float(-events * np.log(scale) - total / scale)
+    aic = 2 - 2 * ll
+    sample_size = float(np.sum(weights))
+    freq = bool(np.all(weights == np.floor(weights)))
+    aicc = aic + 4 / (sample_size - 2) if freq and sample_size > 2 else np.nan
+    return FitResult(
+        distribution=distribution(**params),
+        parameters=params,
+        log_likelihood=ll,
+        aic=aic,
+        aicc=aicc,
+        converged=True,
+        n_observations=len(x),
+        n_censored=int(np.sum(censored)),
         threshold=threshold,
     )
