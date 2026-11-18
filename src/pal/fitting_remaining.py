@@ -335,18 +335,18 @@ def _fit_discrete(
         def negll(successes: int) -> float:
             return -float(np.dot(w, stats.hypergeom.logpmf(x, population, successes, draws)))
 
-        if high - low <= 5000:
-            candidates = range(low, high + 1)
-        else:
-            approximate = optimize.minimize_scalar(
-                lambda v: negll(int(round(v))),
-                bounds=(low, high),
-                method="bounded",
-                options={"xatol": 1.0},
-            )
-            centre = int(round(approximate.x))
-            candidates = sorted({low, high, *(v for v in range(centre - 5, centre + 6) if low <= v <= high)})
-        good = min(candidates, key=negll)
+        # For fixed population and sample size the log-likelihood is
+        # concave in the integer number of good items: it is a sum of
+        # log binomial coefficients. Search its discrete forward difference
+        # for the exact global MLE in O(log(population_size)) evaluations.
+        left, right = low, high
+        while left < right:
+            mid = (left + right) // 2
+            if negll(mid + 1) < negll(mid):
+                left = mid + 1
+            else:
+                right = mid
+        good = left
         pars = {"ngood": good, "nbad": population - good, "n_draws": draws}
         rv = stats.hypergeom(population, good, draws)
         k = 1
