@@ -467,7 +467,10 @@ def _draw_active_scenarios(
     the n_sims-path design. No new stream is allocated for the active count.
     """
     if not isinstance(rng, RandomizedQMCGenerator):
-        return _draw_scenarios(rng, method, size=size, scenario_axis=scenario_axis, **kwargs)
+        # NumPy Generator uses integers(), but CuPy's legacy RandomState
+        # exposes randint() instead. Preserve ordinary MC sampling on both.
+        name = "randint" if method == "integers" and not hasattr(rng, "integers") else method
+        return _draw_scenarios(rng, name, size=size, scenario_axis=scenario_axis, **kwargs)
 
     shape = (size,) if isinstance(size, int) else size
     uniforms = rng._active_uniforms(n_sims, path_indices, shape, scenario_axis=scenario_axis)
