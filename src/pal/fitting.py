@@ -457,9 +457,11 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
     params = distribution._params
     from .stochastic_scalar import StochasticScalar
 
-    if any(isinstance(value, StochasticScalar) for value in params.values()):
-        raise ValueError("mean excess requires scalar distribution parameters")
-    pars = {key: float(value) for key, value in params.items()}
+    pars: dict[str, float] = {}
+    for key, value in params.items():
+        if isinstance(value, StochasticScalar):
+            raise ValueError("mean excess requires scalar distribution parameters")
+        pars[key] = float(value)
     frozen = None if family == "LogGamma" else _frozen_distribution(family, pars)
     inputs = np.asarray(threshold, dtype=float)
     result = np.full(inputs.shape, np.nan, dtype=float)
