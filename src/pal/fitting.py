@@ -15,7 +15,7 @@ from scipy import integrate, optimize, special, stats
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
 
-_T = t.TypeVar("_T", bound="DistributionBase")
+_T = t.TypeVar("_T", bound="DistributionBase", covariant=True)
 _SUPPORTED = ("Pareto", "LogNormal", "Gamma", "GPD")
 
 
