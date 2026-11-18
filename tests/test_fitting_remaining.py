@@ -234,5 +234,5 @@ def test_invalid_weight_and_label_inputs_are_rejected() -> None:
         Poisson.fit([1, 2, 3], weights=[1, -1, 1])
     with pytest.raises(ValueError, match="nonempty"):
         Categorical.fit([])
-    with pytest.raises(ValueError, match="censoring"):
+    with pytest.raises(TypeError, match="censored"):
         Poisson.fit([1, 2], censored=[False, False])
