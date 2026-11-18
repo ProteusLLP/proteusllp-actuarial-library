@@ -486,9 +486,17 @@ class GPD(DistributionBase):
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
+        free_location: bool = False,
     ) -> FitResult[GPD]:
-        """Fit this distribution by maximum likelihood, with truncation and censoring."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Fit a GPD with the location fixed at threshold or estimated."""
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            free_location=free_location,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return the theoretical mean loss in excess of the attachment."""
