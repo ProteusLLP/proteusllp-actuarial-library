@@ -97,7 +97,16 @@ def univariate_cdf_chart(n_sims: int | None = None, seed: int = 42) -> go.Figure
             row=2,
             col=1,
         )
-    fig.add_hline(y=0, line_color="#9cabbc", line_width=1, row=2, col=1)
+    fig.add_shape(
+        type="line",
+        x0=float(grid[0]),
+        x1=float(grid[-1]),
+        y0=0,
+        y1=0,
+        xref="x2",
+        yref="y2",
+        line={"color": "#9cabbc", "width": 1},
+    )
     fig.update_yaxes(title_text="Cumulative probability", range=[0, 1], row=1, col=1)
     fig.update_yaxes(title_text="CDF error (pp)", row=2, col=1)
     fig.update_xaxes(title_text="Standard normal quantile", row=2, col=1)
