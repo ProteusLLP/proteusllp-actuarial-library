@@ -241,6 +241,7 @@ def test_generalized_beta_prime_mle_and_mean_excess() -> None:
 
         def survival(x: float) -> float:
             return float(stats.betaprime.sf((x / scale) ** power, p, q))
+
         expectation, _ = integrate.quad(survival, d, np.inf, epsrel=1e-8)
         assert known.mean_excess(d) == pytest.approx(expectation / survival(d), rel=5e-6)
     assert np.isinf(GeneralizedBetaPrime(a=0.5, b=scale, p=p, q=1.0).mean_excess(10.0))
