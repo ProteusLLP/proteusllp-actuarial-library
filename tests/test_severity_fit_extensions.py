@@ -5,11 +5,13 @@ import pytest
 from scipy import integrate, stats
 
 from pal.distributions import (
+    GEV,
     GPD,
     Burr,
     Exponential,
     Gamma,
     GeneralizedBetaPrime,
+    GeneralizedInverseGaussian,
     InverseBurr,
     InverseExponential,
     InverseParalogistic,
@@ -241,3 +243,50 @@ def test_generalized_beta_prime_mle_and_mean_excess() -> None:
         expectation, _ = integrate.quad(survival, d, np.inf, epsrel=1e-8)
         assert known.mean_excess(d) == pytest.approx(expectation / survival(d), rel=5e-6)
     assert np.isinf(GeneralizedBetaPrime(a=0.5, b=scale, p=p, q=1.0).mean_excess(10.0))
+
+
+def test_generalized_inverse_gaussian_fitting_and_mean_excess() -> None:
+    """Validate the GIG parameter mapping to SciPy's standardisation."""
+    rng = np.random.default_rng(214)
+    p, chi, psi = -0.5, 12.0, 0.48
+    reference = stats.geninvgauss(p=p, b=np.sqrt(chi * psi), scale=np.sqrt(chi / psi))
+    raw = reference.rvs(size=200, random_state=rng)
+    raw = raw[raw > 1.5]
+    censored = raw > 20.0
+    fitted = GeneralizedInverseGaussian.fit(np.minimum(raw, 20.0), threshold=1.5, censored=censored)
+    params = fitted.parameters
+    assert np.isfinite(fitted.log_likelihood)
+    assert params["chi"] > 0 and params["psi"] > 0
+    ref_fitted = stats.geninvgauss(
+        p=params["p"], b=np.sqrt(params["chi"] * params["psi"]),
+        scale=np.sqrt(params["chi"] / params["psi"]),
+    )
+    assert fitted.distribution.cdf(5.0) == pytest.approx(ref_fitted.cdf(5.0), rel=1e-8)
+    expected = (
+        np.sum(ref_fitted.logpdf(np.minimum(raw, 20.0)[~censored]))
+        + np.sum(ref_fitted.logsf(np.minimum(raw, 20.0)[censored]))
+        - len(raw) * ref_fitted.logsf(1.5)
+    )
+    assert fitted.log_likelihood == pytest.approx(expected, rel=1e-9)
+    d = 4.0
+    integral, _ = integrate.quad(reference.sf, d, np.inf)
+    known = GeneralizedInverseGaussian(p=p, chi=chi, psi=psi)
+    assert known.mean_excess(d) == pytest.approx(integral / reference.sf(d), rel=3e-5)
+
+
+def test_gev_mle_accepts_negative_data_and_mean_excess() -> None:
+    rng = np.random.default_rng(514)
+    sample = stats.genextreme.rvs(c=-0.12, loc=-3.0, scale=2.0, size=300, random_state=rng)
+    assert np.any(sample < 0)
+    fitted = GEV.fit(sample)
+    params = fitted.parameters
+    assert np.isfinite(fitted.log_likelihood)
+    reference = stats.genextreme(c=-params["shape"], loc=params["loc"], scale=params["scale"])
+    assert fitted.distribution.cdf(1.0) == pytest.approx(reference.cdf(1.0), rel=1e-8)
+    assert fitted.aic == pytest.approx(-2 * fitted.log_likelihood + 6)
+    model = GEV(shape=0.15, scale=2.0, loc=-3.0)
+    reference = stats.genextreme(c=-0.15, scale=2.0, loc=-3.0)
+    d = -2.0
+    integral, _ = integrate.quad(reference.sf, d, np.inf)
+    assert model.mean_excess(d) == pytest.approx(integral / reference.sf(d), rel=2e-5)
+    assert np.isinf(GEV(shape=1.2, scale=2.0, loc=-3.0).mean_excess(2.0))
