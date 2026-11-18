@@ -165,12 +165,12 @@ def fit_distribution(
     if family not in (*_SUPPORTED, *_OTHER_FAMILIES):
         raise ValueError(f"Unsupported fitting family {family!r}; expected one of {_SUPPORTED + _OTHER_FAMILIES}")
     threshold = float(threshold)
+    if free_location and family != "GPD":
+        raise ValueError("free_location is supported only for GPD")
+    if free_location and threshold > 0:
+        raise ValueError("The GPD location is not identifiable from a left-truncated sample")
     x, c, w = _prepare(observations, threshold, censored, weights, allow_any_real=family == "GEV")
     if free_location:
-        if family != "GPD":
-            raise ValueError("free_location is supported only for GPD")
-        if threshold > 0:
-            raise ValueError("The GPD location is not identifiable from a left-truncated sample")
         return _fit_gpd_free_location(distribution, x, c, w, threshold)
     if family == "Exponential":
         return _fit_exponential(distribution, x, c, w, threshold)
