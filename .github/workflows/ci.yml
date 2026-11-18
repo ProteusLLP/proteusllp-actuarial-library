@@ -151,6 +151,7 @@ jobs:
       - name: Verify static RQMC SVG figure export
         run: |
           python -m examples.example_qmc_vs_mc --output "$RUNNER_TEMP/qmc-static" --replicates 2
+          test -s "$RUNNER_TEMP/qmc-static/qmc_univariate_cdf.svg"
           test -s "$RUNNER_TEMP/qmc-static/qmc_copula_surface.svg"
           test -s "$RUNNER_TEMP/qmc-static/qmc_vs_mc_convergence.svg"
 
