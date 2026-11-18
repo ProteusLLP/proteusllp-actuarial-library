@@ -169,3 +169,28 @@ def test_iterative_copulas_keep_one_sobol_path_stream(copula) -> None:
         np.testing.assert_array_equal(asnumpy(a.values), asnumpy(b.values))
     assert set(first_rng._streams) == {n}
     assert set(second_rng._streams) == {n}
+
+
+@pytest.mark.parametrize(
+    "copula",
+    [
+        GalambosCopula(1.5, 3),
+        HuslerReissCopula(xp.asarray([[0.0, 0.8, 0.9], [0.8, 0.0, 1.1], [0.9, 1.1, 0.0]])),
+        ExtremalTCopula(xp.asarray([[1.0, 0.6, 0.3], [0.6, 1.0, 0.5], [0.3, 0.5, 1.0]]), 3.0),
+    ],
+    ids=["galambos-3d", "husler-reiss-3d", "extremal-t-3d"],
+)
+def test_iterative_copulas_preserve_multivariate_qmc_structure(copula) -> None:
+    """Exercise changing active sets and multiple coordinates per proposal."""
+    n = 768
+    rng = RandomizedQMCGenerator(seed=311, dimensions=4)
+    variables = list(copula.generate(n_sims=n, rng=rng))
+    assert len(variables) == 3
+    for variable in variables:
+        values = asnumpy(variable.values)
+        assert values.shape == (n,)
+        assert np.all(np.isfinite(values))
+        assert np.all((values >= 0) & (values <= 1))
+        assert np.mean(values <= 0.5) == pytest.approx(0.5, abs=0.075)
+        assert variable.coupled_variable_group is variables[0].coupled_variable_group
+    assert set(rng._streams) == {n}
