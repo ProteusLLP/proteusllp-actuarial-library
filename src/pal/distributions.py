@@ -35,6 +35,7 @@ from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
 from ._value_arrays import stochastic_array
 from .config import config
 from .couplings import validate_stochastic_axes
+from .fitting import fit_distribution
 from .qmc import (
     _inverse_transform_uniforms,
     _sample_generalized_beta_prime,
@@ -50,6 +51,7 @@ from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
 
 if t.TYPE_CHECKING:
+    from .fitting import FitResult
     from .multivariate_distributions import Dirichlet as Dirichlet
     from .multivariate_distributions import GeneralizedDirichlet as GeneralizedDirichlet
     from .multivariate_distributions import InverseWishart as InverseWishart
@@ -475,6 +477,18 @@ class GPD(DistributionBase):
     where :math:`\xi` is the shape parameter, :math:`\sigma` is the scale parameter,
     and :math:`\mu` is the location parameter.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[GPD]:
+        """Fit this distribution by maximum likelihood, with truncation and censoring."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
 
     def __init__(
         self,
@@ -1152,6 +1166,18 @@ class LogNormal(DistributionBase):
     standard deviation :math:`\sigma`, then :math:`X` follows a log-normal distribution.
     """
 
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[LogNormal]:
+        """Fit this distribution by maximum likelihood, with truncation and censoring."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
     def __init__(self, mu: DistributionParameter, sigma: DistributionParameter) -> None:
         """Initialize log-normal distribution.
 
@@ -1190,6 +1216,18 @@ class Gamma(DistributionBase):
     lower incomplete gamma function, :math:`\alpha` is the shape parameter,
     :math:`\theta` is the scale parameter, and :math:`\mu` is the location parameter.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[Gamma]:
+        """Fit this distribution by maximum likelihood, with truncation and censoring."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
 
     def __init__(
         self,
@@ -1384,6 +1422,18 @@ class Pareto(DistributionBase):
     The Pareto distribution is a power-law probability distribution often used
     to model heavy-tailed phenomena in actuarial science and economics.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[Pareto]:
+        """Fit this distribution by maximum likelihood, with truncation and censoring."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
 
     def __init__(self, shape: DistributionParameter, scale: DistributionParameter) -> None:
         """Initialize Pareto distribution.
