@@ -346,8 +346,7 @@ def _fit_other(
     def make_params(raw: np.ndarray) -> dict[str, float]:
         pars = dict(zip(names, (float(np.exp(value)) for value in raw)))
         if family not in {"InverseGaussian"}:
-            if family in {"Burr", "InverseBurr", "Weibull", "InverseWeibull", "InverseGamma", "LogLogistic", "Paralogistic"}:
-                pars["loc"] = 0.0
+            pars["loc"] = 0.0
         return pars
 
     def loglik(pars: dict[str, float]) -> float:
