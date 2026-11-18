@@ -35,7 +35,7 @@ from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
 from ._value_arrays import stochastic_array
 from .config import config
 from .couplings import validate_stochastic_axes
-from .fitting import fit_distribution
+from .fitting import fit_distribution, mean_excess
 from .qmc import (
     _inverse_transform_uniforms,
     _sample_generalized_beta_prime,
@@ -490,6 +490,10 @@ class GPD(DistributionBase):
         """Fit this distribution by maximum likelihood, with truncation and censoring."""
         return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
 
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return the theoretical mean loss in excess of the attachment."""
+        return mean_excess(self, threshold)
+
     def __init__(
         self,
         shape: DistributionParameter,
@@ -556,6 +560,22 @@ class Burr(DistributionBase):
         scale: The scale parameter :math:`\sigma`.
         loc: The location parameter :math:`\mu`.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[Burr]:
+        """Estimate distribution parameters by maximum likelihood."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return the theoretical mean loss in excess of the attachment."""
+        return mean_excess(self, threshold)
 
     def __init__(
         self,
@@ -1035,6 +1055,22 @@ class LogLogistic(DistributionBase):
         loc: Location parameter :math:`\mu` (default 0.0).
     """
 
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[LogLogistic]:
+        """Estimate distribution parameters by maximum likelihood."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return the theoretical mean loss in excess of the attachment."""
+        return mean_excess(self, threshold)
+
     def __init__(
         self,
         shape: DistributionParameter,
@@ -1178,6 +1214,10 @@ class LogNormal(DistributionBase):
         """Fit this distribution by maximum likelihood, with truncation and censoring."""
         return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
 
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return the theoretical mean loss in excess of the attachment."""
+        return mean_excess(self, threshold)
+
     def __init__(self, mu: DistributionParameter, sigma: DistributionParameter) -> None:
         """Initialize log-normal distribution.
 
@@ -1228,6 +1268,10 @@ class Gamma(DistributionBase):
     ) -> FitResult[Gamma]:
         """Fit this distribution by maximum likelihood, with truncation and censoring."""
         return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return the theoretical mean loss in excess of the attachment."""
+        return mean_excess(self, threshold)
 
     def __init__(
         self,
@@ -1379,6 +1423,22 @@ class InverseGamma(DistributionBase):
     scale parameter, and :math:`\mu` is the location parameter.
     """
 
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[InverseGamma]:
+        """Estimate distribution parameters by maximum likelihood."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return the theoretical mean loss in excess of the attachment."""
+        return mean_excess(self, threshold)
+
     def __init__(
         self,
         alpha: DistributionParameter,
@@ -1435,6 +1495,10 @@ class Pareto(DistributionBase):
         """Fit this distribution by maximum likelihood, with truncation and censoring."""
         return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
 
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return the theoretical mean loss in excess of the attachment."""
+        return mean_excess(self, threshold)
+
     def __init__(self, shape: DistributionParameter, scale: DistributionParameter) -> None:
         """Initialize Pareto distribution.
 
@@ -1475,6 +1539,22 @@ class Paralogistic(DistributionBase):
         scale: Scale parameter :math:`\sigma`.
         loc: Location parameter :math:`\mu` (default 0).
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[Paralogistic]:
+        """Estimate distribution parameters by maximum likelihood."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return the theoretical mean loss in excess of the attachment."""
+        return mean_excess(self, threshold)
 
     def __init__(
         self,
@@ -1523,6 +1603,22 @@ class InverseBurr(DistributionBase):
         scale: Scale parameter :math:`\sigma`.
         loc: Location parameter :math:`\mu`.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[InverseBurr]:
+        """Estimate distribution parameters by maximum likelihood."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return the theoretical mean loss in excess of the attachment."""
+        return mean_excess(self, threshold)
 
     def __init__(
         self,
@@ -1632,6 +1728,22 @@ class Weibull(DistributionBase):
     failure analysis.
     """
 
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[Weibull]:
+        """Estimate distribution parameters by maximum likelihood."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return the theoretical mean loss in excess of the attachment."""
+        return mean_excess(self, threshold)
+
     def __init__(self, shape: float, scale: float, loc: float = 0) -> None:
         """Initialize Weibull distribution.
 
@@ -1688,6 +1800,22 @@ class InverseWeibull(DistributionBase):
         scale: Scale parameter :math:`\sigma`.
         loc: Location parameter :math:`\mu`.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[InverseWeibull]:
+        """Estimate distribution parameters by maximum likelihood."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return the theoretical mean loss in excess of the attachment."""
+        return mean_excess(self, threshold)
 
     def __init__(self, shape: float, scale: float, loc: float = 0) -> None:
         """Initialize inverse Weibull distribution.
@@ -1891,6 +2019,22 @@ class InverseGaussian(DistributionBase):
         mu: Mean parameter :math:`\mu`.
         lambda_: Shape parameter :math:`\lambda`.
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[InverseGaussian]:
+        """Estimate distribution parameters by maximum likelihood."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Return the theoretical mean loss in excess of the attachment."""
+        return mean_excess(self, threshold)
 
     def __init__(
         self,
