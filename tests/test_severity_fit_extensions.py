@@ -12,6 +12,7 @@ from pal.distributions import (
     InverseGamma,
     InverseGaussian,
     InverseWeibull,
+    LogGamma,
     LogLogistic,
     LogNormal,
     Paralogistic,
@@ -119,3 +120,63 @@ def test_infinite_mean_tails_are_not_numerically_truncated() -> None:
         Paralogistic(shape=1.0, scale=6),
     ]:
         assert np.isinf(severity.mean_excess(10.0))
+
+
+def test_loggamma_distribution_and_censored_fit_against_transformed_gamma() -> None:
+    rng = np.random.default_rng(987)
+    alpha, beta = 2.0, 0.35
+    original = np.exp(rng.gamma(shape=alpha, scale=beta, size=1200))
+    original = original[original > 1.5]
+    censored = original > 8.0
+    observed = np.minimum(original, 8.0)
+    fitted = LogGamma.fit(observed, threshold=1.5, censored=censored)
+    pars = fitted.parameters
+    assert fitted.converged
+    assert pars["alpha"] == pytest.approx(alpha, abs=0.6)
+    assert pars["beta"] == pytest.approx(beta, abs=0.14)
+    shape, scale = pars["alpha"], pars["beta"]
+    y = np.log(observed)
+    expected = (
+        np.sum(stats.gamma.logpdf(y[~censored], a=shape, scale=scale) - y[~censored])
+        + np.sum(stats.gamma.logsf(y[censored], a=shape, scale=scale))
+        - len(y) * stats.gamma.logsf(np.log(1.5), a=shape, scale=scale)
+    )
+    assert fitted.log_likelihood == pytest.approx(expected)
+    model = fitted.distribution
+    q = 0.7
+    assert model.invcdf(q) == pytest.approx(np.exp(stats.gamma.ppf(q, a=shape, scale=scale)))
+    assert model.cdf(1.0) == 0
+    assert model.cdf(5.0) == pytest.approx(stats.gamma.cdf(np.log(5.0), a=shape, scale=scale))
+
+
+def test_loggamma_mean_excess_matches_transformed_gamma_moment() -> None:
+    model = LogGamma(alpha=2.0, beta=0.25)
+    d = 3.0
+    reference = (
+        (1 - 0.25) ** (-2)
+        * stats.gamma.sf(np.log(d), a=2, scale=0.25 / (1 - 0.25))
+        / stats.gamma.sf(np.log(d), a=2, scale=0.25)
+        - d
+    )
+    assert model.mean_excess(d) == pytest.approx(reference)
+    assert np.isinf(LogGamma(alpha=2.0, beta=1.0).mean_excess(3.0))
+
+
+def test_gpd_free_location_matches_truncated_censored_likelihood() -> None:
+    rng = np.random.default_rng(756)
+    original = stats.genpareto.rvs(c=0.25, loc=2.0, scale=5.0, size=1200, random_state=rng)
+    original = original[original > 3.0]
+    censored = original > 25.0
+    observed = np.minimum(original, 25.0)
+    fitted = GPD.fit(observed, threshold=3.0, censored=censored, free_location=True)
+    pars = fitted.parameters
+    assert fitted.aic == pytest.approx(6 - 2 * fitted.log_likelihood)
+    assert pars["loc"] < observed.min()
+    ref = stats.genpareto(c=pars["shape"], loc=pars["loc"], scale=pars["scale"])
+    expected = (
+        np.sum(ref.logpdf(observed[~censored]))
+        + np.sum(ref.logsf(observed[censored]))
+        - len(observed) * ref.logsf(3.0)
+    )
+    assert fitted.log_likelihood == pytest.approx(expected, abs=1e-7)
+    assert fitted.distribution.cdf(15.0) == pytest.approx(ref.cdf(15.0), rel=1e-10)
