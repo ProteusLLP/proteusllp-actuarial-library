@@ -231,7 +231,9 @@ def _fit_continuous(
 
     fits = [
         optimize.minimize(
-            objective, np.asarray(start, dtype=float), method="Nelder-Mead",
+            objective,
+            np.asarray(start, dtype=float),
+            method="Nelder-Mead",
             options={"maxiter": 4000, "xatol": 1e-8, "fatol": 1e-8},
         )
         for start in starts
@@ -241,8 +243,13 @@ def _fit_continuous(
         raise RuntimeError(f"No finite {family} likelihood could be obtained")
     estimated = params(best.x)
     return _result(
-        cls(**estimated), estimated, log_likelihood(estimated), w, k=k,
-        n_censored=int(np.count_nonzero(c)), threshold=0.0 if threshold is None else threshold,
+        cls(**estimated),
+        estimated,
+        log_likelihood(estimated),
+        w,
+        k=k,
+        n_censored=int(np.count_nonzero(c)),
+        threshold=0.0 if threshold is None else threshold,
         converged=bool(best.success),
     )
 
@@ -308,9 +315,13 @@ def _fit_discrete(
         population = options.pop("population_size", None)
         draws = options.pop("n_draws", None)
         if (
-            population is None or draws is None
-            or int(population) != population or int(draws) != draws
-            or population < 1 or draws < 1 or draws > population
+            population is None
+            or draws is None
+            or int(population) != population
+            or int(draws) != draws
+            or population < 1
+            or draws < 1
+            or draws > population
         ):
             raise ValueError("HyperGeometric.fit requires integer population_size and n_draws")
         population, draws = int(population), int(draws)
@@ -328,7 +339,9 @@ def _fit_discrete(
             candidates = range(low, high + 1)
         else:
             approximate = optimize.minimize_scalar(
-                lambda v: negll(int(round(v))), bounds=(low, high), method="bounded",
+                lambda v: negll(int(round(v))),
+                bounds=(low, high),
+                method="bounded",
                 options={"xatol": 1.0},
             )
             centre = int(round(approximate.x))
@@ -390,7 +403,9 @@ def _fit_mbbefd(
     starts = [[np.log(initial_g - 1), logb] for logb in (-2.0, -0.3, 0.3, 2.0)]
     fits = [
         optimize.minimize(
-            objective, np.asarray(start, dtype=float), method="Nelder-Mead",
+            objective,
+            np.asarray(start, dtype=float),
+            method="Nelder-Mead",
             options={"maxiter": 4000, "xatol": 1e-8, "fatol": 1e-8},
         )
         for start in starts
@@ -413,13 +428,15 @@ def _fit_uniform(
     if options:
         raise TypeError(f"Unexpected Uniform fit options: {sorted(options)}")
     raw = np.asarray(observations)
-    is_dates = raw.dtype.kind == "M" or (raw.dtype.kind == "O" and all(
-        isinstance(v, (dt.date, np.datetime64)) for v in raw
-    ))
+    is_dates = raw.dtype.kind == "M" or (
+        raw.dtype.kind == "O" and all(isinstance(v, (dt.date, np.datetime64)) for v in raw)
+    )
     if is_dates:
         date_only = all(
-            isinstance(v, dt.date) and not isinstance(v, dt.datetime)
-            or isinstance(v, np.datetime64) and np.datetime_data(v.dtype)[0] in ("Y", "M", "W", "D")
+            isinstance(v, dt.date)
+            and not isinstance(v, dt.datetime)
+            or isinstance(v, np.datetime64)
+            and np.datetime_data(v.dtype)[0] in ("Y", "M", "W", "D")
             for v in raw
         )
         unit = "D" if date_only else "us"
@@ -472,13 +489,18 @@ def _fit_categorical(
         "probabilities": probabilities.tolist(),
     }
     return _result(
-        cls(values=labels, probabilities=probabilities), params, ll, w,
-        k=len(labels) - 1, method="multinomial_mle",
+        cls(values=labels, probabilities=probabilities),
+        params,
+        ll,
+        w,
+        k=len(labels) - 1,
+        method="multinomial_mle",
     )
 
 
 def mean_excess_remaining(
-    distribution: DistributionBase, threshold: float | np.ndarray,
+    distribution: DistributionBase,
+    threshold: float | np.ndarray,
 ) -> float | np.ndarray:
     """Compute conditional mean residual life for supported numeric families.
 
@@ -582,7 +604,8 @@ def mean_excess_remaining(
             sf = stats.hypergeom.sf(k, population, good, draws)
             moment = (
                 draws * good / population * stats.hypergeom.sf(k - 1, population - 1, good - 1, draws - 1)
-                if good > 0 and draws > 0 else 0.0
+                if good > 0 and draws > 0
+                else 0.0
             )
         if sf > 0:
             result[index] = moment / sf - d
