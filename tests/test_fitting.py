@@ -10,7 +10,7 @@ from pal.fitting import fit_distribution
 
 def test_pareto_censored_frequency_weight_mle_is_analytic() -> None:
     """Censored observations contribute survival, not density, terms."""
-    x = np.array([10.0, 20.0, 40.0, 80.0])
+    x = np.array([12.0, 20.0, 40.0, 80.0])
     censored = np.array([False, False, True, False])
     weights = np.array([1.0, 2.0, 3.0, 1.0])
     fitted = Pareto.fit(x, threshold=10.0, censored=censored, weights=weights)
