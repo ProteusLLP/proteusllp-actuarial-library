@@ -1685,6 +1685,22 @@ class InverseParalogistic(DistributionBase):
     scale parameter, and :math:`\mu` is the location parameter.
     """
 
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[InverseParalogistic]:
+        """Fit the distribution using right-censored, left-truncated observations."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Compute the mean residual loss above the attachment."""
+        return mean_excess(self, threshold)
+
     def __init__(
         self,
         shape: DistributionParameter,
@@ -2324,6 +2340,22 @@ class Exponential(DistributionBase):
         loc: Location parameter :math:`\mu` (default 0).
     """
 
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[Exponential]:
+        """Fit the distribution using right-censored, left-truncated observations."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Compute the mean residual loss above the attachment."""
+        return mean_excess(self, threshold)
+
     def __init__(self, scale: DistributionParameter, loc: DistributionParameter = 0.0) -> None:
         """Initialize exponential distribution.
 
@@ -2523,6 +2555,22 @@ class InverseExponential(DistributionBase):
         scale (float): Scale parameter.
         loc (float): Location parameter (default 0).
     """
+
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[InverseExponential]:
+        """Fit the distribution using right-censored, left-truncated observations."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Compute the mean residual loss above the attachment."""
+        return mean_excess(self, threshold)
 
     def __init__(self, scale: float, loc: float = 0) -> None:
         """Initialize inverse exponential distribution.
