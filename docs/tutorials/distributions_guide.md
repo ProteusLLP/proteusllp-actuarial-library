@@ -60,6 +60,8 @@ be estimated from observed claim sizes using maximum likelihood. Fitting
 returns the PAL distribution, estimated parameters and log-likelihood
 diagnostics.
 
+<!--pytest-codeblocks:cont-->
+
 ```python
 import numpy as np
 
