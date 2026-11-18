@@ -30,6 +30,7 @@ from pal.copulas import (
     PlackettCopula,
     StudentsTCopula,
 )
+from pal.distributions import Gamma, LogNormal
 from pal.qmc import RandomizedQMCGenerator, _draw_active_scenarios
 
 
@@ -194,3 +195,29 @@ def test_iterative_copulas_preserve_multivariate_qmc_structure(copula) -> None:
         assert np.mean(values <= 0.5) == pytest.approx(0.5, abs=0.075)
         assert variable.coupled_variable_group is variables[0].coupled_variable_group
     assert set(rng._streams) == {n}
+
+
+
+@pytest.mark.parametrize("copula,expected_median", _copula_examples())
+def test_every_copula_can_reorder_coupled_stochastic_variables_under_rqmc(copula, expected_median: float) -> None:
+    """Applying a copula must retain both exact marginal samples and chained values."""
+    original = (config.seed, config.rng, config.sampling_method, config.qmc_dimensions)
+    try:
+        set_sampling_method(SamplingMethod.RQMC, dimensions=8)
+        set_random_seed(912)
+        n = 512
+        first = Gamma(alpha=2.0, theta=5.0).generate(n)
+        derived = first * 1.5 + 3.0
+        second = LogNormal(mu=1.5, sigma=0.6).generate(n)
+        marginal_first = np.sort(asnumpy(first.values).copy())
+        marginal_second = np.sort(asnumpy(second.values).copy())
+
+        copula.apply([first, second])
+
+        np.testing.assert_array_equal(np.sort(asnumpy(first.values)), marginal_first)
+        np.testing.assert_array_equal(np.sort(asnumpy(second.values)), marginal_second)
+        np.testing.assert_allclose(asnumpy(derived.values), asnumpy(first.values) * 1.5 + 3.0)
+        assert first.coupled_variable_group is second.coupled_variable_group
+        assert first.coupled_variable_group is derived.coupled_variable_group
+    finally:
+        config.seed, config.rng, config.sampling_method, config.qmc_dimensions = original
