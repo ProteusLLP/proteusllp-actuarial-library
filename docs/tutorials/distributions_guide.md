@@ -55,9 +55,11 @@ validating simulation results.
 
 ## Fitting claim severity distributions
 
-The Pareto, Generalised Pareto (GPD), lognormal and gamma distributions can
-be estimated from observed claim sizes using maximum likelihood. Fitting
-returns the PAL distribution, estimated parameters and log-likelihood
+Severity distributions can be estimated from observed claim sizes using
+maximum likelihood. Supported families include Pareto, GPD, lognormal,
+gamma, Weibull, Burr, log-logistic, inverse Gaussian, paralogistic,
+inverse Burr, inverse gamma, inverse Weibull (Fréchet) and log-gamma.
+Fitting returns a PAL distribution, estimated parameters and likelihood
 diagnostics.
 
 <!--pytest-codeblocks:cont-->
@@ -81,13 +83,31 @@ amount. An observation marked as censored contributes the probability of
 exceeding its recorded limit, rather than a density at that limit. Optional
 `weights` support repeated observations or other non-negative observation
 weights; zero-weight rows are ignored. The GPD location is fixed at the
-threshold. Gamma is fitted with a zero location.
+threshold by default. Pass `free_location=True` to `GPD.fit(...)` to
+estimate all three parameters. Other supported shifted distributions
+are fitted with zero location.
 
 `fitted.log_likelihood`, `fitted.aic`, `fitted.aicc` and
 `fitted.converged` provide initial model-fit diagnostics. AICc is available
 for integer frequency weights with sufficient observations. Numerical fitting
 runs on the CPU using SciPy; the resulting PAL distribution supports the usual
 simulation and probability methods.
+
+Theoretical mean excess is available on these severity distributions. For a
+loss severity X and threshold d, this is E[X - d | X > d]. It is useful for
+checking the fitted tail and the average severity of claims reaching a layer.
+
+<!--pytest-codeblocks:cont-->
+
+```python
+mean_excess_at_50 = fitted.distribution.mean_excess(50.0)
+assert mean_excess_at_50 > 0
+```
+
+For shape parameters with an infinite first moment, mean excess is infinite.
+It is undefined at and beyond a finite upper endpoint. The calculation uses
+analytical expressions where available and numerical survival integration for
+the remaining distributions.
 
 ## Available Distributions
 
@@ -96,6 +116,7 @@ simulation and probability methods.
 | Distribution | Parameters | Typical Use |
 |-------------|------------|-------------|
 | `LogNormal` | `mu`, `sigma` | Claim sizes |
+| `LogGamma` | `alpha`, `beta` | Claims with a log-gamma tail |
 | `Gamma` | `alpha`, `theta`, `loc=0` | Aggregate losses, waiting times |
 | `Pareto` | `shape`, `scale` | Large/catastrophe losses |
 | `GPD` | `shape`, `scale`, `loc` | Excess losses above a threshold |
