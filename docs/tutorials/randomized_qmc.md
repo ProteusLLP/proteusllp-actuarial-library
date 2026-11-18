@@ -1,38 +1,46 @@
 # Randomized quasi-Monte Carlo
 
-Randomized quasi-Monte Carlo (RQMC) uses scrambled Sobol points to cover
-the sampling space more evenly than ordinary Monte Carlo. It can reduce
-simulation error without requiring changes to the model itself.
+Randomized quasi-Monte Carlo (RQMC) improves the coverage of simulated
+probabilities. It is similar in spirit to **stratified sampling across multiple
+dimensions**: scrambled Sobol points spread samples through the unit cube
+more evenly than independent pseudorandom draws. This can reduce simulation
+error without changing the model.
 
-## Switching sampling methods
+## One distribution
 
-Set the sampling method before generating your stochastic variables.
-PAL uses the configured default number of simulations when you call
-`generate()` without an argument.
+Start with a standard normal distribution, using the same number of draws
+under Monte Carlo and RQMC:
 
 ```python
 from pal import set_random_seed
 from pal.config import SamplingMethod, set_sampling_method
-from pal.distributions import Gamma, Normal
+from pal.distributions import Normal
+
+normal = Normal(mu=0, sigma=1)
+
+set_sampling_method(SamplingMethod.MC)
+set_random_seed(42)
+mc = normal.generate()
 
 set_sampling_method(SamplingMethod.RQMC)
 set_random_seed(42)
+rqmc = normal.generate()
 
-claims = Gamma(alpha=2.5, theta=100_000).generate()
-inflation = Normal(mu=0.03, sigma=0.015).generate()
-total = claims * (1 + inflation)
-
-set_sampling_method(SamplingMethod.MC)  # Restore Monte Carlo
+set_sampling_method(SamplingMethod.MC)
 ```
 
-## Comparing copula samples
+The empirical cumulative distribution function (CDF) is much smoother under
+RQMC. At this simulation count, the curves nearly coincide, so the lower
+panel shows their deviations from the exact normal CDF.
 
-For example, we can generate the same Gaussian copula using both methods.
-The `generate()` calls use PAL's default simulation count.
+![Empirical normal CDFs and CDF errors for Monte Carlo and randomized QMC](images/rqmc_univariate_cdf.svg)
+
+## Sampling in multiple dimensions
+
+The same idea extends to dependent variables. For example, this generates
+two uniform marginals from a Gaussian copula with correlation 0.7:
 
 ```python
-from pal import set_random_seed
-from pal.config import SamplingMethod, set_sampling_method
 from pal.copulas import GaussianCopula
 
 copula = GaussianCopula([[1.0, 0.7], [0.7, 1.0]])
@@ -48,33 +56,45 @@ u_rqmc, v_rqmc = copula.generate()
 set_sampling_method(SamplingMethod.MC)
 ```
 
-These 3D surfaces show the **empirical copula density** estimated from each
-set of simulated pairs. Both surfaces use the same axes and height scale; the illustrative
-surface heights are capped at a common upper percentile so that the
-corner peaks do not obscure the rest of the surface.
+The surfaces show the estimated joint densities from Monte Carlo and RQMC
+samples, viewed across the dependence ridge. Both plots use the same axes
+and density scale.
 
-![Gaussian copula empirical density surfaces under Monte Carlo and randomized quasi-Monte Carlo](images/rqmc_gaussian_copula_surface.svg)
+![Rotated 3D empirical Gaussian copula density surfaces under Monte Carlo and RQMC](images/rqmc_gaussian_copula_surface.svg)
 
-The RQMC surface is typically smoother because its points cover the
-sampling space more evenly. These are estimated densities, not the
-analytical copula density. The static illustration uses 10,000 pairs and
-two-dimensional digitally shifted Sobol sampling; exact PAL samples depend
-on the configured scramble and seed.
+Each surface is a smoothed empirical estimate, rather than the analytical
+copula density. The illustrative RQMC surface uses digitally shifted
+two-dimensional Sobol points.
 
 ## Does it improve accuracy?
 
-Here we estimate the probability that **both** Gaussian copula margins exceed
-their 90th percentiles. The chart shows root-mean-squared error across 24
-independent runs.
+The following example estimates the probability that **both** copula
+marginals exceed their 90th percentiles. The chart compares root-mean-squared
+errors across independent runs.
 
-![Monte Carlo versus randomized quasi-Monte Carlo estimation error for a Gaussian copula tail probability](images/rqmc_tail_convergence.svg)
+![Monte Carlo and RQMC convergence of a Gaussian copula joint tail probability](images/rqmc_tail_convergence.svg)
 
-RQMC gives a lower error in this example, but the improvement depends on
-the model and the quantity being estimated.
+RQMC can improve precision substantially, but the gain depends on the model,
+its effective dimension and the quantity being estimated.
 
-**Two practical points:** a power-of-two simulation count gives the strongest
-Sobol balance properties, although PAL's default count also works. To
-estimate uncertainty under RQMC, repeat the model using independent seeds.
-Individual paths in one scrambled design are not independent observations.
+A power-of-two simulation count gives the strongest Sobol balance
+properties. To estimate simulation uncertainty under RQMC, repeat the
+calculation with independent seeds rather than treating the paths within a
+single scramble as independent observations.
 
-For more on dependence, see the [copula tutorial](coupling_groups_and_copulas.md).
+## RQMC methods and references
+
+PAL uses scrambled Sobol sampling. On **CPU**, SciPy applies a linear matrix
+scramble followed by a digital shift (LMS+shift). On **GPU**, PAL uses
+cuRAND's scrambled Sobol direction vectors with an additional seeded digital
+shift. The scrambling method is determined by the backend; PAL does not
+currently provide a choice of scrambling algorithms, and nested Owen
+scrambling is not separately implemented.
+
+For the theory and practical details, see:
+
+- [Owen (1997), *Monte Carlo variance of scrambled net quadrature*](https://doi.org/10.1137/S0036142994277468).
+- [Owen (1998), *Scrambling Sobol' and Niederreiter–Xing points*](https://doi.org/10.1006/jcom.1998.0487).
+- [SciPy's Sobol sampler documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.qmc.Sobol.html).
+
+For more on modelling dependence, see the [copula tutorial](coupling_groups_and_copulas.md).
