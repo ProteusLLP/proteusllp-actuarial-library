@@ -667,6 +667,22 @@ class GeneralizedBetaPrime(DistributionBase):
         q: Positive second beta shape parameter.
     """
 
+    @classmethod
+    def fit(
+        cls,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        threshold: float = 0.0,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> FitResult[GeneralizedBetaPrime]:
+        """Fit positive severity observations by maximum likelihood."""
+        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+
+    def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
+        """Calculate the theoretical expected severity above the attachment."""
+        return mean_excess(self, threshold)
+
     def __init__(
         self,
         a: DistributionParameter,
