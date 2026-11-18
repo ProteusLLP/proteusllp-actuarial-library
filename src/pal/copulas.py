@@ -22,6 +22,7 @@ from ._maths import xp as np
 
 # Local imports
 from .config import config
+from .qmc import RandomizedQMCGenerator, _draw_active_scenarios, _draw_scenarios
 from .types import RandomGenerator
 
 
@@ -63,7 +64,7 @@ class _BackendGenerator:
 
 def _backend_rng(generator: RandomGenerator | _BackendGenerator) -> RandomGenerator | _BackendGenerator:
     """Return a backend-producing random generator adapter."""
-    if isinstance(generator, _BackendGenerator):
+    if isinstance(generator, (_BackendGenerator, RandomizedQMCGenerator)):
         return generator
     if type(generator).__module__.startswith(np.__name__):
         return generator
@@ -295,7 +296,7 @@ class GaussianCopula(EllipticalCopula):
 
     def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         n_vars = self.correlation_matrix.shape[0]
-        normal_samples = rng.standard_normal(size=(n_vars, n_sims))
+        normal_samples = _draw_scenarios(rng, "standard_normal", size=(n_vars, n_sims), scenario_axis=1)
         return self._chol.dot(normal_samples)
 
 
@@ -352,7 +353,7 @@ class StudentsTCopula(EllipticalCopula):
 
     def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         n_vars = self.correlation_matrix.shape[0]
-        normal_samples = self._chol.dot(rng.standard_normal(size=(n_vars, n_sims)))
+        normal_samples = self._chol.dot(_draw_scenarios(rng, "standard_normal", size=(n_vars, n_sims), scenario_axis=1))
         chi_samples = np.sqrt(rng.gamma(self.dof / 2, 2 / self.dof, size=n_sims))
         return normal_samples / chi_samples[np.newaxis, :]
 
@@ -393,7 +394,7 @@ class ArchimedeanCopula(Copula, ABC):
             raise RuntimeError("Subclasses of ArchimedeanCopula must set self.dimension to the number of variables")
         n_vars = self.dimension
         # Generate samples from a uniform distribution
-        u = rng.uniform(size=(n_vars, n_sims))
+        u = _draw_scenarios(rng, "uniform", size=(n_vars, n_sims), scenario_axis=1)
         # Generate samples from the latent distribution
         latent_samples = self.generate_latent_distribution(n_sims, rng)
 
@@ -649,6 +650,10 @@ class JoeCopula(ArchimedeanCopula):
 
     def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution."""
+        if self.theta == 1:
+            # Sibuya(1) is degenerate at one. The general sampler draws
+            # Gamma(0) and is undefined at this independence boundary.
+            return np.ones(n_sims)
         return _sibuya_gen(1 / self.theta, n_sims, rng)
 
 
@@ -856,7 +861,7 @@ class GalambosCopula(Copula):
         d = self.dimension
         # Independence shortcut if needed
         if self.theta < 1e-4:
-            return rng.uniform(0, 1, size=(d, n_sims))
+            return _draw_scenarios(rng, "uniform", 0, 1, size=(d, n_sims), scenario_axis=1)
         num = gamma(d) * gamma(1.0 / self.theta)
         den = gamma(d + 1.0 / self.theta) * self.theta
         # Compute c_theta for the Galambos copula in dimension d.
@@ -885,10 +890,14 @@ class GalambosCopula(Copula):
 
             # ``size`` arguments require a host integer. Transfer only this
             # scalar count; all simulation arrays remain on the device.
-            m = int(active.sum().item())
+            active_indices = np.flatnonzero(active)
+            m = int(active_indices.size)
 
-            # Directions on simplex for active samples: iid exponentials
-            e = rng.exponential(scale=1.0, size=(d, m))
+            # Every iteration consumes coordinates of the original n_sims
+            # design, even when the number of active paths has decreased.
+            e = _draw_active_scenarios(
+                rng, "exponential", n_sims, active_indices, scale=1.0, size=(d, m), scenario_axis=1
+            )
             e_sum = e.sum(axis=0, keepdims=True)
 
             # Candidate contribution for Y on active rows
@@ -900,7 +909,7 @@ class GalambosCopula(Copula):
             y[:, active] = y_active
 
             # Advance the Poisson times and radii for active rows only
-            t[active] += rng.exponential(scale=1.0, size=m)
+            t[active] += _draw_active_scenarios(rng, "exponential", n_sims, active_indices, scale=1.0, size=m)
             r[active] = c_th * (t[active] ** (-self.theta))
 
         # Map max stable representation to uniforms:
@@ -1232,13 +1241,10 @@ class HuslerReissCopula(Copula):
             na = idx.size
 
             # 1. Sample anchor indices T ~ Uniform{0,...,d-1}
-            integers = getattr(rng, "integers", getattr(rng, "randint", None))
-            if integers is None:
-                raise TypeError("Random number generator must provide integers or randint")
-            t = integers(low=0, high=d, size=na)
+            t = _draw_active_scenarios(rng, "integers", n_sims, idx, low=0, high=d, size=na)
 
             # 2. Sample Gaussian W ~ N(0, sigma^2 * R) for active sims
-            g = rng.standard_normal(size=(na, d))
+            g = _draw_active_scenarios(rng, "standard_normal", n_sims, idx, size=(na, d), scenario_axis=0)
             w = g @ chol.T  # shape (na, d)
 
             # 3. Construct Y according to P_{x_T} (Proposition 4 / Remark 2):
@@ -1258,7 +1264,7 @@ class HuslerReissCopula(Copula):
             z[idx] = np.maximum(z[idx], contrib)
 
             # 6. Next Poisson point: zeta^{-1} += Exp(rate = d)
-            e = rng.exponential(scale=1.0 / d, size=na)
+            e = _draw_active_scenarios(rng, "exponential", n_sims, idx, scale=1.0 / d, size=na)
             zeta_inv[idx] += e
             zeta[idx] = 1.0 / zeta_inv[idx]
 
@@ -1509,7 +1515,7 @@ class ExtremalTCopula(Copula):
         chi_sq = rng.chisquare(df=nu + 1.0, size=(1, n_sims))
 
         # Gaussian: Shape (d-1, n)
-        z_sub = rng.normal(size=(d - 1, n_sims))
+        z_sub = _draw_scenarios(rng, "normal", size=(d - 1, n_sims), scenario_axis=1)
         normal_dev_sub = conditional_cholesky[0] @ z_sub
 
         # Scale deviations
@@ -1564,8 +1570,12 @@ class ExtremalTCopula(Copula):
                 # --- Generate Y anchored at j ---
 
                 # 1. Chi-Square & Normal
-                chi_sq_j = rng.chisquare(df=nu + 1.0, size=(1, n_proc))
-                z_sub_j = rng.normal(size=(d - 1, n_proc))
+                chi_sq_j = _draw_active_scenarios(
+                    rng, "chisquare", n_sims, process_idx, df=nu + 1.0, size=(1, n_proc), scenario_axis=1
+                )
+                z_sub_j = _draw_active_scenarios(
+                    rng, "normal", n_sims, process_idx, size=(d - 1, n_proc), scenario_axis=1
+                )
 
                 # 2. Cholesky & Scale
                 normal_dev = l_sub @ z_sub_j
@@ -1607,7 +1617,9 @@ class ExtremalTCopula(Copula):
                     samp[:, final_acc_idx] = np.maximum(acc_curr, acc_cand)
 
                 # Increment Poisson Process
-                current_zeta[process_idx] += rng.exponential(1.0, size=n_proc)
+                current_zeta[process_idx] += _draw_active_scenarios(
+                    rng, "exponential", n_sims, process_idx, scale=1.0, size=n_proc
+                )
 
         # --- 5. Final Transform ---
         # Transpose back to (n_samples, d) for standard format
