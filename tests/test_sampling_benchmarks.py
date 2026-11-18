@@ -39,6 +39,23 @@ def test_comparison_input_validation():
         run_comparison([16], replicates=2, cases=("unknown",))
 
 
+def test_univariate_cdf_chart_shows_exact_cdf_and_sampling_errors():
+    before = (config.seed, config.sampling_method, config.qmc_dimensions, config.rng)
+    fig = univariate_cdf_chart(n_sims=256)
+    after = (config.seed, config.sampling_method, config.qmc_dimensions, config.rng)
+    assert before == after
+    assert len(fig.data) == 5
+    assert {trace.name for trace in fig.data} == {
+        "Exact normal CDF",
+        "MC",
+        "RQMC",
+        "MC deviation",
+        "RQMC deviation",
+    }
+    assert all(len(trace.x) == 281 for trace in fig.data)
+    assert fig.layout.yaxis2.title.text == "CDF error (pp)"
+
+
 def test_copula_density_chart_has_matching_axes_and_panels():
     before = (config.seed, config.sampling_method, config.qmc_dimensions, config.rng)
     fig = copula_density_chart(n_sims=256)
