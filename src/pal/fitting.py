@@ -325,8 +325,9 @@ def _frozen_distribution(family: str, params: dict[str, float]) -> t.Any:
     if family == "InverseParalogistic":
         return stats.burr(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"])
     if family == "GeneralizedInverseGaussian":
-        return stats.geninvgauss(p=p["p"], b=np.sqrt(p["chi"] * p["psi"]),
-                                scale=np.sqrt(p["chi"] / p["psi"]), loc=p["loc"])
+        return stats.geninvgauss(
+            p=p["p"], b=np.sqrt(p["chi"] * p["psi"]), scale=np.sqrt(p["chi"] / p["psi"]), loc=p["loc"]
+        )
     if family == "GEV":
         return stats.genextreme(c=-p["shape"], loc=p["loc"], scale=p["scale"])
     raise ValueError(f"Unsupported severity family: {family}")
@@ -372,13 +373,10 @@ def _fit_other(
 
     starts: list[list[float]]
     if family == "GeneralizedInverseGaussian":
-        starts = [[-0.5, np.log(scale), np.log(1.0 / scale)],
-                  [0.5, np.log(scale), np.log(1.0 / scale)]]
+        starts = [[-0.5, np.log(scale), np.log(1.0 / scale)], [0.5, np.log(scale), np.log(1.0 / scale)]]
     elif family == "GEV":
         spread = max(float(np.std(x)), 0.01)
-        starts = [[0.0, np.log(spread), median],
-                  [0.2, np.log(spread), median],
-                  [-0.2, np.log(spread), median]]
+        starts = [[0.0, np.log(spread), median], [0.2, np.log(spread), median], [-0.2, np.log(spread), median]]
     elif family in {"Exponential", "InverseExponential"}:
         starts = [[np.log(max(mean, 1e-10))]]
     elif family == "LogGamma":
@@ -408,8 +406,7 @@ def _fit_other(
 
     def make_params(raw: np.ndarray) -> dict[str, float]:
         if family == "GeneralizedInverseGaussian":
-            return {"p": float(raw[0]), "chi": float(np.exp(raw[1])),
-                    "psi": float(np.exp(raw[2])), "loc": 0.0}
+            return {"p": float(raw[0]), "chi": float(np.exp(raw[1])), "psi": float(np.exp(raw[2])), "loc": 0.0}
         if family == "GEV":
             return {"shape": float(raw[0]), "scale": float(np.exp(raw[1])), "loc": float(raw[2])}
         pars: dict[str, float] = dict(zip(names, (float(np.exp(value)) for value in raw)))
