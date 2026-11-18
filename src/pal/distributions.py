@@ -1879,6 +1879,7 @@ class LogGamma(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the log-gamma cumulative distribution function."""
+
         def evaluate(values: t.Any, alpha: t.Any, beta: t.Any) -> t.Any:
             values, alpha, beta = (xp.asarray(v) for v in (values, alpha, beta))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
@@ -1891,6 +1892,7 @@ class LogGamma(DistributionBase):
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute log-gamma quantiles from the inverse incomplete gamma."""
+
         def evaluate(values: t.Any, alpha: t.Any, beta: t.Any) -> t.Any:
             values, alpha, beta = (xp.asarray(v) for v in (values, alpha, beta))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
