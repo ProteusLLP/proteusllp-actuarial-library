@@ -909,9 +909,7 @@ class GalambosCopula(Copula):
             y[:, active] = y_active
 
             # Advance the Poisson times and radii for active rows only
-            t[active] += _draw_active_scenarios(
-                rng, "exponential", n_sims, active_indices, scale=1.0, size=m
-            )
+            t[active] += _draw_active_scenarios(rng, "exponential", n_sims, active_indices, scale=1.0, size=m)
             r[active] = c_th * (t[active] ** (-self.theta))
 
         # Map max stable representation to uniforms:
@@ -1246,9 +1244,7 @@ class HuslerReissCopula(Copula):
             t = _draw_active_scenarios(rng, "integers", n_sims, idx, low=0, high=d, size=na)
 
             # 2. Sample Gaussian W ~ N(0, sigma^2 * R) for active sims
-            g = _draw_active_scenarios(
-                rng, "standard_normal", n_sims, idx, size=(na, d), scenario_axis=0
-            )
+            g = _draw_active_scenarios(rng, "standard_normal", n_sims, idx, size=(na, d), scenario_axis=0)
             w = g @ chol.T  # shape (na, d)
 
             # 3. Construct Y according to P_{x_T} (Proposition 4 / Remark 2):
@@ -1268,9 +1264,7 @@ class HuslerReissCopula(Copula):
             z[idx] = np.maximum(z[idx], contrib)
 
             # 6. Next Poisson point: zeta^{-1} += Exp(rate = d)
-            e = _draw_active_scenarios(
-                rng, "exponential", n_sims, idx, scale=1.0 / d, size=na
-            )
+            e = _draw_active_scenarios(rng, "exponential", n_sims, idx, scale=1.0 / d, size=na)
             zeta_inv[idx] += e
             zeta[idx] = 1.0 / zeta_inv[idx]
 
