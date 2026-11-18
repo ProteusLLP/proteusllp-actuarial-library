@@ -30,7 +30,7 @@ class FitResult(t.Generic[_T]):
     """
 
     distribution: _T
-    parameters: dict[str, float]
+    parameters: dict[str, t.Any]
     log_likelihood: float
     aic: float
     aicc: float
