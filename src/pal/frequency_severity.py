@@ -697,7 +697,8 @@ class FreqSevSims(_ProteusStochasticVariable):
             *(value for value in (*args, *kwargs.values()) if isinstance(value, _ProteusStochasticVariable)),
         )
         target = (output,) if isinstance(output, _ProteusStochasticVariable) else ()
-        validate_stochastic_axes((*sources, *target), n_sims=self.n_sims)
+        if func is not np.array_equal:
+            validate_stochastic_axes((*sources, *target), n_sims=self.n_sims)
         preserving = func in (np.where, np.minimum, np.maximum, np.round)
         if func is np.where and len(args) != 3:
             preserving = False
