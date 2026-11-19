@@ -190,9 +190,10 @@ separately for a real portfolio.
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal import FrequencySeverityModel, config
+from pal import FrequencySeverityModel, config, set_random_seed
 
 config.n_sims = 256
+set_random_seed(42)
 
 model = FrequencySeverityModel(
     freq_dist=poisson_fit.distribution,
