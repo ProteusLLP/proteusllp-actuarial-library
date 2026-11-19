@@ -34,7 +34,7 @@ from ._compat import override
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
 from ._value_arrays import stochastic_array
 from .config import config
-from .couplings import validate_stochastic_axes
+from .couplings import couple_stochastic_results, validate_stochastic_axes
 from .fitting import fit_distribution, mean_excess
 from .fitting_remaining import fit_remaining, mean_excess_remaining
 from .qmc import (
@@ -80,8 +80,7 @@ def _special_call(function: t.Callable[..., t.Any], *args: t.Any) -> t.Any:
         if len(result) != stochastic_args[0].n_sims:
             raise ValueError("Special function result has incompatible n_sims")
         wrapped = StochasticScalar(result)
-        for arg in stochastic_args:
-            wrapped.coupled_variable_group.merge(arg.coupled_variable_group)
+        couple_stochastic_results((wrapped,), stochastic_args)
         return wrapped
     return scalar_or_array(result)
 
@@ -109,8 +108,7 @@ def _discrete_count_ppf(
         if getattr(result, "ndim", None) != 1 or len(result) != stochastic_args[0].n_sims:
             raise ValueError("Discrete quantile result has incompatible n_sims")
         wrapped = StochasticScalar(result)
-        for arg in stochastic_args:
-            wrapped.coupled_variable_group.merge(arg.coupled_variable_group)
+        couple_stochastic_results((wrapped,), stochastic_args)
         return wrapped
     return t.cast(ReturnType, scalar_or_array(result))
 
@@ -177,9 +175,7 @@ class DistributionBase:
         result = self._generate(n_sims, rng)
         if result.n_sims != n_sims:
             raise ValueError("Generated result has incompatible n_sims")
-        # Merge coupled variable groups from parameters if applicable.
-        for param in stochastic_params:
-            result.coupled_variable_group.merge(param.coupled_variable_group)
+        couple_stochastic_results((result,), stochastic_params, n_sims=n_sims)
         return result
 
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
@@ -460,15 +456,17 @@ class HyperGeometric(DiscreteDistributionBase):
         # Use scipy.stats because scipy.special does not expose hypergeom CDF directly
         from scipy.stats import hypergeom
 
+        self._validate_probability_inputs(x)
         ngood, nbad, n_draws = self._param_values
         m = ngood + nbad
         n = ngood
         n_total = n_draws
         x_values = x.values if isinstance(x, StochasticScalar) else x
         result = _scipy_on_backend(hypergeom.cdf, x_values, m, n, n_total)
-        if isinstance(x, StochasticScalar):
+        stochastic_inputs = [value for value in (x, *self._params.values()) if isinstance(value, StochasticScalar)]
+        if stochastic_inputs:
             wrapped = StochasticScalar(result)
-            wrapped.coupled_variable_group.merge(x.coupled_variable_group)
+            couple_stochastic_results((wrapped,), stochastic_inputs)
             return wrapped
         return scalar_or_array(result)
 
@@ -477,14 +475,16 @@ class HyperGeometric(DiscreteDistributionBase):
         """Compute inverse cumulative distribution function."""
         from scipy.stats import hypergeom
 
+        self._validate_probability_inputs(u)
         ngood, nbad, n_draws = self._param_values
         m = ngood + nbad
         n = ngood
         u_values = u.values if isinstance(u, StochasticScalar) else u
         result = _scipy_on_backend(hypergeom.ppf, u_values, m, n, n_draws)
-        if isinstance(u, StochasticScalar):
+        stochastic_inputs = [value for value in (u, *self._params.values()) if isinstance(value, StochasticScalar)]
+        if stochastic_inputs:
             wrapped = StochasticScalar(result)
-            wrapped.coupled_variable_group.merge(u.coupled_variable_group)
+            couple_stochastic_results((wrapped,), stochastic_inputs)
             return wrapped
         return scalar_or_array(result)
 
@@ -1040,8 +1040,7 @@ class MBBEFD(DistributionBase):
             return t.cast(ReturnType, scalar_or_array(result))
 
         wrapped = StochasticScalar(result)
-        for value in stochastic_inputs:
-            wrapped.coupled_variable_group.merge(value.coupled_variable_group)
+        couple_stochastic_results((wrapped,), stochastic_inputs)
         return wrapped
 
     @override
@@ -2504,8 +2503,7 @@ class GeneralizedInverseGaussian(DistributionBase):
             return float(result)
 
         wrapped = StochasticScalar(result)
-        for value in stochastic_inputs:
-            wrapped.coupled_variable_group.merge(value.coupled_variable_group)
+        couple_stochastic_results((wrapped,), stochastic_inputs)
         return wrapped
 
     @override
@@ -2675,7 +2673,7 @@ class Uniform(DistributionBase):
             result = np.clip(ticks / self._date_span, 0.0, 1.0)
         if isinstance(x, StochasticScalar):
             wrapped = StochasticScalar(np.atleast_1d(result))
-            wrapped.coupled_variable_group.merge(x.coupled_variable_group)
+            couple_stochastic_results((wrapped,), (x,))
             return wrapped
         return t.cast(ReturnType, result.item() if np.ndim(result) == 0 else result)
 
@@ -2697,7 +2695,7 @@ class Uniform(DistributionBase):
         result = self._date_start + offsets.astype(f"timedelta64[{self._date_unit}]")
         if isinstance(u, StochasticScalar):
             wrapped = StochasticScalar(np.atleast_1d(result))
-            wrapped.coupled_variable_group.merge(u.coupled_variable_group)
+            couple_stochastic_results((wrapped,), (u,))
             return wrapped
         return t.cast(ReturnType, result.item() if np.ndim(result) == 0 else result)
 
@@ -2760,7 +2758,7 @@ class Categorical(DistributionBase):
         result = self._values[index]
         if isinstance(u, StochasticScalar):
             wrapped = StochasticScalar(np.atleast_1d(result))
-            wrapped.coupled_variable_group.merge(u.coupled_variable_group)
+            couple_stochastic_results((wrapped,), (u,))
             return wrapped
         return t.cast(ReturnType, result)
 
@@ -2782,7 +2780,7 @@ class Categorical(DistributionBase):
         result = self._cumulative[positions]
         if isinstance(x, StochasticScalar):
             wrapped = StochasticScalar(np.atleast_1d(result))
-            wrapped.coupled_variable_group.merge(x.coupled_variable_group)
+            couple_stochastic_results((wrapped,), (x,))
             return wrapped
         return t.cast(ReturnType, result)
 

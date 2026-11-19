@@ -13,6 +13,8 @@ import typing as t
 
 from ._compat import override
 from ._maths import scalar_or_array, xp
+from .config import config
+from .couplings import couple_stochastic_results, validate_stochastic_axes
 from .distributions import DistributionBase, ReturnType
 from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
@@ -157,8 +159,7 @@ class HyperExponential(DistributionBase):
             return scalar_or_array(result)
 
         wrapped = StochasticScalar(result)
-        for value in stochastic_inputs:
-            wrapped.coupled_variable_group.merge(value.coupled_variable_group)
+        couple_stochastic_results((wrapped,), stochastic_inputs)
         return wrapped
 
     @staticmethod
@@ -223,10 +224,14 @@ class HyperExponential(DistributionBase):
         rng: RandomGenerator | None = None,
     ) -> StochasticScalar:
         """Generate samples and preserve component-parameter coupling."""
+        sources = tuple(
+            value
+            for value in (*self._params.values(), *self._component_inputs())
+            if isinstance(value, StochasticScalar)
+        )
+        validate_stochastic_axes(sources, n_sims=config.n_sims if n_sims is None else n_sims)
         result = super().generate(n_sims=n_sims, rng=rng)
-        for value in self._component_inputs():
-            if isinstance(value, StochasticScalar):
-                result.coupled_variable_group.merge(value.coupled_variable_group)
+        couple_stochastic_results((result,), sources)
         return result
 
     @override

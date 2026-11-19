@@ -35,6 +35,34 @@ def validate_stochastic_axes(variables: t.Iterable[ProteusStochasticVariable], n
     return n_sims
 
 
+def couple_stochastic_results(
+    results: t.Iterable[ProteusStochasticVariable],
+    inputs: t.Iterable[ProteusStochasticVariable] = (),
+    *,
+    n_sims: int | None = None,
+) -> None:
+    """Link scenario-indexed result leaves to all upstream stochastic inputs.
+
+    The caller must finish numerical calculations and construct *all* results
+    before calling this function. Scenario lengths are validated across every
+    input and result before any coupling group changes. In particular, expanded
+    claim-level parameter temporaries must not be passed as inputs: a
+    FreqSevSims result has the original simulation axis, not the claim axis.
+
+    The first input's existing group is retained when possible. Groups hold
+    weak references, so linking outputs does not prolong temporary lifetimes.
+    """
+    output_leaves = tuple(results)
+    sources = tuple(inputs)
+    if not output_leaves:
+        raise ValueError("At least one stochastic result is required")
+    validate_stochastic_axes((*sources, *output_leaves), n_sims=n_sims)
+
+    anchor = (sources or output_leaves)[0].coupled_variable_group
+    for variable in (*sources, *output_leaves):
+        anchor.merge(variable.coupled_variable_group)
+
+
 class CouplingGroup:
     """A class to represent a group of variables that are coupled together."""
 
@@ -193,39 +221,35 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
 
     def __divmod__(self, other: t.Any) -> tuple[Self, Self]:
         """Combined quotient and remainder returning tuple of same types."""
-        # Extract values from other if it's a stochastic variable
-        other_values = other.values if hasattr(other, "values") else to_backend(other)
+        # Validate both scenario axes before the operation or any group merge.
+        if isinstance(other, ProteusStochasticVariable):
+            validate_stochastic_axes((self, other))
+        other_values = other.values if isinstance(other, ProteusStochasticVariable) else to_backend(other)
         q_values, r_values = np.divmod(self.values, other_values)
 
         # Create result objects
         quotient = type(self)(q_values)  # type: ignore[assignment]
         remainder = type(self)(r_values)  # type: ignore[assignment]
 
-        # Merge coupling groups
-        quotient.coupled_variable_group.merge(self.coupled_variable_group)
-        remainder.coupled_variable_group.merge(self.coupled_variable_group)
-        if hasattr(other, "coupled_variable_group"):
-            quotient.coupled_variable_group.merge(other.coupled_variable_group)
-            remainder.coupled_variable_group.merge(other.coupled_variable_group)
+        sources = (self, other) if isinstance(other, ProteusStochasticVariable) else (self,)
+        couple_stochastic_results((quotient, remainder), sources)
 
         return quotient, remainder  # type: ignore[return-value]
 
     def __rdivmod__(self, other: t.Any) -> tuple[Self, Self]:
         """Right combined quotient and remainder returning tuple of same types."""
-        # Extract values from other if it's a stochastic variable
-        other_values = other.values if hasattr(other, "values") else to_backend(other)
+        # Validate both scenario axes before the operation or any group merge.
+        if isinstance(other, ProteusStochasticVariable):
+            validate_stochastic_axes((self, other))
+        other_values = other.values if isinstance(other, ProteusStochasticVariable) else to_backend(other)
         q_values, r_values = np.divmod(other_values, self.values)
 
         # Create result objects
         quotient = type(self)(q_values)  # type: ignore[assignment]
         remainder = type(self)(r_values)  # type: ignore[assignment]
 
-        # Merge coupling groups
-        quotient.coupled_variable_group.merge(self.coupled_variable_group)
-        remainder.coupled_variable_group.merge(self.coupled_variable_group)
-        if hasattr(other, "coupled_variable_group"):
-            quotient.coupled_variable_group.merge(other.coupled_variable_group)
-            remainder.coupled_variable_group.merge(other.coupled_variable_group)
+        sources = (self, other) if isinstance(other, ProteusStochasticVariable) else (self,)
+        couple_stochastic_results((quotient, remainder), sources)
 
         return quotient, remainder  # type: ignore[return-value]
 

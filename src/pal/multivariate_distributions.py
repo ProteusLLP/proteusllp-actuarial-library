@@ -17,6 +17,7 @@ import numpy.typing as npt
 
 from ._maths import asnumpy, special, to_backend, xp
 from .config import config
+from .couplings import couple_stochastic_results
 from .qmc import _draw_scenarios
 from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
@@ -181,8 +182,7 @@ def _density_result(values: t.Any, stochastic_inputs: t.Iterable[DistributionPar
     if result.size == 1 and not inputs:
         return float(result.item())
     wrapped = StochasticScalar(result.reshape(-1))
-    for value in inputs:
-        wrapped.coupled_variable_group.merge(value.coupled_variable_group)
+    couple_stochastic_results((wrapped,), inputs)
     return wrapped
 
 
@@ -325,12 +325,8 @@ class MultivariateDistributionBase(ABC):
             raise RuntimeError("A multivariate sampler returned an invalid sample shape.")
         components = {name: StochasticScalar(active_samples[index]) for index, name in enumerate(self.component_names)}
         result = ProteusVariable[StochasticScalar](self.dim_name, components)
-        first = result[0]
-        for component in result:
-            first.coupled_variable_group.merge(component.coupled_variable_group)
-        for parameter in self._parameters:
-            if isinstance(parameter, StochasticScalar):
-                first.coupled_variable_group.merge(parameter.coupled_variable_group)
+        stochastic_parameters = (p for p in self._parameters if isinstance(p, StochasticScalar))
+        couple_stochastic_results(components.values(), stochastic_parameters, n_sims=n_sims)
         return result
 
 
@@ -430,13 +426,9 @@ class MatrixDistributionBase(ABC):
             for row_index, row_name in enumerate(self.component_names)
         }
         result = ProteusVariable[ProteusVariable[StochasticScalar]](self.row_dim_name, rows)
-        first = result[0][0]
-        for row in result:
-            for entry in row:
-                first.coupled_variable_group.merge(entry.coupled_variable_group)
-        for parameter in self._parameters:
-            if isinstance(parameter, StochasticScalar):
-                first.coupled_variable_group.merge(parameter.coupled_variable_group)
+        stochastic_parameters = (p for p in self._parameters if isinstance(p, StochasticScalar))
+        leaves = (entry for row in rows.values() for entry in row.values.values())
+        couple_stochastic_results(leaves, stochastic_parameters, n_sims=n_sims)
         return result
 
 

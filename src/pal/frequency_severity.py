@@ -36,7 +36,7 @@ from ._maths import asnumpy, scalar_or_array, to_backend, xp
 from ._value_arrays import host_values, stochastic_array
 from .config import config
 from .couplings import ProteusStochasticVariable as _ProteusStochasticVariable
-from .couplings import validate_stochastic_axes
+from .couplings import couple_stochastic_results, validate_stochastic_axes
 from .qmc import RandomizedQMCGenerator
 from .stochastic_scalar import (
     StochasticScalar,
@@ -242,9 +242,7 @@ class FrequencySeverityModel:
         if isinstance(rng, RandomizedQMCGenerator):
             values = self._qmc_severities(n_sims, counts.astype(np.int64), event_indices, total_events, rng)
             result = FreqSevSims(event_indices, values, n_sims)
-            result.coupled_variable_group.merge(n_events.coupled_variable_group)
-            for param in stochastic_params.values():
-                result.coupled_variable_group.merge(param.coupled_variable_group)
+            couple_stochastic_results((result,), (n_events, *stochastic_params.values()), n_sims=n_sims)
             return result
 
         severity_distribution = self.sev_dist
@@ -268,11 +266,8 @@ class FrequencySeverityModel:
         sev = severity_distribution.generate(max(1, total_events), rng)
         values = sev.values[:total_events]
         result = FreqSevSims(event_indices, values, n_sims)
-        result.coupled_variable_group.merge(n_events.coupled_variable_group)
-        # Event-level temporary parameters cannot join a simulation-level group:
-        # reordering that group must act on the FreqSevSims event indices instead.
-        for param in stochastic_params.values():
-            result.coupled_variable_group.merge(param.coupled_variable_group)
+        # Link original simulation-level parameters, never expanded claim-level temporaries.
+        couple_stochastic_results((result,), (n_events, *stochastic_params.values()), n_sims=n_sims)
         return result
 
 
@@ -425,7 +420,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         _result = xp.zeros(self.n_sims)
         operation(_result, self.sim_index, self.values)
         result = StochasticScalar(_result)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
+        couple_stochastic_results((result,), (self,))
         return result
 
     def aggregate(self) -> StochasticScalar:
@@ -506,7 +501,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         """
         counts = xp.bincount(self.sim_index, minlength=self.n_sims).astype(float)
         result = StochasticScalar(counts)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
+        couple_stochastic_results((result,), (self,))
         return result
 
     def deep_copy(self) -> FreqSevSims:
@@ -516,13 +511,13 @@ class FreqSevSims(_ProteusStochasticVariable):
     def copy(self) -> FreqSevSims:
         """Creates a copy of the FreqSevSims object."""
         result = FreqSevSims(self.sim_index.copy(), self.values.copy(), self.n_sims)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
+        couple_stochastic_results((result,), (self,))
         return result
 
     def apply(self, func: ArrayTransform) -> FreqSevSims:
         """Applies a function to the values of the FreqSevSims object."""
         result = FreqSevSims(self.sim_index, func(self.values), self.n_sims)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
+        couple_stochastic_results((result,), (self,))
         return result
 
     def _extract_array_for_ufunc(self, x: t.Any, host: bool | None = None) -> npt.NDArray[np.floating]:
@@ -563,123 +558,199 @@ class FreqSevSims(_ProteusStochasticVariable):
             ):
                 raise ValueError("Event simulation indices must match for event-wise operations")
 
-    def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any) -> FreqSevSims:
-        where_mask = kwargs.get("where")
-        self._validate_event_layout(*inputs, *(kwargs.get("out") or ()), where_mask)
+    def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any) -> t.Any:
+        """Apply event-wise ufuncs with atomic output and simulation-axis coupling."""
+        if method == "at":
+            raise NotImplementedError("In-place ufunc.at is unsupported on frequency-severity results")
+        if method not in ("__call__", "reduce", "reduceat", "accumulate", "outer"):
+            return NotImplemented
+
+        kwargs = dict(kwargs)
+        raw_out = kwargs.pop("out", None)
+        destinations = raw_out if isinstance(raw_out, tuple) else (raw_out,) if raw_out is not None else ()
+        if destinations and len(destinations) != (ufunc.nout if method == "__call__" else 1):
+            raise ValueError("Number of ufunc output destinations does not match the operation")
+        where_mask = kwargs.pop("where", True)
+        self._validate_event_layout(*inputs, *destinations, where_mask)
+        sources = (
+            self,
+            *(value for value in (*inputs, where_mask) if isinstance(value, _ProteusStochasticVariable)),
+        )
+        targets = tuple(value for value in destinations if isinstance(value, _ProteusStochasticVariable))
+        validate_stochastic_axes((*sources, *targets), n_sims=self.n_sims)
+        if any(isinstance(value, StochasticScalar) for value in destinations):
+            raise TypeError("Frequency-severity event outputs require event-aligned FreqSevSims or raw arrays")
+        if method != "__call__" and any(isinstance(value, FreqSevSims) for value in destinations):
+            raise ValueError("A frequency-severity out= destination requires event-wise elementwise results")
+
+        raw_mask = (
+            self._extract_array_for_ufunc(where_mask)
+            if isinstance(where_mask, (FreqSevSims, StochasticScalar))
+            else where_mask
+        )
+        if not isinstance(raw_mask, (bool, np.bool_)):
+            mask_shape = raw_mask.shape if hasattr(raw_mask, "shape") else np.shape(raw_mask)
+            mask_dtype = raw_mask.dtype if hasattr(raw_mask, "dtype") else np.asarray(raw_mask).dtype
+            if mask_dtype.kind != "b":
+                raise TypeError("where must be a boolean mask")
+            if mask_shape not in ((), (len(self.values),)):
+                raise ValueError("Event where mask has incompatible event count")
+        if (
+            method == "__call__"
+            and not destinations
+            and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask))
+        ):
+            raise ValueError("Masked event-wise ufuncs require out= to define unselected events")
+
         host = (
             host_values(self.values)
             or any(host_values(x.values if isinstance(x, (FreqSevSims, StochasticScalar)) else x) for x in inputs)
-            or host_values(kwargs.get("where"))
+            or host_values(raw_mask)
         )
-        _inputs = tuple(self._extract_array_for_ufunc(x, host) for x in inputs)
+        prepared_inputs = tuple(self._extract_array_for_ufunc(value, host) for value in inputs)
         if host:
-            _inputs = tuple(asnumpy(x) if isinstance(x, xp.ndarray) else x for x in _inputs)
-            ufunc = getattr(np, ufunc.__name__, ufunc)
-        out = kwargs.get("out", ())
-        out_arrays: tuple[t.Any, ...] = ()
-        if out:
-            out_arrays = tuple(x.values if isinstance(x, FreqSevSims) else x for x in out)
-            kwargs["out"] = (
-                tuple(asnumpy(x).copy() if isinstance(x, xp.ndarray) else x for x in out_arrays) if host else out_arrays
+            prepared_inputs = tuple(
+                asnumpy(value) if isinstance(value, xp.ndarray) else value for value in prepared_inputs
             )
-        if "where" in kwargs:
-            if isinstance(where_mask, (FreqSevSims, StochasticScalar)):
-                kwargs["where"] = self._extract_array_for_ufunc(where_mask, host)
-            elif host:
-                kwargs["where"] = asnumpy(where_mask)
-        if xp is not np and not host and method == "__call__" and "where" in kwargs:
-            # CuPy ufuncs do not accept the NumPy "where" keyword. Keep the
-            # mask and the output on the device, preserving unselected values.
-            mask = xp.asarray(kwargs["where"])
-            if isinstance(where_mask, (FreqSevSims, StochasticScalar, np.ndarray, xp.ndarray)) and not np.can_cast(
-                mask.dtype, np.bool_, casting="safe"
-            ):
-                raise TypeError("where mask cannot be safely cast to bool")
-            unmasked_kwargs = {key: value for key, value in kwargs.items() if key not in ("where", "out")}
-            calculated = getattr(ufunc, method)(*_inputs, **unmasked_kwargs)
-            if out_arrays and out_arrays[0] is not None:
-                destination = out_arrays[0]
-                xp.copyto(destination, calculated, casting=kwargs.get("casting", "same_kind"), where=mask)
-                result = destination
-            else:
-                result = xp.where(mask, calculated, xp.empty_like(calculated))
-        else:
-            result = getattr(ufunc, method)(*_inputs, **kwargs)
-        if out and host:
-            for destination, buffer in zip(out_arrays, kwargs["out"]):
-                if destination is not buffer:
-                    destination[...] = xp.asarray(buffer) if isinstance(destination, xp.ndarray) else buffer
-        scalar_result = scalar_or_array(result)
-        if scalar_result is not result:
-            return scalar_result  # type: ignore[return-value]
-        result = FreqSevSims(self.sim_index, result, self.n_sims)
-        for input in (*inputs, where_mask, *out):
-            if isinstance(input, _ProteusStochasticVariable):
-                input.coupled_variable_group.merge(self.coupled_variable_group)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
+        operation = getattr(np, ufunc.__name__, ufunc) if host else ufunc
 
-        return result
+        if method == "reduce" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
+            kwargs["where"] = asnumpy(raw_mask) if host else to_backend(raw_mask)
+        elif method not in ("__call__", "reduce") and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
+            raise TypeError("where is only supported for elementwise ufuncs or reduce")
+        calculated = getattr(operation, method)(*prepared_inputs, **kwargs)
+        results = calculated if isinstance(calculated, tuple) else (calculated,)
 
-    def __array_function__(
-        self, func: Callable[..., t.Any], _: t.Any, args: t.Any, kwargs: t.Any
-    ) -> np.number[t.Any] | FreqSevSims:
-        """Handle numpy array functions for FreqSevSims objects.
+        if method != "__call__":
+            if destinations:
+                destination = destinations[0]
+                if destination is None:
+                    return scalar_or_array(calculated)
+                raw_destination = destination
+                if not isinstance(raw_destination, (np.ndarray, xp.ndarray)):
+                    raise TypeError("Reduction out= must be a raw NumPy/CuPy array")
+                if raw_destination.shape != np.shape(calculated):
+                    raise ValueError("out= has an incompatible result shape")
+                backend = np if isinstance(raw_destination, np.ndarray) else xp
+                values = asnumpy(calculated) if backend is np else xp.asarray(calculated)
+                backend.copyto(raw_destination, values, casting=kwargs.get("casting", "same_kind"))
+                return destination
+            return scalar_or_array(calculated)
 
-        Args:
-            func: The numpy function being called
-            types: Types involved in the operation
-            args: Arguments passed to the function
-            kwargs: Keyword arguments passed to the function
+        if destinations and len(destinations) != len(results):
+            raise ValueError("Unexpected number of ufunc outputs")
+        if not destinations:
+            destinations = (None,) * len(results)
 
-        Returns:
-            Either a scalar result or new FreqSevSims object
+        # Preflight *every* output before writing the first destination.
+        casting = kwargs.get("casting", "same_kind")
+        for value, destination in zip(results, destinations):
+            if getattr(value, "ndim", None) != 1 or len(value) != len(self.values):
+                raise ValueError("Event-wise ufunc result has incompatible event count")
+            if destination is None:
+                continue
+            raw_destination = destination.values if isinstance(destination, FreqSevSims) else destination
+            if not isinstance(raw_destination, (np.ndarray, xp.ndarray)):
+                raise TypeError("out= must contain raw arrays or event-aligned FreqSevSims")
+            if raw_destination.shape != np.shape(value):
+                raise ValueError("out= has an incompatible result shape")
+            if not np.can_cast(value.dtype, raw_destination.dtype, casting=casting):
+                raise TypeError("out= cannot represent the event-wise result")
 
-        Raises:
-            NotImplementedError: If the function is not supported
-        """
-        if func not in (
-            np.where,
-            np.sum,
-            np.array_equal,
-            np.minimum,
-            np.maximum,
-            np.mean,
-            np.round,
-        ):
+        outputs: list[t.Any] = []
+        for value, destination in zip(results, destinations):
+            if destination is None:
+                outputs.append(FreqSevSims(self.sim_index, value, self.n_sims))
+                continue
+            raw_destination = destination.values if isinstance(destination, FreqSevSims) else destination
+            backend = np if isinstance(raw_destination, np.ndarray) else xp
+            copy_value = asnumpy(value) if backend is np else xp.asarray(value)
+            copy_mask = (
+                asnumpy(raw_mask)
+                if backend is np and not isinstance(raw_mask, (bool, np.bool_))
+                else xp.asarray(raw_mask)
+                if backend is xp and not isinstance(raw_mask, (bool, np.bool_))
+                else raw_mask
+            )
+            backend.copyto(raw_destination, copy_value, where=copy_mask, casting=casting)
+            outputs.append(destination)
+
+        coupled_outputs = tuple(value for value in outputs if isinstance(value, FreqSevSims))
+        if coupled_outputs:
+            couple_stochastic_results(coupled_outputs, sources, n_sims=self.n_sims)
+        return tuple(outputs) if len(outputs) > 1 else outputs[0]
+
+    def __array_function__(self, func: Callable[..., t.Any], _: t.Any, args: t.Any, kwargs: t.Any) -> t.Any:
+        """Dispatch supported array functions without mixing claim and scenario axes."""
+        supported = (np.where, np.sum, np.array_equal, np.minimum, np.maximum, np.mean, np.round)
+        if func not in supported:
             raise NotImplementedError(f"Function {func.__name__} not supported")
 
+        kwargs = dict(kwargs)
+        output = kwargs.pop("out", None)
         if func is not np.array_equal:
-            self._validate_event_layout(*args)
-
-        # Special handling for mean - aggregate first, then take mean
-        if func is np.mean and len(args) == 1 and args[0] is self:
-            return func(self.aggregate(), **kwargs)
-
-        # Extract values from FreqSevSims objects, leave others as-is
-        host = host_values(self.values) or any(host_values(x.values if isinstance(x, FreqSevSims) else x) for x in args)
-        processed_args = tuple(
-            (asnumpy(x.values) if isinstance(x, FreqSevSims) else asnumpy(x) if isinstance(x, xp.ndarray) else x)
-            if host
-            else (x.values if isinstance(x, FreqSevSims) else to_backend(x))
-            for x in args
+            self._validate_event_layout(*args, output)
+        sources = (
+            self,
+            *(value for value in (*args, *kwargs.values()) if isinstance(value, _ProteusStochasticVariable)),
         )
+        target = (output,) if isinstance(output, _ProteusStochasticVariable) else ()
+        if func is not np.array_equal:
+            validate_stochastic_axes((*sources, *target), n_sims=self.n_sims)
+        preserving = func in (np.where, np.minimum, np.maximum, np.round)
+        if func is np.where and len(args) != 3:
+            preserving = False
+        if isinstance(output, _ProteusStochasticVariable) and (not preserving or not isinstance(output, FreqSevSims)):
+            raise ValueError("Event-wise out= requires an event-aligned FreqSevSims result")
+
+        if func is np.mean and len(args) == 1 and args[0] is self:
+            if output is None:
+                return func(self.aggregate(), **kwargs)
+            # Do not write to a stochastic event array during a scalar reduction.
+            raise ValueError("Mean reduction requires a scalar or raw-array destination")
+
+        host = host_values(self.values) or any(
+            host_values(value.values if isinstance(value, (FreqSevSims, StochasticScalar)) else value)
+            for value in (*args, *kwargs.values())
+        )
+
+        def prepare(value: t.Any) -> t.Any:
+            if isinstance(value, (FreqSevSims, StochasticScalar)):
+                return self._extract_array_for_ufunc(value, host)
+            return asnumpy(value) if host and isinstance(value, xp.ndarray) else value if host else to_backend(value)
+
+        parsed_args = tuple(prepare(value) for value in args)
+        parsed_kwargs = {key: prepare(value) for key, value in kwargs.items()}
         if func is np.where:
-            processed_args = ((np if host else xp).asarray(processed_args[0]), *processed_args[1:])
-
-        result = func(*processed_args, **kwargs)
-
+            parsed_args = ((np if host else xp).asarray(parsed_args[0]), *parsed_args[1:])
+        result = func(*parsed_args, **parsed_kwargs)
         scalar_result = scalar_or_array(result)
         if scalar_result is not result:
-            return scalar_result  # type: ignore[return-value]
+            return scalar_result
         if isinstance(result, (np.number, np.bool_, bool)) or np.isscalar(result):
-            return result  # type: ignore[misc]
-
-        # Otherwise create a new FreqSevSims object with the result
+            return result
+        if getattr(result, "ndim", None) != 1:
+            return result
+        if preserving and len(result) != len(self.values):
+            raise ValueError("Event-wise result has incompatible event count")
+        if output is not None:
+            destination = output.values if isinstance(output, FreqSevSims) else output
+            if not isinstance(destination, (np.ndarray, xp.ndarray)):
+                raise TypeError("out= must be a raw array or event-aligned FreqSevSims")
+            if destination.shape != np.shape(result):
+                raise ValueError("out= has incompatible event count")
+            if not np.can_cast(result.dtype, destination.dtype, casting="same_kind"):
+                raise TypeError("out= cannot represent the result")
+            backend = np if isinstance(destination, np.ndarray) else xp
+            copy_value = asnumpy(result) if backend is np else xp.asarray(result)
+            backend.copyto(destination, copy_value, casting="same_kind")
+            if isinstance(output, FreqSevSims):
+                couple_stochastic_results((output,), sources, n_sims=self.n_sims)
+            return output
+        if not preserving:
+            return result
         new_freq_sev = FreqSevSims(self.sim_index, result, self.n_sims)
-        new_freq_sev.coupled_variable_group.merge(self.coupled_variable_group)
-        for argument in args:
-            if isinstance(argument, _ProteusStochasticVariable):
-                new_freq_sev.coupled_variable_group.merge(argument.coupled_variable_group)
+        couple_stochastic_results((new_freq_sev,), sources, n_sims=self.n_sims)
         return new_freq_sev
 
     def __repr__(self):
