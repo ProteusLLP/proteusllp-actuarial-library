@@ -98,10 +98,24 @@ def test_evaluation_score_script_reports_strict_pass_rate(tmp_path: Path) -> Non
     score_script = root / "scripts" / "score_ai_evals.py"
     results = tmp_path / "results.jsonl"
     records = [
-        {"task_id": "PAL-001", "runs": True, "public_api": True, "numerical": True, "semantics": True, "coupling": True},
-        {"task_id": "PAL-002", "runs": True, "public_api": True, "numerical": False, "semantics": True, "coupling": True},
+        {
+            "task_id": "PAL-001",
+            "runs": True,
+            "public_api": True,
+            "numerical": True,
+            "semantics": True,
+            "coupling": True,
+        },
+        {
+            "task_id": "PAL-002",
+            "runs": True,
+            "public_api": True,
+            "numerical": False,
+            "semantics": True,
+            "coupling": True,
+        },
     ]
-    results.write_text("\\n".join(json.dumps(record) for record in records) + "\\n", encoding="utf-8")
+    results.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
 
     completed = subprocess.run(
         [sys.executable, str(score_script), str(results)],
