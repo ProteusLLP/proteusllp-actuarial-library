@@ -7,7 +7,6 @@ import pytest
 from scipy import integrate, stats
 
 from pal._maths import asnumpy
-from pal.fitting_remaining import fit_remaining
 from pal.distributions import (
     MBBEFD,
     Bernoulli,
@@ -23,6 +22,7 @@ from pal.distributions import (
     StudentsT,
     Uniform,
 )
+from pal.fitting_remaining import fit_remaining
 
 
 def test_weighted_poisson_analytic_mle_and_conditional_excess() -> None:
