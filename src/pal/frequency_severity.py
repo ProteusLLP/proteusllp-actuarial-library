@@ -680,64 +680,77 @@ class FreqSevSims(_ProteusStochasticVariable):
 
     def __array_function__(
         self, func: Callable[..., t.Any], _: t.Any, args: t.Any, kwargs: t.Any
-    ) -> np.number[t.Any] | FreqSevSims:
-        """Handle numpy array functions for FreqSevSims objects.
-
-        Args:
-            func: The numpy function being called
-            types: Types involved in the operation
-            args: Arguments passed to the function
-            kwargs: Keyword arguments passed to the function
-
-        Returns:
-            Either a scalar result or new FreqSevSims object
-
-        Raises:
-            NotImplementedError: If the function is not supported
-        """
-        if func not in (
-            np.where,
-            np.sum,
-            np.array_equal,
-            np.minimum,
-            np.maximum,
-            np.mean,
-            np.round,
-        ):
+    ) -> t.Any:
+        """Dispatch supported array functions without mixing claim and scenario axes."""
+        supported = (np.where, np.sum, np.array_equal, np.minimum, np.maximum, np.mean, np.round)
+        if func not in supported:
             raise NotImplementedError(f"Function {func.__name__} not supported")
 
+        kwargs = dict(kwargs)
+        output = kwargs.pop("out", None)
         if func is not np.array_equal:
-            self._validate_event_layout(*args)
-            validate_stochastic_axes(
-                (value for value in args if isinstance(value, _ProteusStochasticVariable)), n_sims=self.n_sims
-            )
-
-        # Special handling for mean - aggregate first, then take mean
-        if func is np.mean and len(args) == 1 and args[0] is self:
-            return func(self.aggregate(), **kwargs)
-
-        # Extract values from FreqSevSims objects, leave others as-is
-        host = host_values(self.values) or any(host_values(x.values if isinstance(x, FreqSevSims) else x) for x in args)
-        processed_args = tuple(
-            (asnumpy(x.values) if isinstance(x, FreqSevSims) else asnumpy(x) if isinstance(x, xp.ndarray) else x)
-            if host
-            else (x.values if isinstance(x, FreqSevSims) else to_backend(x))
-            for x in args
+            self._validate_event_layout(*args, output)
+        sources = (
+            self,
+            *(value for value in (*args, *kwargs.values()) if isinstance(value, _ProteusStochasticVariable)),
         )
+        target = (output,) if isinstance(output, _ProteusStochasticVariable) else ()
+        validate_stochastic_axes((*sources, *target), n_sims=self.n_sims)
+        preserving = func in (np.where, np.minimum, np.maximum, np.round)
+        if func is np.where and len(args) != 3:
+            preserving = False
+        if isinstance(output, _ProteusStochasticVariable) and (
+            not preserving or not isinstance(output, FreqSevSims)
+        ):
+            raise ValueError("Event-wise out= requires an event-aligned FreqSevSims result")
+
+        if func is np.mean and len(args) == 1 and args[0] is self:
+            if output is None:
+                return func(self.aggregate(), **kwargs)
+            # Do not write to a stochastic event array during a scalar reduction.
+            raise ValueError("Mean reduction requires a scalar or raw-array destination")
+
+        host = host_values(self.values) or any(
+            host_values(value.values if isinstance(value, (FreqSevSims, StochasticScalar)) else value)
+            for value in (*args, *kwargs.values())
+        )
+
+        def prepare(value: t.Any) -> t.Any:
+            if isinstance(value, (FreqSevSims, StochasticScalar)):
+                return self._extract_array_for_ufunc(value, host)
+            return asnumpy(value) if host and isinstance(value, xp.ndarray) else value if host else to_backend(value)
+
+        parsed_args = tuple(prepare(value) for value in args)
+        parsed_kwargs = {key: prepare(value) for key, value in kwargs.items()}
         if func is np.where:
-            processed_args = ((np if host else xp).asarray(processed_args[0]), *processed_args[1:])
-
-        result = func(*processed_args, **kwargs)
-
+            parsed_args = ((np if host else xp).asarray(parsed_args[0]), *parsed_args[1:])
+        result = func(*parsed_args, **parsed_kwargs)
         scalar_result = scalar_or_array(result)
         if scalar_result is not result:
-            return scalar_result  # type: ignore[return-value]
+            return scalar_result
         if isinstance(result, (np.number, np.bool_, bool)) or np.isscalar(result):
-            return result  # type: ignore[misc]
-
-        # Otherwise create a new FreqSevSims object with the result
+            return result
+        if getattr(result, "ndim", None) != 1:
+            return result
+        if preserving and len(result) != len(self.values):
+            raise ValueError("Event-wise result has incompatible event count")
+        if output is not None:
+            destination = output.values if isinstance(output, FreqSevSims) else output
+            if not isinstance(destination, (np.ndarray, xp.ndarray)):
+                raise TypeError("out= must be a raw array or event-aligned FreqSevSims")
+            if destination.shape != np.shape(result):
+                raise ValueError("out= has incompatible event count")
+            if not np.can_cast(result.dtype, destination.dtype, casting="same_kind"):
+                raise TypeError("out= cannot represent the result")
+            backend = np if isinstance(destination, np.ndarray) else xp
+            copy_value = asnumpy(result) if backend is np else xp.asarray(result)
+            backend.copyto(destination, copy_value, casting="same_kind")
+            if isinstance(output, FreqSevSims):
+                couple_stochastic_results((output,), sources, n_sims=self.n_sims)
+            return output
+        if not preserving:
+            return result
         new_freq_sev = FreqSevSims(self.sim_index, result, self.n_sims)
-        sources = (self, *(value for value in args if isinstance(value, _ProteusStochasticVariable)))
         couple_stochastic_results((new_freq_sev,), sources, n_sims=self.n_sims)
         return new_freq_sev
 
