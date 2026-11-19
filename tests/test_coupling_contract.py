@@ -63,8 +63,7 @@ def test_distribution_chains_preserve_all_ancestors() -> None:
     third = Gamma(alpha=second + 1, theta=scale).generate(3, np.random.default_rng(42))
 
     assert all(
-        variable.coupled_variable_group is shape.coupled_variable_group
-        for variable in (scale, first, second, third)
+        variable.coupled_variable_group is shape.coupled_variable_group for variable in (scale, first, second, third)
     )
 
 
