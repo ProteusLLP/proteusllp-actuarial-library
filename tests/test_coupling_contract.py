@@ -25,10 +25,7 @@ def test_shared_helper_links_multiple_outputs_and_upstream_ancestry() -> None:
 
     couple_stochastic_results((left, right), (upstream, second), n_sims=3)
 
-    assert all(
-        item.coupled_variable_group is original_group
-        for item in (first, upstream, second, left, right)
-    )
+    assert all(item.coupled_variable_group is original_group for item in (first, upstream, second, left, right))
 
 
 def test_shared_helper_rejects_late_result_axis_failure_atomically() -> None:
