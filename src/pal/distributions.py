@@ -298,7 +298,7 @@ class NegBinomial(DiscreteDistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        n, p = self._param_values
+        n, p = self._params.values()
         return _special_call(special.nbdtr, x, n, p)  # type: ignore[misc, arg-type]
 
     @override
@@ -340,7 +340,7 @@ class Binomial(DiscreteDistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
-        n, p = self._param_values
+        n, p = self._params.values()
         return _special_call(special.bdtr, x, n, p)  # type: ignore[return-value]
 
     @override
