@@ -12,6 +12,7 @@ import typing as t
 
 from ._compat import override
 from ._maths import scalar_or_array, xp
+from .couplings import couple_stochastic_results
 from .distributions import DiscreteDistributionBase, ReturnType
 from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
@@ -114,7 +115,7 @@ class Empirical(DiscreteDistributionBase):
             return scalar_or_array(result)
 
         wrapped = StochasticScalar(result)
-        wrapped.coupled_variable_group.merge(argument.coupled_variable_group)
+        couple_stochastic_results((wrapped,), (argument,))
         return wrapped
 
     @override
