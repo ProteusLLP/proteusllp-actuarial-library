@@ -19,32 +19,31 @@ if t.TYPE_CHECKING:
 
 _T = t.TypeVar("_T", bound="DistributionBase")
 
+
 def _continuous_families() -> frozenset[type[DistributionBase]]:
     """Resolve PAL distribution classes when fitting is first invoked."""
     from . import distributions as _distributions
 
-    return frozenset((
+    return frozenset({
         _distributions.Beta,
         _distributions.Normal,
         _distributions.Logistic,
         _distributions.NonCentralChiSquared,
         _distributions.StudentsT,
-    ))
+    })
 
 
 def _discrete_families() -> frozenset[type[DistributionBase]]:
     """Resolve PAL distribution classes when fitting is first invoked."""
     from . import distributions as _distributions
 
-    return frozenset((
+    return frozenset({
         _distributions.Poisson,
         _distributions.NegBinomial,
         _distributions.Binomial,
         _distributions.HyperGeometric,
         _distributions.Bernoulli,
-    ))
-
-
+    })
 
 
 def _input(
