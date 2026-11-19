@@ -88,7 +88,7 @@ pip install proteusllp-actuarial-library[gpu]
 PAL provides dedicated entry points for AI tools as well as human-readable documentation:
 
 - [PAL quick reference for coding assistants](docs/source/ai_assistants.md) maps common modelling intentions to the public Python API.
-- [Actuarial recipe cookbook](docs/source/cookbook.md) provides executable, packaged examples searchable with `pal.api.recipes("price excess loss")` and retrievable with `pal.api.recipe(id)`.
+- Executable actuarial recipes are available through the generated `llms-full.txt` documentation and the installed `pal.api.recipes()` / `pal.api.recipe(id)` helpers.
 - [PAL modelling agent skill](skills/pal-modeling/SKILL.md) can be installed in compatible assistants working on actuarial projects; [evaluation prompts](evals/README.md) measure assistant success using PAL.
 - [AGENTS.md](AGENTS.md) contains canonical repository instructions for coding agents, with more-specific guidance under `src/pal/`, `tests/` and `docs/`.
 - The documentation build publishes `llms.txt` and `llms-full.txt` at the documentation root for model-friendly retrieval.
