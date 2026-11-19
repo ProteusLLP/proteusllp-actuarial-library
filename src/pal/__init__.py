@@ -15,7 +15,6 @@ See: http://github.com/ProteusLLP/proteus-actuarial-library
 """
 
 from . import distributions as distributions
-from ._maths import asnumpy
 from .config import config, set_default_n_sims, set_random_seed
 from .empirical import Empirical as _Empirical
 from .hyperexponential import HyperExponential as _HyperExponential
@@ -91,7 +90,6 @@ __all__ = [
     "ProteusVariable",
     "StochasticScalar",
     "api",
-    "asnumpy",
     "config",
     "contracts",
     "copulas",
