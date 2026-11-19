@@ -4,15 +4,15 @@ Gamma(alpha=shape, theta=scale). Fitted parameters are treated as fixed,
 so downstream probabilities do not include parameter uncertainty.
 """
 
-import numpy as np
-
+from pal import set_random_seed
 from pal.distributions import Gamma
+from pal.maths import asnumpy
 
 
 def main() -> None:
     """Fit observed claim sizes and inspect a fitted tail probability."""
-    rng = np.random.default_rng(42)
-    claim_sizes = rng.gamma(shape=2.8, scale=35_000.0, size=500)
+    set_random_seed(42)
+    claim_sizes = asnumpy(Gamma(alpha=2.8, theta=35_000.0).generate(n_sims=500).values)
 
     fit = Gamma.fit(claim_sizes)
     fitted_severity = fit.distribution
