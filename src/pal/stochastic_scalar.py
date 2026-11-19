@@ -229,7 +229,7 @@ class StochasticScalar(ProteusStochasticVariable):
             raise NotImplementedError("Use a controlled stochastic operation instead of raw NumPy mutation")
 
         kwargs = dict(kwargs)
-        if func is np.nan_to_num and kwargs.get("copy", args[1] if len(args) > 1 else True) is False:
+        if func is np.nan_to_num and not kwargs.get("copy", args[1] if len(args) > 1 else True):
             raise ValueError("np.nan_to_num(copy=False) would mutate stochastic values without a controlled operation")
 
         # NumPy permits positional out= for several array functions. Extract it
