@@ -20,6 +20,7 @@ distribution function (CDF) with the empirical CDF.
 import numpy as np
 import plotly.graph_objects as go
 
+from pal import asnumpy
 from pal.distributions import Gamma
 
 rng = np.random.default_rng(42)
@@ -56,7 +57,8 @@ cdf_figure.add_scatter(
 )
 cdf_figure.add_scatter(
     x=cdf_grid,
-    y=gamma_fit.distribution.cdf(cdf_grid),
+    y=asnumpy(gamma_fit.distribution.cdf(cdf_grid)),
+
     mode="lines",
     name="Fitted Gamma CDF",
 )
@@ -67,6 +69,9 @@ cdf_figure.update_layout(
 )
 cdf_figure
 ```
+
+`asnumpy` converts GPU-backed results to ordinary NumPy arrays for Plotly;
+on CPU it leaves NumPy arrays in a compatible form.
 
 We can now calculate a tail probability or a percentile using the fitted
 distribution:
@@ -196,7 +201,8 @@ mean_excess_figure.add_scatter(
 for distribution_class, fit in candidate_fits.items():
     mean_excess_figure.add_scatter(
         x=attachments,
-        y=fit.distribution.mean_excess(attachments),
+        y=asnumpy(fit.distribution.mean_excess(attachments)),
+
         name=f"Fitted {distribution_class.__name__}",
         mode="lines",
     )
@@ -306,12 +312,11 @@ assert annual_loss.mean() >= 0
 
 ## 5. Fit bounded or labelled distributions
 
-**Beta** models continuous proportions between zero and one. For example,
-the fraction of a building's floor area damaged in each **partial** fire
-loss is naturally bounded by these limits. Its two shape parameters are
-fitted conditional on the specified `loc` and `scale` (by default 0 and 1).
-A portfolio loss ratio, by comparison, can exceed 100% and is not generally
-suitable for an ordinary Beta distribution.
+**Beta** can be used to model *recovery rates on defaulted corporate loans*,
+measured as the fraction of outstanding principal recovered. These rates
+lie between zero and one, making them a standard application of a bounded
+continuous distribution. Its two shape parameters are fitted conditional on
+the specified `loc` and `scale` (by default 0 and 1).
 
 **Categorical** estimates the probability of each label. **Uniform** uses
 the observed interval endpoints, and can fit calendar dates as well as
@@ -324,9 +329,9 @@ import datetime as dt
 
 from pal.distributions import Beta, Categorical, Uniform
 
-# Fraction of floor area damaged in a sample of partial fire losses.
-damaged_area_proportions = [0.12, 0.24, 0.31, 0.45, 0.19, 0.37, 0.56, 0.28]
-beta_fit = Beta.fit(damaged_area_proportions, loc=0.0, scale=1.0)
+# Synthetic realised recovery rates on defaulted corporate loans.
+loan_recovery_rates = [0.12, 0.24, 0.31, 0.45, 0.19, 0.37, 0.56, 0.28]
+beta_fit = Beta.fit(loan_recovery_rates, loc=0.0, scale=1.0)
 
 claim_types = ["property", "motor", "property", "liability", "property"]
 category_fit = Categorical.fit(claim_types)
@@ -340,7 +345,7 @@ assert date_fit.distribution.invcdf(0.0) == np.datetime64("2026-01-03")
 ```
 
 The ordinary Beta model has no probability mass at exactly zero or one.
-If the data include undamaged or completely destroyed properties, a model
+If the portfolio includes loans with zero or full recovery, a mixture model
 with point masses at those endpoints may be more appropriate.
 
 A categorical distribution has no numeric mean excess. Calendar dates
