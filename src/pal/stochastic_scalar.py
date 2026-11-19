@@ -128,8 +128,10 @@ class StochasticScalar(ProteusStochasticVariable):
                 raise TypeError("where must be a boolean mask")
             if mask_shape not in ((), (self.n_sims,)):
                 raise ValueError("where mask has incompatible n_sims")
-        if method == "__call__" and not destinations and not (
-            isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)
+        if (
+            method == "__call__"
+            and not destinations
+            and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask))
         ):
             raise ValueError("Masked stochastic ufuncs require out= to define unselected simulation values")
 
@@ -140,9 +142,12 @@ class StochasticScalar(ProteusStochasticVariable):
         )
         operation = getattr(np, ufunc.__name__, ufunc) if is_host else ufunc
         prepared_inputs = tuple(
-            asnumpy(x.values) if is_host and isinstance(x, StochasticScalar)
-            else asnumpy(x) if is_host and isinstance(x, xp.ndarray)
-            else x.values if isinstance(x, StochasticScalar)
+            asnumpy(x.values)
+            if is_host and isinstance(x, StochasticScalar)
+            else asnumpy(x)
+            if is_host and isinstance(x, xp.ndarray)
+            else x.values
+            if isinstance(x, StochasticScalar)
             else to_backend(x)
             for x in inputs
         )
@@ -200,9 +205,7 @@ class StochasticScalar(ProteusStochasticVariable):
                 result_leaves.append(destination)
             coupled_results = tuple(value for value in result_leaves if isinstance(value, StochasticScalar))
             if coupled_results:
-                couple_stochastic_results(
-                    coupled_results, (self, *stochastic_inputs, *mask_source), n_sims=self.n_sims
-                )
+                couple_stochastic_results(coupled_results, (self, *stochastic_inputs, *mask_source), n_sims=self.n_sims)
             result = tuple(result_leaves) if len(result_leaves) > 1 else result_leaves[0]
             return result
 
@@ -219,9 +222,7 @@ class StochasticScalar(ProteusStochasticVariable):
         # accumulate depends on sequence order; it cannot be re-ordered with inputs.
         return StochasticScalar(calculated) if getattr(calculated, "ndim", None) == 1 else calculated
 
-    def __array_function__(
-        self, func: t.Callable[..., t.Any], _: t.Any, args: t.Any, kwargs: t.Any
-    ) -> t.Any:
+    def __array_function__(self, func: t.Callable[..., t.Any], _: t.Any, args: t.Any, kwargs: t.Any) -> t.Any:
         """Apply NumPy functions with conservative scenario-alignment semantics.
 
         Only elementwise functions keep coupling. Sorting, rolling, cumulative
@@ -240,9 +241,7 @@ class StochasticScalar(ProteusStochasticVariable):
         if isinstance(output, StochasticScalar) and not preserving:
             raise ValueError("A stochastic out= destination requires a scenario-preserving function")
 
-        sources = (self, *(
-            arg for arg in (*args, *kwargs.values()) if isinstance(arg, StochasticScalar)
-        ))
+        sources = (self, *(arg for arg in (*args, *kwargs.values()) if isinstance(arg, StochasticScalar)))
         targets = (output,) if isinstance(output, StochasticScalar) else ()
         validate_stochastic_axes((*sources, *targets), n_sims=self.n_sims)
         is_host = host_values(self.values) or any(
