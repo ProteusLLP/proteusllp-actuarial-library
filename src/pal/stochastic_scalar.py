@@ -157,7 +157,7 @@ class StochasticScalar(ProteusStochasticVariable):
             if not is_host and ufunc.identity is not None:
                 # Skipped elements contribute the neutral element. This
                 # preserves CuPy device residency without unsupported where=.
-                prepared_inputs = (xp.where(raw_mask, prepared_inputs[0], ufunc.identity), *prepared_inputs[1:])
+                prepared_inputs = (xp.where(to_backend(raw_mask), prepared_inputs[0], ufunc.identity), *prepared_inputs[1:])
             else:
                 kwargs["where"] = asnumpy(raw_mask) if is_host else to_backend(raw_mask)
         if method not in ("reduce", "__call__") and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
