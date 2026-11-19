@@ -13,6 +13,8 @@ import typing as t
 import numpy as np
 from scipy import integrate, optimize, special, stats
 
+from .fitting import _FitMethod
+
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
     from .fitting import FitResult
@@ -74,7 +76,7 @@ def _result(
     k: int,
     n_censored: int = 0,
     threshold: float = 0.0,
-    method: str = "mle",
+    method: str = _FitMethod.MLE.value,
     converged: bool = True,
 ) -> FitResult[_T]:
     """Construct consistent log-likelihood and information criterion diagnostics."""
@@ -184,7 +186,7 @@ def _fit_continuous(
     if family is _distributions.Normal and not np.any(c) and threshold is None:
         estimates = {"mu": mu, "sigma": std}
         ll = float(np.sum(w * stats.norm.logpdf(x, loc=mu, scale=std)))
-        return _result(cls(**estimates), estimates, ll, w, k=2, method="analytic_mle")
+        return _result(cls(**estimates), estimates, ll, w, k=2, method=_FitMethod.ANALYTIC.value)
 
     if family is _distributions.Beta:
         y = (x - loc) / scale
@@ -305,7 +307,7 @@ def _fit_discrete(
         pars: dict[str, t.Any] = {"mean": mu}
         rv = stats.poisson(mu)
         k = 1
-        method = "analytic_mle"
+        method = _FitMethod.ANALYTIC.value
     elif family in (_distributions.Binomial, _distributions.Bernoulli):
         n = 1 if family is _distributions.Bernoulli else options.pop("n", None)
         if n is None or int(n) != n or n < 1:
@@ -316,7 +318,7 @@ def _fit_discrete(
         pars = {"p": p} if family is _distributions.Bernoulli else {"n": int(n), "p": p}
         rv = stats.binom(n, p)
         k = 1
-        method = "analytic_mle"
+        method = _FitMethod.ANALYTIC.value
     elif family is _distributions.NegBinomial:
         if mu == 0:
             raise ValueError("negative binomial shape is unidentified for all-zero counts")
@@ -336,7 +338,7 @@ def _fit_discrete(
         pars = {"n": n_value, "p": n_value / (n_value + mu)}
         rv = stats.nbinom(pars["n"], pars["p"])
         k = 2
-        method = "profile_mle"
+        method = _FitMethod.PROFILE.value
     else:
         population = options.pop("population_size", None)
         draws = options.pop("n_draws", None)
@@ -376,7 +378,7 @@ def _fit_discrete(
         pars = {"ngood": good, "nbad": population - good, "n_draws": draws}
         rv = stats.hypergeom(population, good, draws)
         k = 1
-        method = "integer_mle"
+        method = _FitMethod.INTEGER.value
 
     if options:
         raise TypeError(f"Unsupported {family.__name__} fitting options: {sorted(options)}")
@@ -484,7 +486,7 @@ def _fit_uniform(
             raise ValueError("two distinct observations are required to estimate numeric Uniform endpoints")
         ll = -float(np.sum(w)) * np.log(b - a)
         pars = {"a": a, "b": b}
-    return _result(cls(**pars), pars, ll, w, k=2, method="endpoint_mle")
+    return _result(cls(**pars), pars, ll, w, k=2, method=_FitMethod.ENDPOINT.value)
 
 
 def _fit_categorical(
@@ -520,7 +522,7 @@ def _fit_categorical(
         ll,
         w,
         k=len(labels) - 1,
-        method="multinomial_mle",
+        method=_FitMethod.MULTINOMIAL.value,
     )
 
 
