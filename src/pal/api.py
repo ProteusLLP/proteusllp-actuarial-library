@@ -238,7 +238,6 @@ def describe(obj_or_name: t.Any) -> dict[str, t.Any]:
     return entry
 
 
-
 # The shipped Python recipe modules are the single source of executable code.
 # This index holds only discovery metadata, not duplicated example snippets.
 _RECIPE_INDEX: tuple[dict[str, t.Any], ...] = (
@@ -313,16 +312,10 @@ def recipes(query: str | None = None, limit: int = 20) -> list[dict[str, t.Any]]
     """
     if limit < 1:
         raise ValueError("limit must be at least 1")
-    terms = [
-        word
-        for word in re.findall(r"[a-z0-9]+", (query or "").lower())
-        if word not in _RECIPE_STOPWORDS
-    ]
+    terms = [word for word in re.findall(r"[a-z0-9]+", (query or "").lower()) if word not in _RECIPE_STOPWORDS]
     ranked: list[tuple[int, str, dict[str, t.Any]]] = []
     for item in _RECIPE_INDEX:
-        haystack = " ".join(
-            (item["id"], item["title"], item["summary"], *item["keywords"], *item["caveats"])
-        ).lower()
+        haystack = " ".join((item["id"], item["title"], item["summary"], *item["keywords"], *item["caveats"])).lower()
         score = sum(1 for term in terms if term in haystack)
         if terms and score == 0:
             continue
@@ -331,8 +324,7 @@ def recipes(query: str | None = None, limit: int = 20) -> list[dict[str, t.Any]]
         ranked.append((-score, item["id"], item))
     ranked.sort(key=lambda entry: (entry[0], entry[1]))
     return [
-        {**item, "keywords": list(item["keywords"]), "caveats": list(item["caveats"])}
-        for _, _, item in ranked[:limit]
+        {**item, "keywords": list(item["keywords"]), "caveats": list(item["caveats"])} for _, _, item in ranked[:limit]
     ]
 
 
