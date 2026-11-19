@@ -9,11 +9,12 @@ can consume them directly.
 from __future__ import annotations
 
 import importlib
+import importlib.resources
 import inspect
 import re
 import typing as t
 
-__all__ = ["catalog", "describe", "modules", "search"]
+__all__ = ["catalog", "describe", "modules", "recipe", "recipes", "search"]
 
 _PUBLIC_MODULES: tuple[str, ...] = (
     "config",
@@ -46,7 +47,7 @@ _DISTRIBUTION_ALIASES = {
     "Wishart",
 }
 
-_PUBLIC_OBJECTS = {"config": {"config"}}
+_PUBLIC_OBJECTS = {"config": {"config"}, "maths": {"asnumpy"}}
 
 
 def modules() -> list[str]:
@@ -235,6 +236,113 @@ def describe(obj_or_name: t.Any) -> dict[str, t.Any]:
         }
     )
     return entry
+
+
+# The shipped Python recipe modules are the single source of executable code.
+# This index holds only discovery metadata, not duplicated example snippets.
+_RECIPE_INDEX: tuple[dict[str, t.Any], ...] = (
+    {
+        "id": "fit-gamma-severity",
+        "title": "Fit a Gamma claim severity distribution",
+        "summary": "Estimate Gamma shape and scale by maximum likelihood from uncensored claims.",
+        "keywords": ["fit", "fitting", "gamma", "claims", "loss", "severity", "mle", "maximum likelihood"],
+        "module": "pal.examples.recipe_gamma_fit",
+        "caveats": ["theta is a scale, not a rate", "plug-in estimates ignore parameter uncertainty"],
+    },
+    {
+        "id": "fit-censored-large-losses",
+        "title": "Fit large losses with reporting thresholds and policy limits",
+        "summary": "Fit pre-limit LogNormal severity using left truncation and right censoring.",
+        "keywords": ["fit", "fitting", "large loss", "policy limit", "threshold", "censoring", "truncation", "mle"],
+        "module": "pal.examples.recipe_censored_severity",
+        "caveats": ["capped payments are censored", "tail extrapolation and parameter uncertainty matter"],
+    },
+    {
+        "id": "simulate-frequency-severity",
+        "title": "Simulate frequency and severity and aggregate annual losses",
+        "summary": "Generate Poisson claim counts and LogNormal claims; derive aggregate and occurrence results.",
+        "keywords": ["frequency", "severity", "compound", "poisson", "simulate", "aggregate", "occurrence"],
+        "module": "pal.examples.recipe_frequency_severity",
+        "caveats": ["claims and simulations have different axes"],
+    },
+    {
+        "id": "price-xol-layer",
+        "title": "Price an excess of loss reinsurance layer",
+        "summary": "Simulate claim recoveries for an occurrence XoL layer and estimate annual expected loss.",
+        "keywords": ["price", "pricing", "reinsurance", "xol", "excess", "loss", "layer", "attachment", "limit"],
+        "module": "pal.examples.recipe_xol_layer",
+        "caveats": ["layer terms apply per event", "simulated expected recovery is not a commercial premium"],
+    },
+    {
+        "id": "model-copula-dependence",
+        "title": "Model correlated risks with a Gaussian copula",
+        "summary": "Reorder marginal simulations and preserve derived loss variables through coupling groups.",
+        "keywords": ["correlation", "dependence", "copula", "gaussian", "portfolio", "coupling", "reordering"],
+        "module": "pal.examples.recipe_copula_portfolio",
+        "caveats": ["a copula changes dependence, not marginal values"],
+    },
+    {
+        "id": "apply-stochastic-inflation",
+        "title": "Inflate claim severities with a stochastic scenario factor",
+        "summary": "Apply one inflation factor per simulation to all the claims in that simulation.",
+        "keywords": ["inflation", "stochastic", "parameters", "frequency", "severity", "events", "coupling"],
+        "module": "pal.examples.recipe_stochastic_inflation",
+        "caveats": ["scenario-level inflation is not drawn independently for each claim"],
+    },
+    {
+        "id": "use-rqmc-sampling",
+        "title": "Use randomized quasi-Monte Carlo with a distribution",
+        "summary": "Switch between ordinary Monte Carlo and scrambled Sobol RQMC sampling.",
+        "keywords": ["rqmc", "qmc", "monte carlo", "sobol", "sampling", "simulation"],
+        "module": "pal.examples.recipe_rqmc_sampling",
+        "caveats": ["independent scrambles are needed to estimate RQMC uncertainty"],
+    },
+)
+
+_RECIPE_STOPWORDS = frozenset(
+    {"a", "an", "and", "by", "for", "how", "in", "my", "of", "on", "the", "to", "using", "with"}
+)
+
+
+def recipes(query: str | None = None, limit: int = 20) -> list[dict[str, t.Any]]:
+    """Find executable actuarial recipes by modelling intention.
+
+    Return JSON-compatible metadata, ordered by keyword relevance. An empty
+    query lists all recipes. Retrieve a full, runnable source with recipe(id).
+    """
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+    terms = [word for word in re.findall(r"[a-z0-9]+", (query or "").lower()) if word not in _RECIPE_STOPWORDS]
+    ranked: list[tuple[int, str, dict[str, t.Any]]] = []
+    for item in _RECIPE_INDEX:
+        haystack = " ".join((item["id"], item["title"], item["summary"], *item["keywords"], *item["caveats"])).lower()
+        score = sum(1 for term in terms if term in haystack)
+        if terms and score == 0:
+            continue
+        if terms and all(term in haystack for term in terms):
+            score += 5
+        ranked.append((-score, item["id"], item))
+    ranked.sort(key=lambda entry: (entry[0], entry[1]))
+    return [
+        {**item, "keywords": list(item["keywords"]), "caveats": list(item["caveats"])} for _, _, item in ranked[:limit]
+    ]
+
+
+def recipe(identifier: str) -> dict[str, t.Any]:
+    """Return metadata and packaged source code for one runnable recipe.
+
+    The module is read from the installed package, so this also works in
+    a wheel installation without access to GitHub or a source checkout.
+    No example code is executed by the lookup.
+    """
+    key = identifier.strip().lower()
+    for item in _RECIPE_INDEX:
+        if item["id"] == key:
+            filename = item["module"].rsplit(".", 1)[-1] + ".py"
+            source = importlib.resources.files("pal.examples").joinpath(filename).read_text(encoding="utf-8")
+            return {**item, "keywords": list(item["keywords"]), "caveats": list(item["caveats"]), "code": source}
+    available = ", ".join(item["id"] for item in _RECIPE_INDEX)
+    raise ValueError(f"Unknown PAL recipe {identifier!r}. Available recipes: {available}")
 
 
 def search(query: str, limit: int = 20) -> list[dict[str, t.Any]]:
