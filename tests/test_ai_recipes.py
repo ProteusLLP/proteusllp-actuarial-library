@@ -49,7 +49,9 @@ def test_recipe_lookup_is_non_executing_and_handles_errors() -> None:
 
 
 @pytest.mark.parametrize("entry", RECIPES, ids=[item["id"] for item in RECIPES])
-def test_packaged_recipe_executes_as_standalone_module(entry: dict[str, object], capsys: pytest.CaptureFixture[str]) -> None:
+def test_packaged_recipe_executes_as_standalone_module(
+    entry: dict[str, object], capsys: pytest.CaptureFixture[str]
+) -> None:
     """Every recommended snippet must run using the shipped PAL distribution."""
     details = api.recipe(str(entry["id"]))
     ast.parse(str(details["code"]))
