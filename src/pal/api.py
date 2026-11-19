@@ -47,7 +47,7 @@ _DISTRIBUTION_ALIASES = {
     "Wishart",
 }
 
-_PUBLIC_OBJECTS = {"config": {"config"}}
+_PUBLIC_OBJECTS = {"config": {"config"}, "maths": {"asnumpy"}}
 
 
 def modules() -> list[str]:
