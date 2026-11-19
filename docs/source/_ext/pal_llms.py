@@ -14,6 +14,7 @@ The PyPI distribution is `proteusllp-actuarial-library`; import it in Python as 
 ## Start here
 
 - [PAL quick reference for coding assistants]({DOCS_URL}ai_assistants.html): compact mapping from modelling intentions to the public PAL API.
+- [Actuarial recipe cookbook]({DOCS_URL}cookbook.html): tested, executable models searchable from an installed PAL package.
 - [Getting started]({DOCS_URL}tutorials/getting_started.html): core simulation workflow.
 - [API reference]({DOCS_URL}api/modules.html): generated public API documentation.
 

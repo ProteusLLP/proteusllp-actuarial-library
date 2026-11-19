@@ -12,6 +12,9 @@ from .variables import ProteusVariable
 
 T = t.TypeVar("T")
 
+# NumPy host conversion for callers that need arrays for external libraries.
+def asnumpy(value: t.Any, dtype: t.Any = None) -> npt.NDArray[t.Any]: ...
+
 # exp
 @t.overload
 def exp(
