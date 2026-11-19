@@ -306,10 +306,12 @@ assert annual_loss.mean() >= 0
 
 ## 5. Fit bounded or labelled distributions
 
-**Beta** models proportions on a fixed support interval. Its two shape
-parameters are fitted conditional on the chosen `loc` and `scale` (by default
-the interval from 0 to 1). The interval must reflect the actual quantity
-being modelled.
+**Beta** models continuous proportions between zero and one. For example,
+the fraction of a building's floor area damaged in each **partial** fire
+loss is naturally bounded by these limits. Its two shape parameters are
+fitted conditional on the specified `loc` and `scale` (by default 0 and 1).
+A portfolio loss ratio, by comparison, can exceed 100% and is not generally
+suitable for an ordinary Beta distribution.
 
 **Categorical** estimates the probability of each label. **Uniform** uses
 the observed interval endpoints, and can fit calendar dates as well as
@@ -322,8 +324,9 @@ import datetime as dt
 
 from pal.distributions import Beta, Categorical, Uniform
 
-loss_ratios = [0.35, 0.42, 0.53, 0.64, 0.48, 0.37, 0.59]
-beta_fit = Beta.fit(loss_ratios, loc=0.0, scale=1.0)
+# Fraction of floor area damaged in a sample of partial fire losses.
+damaged_area_proportions = [0.12, 0.24, 0.31, 0.45, 0.19, 0.37, 0.56, 0.28]
+beta_fit = Beta.fit(damaged_area_proportions, loc=0.0, scale=1.0)
 
 claim_types = ["property", "motor", "property", "liability", "property"]
 category_fit = Categorical.fit(claim_types)
@@ -335,6 +338,10 @@ assert beta_fit.parameters["alpha"] > 0
 assert np.isclose(sum(category_fit.parameters["probabilities"]), 1.0)
 assert date_fit.distribution.invcdf(0.0) == np.datetime64("2026-01-03")
 ```
+
+The ordinary Beta model has no probability mass at exactly zero or one.
+If the data include undamaged or completely destroyed properties, a model
+with point masses at those endpoints may be more appropriate.
 
 A categorical distribution has no numeric mean excess. Calendar dates
 likewise do not have a monetary-loss interpretation.
