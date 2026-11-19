@@ -111,3 +111,10 @@ def test_zero_and_fractional_weights_and_input_validation() -> None:
         Pareto.fit([2.0, 3.0], censored=[True, True])
     with pytest.raises(ValueError, match="Unsupported"):
         fit_distribution(type("Unsupported", (), {}), [2.0, 3.0])
+
+def test_fitting_dispatch_requires_the_actual_pal_distribution_class() -> None:
+    """An unrelated class with a matching name must not enter a PAL fitter."""
+    fake_gamma = type("Gamma", (), {})
+    with pytest.raises(ValueError, match="Unsupported fitting family"):
+        fit_distribution(fake_gamma, [2.0, 3.0, 6.0])
+
