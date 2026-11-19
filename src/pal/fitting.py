@@ -532,7 +532,11 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         if isinstance(value, StochasticScalar):
             raise ValueError("mean excess requires scalar distribution parameters")
         pars[key] = float(value)
-    frozen = None if family in (_distributions.LogGamma, _distributions.GeneralizedBetaPrime) else _frozen_distribution(family, pars)
+    frozen = (
+        None
+        if family in (_distributions.LogGamma, _distributions.GeneralizedBetaPrime)
+        else _frozen_distribution(family, pars)
+    )
     inputs = np.asarray(threshold, dtype=float)
     result = np.full(inputs.shape, np.nan, dtype=float)
     inf_mean = (
