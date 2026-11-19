@@ -707,9 +707,7 @@ class ProteusVariable(t.Generic[T]):
                 result = StochasticScalar(chosen)
 
         stochastic_leaves = (
-            value
-            for value in leaves
-            if isinstance(value, ProteusStochasticVariable) and value.n_sims == result.n_sims
+            value for value in leaves if isinstance(value, ProteusStochasticVariable) and value.n_sims == result.n_sims
         )
         couple_stochastic_results((result,), (selector, *stochastic_leaves))
         return result
