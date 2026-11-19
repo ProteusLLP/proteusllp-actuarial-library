@@ -16,13 +16,18 @@ if t.TYPE_CHECKING:
     from .distributions import DistributionBase
 
 _T = t.TypeVar("_T", bound="DistributionBase", covariant=True)
+
+
 def _supported_families() -> tuple[type[DistributionBase], ...]:
     """Resolve PAL class identities lazily to avoid circular imports."""
     from . import distributions as _distributions
 
-    return (_distributions.Pareto, _distributions.LogNormal, _distributions.Gamma, _distributions.GPD,)
-
-
+    return (
+        _distributions.Pareto,
+        _distributions.LogNormal,
+        _distributions.Gamma,
+        _distributions.GPD,
+    )
 
 
 @dataclass(frozen=True)
@@ -170,8 +175,10 @@ def fit_distribution(
     """
     from . import distributions as _distributions
     family = distribution
-    if family not in (*_supported_families(), *_other_families()):
-        raise ValueError(f"Unsupported fitting family {family.__name__!r}; expected one of {tuple(cls.__name__ for cls in (*_supported_families(), *_other_families()))}")
+    supported = (*_supported_families(), *_other_families())
+    if family not in supported:
+        expected = tuple(cls.__name__ for cls in supported)
+        raise ValueError(f"Unsupported fitting family {family.__name__!r}; expected one of {expected}")
     threshold = float(threshold)
     if free_location and family is not _distributions.GPD:
         raise ValueError("free_location is supported only for GPD")
@@ -301,8 +308,6 @@ def _other_families() -> tuple[type[DistributionBase], ...]:
         _distributions.GeneralizedInverseGaussian,
         _distributions.GEV,
     )
-
-
 
 
 def _frozen_distribution(family: type[DistributionBase], params: dict[str, float]) -> t.Any:
