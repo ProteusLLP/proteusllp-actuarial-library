@@ -330,7 +330,10 @@ def recipes(query: str | None = None, limit: int = 20) -> list[dict[str, t.Any]]
             score += 5
         ranked.append((-score, item["id"], item))
     ranked.sort(key=lambda entry: (entry[0], entry[1]))
-    return [dict(item) for _, _, item in ranked[:limit]]
+    return [
+        {**item, "keywords": list(item["keywords"]), "caveats": list(item["caveats"])}
+        for _, _, item in ranked[:limit]
+    ]
 
 
 def recipe(identifier: str) -> dict[str, t.Any]:
@@ -345,7 +348,7 @@ def recipe(identifier: str) -> dict[str, t.Any]:
         if item["id"] == key:
             filename = item["module"].rsplit(".", 1)[-1] + ".py"
             source = importlib.resources.files("pal.examples").joinpath(filename).read_text(encoding="utf-8")
-            return {**item, "code": source}
+            return {**item, "keywords": list(item["keywords"]), "caveats": list(item["caveats"]), "code": source}
     available = ", ".join(item["id"] for item in _RECIPE_INDEX)
     raise ValueError(f"Unknown PAL recipe {identifier!r}. Available recipes: {available}")
 
