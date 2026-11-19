@@ -615,7 +615,10 @@ class FreqSevSims(_ProteusStochasticVariable):
 
         if masked_reduce:
             if not host and ufunc.identity is not None:
-                prepared_inputs = (xp.where(to_backend(raw_mask), prepared_inputs[0], ufunc.identity), *prepared_inputs[1:])
+                prepared_inputs = (
+                    xp.where(to_backend(raw_mask), prepared_inputs[0], ufunc.identity),
+                    *prepared_inputs[1:],
+                )
             else:
                 kwargs["where"] = asnumpy(raw_mask) if host else to_backend(raw_mask)
         elif method not in ("__call__", "reduce") and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
