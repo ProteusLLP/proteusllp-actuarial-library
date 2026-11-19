@@ -213,6 +213,12 @@ mean_excess_figure.update_layout(
 mean_excess_figure
 ```
 
+![Mean-excess plot with empirical uncapped synthetic losses and fitted LogNormal
+and Generalised Pareto curves](images/mean_excess_large_losses.svg)
+
+*Mean excess in the synthetic example. The vertical dashed line marks the
+policy limit; fitted mean excess above it is an extrapolation.*
+
 In practice, use uncensored data where available and techniques that
 properly account for censoring. Above the policy limit the fitted mean
 excess is model extrapolation, so its sensitivity to the assumed family
