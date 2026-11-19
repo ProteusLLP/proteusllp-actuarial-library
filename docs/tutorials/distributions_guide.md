@@ -53,6 +53,78 @@ ln.invcdf(0.995)     # => 1,049,416  (99.5th percentile)
 These are useful for quick calculations, curve-fitting checks and
 validating simulation results.
 
+## Fitting claim severity distributions
+
+Severity distributions can be estimated from observed claim sizes using
+**maximum likelihood estimation (MLE)**. Predictions from the fitted parameters
+treat the estimates as fixed and therefore do **not** account for parameter
+uncertainty, which can be substantial for large-loss tails. Supported families include Pareto, GPD, lognormal, gamma,
+Weibull, Burr, log-logistic, inverse Gaussian, paralogistic,
+inverse Burr, inverse gamma, inverse Weibull (Fréchet), log-gamma,
+exponential, inverse exponential, inverse paralogistic, generalized beta
+prime (GB2), generalized inverse Gaussian and generalized extreme value (GEV).
+Fitting returns a PAL distribution, estimated parameters and likelihood
+diagnostics.
+
+<!--pytest-codeblocks:cont-->
+
+```python
+import numpy as np
+
+from pal.distributions import Pareto
+
+# The last two losses hit the policy limit; their underlying sizes are unknown.
+losses = np.array([12.0, 15.0, 21.0, 50.0, 50.0])
+censored = np.array([False, False, False, True, True])
+
+fitted = Pareto.fit(losses, threshold=10.0, censored=censored)
+shape = fitted.parameters["shape"]
+tail_probability = 1.0 - fitted.distribution.cdf(50.0)
+assert shape > 0 and 0 <= tail_probability <= 1
+```
+
+The reporting threshold conditions the likelihood on losses above that
+amount. Right censoring occurs when a claim **hits the policy limit** and its
+underlying size beyond the limit is unknown. A censored observation
+contributes the survival probability at that policy limit, rather than
+a density. The fitted curve estimates the **ground-up loss severity before
+policy limits are applied**, not the distribution of capped payments. Optional
+`weights` support repeated observations or other non-negative observation
+weights; zero-weight rows are ignored. The GPD location is fixed at the
+threshold by default. Pass `free_location=True` to `GPD.fit(...)` to
+estimate all three parameters from an untruncated sample. With left
+truncation, GPD location and scale are not separately identifiable, so
+PAL rejects a free location when a positive threshold is supplied.
+Other supported shifted positive severity distributions are fitted with zero location. GEV estimates its location.
+
+`fitted.log_likelihood`, `fitted.aic`, `fitted.aicc` and
+`fitted.converged` provide initial model-fit diagnostics. AICc is available
+for integer frequency weights with sufficient observations. Numerical fitting
+runs on the CPU using SciPy; the resulting PAL distribution supports the usual
+simulation and probability methods.
+
+Theoretical mean excess is available on these severity distributions. For a
+loss severity X and threshold d, this is E[X - d | X > d]. It is useful for
+checking the fitted tail and the average severity of claims reaching a layer.
+
+<!--pytest-codeblocks:cont-->
+
+```python
+mean_excess_at_50 = fitted.distribution.mean_excess(50.0)
+assert mean_excess_at_50 > 0
+```
+
+For shape parameters with an infinite first moment, mean excess is infinite.
+It is undefined at and beyond a finite upper endpoint. The calculation uses
+analytical expressions where available and numerical survival integration for
+the remaining distributions.
+
+For worked Gamma fitting, large-loss model comparison and a
+**mean-excess plot**, see [Fitting Probability Distributions](distribution_fitting.md).
+An empirical mean-excess curve calculated from capped losses is biased as a
+diagnostic for the underlying severity; censored-data methods or the
+theoretical mean excess from a censoring-aware fit are needed.
+
 ## Available Distributions
 
 ### Severity (Continuous) Distributions
@@ -60,13 +132,14 @@ validating simulation results.
 | Distribution | Parameters | Typical Use |
 |-------------|------------|-------------|
 | `LogNormal` | `mu`, `sigma` | Claim sizes |
+| `LogGamma` | `alpha`, `beta` | Claims with a log-gamma tail |
 | `Gamma` | `alpha`, `theta`, `loc=0` | Aggregate losses, waiting times |
 | `Pareto` | `shape`, `scale` | Large/catastrophe losses |
 | `GPD` | `shape`, `scale`, `loc` | Excess losses above a threshold |
 | `Burr` | `power`, `shape`, `scale`, `loc` | Heavy-tailed loss distributions |
 | `Weibull` | `shape`, `scale`, `loc=0` | Time-to-failure, survival analysis |
 | `Normal` | `mu`, `sigma` | Symmetric risks, economic variables |
-| `Beta` | `alpha`, `beta`, `scale=1`, `loc=0` | Loss ratios, probabilities |
+| `Beta` | `alpha`, `beta`, `scale=1`, `loc=0` | Credit recovery rates and other proportions |
 | `Exponential` | `scale`, `loc=0` | Inter-arrival times, simple decay |
 | `LogLogistic` | `shape`, `scale`, `loc=0` | Income distributions, survival |
 | `Logistic` | `mu`, `sigma` | Growth models |
@@ -259,6 +332,60 @@ histogram_fig.show()
 The naming deliberately distinguishes analytical distribution methods such as
 `ln.cdf(x)`, which calculate probabilities, from simulation plotting methods
 such as `loss.cdf_plot()`, which return Plotly figures.
+
+## Fitting the other PAL distributions
+
+Fitting is available for every concrete PAL distribution class. Count and
+discrete distributions use probability mass likelihoods, rather than the
+continuous-severity likelihood. Poisson, binomial (with a known number of
+trials), Bernoulli and unconstrained Normal have analytical estimators.
+Negative binomial, noncentral chi-squared, Student's t, logistic and
+other families use deterministic likelihood optimisation.
+
+The following examples show the different interfaces:
+
+```python
+from pal.distributions import Binomial, Categorical, Normal, Poisson
+
+poisson_fit = Poisson.fit([0, 1, 0, 3, 2, 1])
+binomial_fit = Binomial.fit([1, 3, 2, 0, 4], n=8)
+normal_fit = Normal.fit([-1.5, 0.2, 1.0, 1.8, 3.1])
+category_fit = Categorical.fit(["motor", "property", "motor"])
+
+assert poisson_fit.parameters["mean"] > 0
+assert 0 < binomial_fit.parameters["p"] < 1
+assert normal_fit.parameters["sigma"] > 0
+assert category_fit.parameters["probabilities"] == [2 / 3, 1 / 3]
+```
+
+For binomial fitting, the trial count `n` must be known. Hypergeometric
+fitting requires `population_size` and `n_draws`, and estimates the integer
+number of successes in the population. An unconstrained negative binomial
+has no finite size estimate at the Poisson boundary, so PAL rejects
+samples that do not exhibit overdispersion.
+
+`Beta.fit(..., loc=..., scale=...)` estimates both shape parameters
+conditional on a specified support interval, which defaults to (0, 1).
+Normal, logistic, Student's t, noncentral chi-squared and Beta support
+right censoring and left truncation. The other non-severity families
+currently fit complete observations.
+
+Uniform distribution fitting uses the observed numeric minimum and maximum
+as the maximum-likelihood interval endpoints. Date-valued Uniform also
+supports an inclusive calendar-date range. Categorical fitting preserves
+observed label order; optionally supply `values=[...]` to fix the category
+set and retain unobserved categories with zero estimated probability.
+The fitted result holds category labels and probabilities, or date endpoints,
+alongside its PAL distribution.
+
+MBBEFD fitting accounts for the discrete probability of a total policy
+loss at exactly one as well as its continuous severity density. Estimating
+both parameters requires interior observations and at least one total loss.
+
+Numeric distributions provide a theoretical `mean_excess(attachment)`
+method, including the count distributions. This is undefined for categorical
+labels or temporal Uniform distributions, where excess has no established
+numeric loss interpretation.
 
 ## See Also
 

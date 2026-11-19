@@ -14,6 +14,7 @@ import typing as t
 # third party
 import numpy as np
 
+from ._maths import asnumpy as asnumpy
 from ._maths import xp
 
 
