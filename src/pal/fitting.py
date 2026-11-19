@@ -16,7 +16,13 @@ if t.TYPE_CHECKING:
     from .distributions import DistributionBase
 
 _T = t.TypeVar("_T", bound="DistributionBase", covariant=True)
-_SUPPORTED = ("Pareto", "LogNormal", "Gamma", "GPD")
+def _supported_families() -> tuple[type[DistributionBase], ...]:
+    """Resolve PAL class identities lazily to avoid circular imports."""
+    from . import distributions as _distributions
+
+    return (_distributions.Pareto, _distributions.LogNormal, _distributions.Gamma, _distributions.GPD,)
+
+
 
 
 @dataclass(frozen=True)
@@ -81,7 +87,7 @@ def _prepare(
 
 
 def _log_likelihood(
-    family: str,
+    family: type[DistributionBase],
     parameters: dict[str, float],
     x: np.ndarray,
     c: np.ndarray,
@@ -89,14 +95,15 @@ def _log_likelihood(
     threshold: float,
 ) -> float:
     """Return a conditional right-censored, left-truncated log-likelihood."""
-    if family == "Pareto":
+    from . import distributions as _distributions
+    if family is _distributions.Pareto:
         shape, scale = parameters["shape"], parameters["scale"]
         if shape <= 0 or scale <= 0 or np.any(x < scale):
             return -np.inf
         log_pdf = np.log(shape) + shape * np.log(scale) - (shape + 1) * np.log(x)
         log_sf = shape * (np.log(scale) - np.log(x))
         log_sf_threshold = min(0.0, shape * (np.log(scale) - np.log(threshold))) if threshold > 0 else 0.0
-    elif family == "LogNormal":
+    elif family is _distributions.LogNormal:
         mu, sigma = parameters["mu"], parameters["sigma"]
         if sigma <= 0:
             return -np.inf
@@ -104,14 +111,14 @@ def _log_likelihood(
         log_pdf = stats.norm.logpdf(z) - np.log(x) - np.log(sigma)
         log_sf = stats.norm.logsf(z)
         log_sf_threshold = float(stats.norm.logsf((np.log(threshold) - mu) / sigma)) if threshold > 0 else 0.0
-    elif family == "Gamma":
+    elif family is _distributions.Gamma:
         alpha, theta = parameters["alpha"], parameters["theta"]
         if alpha <= 0 or theta <= 0:
             return -np.inf
         log_pdf = stats.gamma.logpdf(x, a=alpha, scale=theta)
         log_sf = stats.gamma.logsf(x, a=alpha, scale=theta)
         log_sf_threshold = float(stats.gamma.logsf(threshold, a=alpha, scale=theta)) if threshold > 0 else 0.0
-    elif family == "GPD":
+    elif family is _distributions.GPD:
         shape, scale, loc = parameters["shape"], parameters["scale"], parameters["loc"]
         if scale <= 0 or np.any(x < loc):
             return -np.inf
@@ -119,7 +126,7 @@ def _log_likelihood(
         log_sf = stats.genpareto.logsf(x, c=shape, loc=loc, scale=scale)
         log_sf_threshold = float(stats.genpareto.logsf(threshold, c=shape, loc=loc, scale=scale))
     else:
-        raise ValueError(f"Unsupported fitting family: {family}")
+        raise ValueError(f"Unsupported fitting family: {family.__name__}")
     terms = np.where(c, log_sf, log_pdf) - log_sf_threshold
     ll = float(np.sum(w * terms))
     return ll if np.isfinite(ll) else -np.inf
@@ -161,27 +168,28 @@ def fit_distribution(
         PAL's random-number state. Pareto has a closed-form censored MLE.
         The other families use deterministic numerical optimisation.
     """
-    family = distribution.__name__
-    if family not in (*_SUPPORTED, *_OTHER_FAMILIES):
-        raise ValueError(f"Unsupported fitting family {family!r}; expected one of {_SUPPORTED + _OTHER_FAMILIES}")
+    from . import distributions as _distributions
+    family = distribution
+    if family not in (*_supported_families(), *_other_families()):
+        raise ValueError(f"Unsupported fitting family {family.__name__!r}; expected one of {tuple(cls.__name__ for cls in (*_supported_families(), *_other_families()))}")
     threshold = float(threshold)
-    if free_location and family != "GPD":
+    if free_location and family is not _distributions.GPD:
         raise ValueError("free_location is supported only for GPD")
     if free_location and threshold > 0:
         raise ValueError("The GPD location is not identifiable from a left-truncated sample")
-    x, c, w = _prepare(observations, threshold, censored, weights, allow_any_real=family == "GEV")
+    x, c, w = _prepare(observations, threshold, censored, weights, allow_any_real=family is _distributions.GEV)
     if free_location:
         return _fit_gpd_free_location(distribution, x, c, w, threshold)
-    if family == "Exponential":
+    if family is _distributions.Exponential:
         return _fit_exponential(distribution, x, c, w, threshold)
-    if family == "GeneralizedBetaPrime":
+    if family is _distributions.GeneralizedBetaPrime:
         return _fit_gb2(distribution, x, c, w, threshold)
-    if family in _OTHER_FAMILIES:
+    if family in _other_families():
         return _fit_other(distribution, x, c, w, threshold)
     total = float(np.sum(w))
     mean = float(np.average(x, weights=w))
     variance = float(np.average((x - mean) ** 2, weights=w))
-    if family == "Pareto":
+    if family is _distributions.Pareto:
         scale = threshold if threshold > 0 else float(x.min())
         denominator = float(np.sum(w * np.log(x / scale)))
         if denominator <= 0 or not np.isfinite(denominator):
@@ -189,7 +197,7 @@ def fit_distribution(
         parameters = {"shape": float(np.sum(w[~c])) / denominator, "scale": scale}
         converged = True
     else:
-        if family == "LogNormal":
+        if family is _distributions.LogNormal:
             logs = np.log(x)
             mu0 = float(np.average(logs, weights=w))
             sigma0 = float(np.sqrt(np.average((logs - mu0) ** 2, weights=w)))
@@ -197,7 +205,7 @@ def fit_distribution(
 
             def transform(p: np.ndarray) -> dict[str, float]:
                 return {"mu": float(p[0]), "sigma": float(np.exp(p[1]))}
-        elif family == "Gamma":
+        elif family is _distributions.Gamma:
             alpha0 = max(min(mean * mean / max(variance, np.finfo(float).tiny), 1e4), 0.05)
             starts = [
                 [np.log(alpha0), np.log(mean / alpha0)],
@@ -241,17 +249,17 @@ def fit_distribution(
         ]
         best = min(results, key=lambda result: float(result.fun))
         if not np.isfinite(best.fun) or best.fun >= 1e100:
-            raise RuntimeError(f"Unable to obtain a finite {family} fit")
+            raise RuntimeError(f"Unable to obtain a finite {family.__name__} fit")
         parameters = transform(best.x)
         converged = bool(best.success)
     ll = _log_likelihood(family, parameters, x, c, w, threshold)
     if not np.isfinite(ll):
-        raise RuntimeError(f"Fitted {family} has an invalid log-likelihood")
+        raise RuntimeError(f"Fitted {family.__name__} has an invalid log-likelihood")
     model = distribution(**parameters)
-    if family == "Pareto":
+    if family is _distributions.Pareto:
         k = 1 if threshold > 0 else 2
     else:
-        k = len(parameters) - int(family == "GPD")
+        k = len(parameters) - int(family is _distributions.GPD)
     aic = 2.0 * k - 2.0 * ll
     # AICc is defined for integer frequency weights, including repeated rows.
     is_frequency_weight = bool(np.all(w == np.floor(w)))
@@ -272,65 +280,72 @@ def fit_distribution(
 # The additional severity families use PAL's established zero-location
 # parameterisations. Location is fixed at zero unless GPD has its location
 # fixed at the truncation threshold.
-_OTHER_FAMILIES = (
-    "Weibull",
-    "Burr",
-    "LogLogistic",
-    "InverseGaussian",
-    "Paralogistic",
-    "InverseBurr",
-    "InverseGamma",
-    "InverseWeibull",
-    "LogGamma",
-    "Exponential",
-    "InverseExponential",
-    "InverseParalogistic",
-    "GeneralizedBetaPrime",
-    "GeneralizedInverseGaussian",
-    "GEV",
-)
+def _other_families() -> tuple[type[DistributionBase], ...]:
+    """Return the other supported severity distribution classes."""
+    from . import distributions as _distributions
+
+    return (
+        _distributions.Weibull,
+        _distributions.Burr,
+        _distributions.LogLogistic,
+        _distributions.InverseGaussian,
+        _distributions.Paralogistic,
+        _distributions.InverseBurr,
+        _distributions.InverseGamma,
+        _distributions.InverseWeibull,
+        _distributions.LogGamma,
+        _distributions.Exponential,
+        _distributions.InverseExponential,
+        _distributions.InverseParalogistic,
+        _distributions.GeneralizedBetaPrime,
+        _distributions.GeneralizedInverseGaussian,
+        _distributions.GEV,
+    )
 
 
-def _frozen_distribution(family: str, params: dict[str, float]) -> t.Any:
+
+
+def _frozen_distribution(family: type[DistributionBase], params: dict[str, float]) -> t.Any:
     """Build an independent SciPy reference distribution for inference."""
+    from . import distributions as _distributions
     p = params
-    if family == "Pareto":
+    if family is _distributions.Pareto:
         return stats.pareto(b=p["shape"], scale=p["scale"])
-    if family == "GPD":
+    if family is _distributions.GPD:
         return stats.genpareto(c=p["shape"], loc=p["loc"], scale=p["scale"])
-    if family == "LogNormal":
+    if family is _distributions.LogNormal:
         return stats.lognorm(s=p["sigma"], scale=np.exp(p["mu"]))
-    if family == "Gamma":
+    if family is _distributions.Gamma:
         return stats.gamma(a=p["alpha"], scale=p["theta"])
-    if family == "Weibull":
+    if family is _distributions.Weibull:
         return stats.weibull_min(c=p["shape"], scale=p["scale"], loc=p["loc"])
-    if family == "Burr":
+    if family is _distributions.Burr:
         return stats.burr12(c=p["power"], d=p["shape"], scale=p["scale"], loc=p["loc"])
-    if family == "LogLogistic":
+    if family is _distributions.LogLogistic:
         return stats.fisk(c=p["shape"], scale=p["scale"], loc=p["loc"])
-    if family == "InverseGaussian":
+    if family is _distributions.InverseGaussian:
         return stats.invgauss(mu=p["mu"] / p["lambda_"], scale=p["lambda_"])
-    if family == "Paralogistic":
+    if family is _distributions.Paralogistic:
         return stats.burr12(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"])
-    if family == "InverseBurr":
+    if family is _distributions.InverseBurr:
         return stats.burr(c=p["power"], d=p["shape"], scale=p["scale"], loc=p["loc"])
-    if family == "InverseGamma":
+    if family is _distributions.InverseGamma:
         return stats.invgamma(a=p["alpha"], scale=p["theta"], loc=p["loc"])
-    if family == "InverseWeibull":
+    if family is _distributions.InverseWeibull:
         return stats.invweibull(c=p["shape"], scale=p["scale"], loc=p["loc"])
-    if family == "Exponential":
+    if family is _distributions.Exponential:
         return stats.expon(scale=p["scale"], loc=p["loc"])
-    if family == "InverseExponential":
+    if family is _distributions.InverseExponential:
         return stats.invweibull(c=1.0, scale=p["scale"], loc=p["loc"])
-    if family == "InverseParalogistic":
+    if family is _distributions.InverseParalogistic:
         return stats.burr(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"])
-    if family == "GeneralizedInverseGaussian":
+    if family is _distributions.GeneralizedInverseGaussian:
         return stats.geninvgauss(
             p=p["p"], b=np.sqrt(p["chi"] * p["psi"]), scale=np.sqrt(p["chi"] / p["psi"]), loc=p["loc"]
         )
-    if family == "GEV":
+    if family is _distributions.GEV:
         return stats.genextreme(c=-p["shape"], loc=p["loc"], scale=p["scale"])
-    raise ValueError(f"Unsupported severity family: {family}")
+    raise ValueError(f"Unsupported severity family: {family.__name__}")
 
 
 def _fit_other(
@@ -341,45 +356,46 @@ def _fit_other(
     threshold: float,
 ) -> FitResult[_T]:
     """Fit additional two- and three-parameter severity distributions."""
-    family = distribution.__name__
+    from . import distributions as _distributions
+    family = distribution
     mean = float(np.average(x, weights=weights))
     median = float(np.median(x))
     variance = float(np.average((x - mean) ** 2, weights=weights))
     scale = max(median, np.finfo(float).tiny)
-    if family == "GeneralizedInverseGaussian":
+    if family is _distributions.GeneralizedInverseGaussian:
         names = ("p", "chi", "psi")
-    elif family == "GEV":
+    elif family is _distributions.GEV:
         names = ("shape", "scale", "loc")
-    elif family in {"Exponential", "InverseExponential"}:
+    elif family in (_distributions.Exponential, _distributions.InverseExponential):
         names = ("scale",)
-    elif family == "LogGamma":
+    elif family is _distributions.LogGamma:
         names = ("alpha", "beta")
-    elif family == "Weibull":
+    elif family is _distributions.Weibull:
         names = ("shape", "scale")
-    elif family == "Burr":
+    elif family is _distributions.Burr:
         names = ("power", "shape", "scale")
-    elif family == "LogLogistic":
+    elif family is _distributions.LogLogistic:
         names = ("shape", "scale")
-    elif family == "InverseGaussian":
+    elif family is _distributions.InverseGaussian:
         names = ("mu", "lambda_")
-    elif family == "Paralogistic":
+    elif family is _distributions.Paralogistic:
         names = ("shape", "scale")
-    elif family == "InverseBurr":
+    elif family is _distributions.InverseBurr:
         names = ("power", "shape", "scale")
-    elif family == "InverseGamma":
+    elif family is _distributions.InverseGamma:
         names = ("alpha", "theta")
     else:
         names = ("shape", "scale")
 
     starts: list[list[float]]
-    if family == "GeneralizedInverseGaussian":
+    if family is _distributions.GeneralizedInverseGaussian:
         starts = [[-0.5, np.log(scale), np.log(1.0 / scale)], [0.5, np.log(scale), np.log(1.0 / scale)]]
-    elif family == "GEV":
+    elif family is _distributions.GEV:
         spread = max(float(np.std(x)), 0.01)
         starts = [[0.0, np.log(spread), median], [0.2, np.log(spread), median], [-0.2, np.log(spread), median]]
-    elif family in {"Exponential", "InverseExponential"}:
+    elif family in (_distributions.Exponential, _distributions.InverseExponential):
         starts = [[np.log(max(mean, 1e-10))]]
-    elif family == "LogGamma":
+    elif family is _distributions.LogGamma:
         if np.any(x < 1.0):
             raise ValueError("log-gamma observations must be at least one")
         logs = np.log(x)
@@ -388,34 +404,34 @@ def _fit_other(
         alpha = max(log_mean**2 / max(log_var, np.finfo(float).tiny), 0.1)
         beta = max(log_var / max(log_mean, np.finfo(float).tiny), 0.01)
         starts = [[np.log(alpha), np.log(beta)], [0.0, 0.0], [np.log(2.0), np.log(beta)]]
-    elif family == "InverseGaussian":
+    elif family is _distributions.InverseGaussian:
         lam = max(mean**3 / max(variance, np.finfo(float).tiny), np.finfo(float).tiny)
         starts = [[np.log(mean), np.log(lam)], [np.log(mean), np.log(mean)]]
-    elif family in {"Burr", "InverseBurr"}:
+    elif family in (_distributions.Burr, _distributions.InverseBurr):
         starts = [
             [np.log(1.5), np.log(1.5), np.log(scale)],
             [0.0, 0.0, np.log(scale)],
             [np.log(2.5), 0.0, np.log(scale)],
             [0.0, np.log(2.5), np.log(scale)],
         ]
-    elif family == "InverseGamma":
+    elif family is _distributions.InverseGamma:
         alpha = max(mean * mean / max(variance, np.finfo(float).tiny) + 2.0, 1.5)
         starts = [[np.log(alpha), np.log(max(mean * (alpha - 1.0), 1e-12))], [0.0, np.log(scale)]]
     else:
         starts = [[np.log(1.0), np.log(scale)], [np.log(2.0), np.log(scale)], [np.log(0.75), np.log(scale)]]
 
     def make_params(raw: np.ndarray) -> dict[str, float]:
-        if family == "GeneralizedInverseGaussian":
+        if family is _distributions.GeneralizedInverseGaussian:
             return {"p": float(raw[0]), "chi": float(np.exp(raw[1])), "psi": float(np.exp(raw[2])), "loc": 0.0}
-        if family == "GEV":
+        if family is _distributions.GEV:
             return {"shape": float(raw[0]), "scale": float(np.exp(raw[1])), "loc": float(raw[2])}
         pars: dict[str, float] = dict(zip(names, (float(np.exp(value)) for value in raw)))
-        if family not in {"InverseGaussian", "LogGamma"}:
+        if family not in (_distributions.InverseGaussian, _distributions.LogGamma):
             pars["loc"] = 0.0
         return pars
 
     def loglik(pars: dict[str, float]) -> float:
-        if family == "LogGamma":
+        if family is _distributions.LogGamma:
             log_x = np.log(x)
             alpha, beta = pars["alpha"], pars["beta"]
             base = float(stats.gamma.logsf(np.log(threshold), a=alpha, scale=beta)) if threshold > 1.0 else 0.0
@@ -457,7 +473,7 @@ def _fit_other(
     ]
     best = min(results, key=lambda item: float(item.fun))
     if best.fun >= 1e100 or not np.isfinite(best.fun):
-        raise RuntimeError(f"Unable to obtain finite {family} likelihood")
+        raise RuntimeError(f"Unable to obtain finite {family.__name__} likelihood")
     pars = make_params(best.x)
     ll = loglik(pars)
     model = distribution(**pars)
@@ -499,9 +515,10 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         stable conditional survival integration avoids subtracting close tail
         expectations. This function uses the CPU, without sampling.
     """
-    family = type(distribution).__name__
-    if family not in (*_SUPPORTED, *_OTHER_FAMILIES):
-        raise ValueError(f"No mean excess implementation for {family}")
+    from . import distributions as _distributions
+    family = type(distribution)
+    if family not in (*_supported_families(), *_other_families()):
+        raise ValueError(f"No mean excess implementation for {family.__name__}")
     params = distribution._params
     from .stochastic_scalar import StochasticScalar
 
@@ -510,25 +527,25 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         if isinstance(value, StochasticScalar):
             raise ValueError("mean excess requires scalar distribution parameters")
         pars[key] = float(value)
-    frozen = None if family in {"LogGamma", "GeneralizedBetaPrime"} else _frozen_distribution(family, pars)
+    frozen = None if family in (_distributions.LogGamma, _distributions.GeneralizedBetaPrime) else _frozen_distribution(family, pars)
     inputs = np.asarray(threshold, dtype=float)
     result = np.full(inputs.shape, np.nan, dtype=float)
     inf_mean = (
-        (family == "GEV" and pars["shape"] >= 1.0)
-        or (family == "GeneralizedBetaPrime" and pars["a"] * pars["q"] <= 1.0)
-        or (family == "LogGamma" and pars["beta"] >= 1.0)
-        or (family == "Pareto" and pars["shape"] <= 1.0)
-        or (family == "GPD" and pars["shape"] >= 1.0)
-        or (family == "Burr" and pars["power"] * pars["shape"] <= 1.0)
-        or (family == "LogLogistic" and pars["shape"] <= 1.0)
-        or (family == "Paralogistic" and pars["shape"] <= 1.0)
-        or (family == "InverseBurr" and pars["power"] <= 1.0)
-        or (family == "InverseGamma" and pars["alpha"] <= 1.0)
-        or (family == "InverseWeibull" and pars["shape"] <= 1.0)
-        or family == "InverseExponential"
-        or (family == "InverseParalogistic" and pars["shape"] <= 1.0)
+        (family is _distributions.GEV and pars["shape"] >= 1.0)
+        or (family is _distributions.GeneralizedBetaPrime and pars["a"] * pars["q"] <= 1.0)
+        or (family is _distributions.LogGamma and pars["beta"] >= 1.0)
+        or (family is _distributions.Pareto and pars["shape"] <= 1.0)
+        or (family is _distributions.GPD and pars["shape"] >= 1.0)
+        or (family is _distributions.Burr and pars["power"] * pars["shape"] <= 1.0)
+        or (family is _distributions.LogLogistic and pars["shape"] <= 1.0)
+        or (family is _distributions.Paralogistic and pars["shape"] <= 1.0)
+        or (family is _distributions.InverseBurr and pars["power"] <= 1.0)
+        or (family is _distributions.InverseGamma and pars["alpha"] <= 1.0)
+        or (family is _distributions.InverseWeibull and pars["shape"] <= 1.0)
+        or family is _distributions.InverseExponential
+        or (family is _distributions.InverseParalogistic and pars["shape"] <= 1.0)
     )
-    if family == "GeneralizedBetaPrime":
+    if family is _distributions.GeneralizedBetaPrime:
         lower, upper = 0.0, np.inf
     else:
         lower, upper = (1.0, np.inf) if frozen is None else frozen.support()
@@ -540,28 +557,28 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         if inf_mean:
             result[index] = np.inf
             continue
-        if family == "GeneralizedBetaPrime":
+        if family is _distributions.GeneralizedBetaPrime:
             result[index] = _gb2_mean_excess(pars, float(d))
             continue
-        if family == "LogGamma":
+        if family is _distributions.LogGamma:
             alpha, beta = pars["alpha"], pars["beta"]
             log_cutoff = max(np.log(max(float(d), 1.0)), 0.0)
             log_num = -alpha * np.log1p(-beta) + stats.gamma.logsf(log_cutoff, a=alpha, scale=beta / (1.0 - beta))
             log_den = stats.gamma.logsf(log_cutoff, a=alpha, scale=beta)
             result[index] = float(np.exp(log_num - log_den)) - d
             continue
-        if family == "Pareto":
+        if family is _distributions.Pareto:
             alpha, xm = pars["shape"], pars["scale"]
             result[index] = max(xm - d, 0.0) + max(d, xm) / (alpha - 1.0)
             continue
-        if family == "GPD":
+        if family is _distributions.GPD:
             xi, sigma, loc = pars["shape"], pars["scale"], pars["loc"]
             base = max(float(d), loc)
             result[index] = (base - d) + (sigma + xi * (base - loc)) / (1.0 - xi)
             continue
 
         if frozen is None:
-            raise ValueError(f"No continuous survival function for {family}")
+            raise ValueError(f"No continuous survival function for {family.__name__}")
         # Scale by the local inverse hazard. Integrating in units of tail
         # width prevents quadrature missing a narrow tail at a high threshold.
         start = max(float(d), float(lower))
@@ -591,7 +608,7 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
             x = start + local_scale * u
             return float(np.exp(float(frozen.logsf(x)) - log_start_sf))
 
-        if family == "GeneralizedInverseGaussian":
+        if family is _distributions.GeneralizedInverseGaussian:
             # SciPy's GIG survival may suffer cancellation in the far tail.
             # Integrate the conditional density instead, avoiding noisy S(x).
             def scaled_excess_density(
@@ -610,7 +627,7 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
             excess = local_scale * area
 
         if not np.isfinite(area) or area < 0 or not np.isfinite(error) or error > 1e-7 * max(1.0, abs(area)):
-            raise ArithmeticError(f"Mean excess integration did not converge for {family} at {d}")
+            raise ArithmeticError(f"Mean excess integration did not converge for {family.__name__} at {d}")
         result[index] = (start - d) + float(np.exp(log_start_sf - float(frozen.logsf(d)))) * excess
     return float(result) if result.ndim == 0 else result
 
