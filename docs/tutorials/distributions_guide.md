@@ -113,6 +113,8 @@ It is undefined at and beyond a finite upper endpoint. The calculation uses
 analytical expressions where available and numerical survival integration for
 the remaining distributions.
 
+For a worked estimation workflow, see [Fitting Probability Distributions](distribution_fitting.md).
+
 ## Available Distributions
 
 ### Severity (Continuous) Distributions
