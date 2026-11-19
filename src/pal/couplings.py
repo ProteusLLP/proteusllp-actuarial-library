@@ -35,6 +35,34 @@ def validate_stochastic_axes(variables: t.Iterable[ProteusStochasticVariable], n
     return n_sims
 
 
+def couple_stochastic_results(
+    results: t.Iterable[ProteusStochasticVariable],
+    inputs: t.Iterable[ProteusStochasticVariable] = (),
+    *,
+    n_sims: int | None = None,
+) -> None:
+    """Link scenario-indexed result leaves to all upstream stochastic inputs.
+
+    The caller must finish numerical calculations and construct *all* results
+    before calling this function. Scenario lengths are validated across every
+    input and result before any coupling group changes. In particular, expanded
+    claim-level parameter temporaries must not be passed as inputs: a
+    FreqSevSims result has the original simulation axis, not the claim axis.
+
+    The first input's existing group is retained when possible. Groups hold
+    weak references, so linking outputs does not prolong temporary lifetimes.
+    """
+    output_leaves = tuple(results)
+    sources = tuple(inputs)
+    if not output_leaves:
+        raise ValueError("At least one stochastic result is required")
+    validate_stochastic_axes((*sources, *output_leaves), n_sims=n_sims)
+
+    anchor = (sources or output_leaves)[0].coupled_variable_group
+    for variable in (*sources, *output_leaves):
+        anchor.merge(variable.coupled_variable_group)
+
+
 class CouplingGroup:
     """A class to represent a group of variables that are coupled together."""
 
