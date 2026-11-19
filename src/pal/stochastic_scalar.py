@@ -474,6 +474,7 @@ class StochasticScalar(ProteusStochasticVariable):
         A multi-output ufunc must not couple its first output if a later
         output has an incompatible simulation axis.
         """
+
         def prepare(value: t.Any) -> t.Any:
             scalar_result = scalar_or_array(value)
             if scalar_result is not value:
