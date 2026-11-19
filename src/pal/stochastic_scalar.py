@@ -469,28 +469,27 @@ class StochasticScalar(ProteusStochasticVariable):
         return result
 
     def _wrap_result_with_coupling(self, result_array: t.Any, inputs: tuple[t.Any, ...]) -> t.Any:
-        """Wrap result in StochasticScalar and merge coupling groups.
+        """Wrap all scenario-valued result leaves, then link them atomically.
 
-        Args:
-            result_array: The numpy array result to wrap.
-            inputs: The input arguments from __array_ufunc__.
-
-        Returns:
-            A new StochasticScalar with proper coupling group merging.
+        A multi-output ufunc must not couple its first output if a later
+        output has an incompatible simulation axis.
         """
-        if isinstance(result_array, tuple):
-            return tuple(self._wrap_result_with_coupling(item, inputs) for item in result_array)
-        scalar_result = scalar_or_array(result_array)
-        if scalar_result is not result_array:
-            return scalar_result
-        if getattr(result_array, "ndim", None) != 1:
-            return result_array
-        if len(result_array) != self.n_sims:
-            raise ValueError(
-                f"Stochastic result has incompatible n_sims (expected {self.n_sims}, got {len(result_array)})"
-            )
+        def prepare(value: t.Any) -> t.Any:
+            scalar_result = scalar_or_array(value)
+            if scalar_result is not value:
+                return scalar_result
+            if getattr(value, "ndim", None) != 1:
+                return value
+            if len(value) != self.n_sims:
+                raise ValueError(
+                    f"Stochastic result has incompatible n_sims (expected {self.n_sims}, got {len(value)})"
+                )
+            return StochasticScalar(value)
 
-        wrapped_result = StochasticScalar(result_array)
-        stochastic_inputs = (self, *(value for value in inputs if isinstance(value, ProteusStochasticVariable)))
-        couple_stochastic_results((wrapped_result,), stochastic_inputs, n_sims=self.n_sims)
-        return wrapped_result
+        prepared = tuple(prepare(value) for value in result_array) if isinstance(result_array, tuple) else prepare(result_array)
+        leaves = prepared if isinstance(prepared, tuple) else (prepared,)
+        result_leaves = tuple(value for value in leaves if isinstance(value, StochasticScalar))
+        if result_leaves:
+            stochastic_inputs = (self, *(value for value in inputs if isinstance(value, ProteusStochasticVariable)))
+            couple_stochastic_results(result_leaves, stochastic_inputs, n_sims=self.n_sims)
+        return prepared
