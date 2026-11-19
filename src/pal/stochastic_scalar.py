@@ -141,16 +141,14 @@ class StochasticScalar(ProteusStochasticVariable):
             or host_values(raw_mask)
         )
         operation = getattr(np, ufunc.__name__, ufunc) if is_host else ufunc
-        prepared_inputs = tuple(
-            asnumpy(x.values)
-            if is_host and isinstance(x, StochasticScalar)
-            else asnumpy(x)
-            if is_host and isinstance(x, xp.ndarray)
-            else x.values
-            if isinstance(x, StochasticScalar)
-            else to_backend(x)
-            for x in inputs
-        )
+        def prepare_input(value: t.Any) -> t.Any:
+            if isinstance(value, StochasticScalar):
+                return asnumpy(value.values) if is_host else value.values
+            if is_host:
+                return asnumpy(value) if isinstance(value, xp.ndarray) else value
+            return to_backend(value)
+
+        prepared_inputs = tuple(prepare_input(value) for value in inputs)
         if method == "reduce" and "where" in kwargs:
             raise TypeError("Duplicate where argument")
         if method == "reduce" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
