@@ -16,6 +16,13 @@ def validate_stochastic_axes(
     variables: t.Iterable[ProteusStochasticVariable], n_sims: int | None = None
 ) -> int | None: ...
 
+def couple_stochastic_results(
+    results: t.Iterable[ProteusStochasticVariable],
+    inputs: t.Iterable[ProteusStochasticVariable] = (),
+    *,
+    n_sims: int | None = None,
+) -> None: ...
+
 class CouplingGroup:
     _refs: weakref.WeakValueDictionary[int, ProteusStochasticVariable]
     def __init__(self, variable: ProteusStochasticVariable) -> None: ...
