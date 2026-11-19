@@ -68,7 +68,10 @@ The PyPI package is `proteusllp-actuarial-library`; import it as `pal`.
 ## Portability
 
 This skill is designed for coding agents working in a **consumer project**.
-Copy this folder into the agent's supported skills location, for example
-`.agents/skills/pal-modeling/SKILL.md` for agents that discover skills there.
+From a PAL source checkout, run
+`python scripts/install_pal_skill.py --target .agents/skills` to copy the
+skill into a project that supports that location. Or copy this folder to the
+agent's supported skills directory manually. The supported location is
+agent-specific.
 It does not require or start an MCP service. For agents editing PAL's own
 repository, also follow that repository's `AGENTS.md`.
