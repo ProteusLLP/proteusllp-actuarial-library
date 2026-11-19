@@ -613,7 +613,10 @@ class FreqSevSims(_ProteusStochasticVariable):
         if scalar_result is not result:
             return scalar_result  # type: ignore[return-value]
         result = FreqSevSims(self.sim_index, result, self.n_sims)
-        sources = (self, *(value for value in (*inputs, where_mask, *out) if isinstance(value, _ProteusStochasticVariable)))
+        sources = (
+            self,
+            *(value for value in (*inputs, where_mask, *out) if isinstance(value, _ProteusStochasticVariable)),
+        )
         couple_stochastic_results((result,), sources, n_sims=self.n_sims)
         return result
 
