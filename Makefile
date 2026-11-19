@@ -44,7 +44,8 @@ typecheck:
 
 .PHONY: security
 security:
-	bandit -r src/pal
+	# Bandit does not automatically read [tool.bandit] from pyproject.toml.
+	bandit -r src/pal -s B101
 
 .PHONY: deadcode
 deadcode:
