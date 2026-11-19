@@ -599,10 +599,12 @@ class FreqSevSims(_ProteusStochasticVariable):
             if not destinations or any(destination is None for destination in destinations):
                 raise ValueError("Masked event-wise ufuncs require out= for every output to define unselected events")
 
+        masked_reduce = method == "reduce" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask))
         host = (
             host_values(self.values)
             or any(host_values(x.values if isinstance(x, (FreqSevSims, StochasticScalar)) else x) for x in inputs)
             or host_values(raw_mask)
+            or (masked_reduce and ufunc.identity is None)
         )
         prepared_inputs = tuple(self._extract_array_for_ufunc(value, host) for value in inputs)
         if host:
@@ -611,8 +613,11 @@ class FreqSevSims(_ProteusStochasticVariable):
             )
         operation = getattr(np, ufunc.__name__, ufunc) if host else ufunc
 
-        if method == "reduce" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
-            kwargs["where"] = asnumpy(raw_mask) if host else to_backend(raw_mask)
+        if masked_reduce:
+            if not host and ufunc.identity is not None:
+                prepared_inputs = (xp.where(to_backend(raw_mask), prepared_inputs[0], ufunc.identity), *prepared_inputs[1:])
+            else:
+                kwargs["where"] = asnumpy(raw_mask) if host else to_backend(raw_mask)
         elif method not in ("__call__", "reduce") and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
             raise TypeError("where is only supported for elementwise ufuncs or reduce")
         calculated = getattr(operation, method)(*prepared_inputs, **kwargs)
