@@ -19,10 +19,7 @@ def test_masked_ufunc_out_updates_existing_variable_and_joins_all_sources() -> N
 
     assert returned is destination
     np.testing.assert_array_equal(asnumpy(destination.values), [11.0, -1.0, 33.0])
-    assert all(
-        item.coupled_variable_group is left.coupled_variable_group
-        for item in (right, mask, destination)
-    )
+    assert all(item.coupled_variable_group is left.coupled_variable_group for item in (right, mask, destination))
 
 
 def test_invalid_ufunc_out_axis_and_mask_are_atomic() -> None:
@@ -57,10 +54,7 @@ def test_multivariate_output_ufunc_writes_both_outputs_atomically() -> None:
     assert actual_integers is integers
     np.testing.assert_allclose(asnumpy(fractions.values), [0.25, -9.0, 0.75])
     np.testing.assert_allclose(asnumpy(integers.values), [1.0, -8.0, 3.0])
-    assert all(
-        item.coupled_variable_group is source.coupled_variable_group
-        for item in (mask, fractions, integers)
-    )
+    assert all(item.coupled_variable_group is source.coupled_variable_group for item in (mask, fractions, integers))
 
 
 def test_invalid_second_ufunc_output_does_not_write_first() -> None:
