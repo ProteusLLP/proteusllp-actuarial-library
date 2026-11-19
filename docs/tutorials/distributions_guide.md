@@ -56,7 +56,9 @@ validating simulation results.
 ## Fitting claim severity distributions
 
 Severity distributions can be estimated from observed claim sizes using
-maximum likelihood. Supported families include Pareto, GPD, lognormal, gamma,
+**maximum likelihood estimation (MLE)**. Predictions from the fitted parameters
+treat the estimates as fixed and therefore do **not** account for parameter
+uncertainty, which can be substantial for large-loss tails. Supported families include Pareto, GPD, lognormal, gamma,
 Weibull, Burr, log-logistic, inverse Gaussian, paralogistic,
 inverse Burr, inverse gamma, inverse Weibull (Fréchet), log-gamma,
 exponential, inverse exponential, inverse paralogistic, generalized beta
@@ -71,7 +73,8 @@ import numpy as np
 
 from pal.distributions import Pareto
 
-losses = np.array([12.0, 15.0, 21.0, 36.0, 60.0])
+# The last two losses hit the policy limit; their underlying sizes are unknown.
+losses = np.array([12.0, 15.0, 21.0, 50.0, 50.0])
 censored = np.array([False, False, False, True, True])
 
 fitted = Pareto.fit(losses, threshold=10.0, censored=censored)
@@ -81,8 +84,11 @@ assert shape > 0 and 0 <= tail_probability <= 1
 ```
 
 The reporting threshold conditions the likelihood on losses above that
-amount. An observation marked as censored contributes the probability of
-exceeding its recorded limit, rather than a density at that limit. Optional
+amount. Right censoring occurs when a claim **hits the policy limit** and its
+underlying size beyond the limit is unknown. A censored observation
+contributes the survival probability at that policy limit, rather than
+a density. The fitted curve estimates the **ground-up loss severity before
+policy limits are applied**, not the distribution of capped payments. Optional
 `weights` support repeated observations or other non-negative observation
 weights; zero-weight rows are ignored. The GPD location is fixed at the
 threshold by default. Pass `free_location=True` to `GPD.fit(...)` to
@@ -113,7 +119,11 @@ It is undefined at and beyond a finite upper endpoint. The calculation uses
 analytical expressions where available and numerical survival integration for
 the remaining distributions.
 
-For a worked estimation workflow, see [Fitting Probability Distributions](distribution_fitting.md).
+For worked Gamma fitting, large-loss model comparison and a
+**mean-excess plot**, see [Fitting Probability Distributions](distribution_fitting.md).
+An empirical mean-excess curve calculated from capped losses is biased as a
+diagnostic for the underlying severity; censored-data methods or the
+theoretical mean excess from a censoring-aware fit are needed.
 
 ## Available Distributions
 
