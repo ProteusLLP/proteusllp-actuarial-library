@@ -667,7 +667,7 @@ def _fit_gpd_free_location(
 
     def objective(raw: np.ndarray) -> float:
         with np.errstate(over="ignore", divide="ignore", invalid="ignore", under="ignore"):
-            ll = _log_likelihood("GPD", transform(raw), x, c, w, threshold)
+            ll = _log_likelihood(distribution, transform(raw), x, c, w, threshold)
         return -ll if np.isfinite(ll) else 1e100
 
     distance = max(max_loc - base_loc, delta)
@@ -689,7 +689,7 @@ def _fit_gpd_free_location(
     if best.fun >= 1e100 or not np.isfinite(best.fun):
         raise RuntimeError("Unable to obtain a finite three-parameter GPD fit")
     params = transform(best.x)
-    ll = _log_likelihood("GPD", params, x, c, w, threshold)
+    ll = _log_likelihood(distribution, params, x, c, w, threshold)
     n = float(np.sum(w))
     aic = 6.0 - 2.0 * ll
     aicc = aic + 24.0 / (n - 4) if np.all(w == np.floor(w)) and n > 4 else np.nan
