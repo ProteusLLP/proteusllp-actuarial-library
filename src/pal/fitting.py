@@ -113,6 +113,7 @@ def _log_likelihood(
 ) -> float:
     """Return a conditional right-censored, left-truncated log-likelihood."""
     from . import distributions as _distributions
+
     if family is _distributions.Pareto:
         shape, scale = parameters["shape"], parameters["scale"]
         if shape <= 0 or scale <= 0 or np.any(x < scale):
@@ -186,6 +187,7 @@ def fit_distribution(
         The other families use deterministic numerical optimisation.
     """
     from . import distributions as _distributions
+
     family = distribution
     supported = (*_supported_families(), *_other_families())
     if family not in supported:
@@ -326,6 +328,7 @@ def _other_families() -> tuple[type[DistributionBase], ...]:
 def _frozen_distribution(family: type[DistributionBase], params: dict[str, float]) -> t.Any:
     """Build an independent SciPy reference distribution for inference."""
     from . import distributions as _distributions
+
     p = params
     if family is _distributions.Pareto:
         return stats.pareto(b=p["shape"], scale=p["scale"])
@@ -375,6 +378,7 @@ def _fit_other(
 ) -> FitResult[_T]:
     """Fit additional two- and three-parameter severity distributions."""
     from . import distributions as _distributions
+
     family = distribution
     mean = float(np.average(x, weights=weights))
     median = float(np.median(x))
@@ -534,6 +538,7 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         expectations. This function uses the CPU, without sampling.
     """
     from . import distributions as _distributions
+
     family = type(distribution)
     if family not in (*_supported_families(), *_other_families()):
         raise ValueError(f"No mean excess implementation for {family.__name__}")
