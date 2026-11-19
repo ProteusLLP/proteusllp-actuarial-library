@@ -6,8 +6,9 @@ import pytest
 from pal import set_random_seed
 from pal._maths import xp
 from pal.config import config
-from pal.copulas import StudentsTCopula
+from pal.copulas import StudentsTCopula, apply_copula
 from pal.distributions import InverseGaussian, NegBinomial, Normal, StudentsT
+from pal.frequency_severity import FreqSevSims
 from pal.multivariate_distributions import (
     Dirichlet,
     GeneralizedDirichlet,
@@ -109,3 +110,40 @@ def test_generation_and_numpy_dispatch_do_not_transfer_to_host(monkeypatch: pyte
         assert not host_to_device_transfers
     finally:
         config.rng = old_rng
+
+
+def test_copula_apply_performs_no_device_to_host_array_conversion(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sorting and propagation through a coupled event array stay on the GPU."""
+    a = StochasticScalar(xp.asarray([6.0, 3.0, 2.0, 5.0, 9.0]))
+    events = FreqSevSims(xp.asarray([0, 0, 2, 3, 4]), xp.asarray([3.0, 4.0, 1.0, 8.0, 5.0]), 5)
+    b = events.aggregate()
+    samples = [
+        StochasticScalar(xp.asarray([0.5, 0.2, 0.9, 0.1, 0.4])),
+        StochasticScalar(xp.asarray([0.1, 0.8, 0.4, 0.3, 0.2])),
+    ]
+    before_a = xp.asnumpy(a.values).copy()
+    before_b = xp.asnumpy(b.values).copy()
+    before_indices = xp.asnumpy(events.sim_index).copy()
+    ranks_first = np.empty(5, dtype=int)
+    ranks_first[np.argsort(before_a)] = np.arange(5)
+    sample_positions = np.argsort(xp.asnumpy(samples[0].values), kind="stable")[ranks_first]
+    ranks_second = np.empty(5, dtype=int)
+    ranks_second[np.argsort(xp.asnumpy(samples[1].values), kind="stable")] = np.arange(5)
+    ordering = np.argsort(before_b)[ranks_second[sample_positions]]
+
+    def reject_host_copy(*args: object, **kwargs: object) -> None:
+        raise AssertionError("copula permutation copied a device array to the host")
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(xp, "asnumpy", reject_host_copy)
+        apply_copula([a, b], samples)
+
+    np.testing.assert_array_equal(xp.asnumpy(a.values), before_a)
+    np.testing.assert_array_equal(xp.asnumpy(b.values), before_b[ordering])
+    inverse = np.empty(5, dtype=int)
+    inverse[ordering] = np.arange(5)
+    np.testing.assert_array_equal(xp.asnumpy(events.sim_index), inverse[before_indices])
+    assert isinstance(a.values, xp.ndarray)
+    assert isinstance(b.values, xp.ndarray)
+    assert isinstance(events.sim_index, xp.ndarray)
+    assert events.coupled_variable_group is a.coupled_variable_group

@@ -10,6 +10,7 @@ from __future__ import annotations
 import typing as t
 
 from ._maths import xp as np
+from .qmc import _draw_scenarios
 
 _LOG_TWO = np.log(2.0)
 _LOG_SMALL = np.log(1e-5)
@@ -348,11 +349,11 @@ def generate_multivariate(
         raise ValueError("dimension must be at least 2")
 
     if eta == -1.0 and theta == -1.0:
-        return rng.uniform(size=(dimension, n_sims))
+        return _draw_scenarios(rng, "uniform", size=(dimension, n_sims), scenario_axis=1)
 
     log_frailty = sample_log_frailty(n_sims, rng, eta, theta)
     exponentials = np.maximum(
-        rng.exponential(size=(dimension, n_sims)),
+        _draw_scenarios(rng, "exponential", size=(dimension, n_sims), scenario_axis=1),
         np.finfo(np.float64).tiny,
     )
     log_arguments = np.log(exponentials) - log_frailty[np.newaxis, :]

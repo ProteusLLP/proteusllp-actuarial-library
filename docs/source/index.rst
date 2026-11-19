@@ -129,6 +129,7 @@ A small model, end to end
    tutorials/distributions_guide
    tutorials/frequency_severity_modelling
    tutorials/coupling_groups_and_copulas
+   tutorials/randomized_qmc
 
 .. toctree::
    :maxdepth: 2
@@ -138,6 +139,7 @@ A small model, end to end
    tutorials/xol_reinsurance
    tutorials/property_exposure_rating
    tutorials/reinstatement_pricing
+   tutorials/odp_claims_reserving
    tutorials/risk_measures_and_allocation
 
 .. toctree::

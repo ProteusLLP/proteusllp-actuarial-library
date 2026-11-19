@@ -17,6 +17,8 @@ Discrete distributions
    pal.distributions.Bernoulli
    pal.distributions.Empirical
 
+   pal.distributions.Categorical
+
 Continuous distributions
 ------------------------
 
@@ -26,6 +28,7 @@ Continuous distributions
 
    pal.distributions.GPD
    pal.distributions.Burr
+   pal.distributions.GeneralizedBetaPrime
    pal.distributions.Beta
    pal.distributions.MBBEFD
    pal.distributions.Normal
