@@ -607,7 +607,9 @@ class FreqSevSims(_ProteusStochasticVariable):
         )
         prepared_inputs = tuple(self._extract_array_for_ufunc(value, host) for value in inputs)
         if host:
-            prepared_inputs = tuple(asnumpy(value) if isinstance(value, xp.ndarray) else value for value in prepared_inputs)
+            prepared_inputs = tuple(
+                asnumpy(value) if isinstance(value, xp.ndarray) else value for value in prepared_inputs
+            )
         operation = getattr(np, ufunc.__name__, ufunc) if host else ufunc
 
         if method == "reduce" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
