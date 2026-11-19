@@ -141,6 +141,7 @@ class StochasticScalar(ProteusStochasticVariable):
             or host_values(raw_mask)
         )
         operation = getattr(np, ufunc.__name__, ufunc) if is_host else ufunc
+
         def prepare_input(value: t.Any) -> t.Any:
             if isinstance(value, StochasticScalar):
                 return asnumpy(value.values) if is_host else value.values
