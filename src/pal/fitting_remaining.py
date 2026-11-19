@@ -26,26 +26,30 @@ def _continuous_families() -> frozenset[type[DistributionBase]]:
     """Resolve PAL distribution classes when fitting is first invoked."""
     from . import distributions as _distributions
 
-    return frozenset({
-        _distributions.Beta,
-        _distributions.Normal,
-        _distributions.Logistic,
-        _distributions.NonCentralChiSquared,
-        _distributions.StudentsT,
-    })
+    return frozenset(
+        {
+            _distributions.Beta,
+            _distributions.Normal,
+            _distributions.Logistic,
+            _distributions.NonCentralChiSquared,
+            _distributions.StudentsT,
+        }
+    )
 
 
 def _discrete_families() -> frozenset[type[DistributionBase]]:
     """Resolve PAL distribution classes when fitting is first invoked."""
     from . import distributions as _distributions
 
-    return frozenset({
-        _distributions.Poisson,
-        _distributions.NegBinomial,
-        _distributions.Binomial,
-        _distributions.HyperGeometric,
-        _distributions.Bernoulli,
-    })
+    return frozenset(
+        {
+            _distributions.Poisson,
+            _distributions.NegBinomial,
+            _distributions.Binomial,
+            _distributions.HyperGeometric,
+            _distributions.Bernoulli,
+        }
+    )
 
 
 def _input(
@@ -118,6 +122,7 @@ def fit_remaining(
     Binomial and hypergeometric require known experiment sizes.
     """
     from . import distributions as _distributions
+
     family = distribution
     if family in _continuous_families():
         return _fit_continuous(distribution, observations, weights, censored, threshold, options)
@@ -144,6 +149,7 @@ def _fit_continuous(
 ) -> FitResult[_T]:
     """Estimate a continuous family's parameters with a full likelihood."""
     from . import distributions as _distributions
+
     family = cls
     x, w = _input(observations, weights)
     if not np.all(np.isfinite(x)):
@@ -300,6 +306,7 @@ def _fit_discrete(
 ) -> FitResult[_T]:
     """Fit counting distributions with required fixed experiment parameters."""
     from . import distributions as _distributions
+
     family = cls
     x, w = _counts(observations, weights)
     mu = float(np.average(x, weights=w))
@@ -537,6 +544,7 @@ def mean_excess_remaining(
     magnitude interpretation.
     """
     from . import distributions as _distributions
+
     family = type(distribution)
     allowed = _continuous_families() | _discrete_families() | {_distributions.MBBEFD, _distributions.Uniform}
     if family not in allowed:
