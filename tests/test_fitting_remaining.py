@@ -7,6 +7,7 @@ import pytest
 from scipy import integrate, stats
 
 from pal._maths import asnumpy
+from pal.fitting_remaining import fit_remaining
 from pal.distributions import (
     MBBEFD,
     Bernoulli,
@@ -229,3 +230,10 @@ def test_invalid_weight_and_label_inputs_are_rejected() -> None:
         Categorical.fit([])
     with pytest.raises(TypeError, match="censored"):
         Poisson.fit([1, 2], censored=[False, False])
+
+
+def test_remaining_dispatch_requires_actual_pal_class() -> None:
+    """Coincidentally matching class names must not select a fitter."""
+    fake_normal = type("Normal", (), {})
+    with pytest.raises(ValueError, match="Unsupported PAL fitting family"):
+        fit_remaining(fake_normal, [1.0, 2.0, 4.0])
