@@ -139,7 +139,7 @@ theoretical mean excess from a censoring-aware fit are needed.
 | `Burr` | `power`, `shape`, `scale`, `loc` | Heavy-tailed loss distributions |
 | `Weibull` | `shape`, `scale`, `loc=0` | Time-to-failure, survival analysis |
 | `Normal` | `mu`, `sigma` | Symmetric risks, economic variables |
-| `Beta` | `alpha`, `beta`, `scale=1`, `loc=0` | Loss ratios, probabilities |
+| `Beta` | `alpha`, `beta`, `scale=1`, `loc=0` | Credit recovery rates and other proportions |
 | `Exponential` | `scale`, `loc=0` | Inter-arrival times, simple decay |
 | `LogLogistic` | `shape`, `scale`, `loc=0` | Income distributions, survival |
 | `Logistic` | `mu`, `sigma` | Growth models |
