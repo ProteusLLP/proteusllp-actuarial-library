@@ -79,16 +79,16 @@ def test_offline_skill_installer_refuses_accidental_overwrite(tmp_path: Path) ->
     installer = root / "scripts" / "install_pal_skill.py"
     args = [sys.executable, str(installer), "--target", str(tmp_path)]
 
-    first = subprocess.run(args, capture_output=True, text=True, check=True)
+    first = subprocess.run(args, capture_output=True, text=True, check=True)  # noqa: S603
     installed = tmp_path / "pal-modeling" / "SKILL.md"
     assert installed.is_file()
     assert "Installed PAL modelling skill" in first.stdout
 
-    duplicate = subprocess.run(args, capture_output=True, text=True, check=False)
+    duplicate = subprocess.run(args, capture_output=True, text=True, check=False)  # noqa: S603
     assert duplicate.returncode != 0
     assert "already exists" in duplicate.stderr
 
-    subprocess.run([*args, "--force"], capture_output=True, text=True, check=True)
+    subprocess.run([*args, "--force"], capture_output=True, text=True, check=True)  # noqa: S603
     assert installed.is_file()
 
 
@@ -117,7 +117,7 @@ def test_evaluation_score_script_reports_strict_pass_rate(tmp_path: Path) -> Non
     ]
     results.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
 
-    completed = subprocess.run(
+    completed = subprocess.run(  # noqa: S603
         [sys.executable, str(score_script), str(results)],
         capture_output=True,
         text=True,
