@@ -300,7 +300,9 @@ _RECIPE_INDEX: tuple[dict[str, t.Any], ...] = (
     },
 )
 
-_RECIPE_STOPWORDS = frozenset({"a", "an", "and", "by", "for", "how", "in", "my", "of", "on", "the", "to", "using", "with"})
+_RECIPE_STOPWORDS = frozenset(
+    {"a", "an", "and", "by", "for", "how", "in", "my", "of", "on", "the", "to", "using", "with"}
+)
 
 
 def recipes(query: str | None = None, limit: int = 20) -> list[dict[str, t.Any]]:
