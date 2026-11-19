@@ -36,7 +36,7 @@ from ._maths import asnumpy, scalar_or_array, to_backend, xp
 from ._value_arrays import host_values, stochastic_array
 from .config import config
 from .couplings import ProteusStochasticVariable as _ProteusStochasticVariable
-from .couplings import validate_stochastic_axes
+from .couplings import couple_stochastic_results, validate_stochastic_axes
 from .qmc import RandomizedQMCGenerator
 from .stochastic_scalar import (
     StochasticScalar,
@@ -242,9 +242,7 @@ class FrequencySeverityModel:
         if isinstance(rng, RandomizedQMCGenerator):
             values = self._qmc_severities(n_sims, counts.astype(np.int64), event_indices, total_events, rng)
             result = FreqSevSims(event_indices, values, n_sims)
-            result.coupled_variable_group.merge(n_events.coupled_variable_group)
-            for param in stochastic_params.values():
-                result.coupled_variable_group.merge(param.coupled_variable_group)
+            couple_stochastic_results((result,), (n_events, *stochastic_params.values()), n_sims=n_sims)
             return result
 
         severity_distribution = self.sev_dist
@@ -268,11 +266,8 @@ class FrequencySeverityModel:
         sev = severity_distribution.generate(max(1, total_events), rng)
         values = sev.values[:total_events]
         result = FreqSevSims(event_indices, values, n_sims)
-        result.coupled_variable_group.merge(n_events.coupled_variable_group)
-        # Event-level temporary parameters cannot join a simulation-level group:
-        # reordering that group must act on the FreqSevSims event indices instead.
-        for param in stochastic_params.values():
-            result.coupled_variable_group.merge(param.coupled_variable_group)
+        # Link original simulation-level parameters, never expanded claim-level temporaries.
+        couple_stochastic_results((result,), (n_events, *stochastic_params.values()), n_sims=n_sims)
         return result
 
 
@@ -425,7 +420,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         _result = xp.zeros(self.n_sims)
         operation(_result, self.sim_index, self.values)
         result = StochasticScalar(_result)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
+        couple_stochastic_results((result,), (self,))
         return result
 
     def aggregate(self) -> StochasticScalar:
@@ -506,7 +501,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         """
         counts = xp.bincount(self.sim_index, minlength=self.n_sims).astype(float)
         result = StochasticScalar(counts)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
+        couple_stochastic_results((result,), (self,))
         return result
 
     def deep_copy(self) -> FreqSevSims:
@@ -516,13 +511,13 @@ class FreqSevSims(_ProteusStochasticVariable):
     def copy(self) -> FreqSevSims:
         """Creates a copy of the FreqSevSims object."""
         result = FreqSevSims(self.sim_index.copy(), self.values.copy(), self.n_sims)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
+        couple_stochastic_results((result,), (self,))
         return result
 
     def apply(self, func: ArrayTransform) -> FreqSevSims:
         """Applies a function to the values of the FreqSevSims object."""
         result = FreqSevSims(self.sim_index, func(self.values), self.n_sims)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
+        couple_stochastic_results((result,), (self,))
         return result
 
     def _extract_array_for_ufunc(self, x: t.Any, host: bool | None = None) -> npt.NDArray[np.floating]:
@@ -565,7 +560,12 @@ class FreqSevSims(_ProteusStochasticVariable):
 
     def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any) -> FreqSevSims:
         where_mask = kwargs.get("where")
-        self._validate_event_layout(*inputs, *(kwargs.get("out") or ()), where_mask)
+        out = kwargs.get("out") or ()
+        self._validate_event_layout(*inputs, *out, where_mask)
+        validate_stochastic_axes(
+            (operand for operand in (*inputs, where_mask, *out) if isinstance(operand, _ProteusStochasticVariable)),
+            n_sims=self.n_sims,
+        )
         host = (
             host_values(self.values)
             or any(host_values(x.values if isinstance(x, (FreqSevSims, StochasticScalar)) else x) for x in inputs)
@@ -613,11 +613,8 @@ class FreqSevSims(_ProteusStochasticVariable):
         if scalar_result is not result:
             return scalar_result  # type: ignore[return-value]
         result = FreqSevSims(self.sim_index, result, self.n_sims)
-        for input in (*inputs, where_mask, *out):
-            if isinstance(input, _ProteusStochasticVariable):
-                input.coupled_variable_group.merge(self.coupled_variable_group)
-        result.coupled_variable_group.merge(self.coupled_variable_group)
-
+        sources = (self, *(value for value in (*inputs, where_mask, *out) if isinstance(value, _ProteusStochasticVariable)))
+        couple_stochastic_results((result,), sources, n_sims=self.n_sims)
         return result
 
     def __array_function__(
@@ -650,6 +647,9 @@ class FreqSevSims(_ProteusStochasticVariable):
 
         if func is not np.array_equal:
             self._validate_event_layout(*args)
+            validate_stochastic_axes(
+                (value for value in args if isinstance(value, _ProteusStochasticVariable)), n_sims=self.n_sims
+            )
 
         # Special handling for mean - aggregate first, then take mean
         if func is np.mean and len(args) == 1 and args[0] is self:
@@ -676,10 +676,8 @@ class FreqSevSims(_ProteusStochasticVariable):
 
         # Otherwise create a new FreqSevSims object with the result
         new_freq_sev = FreqSevSims(self.sim_index, result, self.n_sims)
-        new_freq_sev.coupled_variable_group.merge(self.coupled_variable_group)
-        for argument in args:
-            if isinstance(argument, _ProteusStochasticVariable):
-                new_freq_sev.coupled_variable_group.merge(argument.coupled_variable_group)
+        sources = (self, *(value for value in args if isinstance(value, _ProteusStochasticVariable)))
+        couple_stochastic_results((new_freq_sev,), sources, n_sims=self.n_sims)
         return new_freq_sev
 
     def __repr__(self):
