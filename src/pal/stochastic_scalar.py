@@ -153,13 +153,9 @@ class StochasticScalar(ProteusStochasticVariable):
         )
         if method == "reduce" and "where" in kwargs:
             raise TypeError("Duplicate where argument")
-        if method == "reduce" and not (
-            isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)
-        ):
+        if method == "reduce" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
             kwargs["where"] = asnumpy(raw_mask) if is_host else to_backend(raw_mask)
-        if method not in ("reduce", "__call__") and not (
-            isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)
-        ):
+        if method not in ("reduce", "__call__") and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
             raise TypeError("where is only supported for elementwise ufuncs or reduce")
 
         # Calculate without touching destinations. Invalid shapes or ufunc errors
