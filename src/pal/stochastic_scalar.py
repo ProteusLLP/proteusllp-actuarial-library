@@ -138,7 +138,6 @@ class StochasticScalar(ProteusStochasticVariable):
             or any(host_values(x.values if isinstance(x, StochasticScalar) else x) for x in inputs)
             or host_values(raw_mask)
         )
-        backend = np if is_host else xp
         operation = getattr(np, ufunc.__name__, ufunc) if is_host else ufunc
         prepared_inputs = tuple(
             asnumpy(x.values) if is_host and isinstance(x, StochasticScalar)
@@ -284,7 +283,9 @@ class StochasticScalar(ProteusStochasticVariable):
             return scalar_result
         if getattr(calculated, "ndim", None) != 1:
             return calculated
-        if len(calculated) == self.n_sims and preserving:
+        if preserving:
+            if len(calculated) != self.n_sims:
+                raise ValueError("Stochastic result has incompatible n_sims")
             return self._wrap_result_with_coupling(calculated, sources)
         return StochasticScalar(calculated)
 
