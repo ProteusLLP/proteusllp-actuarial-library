@@ -115,14 +115,17 @@ def test_numpy_where_and_clip_preserve_all_scenario_dependencies() -> None:
     assert all(item.coupled_variable_group is condition.coupled_variable_group for item in (a, b, selected, clipped))
 
 
-@pytest.mark.parametrize("function", [
-    lambda x: np.sort(x),
-    lambda x: np.flip(x),
-    lambda x: np.roll(x, 1),
-    lambda x: np.cumsum(x),
-    lambda x: np.add.accumulate(x),
-    lambda x: np.add.reduceat(x, np.arange(x.n_sims)),
-])
+@pytest.mark.parametrize(
+    "function",
+    [
+        lambda x: np.sort(x),
+        lambda x: np.flip(x),
+        lambda x: np.roll(x, 1),
+        lambda x: np.cumsum(x),
+        lambda x: np.add.accumulate(x),
+        lambda x: np.add.reduceat(x, np.arange(x.n_sims)),
+    ],
+)
 def test_reordering_and_cumulative_operations_are_detached(function) -> None:
     source = StochasticScalar([3.0, 1.0, 4.0])
     result = function(source)
