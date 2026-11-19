@@ -224,7 +224,11 @@ class HyperExponential(DistributionBase):
         rng: RandomGenerator | None = None,
     ) -> StochasticScalar:
         """Generate samples and preserve component-parameter coupling."""
-        sources = tuple(value for value in self._component_inputs() if isinstance(value, StochasticScalar))
+        sources = tuple(
+            value
+            for value in (*self._params.values(), *self._component_inputs())
+            if isinstance(value, StochasticScalar)
+        )
         validate_stochastic_axes(sources, n_sims=config.n_sims if n_sims is None else n_sims)
         result = super().generate(n_sims=n_sims, rng=rng)
         couple_stochastic_results((result,), sources)
