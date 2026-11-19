@@ -79,97 +79,146 @@ class StochasticScalar(ProteusStochasticVariable):
         method: str,
         *inputs: t.Any,
         **kwargs: t.Any,
-    ) -> StochasticScalar:
-        """Override the __array_ufunc__ method to apply standard numpy functions.
+    ) -> t.Any:
+        """Apply NumPy ufuncs while respecting scenario axes and output ownership.
 
-        If there's a mix of different variable types in the inputs, delegate to the
-        more specialized variable type to handle the operation. Otherwise, extract
-        values from StochasticScalar objects and apply the ufunc directly.
-
-        Returns:
-            When delegating to another object's __array_ufunc__, the return type depends
-            on that object's implementation. When handling the operation directly,
-            returns a new StochasticScalar.
+        Elementwise outputs retain their scenario ancestry. Accumulations,
+        reductions and indexed reductions are order-dependent summaries, so
+        their outputs are detached. With `out=`, NumPy's original destination
+        object is returned and its coupling is updated only after a successful
+        calculation and write.
         """
-        # check if the input types to the function are types of ProteusVariables
-        # other than StochasticScalar
-        var_not_stochastic_scalar = [
-            type(x).__name__ == "ProteusVariable"
-            or isinstance(x, ProteusStochasticVariable)
-            and not isinstance(x, StochasticScalar)
-            for x in inputs
-        ]
+        other_variable = next(
+            (
+                value
+                for value in inputs
+                if type(value).__name__ == "ProteusVariable"
+                or (isinstance(value, ProteusStochasticVariable) and not isinstance(value, StochasticScalar))
+            ),
+            None,
+        )
+        if other_variable is not None:
+            return other_variable.__array_ufunc__(ufunc, method, *inputs, **kwargs)
 
-        if any(var_not_stochastic_scalar):
-            # call the __array_ufunc__ method of variable which is not StochasticScalar
-            #
-            var_pos = var_not_stochastic_scalar.index(True)
-            return inputs[var_pos].__array_ufunc__(ufunc, method, *inputs, **kwargs)
-        validate_stochastic_axes(arg for arg in inputs if isinstance(arg, StochasticScalar))
+        if method == "at":
+            raise NotImplementedError("In-place ufunc.at is unsupported on stochastic variables; use explicit values")
+        if method not in ("__call__", "reduce", "reduceat", "accumulate", "outer"):
+            return NotImplemented
+
+        raw_out = kwargs.pop("out", None)
+        destinations = raw_out if isinstance(raw_out, tuple) else (raw_out,) if raw_out is not None else ()
+        if destinations and len(destinations) != (ufunc.nout if method == "__call__" else 1):
+            raise ValueError("Number of ufunc output destinations does not match the operation")
+
+        where = kwargs.pop("where", True)
+        stochastic_inputs = tuple(value for value in inputs if isinstance(value, StochasticScalar))
+        mask_source = (where,) if isinstance(where, StochasticScalar) else ()
+        output_sources = tuple(value for value in destinations if isinstance(value, StochasticScalar))
+        validate_stochastic_axes((self, *stochastic_inputs, *mask_source, *output_sources))
+
+        # Only elementwise operations preserve scenario alignment in the output.
+        if method != "__call__" and output_sources:
+            raise ValueError("A stochastic out= destination requires a scenario-preserving elementwise operation")
+
+        raw_mask = where.values if isinstance(where, StochasticScalar) else where
+        if not isinstance(raw_mask, (bool, np.bool_)):
+            mask_shape = np.shape(raw_mask)
+            mask_dtype = np.asarray(asnumpy(raw_mask)).dtype
+            if mask_dtype.kind != "b":
+                raise TypeError("where must be a boolean mask")
+            if mask_shape not in ((), (self.n_sims,)):
+                raise ValueError("where mask has incompatible n_sims")
+        if method == "__call__" and not destinations and not (
+            isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)
+        ):
+            raise ValueError("Masked stochastic ufuncs require out= to define unselected simulation values")
+
         is_host = (
             host_values(self.values)
             or any(host_values(x.values if isinstance(x, StochasticScalar) else x) for x in inputs)
-            or host_values(kwargs.get("where"))
+            or host_values(raw_mask)
         )
-        _inputs = tuple(
-            (asnumpy(x.values) if isinstance(x, StochasticScalar) else asnumpy(x) if isinstance(x, xp.ndarray) else x)
-            if is_host
-            else (x.values if isinstance(x, StochasticScalar) else to_backend(x))
+        backend = np if is_host else xp
+        operation = getattr(np, ufunc.__name__, ufunc) if is_host else ufunc
+        prepared_inputs = tuple(
+            asnumpy(x.values) if is_host and isinstance(x, StochasticScalar)
+            else asnumpy(x) if is_host and isinstance(x, xp.ndarray)
+            else x.values if isinstance(x, StochasticScalar)
+            else to_backend(x)
             for x in inputs
         )
-        if is_host:
-            ufunc = getattr(np, ufunc.__name__, ufunc)
-        out = kwargs.get("out", ())
-        out_arrays: tuple[t.Any, ...] = ()
-        if out:
-            out_arrays = tuple(x.values if isinstance(x, StochasticScalar) else x for x in out)
-            kwargs["out"] = (
-                tuple(asnumpy(x).copy() if isinstance(x, xp.ndarray) else x for x in out_arrays)
-                if is_host
-                else out_arrays
-            )
-        if is_host and "where" in kwargs:
-            mask = kwargs["where"]
-            kwargs["where"] = asnumpy(mask.values if isinstance(mask, StochasticScalar) else mask)
+        if method == "reduce" and "where" in kwargs:
+            raise TypeError("Duplicate where argument")
+        if method == "reduce" and not (
+            isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)
+        ):
+            kwargs["where"] = asnumpy(raw_mask) if is_host else to_backend(raw_mask)
+        if method not in ("reduce", "__call__") and not (
+            isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)
+        ):
+            raise TypeError("where is only supported for elementwise ufuncs or reduce")
 
-        # Handle reduction operations - return scalars directly
+        # Calculate without touching destinations. Invalid shapes or ufunc errors
+        # must not mutate data or join coupling groups.
+        calculated = getattr(operation, method)(*prepared_inputs, **kwargs)
+        values = calculated if isinstance(calculated, tuple) else (calculated,)
+
+        if destinations:
+            if any(value is not None for value in destinations) and method == "outer":
+                # Outer products have no one-dimensional scenario result.
+                if any(isinstance(value, StochasticScalar) for value in destinations):
+                    raise ValueError("outer outputs cannot be stochastic variables")
+            if method == "__call__" and len(values) != len(destinations):
+                raise ValueError("Unexpected number of ufunc results")
+            casting = kwargs.get("casting", "same_kind")
+            for value, destination in zip(values, destinations):
+                if destination is None:
+                    continue
+                raw_dest = destination.values if isinstance(destination, StochasticScalar) else destination
+                if not isinstance(raw_dest, (np.ndarray, xp.ndarray)):
+                    raise TypeError("out= must contain NumPy/CuPy arrays or stochastic variables")
+                if raw_dest.shape != np.shape(value):
+                    raise ValueError("out= has an incompatible result shape")
+                if not np.can_cast(value.dtype, raw_dest.dtype, casting=casting):
+                    raise TypeError("out= cannot represent the result with the requested casting")
+
+            result_leaves: list[t.Any] = []
+            for value, destination in zip(values, destinations):
+                if destination is None:
+                    result_leaves.append(StochasticScalar(value) if method == "__call__" else value)
+                    continue
+                raw_dest = destination.values if isinstance(destination, StochasticScalar) else destination
+                copy_backend = np if isinstance(raw_dest, np.ndarray) else xp
+                copy_value = asnumpy(value) if copy_backend is np else xp.asarray(value)
+                copy_mask = (
+                    asnumpy(raw_mask)
+                    if copy_backend is np and not isinstance(raw_mask, (bool, np.bool_))
+                    else xp.asarray(raw_mask)
+                    if copy_backend is xp and not isinstance(raw_mask, (bool, np.bool_))
+                    else raw_mask
+                )
+                copy_backend.copyto(raw_dest, copy_value, where=copy_mask, casting=casting)
+                result_leaves.append(destination)
+            coupled_results = tuple(value for value in result_leaves if isinstance(value, StochasticScalar))
+            if coupled_results:
+                couple_stochastic_results(
+                    coupled_results, (self, *stochastic_inputs, *mask_source), n_sims=self.n_sims
+                )
+            result = tuple(result_leaves) if len(result_leaves) > 1 else result_leaves[0]
+            return result
+
+        if method == "__call__":
+            return self._wrap_result_with_coupling(calculated, (self, *stochastic_inputs, *mask_source))
+        if method == "outer":
+            return calculated
         if method == "reduce":
-            result = getattr(ufunc, method)(*_inputs, **kwargs)
-            if out and is_host:
-                for destination, buffer in zip(out_arrays, kwargs["out"]):
-                    if destination is not buffer:
-                        destination[...] = xp.asarray(buffer) if isinstance(destination, xp.ndarray) else buffer
-
-            # Check if result should be wrapped (keepdims=True or axis specified)
-            keepdims = kwargs.get("keepdims", False)
-            axis = kwargs.get("axis", None)
-
-            if keepdims or (axis is not None and hasattr(result, "shape") and result.shape):
-                if getattr(result, "ndim", None) == 1 and len(result) != self.n_sims:
-                    return StochasticScalar(result)
-                return self._wrap_result_with_coupling(result, inputs)
-
-            # Standard reduction returns scalar directly
-            return scalar_or_array(result)
-
-        # Handle reduceat/accumulate operations - return wrapped arrays
-        if method in ("reduceat", "accumulate"):
-            result = getattr(ufunc, method)(*_inputs, **kwargs)
-            if out and is_host:
-                for destination, buffer in zip(out_arrays, kwargs["out"]):
-                    if destination is not buffer:
-                        destination[...] = xp.asarray(buffer) if isinstance(destination, xp.ndarray) else buffer
-            if method == "reduceat" and getattr(result, "ndim", None) == 1 and len(result) != self.n_sims:
-                return StochasticScalar(result)
-            return self._wrap_result_with_coupling(result, inputs)
-
-        # Handle regular element-wise operations
-        result = getattr(ufunc, method)(*_inputs, **kwargs)
-        if out and is_host:
-            for destination, buffer in zip(out_arrays, kwargs["out"]):
-                if destination is not buffer:
-                    destination[...] = xp.asarray(buffer) if isinstance(destination, xp.ndarray) else buffer
-        return self._wrap_result_with_coupling(result, inputs)
+            # Even keepdims=True does not retain the scenario dimension.
+            return scalar_or_array(calculated)
+        if method == "reduceat":
+            # Its output positions denote reduction segments, not simulations.
+            return StochasticScalar(calculated) if getattr(calculated, "ndim", None) == 1 else calculated
+        # accumulate depends on sequence order; it cannot be re-ordered with inputs.
+        return StochasticScalar(calculated) if getattr(calculated, "ndim", None) == 1 else calculated
 
     def __array_function__(
         self, func: t.Callable[..., t.Any], _: t.Any, args: t.Any, kwargs: t.Any
