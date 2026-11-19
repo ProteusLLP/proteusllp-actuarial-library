@@ -47,7 +47,7 @@ class StochasticScalar(ProteusStochasticVariable):
         if isinstance(values, StochasticScalar):
             self.values = values.values
             self.n_sims = values.n_sims
-            self.coupled_variable_group.merge(values.coupled_variable_group)
+            couple_stochastic_results((self,), (values,))
             return
 
         invalid_type_message = f"Type of values must be a sequence or array. Found {type(values).__name__}"
@@ -262,7 +262,7 @@ class StochasticScalar(ProteusStochasticVariable):
                 result = type(self)(self.values[indices])
 
             if result.n_sims == index.n_sims:
-                result.coupled_variable_group.merge(index.coupled_variable_group)
+                couple_stochastic_results((result,), (index,))
             return result
 
         raise TypeError(
