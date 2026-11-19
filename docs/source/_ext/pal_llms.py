@@ -14,7 +14,7 @@ The PyPI distribution is `proteusllp-actuarial-library`; import it in Python as 
 ## Start here
 
 - [PAL quick reference for coding assistants]({DOCS_URL}ai_assistants.html): compact mapping from modelling intentions to the public PAL API.
-- [Actuarial recipe cookbook]({DOCS_URL}cookbook.html): tested, executable models searchable from an installed PAL package.
+- [Actuarial recipes]({DOCS_URL}llms-full.txt): tested, executable PAL models included below and searchable using `pal.api.recipes()` and `pal.api.recipe(id)`.
 - [Getting started]({DOCS_URL}tutorials/getting_started.html): core simulation workflow.
 - [API reference]({DOCS_URL}api/modules.html): generated public API documentation.
 
@@ -57,6 +57,13 @@ def _write_llms_files(app: Any, exception: Optional[Exception]) -> None:
             continue
         source = source_path.read_text(encoding="utf-8")
         sections.append(f"\n\n---\n\n## Source: {docname}\n\n{source}")
+
+    from pal import api
+
+    sections.append("\n\n# Executable PAL actuarial recipes\n")
+    for entry in api.recipes():
+        recipe = api.recipe(entry["id"])
+        sections.append(f'\n\n## {entry["title"]}\n\n{entry["summary"]}\n\n```python\n{recipe["code"]}\n```\n')
 
     (outdir / "llms-full.txt").write_text("".join(sections), encoding="utf-8")
 
