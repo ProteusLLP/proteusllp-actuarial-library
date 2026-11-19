@@ -595,12 +595,9 @@ class FreqSevSims(_ProteusStochasticVariable):
                 raise TypeError("where must be a boolean mask")
             if mask_shape not in ((), (len(self.values),)):
                 raise ValueError("Event where mask has incompatible event count")
-        if (
-            method == "__call__"
-            and not destinations
-            and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask))
-        ):
-            raise ValueError("Masked event-wise ufuncs require out= to define unselected events")
+        if method == "__call__" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
+            if not destinations or any(destination is None for destination in destinations):
+                raise ValueError("Masked event-wise ufuncs require out= for every output to define unselected events")
 
         host = (
             host_values(self.values)
@@ -687,7 +684,14 @@ class FreqSevSims(_ProteusStochasticVariable):
             raise NotImplementedError(f"Function {func.__name__} not supported")
 
         kwargs = dict(kwargs)
+        output_index = 2 if func is np.round else 3 if func in (np.sum, np.mean) else None
+        has_keyword_out = "out" in kwargs
         output = kwargs.pop("out", None)
+        if output_index is not None and len(args) > output_index:
+            if has_keyword_out:
+                raise TypeError("out= was supplied both positionally and by keyword")
+            output = args[output_index]
+            args = (*args[:output_index], None, *args[output_index + 1 :])
         if func is not np.array_equal:
             self._validate_event_layout(*args, output)
         sources = (
@@ -704,10 +708,17 @@ class FreqSevSims(_ProteusStochasticVariable):
             raise ValueError("Event-wise out= requires an event-aligned FreqSevSims result")
 
         if func is np.mean and len(args) == 1 and args[0] is self:
+            mean_result = func(self.aggregate(), **kwargs)
             if output is None:
-                return func(self.aggregate(), **kwargs)
-            # Do not write to a stochastic event array during a scalar reduction.
-            raise ValueError("Mean reduction requires a scalar or raw-array destination")
+                return mean_result
+            if not isinstance(output, (np.ndarray, xp.ndarray)) or output.shape != ():
+                raise ValueError("Mean reduction requires a scalar raw-array destination")
+            backend = np if isinstance(output, np.ndarray) else xp
+            mean_value = asnumpy(mean_result) if backend is np else xp.asarray(mean_result)
+            if not np.can_cast(mean_value.dtype, output.dtype, casting="same_kind"):
+                raise TypeError("out= cannot represent the mean")
+            backend.copyto(output, mean_value, casting="same_kind")
+            return output
 
         host = host_values(self.values) or any(
             host_values(value.values if isinstance(value, (FreqSevSims, StochasticScalar)) else value)
@@ -724,14 +735,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         if func is np.where:
             parsed_args = ((np if host else xp).asarray(parsed_args[0]), *parsed_args[1:])
         result = func(*parsed_args, **parsed_kwargs)
-        scalar_result = scalar_or_array(result)
-        if scalar_result is not result:
-            return scalar_result
-        if isinstance(result, (np.number, np.bool_, bool)) or np.isscalar(result):
-            return result
-        if getattr(result, "ndim", None) != 1:
-            return result
-        if preserving and len(result) != len(self.values):
+        if preserving and getattr(result, "ndim", None) == 1 and len(result) != len(self.values):
             raise ValueError("Event-wise result has incompatible event count")
         if output is not None:
             destination = output.values if isinstance(output, FreqSevSims) else output
@@ -747,6 +751,13 @@ class FreqSevSims(_ProteusStochasticVariable):
             if isinstance(output, FreqSevSims):
                 couple_stochastic_results((output,), sources, n_sims=self.n_sims)
             return output
+        scalar_result = scalar_or_array(result)
+        if scalar_result is not result:
+            return scalar_result
+        if isinstance(result, (np.number, np.bool_, bool)) or np.isscalar(result):
+            return result
+        if getattr(result, "ndim", None) != 1:
+            return result
         if not preserving:
             return result
         new_freq_sev = FreqSevSims(self.sim_index, result, self.n_sims)
