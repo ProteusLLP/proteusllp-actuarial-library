@@ -486,7 +486,10 @@ class StochasticScalar(ProteusStochasticVariable):
                 )
             return StochasticScalar(value)
 
-        prepared = tuple(prepare(value) for value in result_array) if isinstance(result_array, tuple) else prepare(result_array)
+        if isinstance(result_array, tuple):
+            prepared = tuple(prepare(value) for value in result_array)
+        else:
+            prepared = prepare(result_array)
         leaves = prepared if isinstance(prepared, tuple) else (prepared,)
         result_leaves = tuple(value for value in leaves if isinstance(value, StochasticScalar))
         if result_leaves:
