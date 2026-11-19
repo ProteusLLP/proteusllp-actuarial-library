@@ -12,6 +12,7 @@ from pal import FreqSevSims, StochasticScalar
 from pal._maths import asnumpy
 from pal.couplings import couple_stochastic_results
 from pal.distributions import Gamma, HyperGeometric, Normal
+from pal.hyperexponential import HyperExponential
 from pal.multivariate_distributions import MultivariateNormal, Wishart
 
 
@@ -152,3 +153,16 @@ def test_divmod_mismatched_axes_do_not_merge() -> None:
         divmod(numerator, divisor)
     assert numerator.coupled_variable_group is first_group
     assert divisor.coupled_variable_group is second_group
+
+
+def test_mixture_prevalidates_all_stochastic_parameter_axes_before_rng_use() -> None:
+    rate = StochasticScalar([1.0, 2.0, 3.0])
+    location = StochasticScalar([0.0])
+    mixture = HyperExponential(weights=[0.3, 0.7], rates=[rate, 2.0], loc=location)
+    rng = np.random.default_rng(270)
+
+    with pytest.raises(ValueError, match="matching n_sims"):
+        mixture.generate(3, rng)
+
+    assert rng.random() == np.random.default_rng(270).random()
+    assert rate.coupled_variable_group is not location.coupled_variable_group
