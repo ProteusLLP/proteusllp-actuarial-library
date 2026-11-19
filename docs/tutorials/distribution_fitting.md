@@ -35,7 +35,7 @@ assert gamma_fit.parameters["alpha"] > 0
 assert gamma_fit.parameters["theta"] > 0
 ```
 
-The Gamma parameters are `alpha` (shape) and `theta` (scale). The
+The Gamma parameters are \(\alpha\) (shape) and \(\theta\) (scale). The
 fitting result also provides AICc, the observation count and the convergence
 status. Here MLE uses a numerical optimisation; other distributions such as
 an unconstrained Normal or a Poisson have analytical MLEs.
@@ -117,15 +117,12 @@ observed_losses = np.minimum(reported_losses, policy_limit)
 lognormal_fit = LogNormal.fit(
     observed_losses, threshold=reporting_threshold, censored=censored
 )
-gamma_large_loss_fit = Gamma.fit(
-    observed_losses, threshold=reporting_threshold, censored=censored
-)
 gpd_fit = GPD.fit(
     observed_losses, threshold=reporting_threshold, censored=censored
 )
 
 assert lognormal_fit.n_censored == int(censored.sum())
-assert gamma_large_loss_fit.n_observations == len(reported_losses)
+assert gpd_fit.n_observations == len(reported_losses)
 assert np.all(observed_losses <= policy_limit)
 ```
 
@@ -133,16 +130,16 @@ A censored observation records the policy limit, not an estimated ultimate
 loss. PAL fits a conditional likelihood for the reporting threshold and uses
 the right-censoring indicators for losses reaching the policy limit.
 
-The fitted curves describe **pre-limit claim severity**. A policy-limited
-payment distribution must be obtained by applying the limit to that fitted
-severity model.
+The fitted curves describe **pre-limit claim severity above the reporting
+threshold**. They do not identify the distribution below that threshold.
+A policy-limited payment distribution must be obtained by applying the
+limit to the relevant ground-up severity model.
 
 <!--pytest-codeblocks:cont-->
 
 ```python
 candidate_fits = {
     LogNormal: lognormal_fit,
-    Gamma: gamma_large_loss_fit,
     GPD: gpd_fit,
 }
 preferred_class = min(candidate_fits, key=lambda cls: candidate_fits[cls].aic)
@@ -160,10 +157,12 @@ is reliable.
 
 ## 3. Examine the tail with a mean-excess plot
 
-For a ground-up claim severity `X`, the theoretical mean excess above
-attachment `d` is
+For a pre-limit claim severity \(X\), the theoretical mean excess above
+attachment \(d\) is
 
-`e(d) = \mathbb{E}[X-d \mid X>d].`
+```{math}
+e(d) = \mathbb{E}[X-d \mid X>d].
+```
 
 An empirical mean-excess plot compares the average amount by which observed
 claims exceed a range of thresholds. A roughly increasing linear trend is
@@ -219,10 +218,12 @@ properly account for censoring. Above the policy limit the fitted mean
 excess is model extrapolation, so its sensitivity to the assumed family
 and sample size is important.
 
-For a ground-up loss `X`, attachment `d`, and fitted survival probability,
+For a pre-limit loss \(X\), attachment \(d\), and fitted survival probability,
 the expected unlimited excess loss **per claim** is
 
-`\mathbb{E}[(X-d)_+] = \Pr(X>d)\,e(d).`
+```{math}
+\mathbb{E}[(X-d)_+] = \Pr(X>d)\,e(d).
+```
 
 <!--pytest-codeblocks:cont-->
 
