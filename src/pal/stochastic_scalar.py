@@ -222,52 +222,71 @@ class StochasticScalar(ProteusStochasticVariable):
 
     def __array_function__(
         self, func: t.Callable[..., t.Any], _: t.Any, args: t.Any, kwargs: t.Any
-    ) -> np.number[t.Any] | StochasticScalar:
-        """Handle numpy array functions for StochasticScalar objects.
+    ) -> t.Any:
+        """Apply NumPy functions with conservative scenario-alignment semantics.
 
-        Args:
-            func: The numpy function being called
-            types: Types involved in the operation
-            args: Arguments passed to the function
-            kwargs: Keyword arguments passed to the function
-
-        Returns:
-            Either a scalar result or new StochasticScalar object
-
-        Raises:
-            NotImplementedError: If the function is not supported
+        Only elementwise functions keep coupling. Sorting, rolling, cumulative
+        functions and selections of a different shape create detached results,
+        even if the final array happens to have `n_sims` entries.
         """
-        validate_stochastic_axes(arg for arg in args if isinstance(arg, StochasticScalar))
-        # Extract PAL values and move any NumPy operands to the active backend.
+        if func in (np.copyto, np.put, np.putmask, np.place):
+            raise NotImplementedError("Use a controlled stochastic operation instead of raw NumPy mutation")
+
+        kwargs = dict(kwargs)
+        output = kwargs.pop("out", None)
+        preserving = func in (np.where, np.clip, np.round, np.around, np.nan_to_num, np.isclose)
+        # The one-argument form of where returns positions, not scenario values.
+        if func is np.where and len(args) != 3:
+            preserving = False
+        if isinstance(output, StochasticScalar) and not preserving:
+            raise ValueError("A stochastic out= destination requires a scenario-preserving function")
+
+        sources = (self, *(
+            arg for arg in (*args, *kwargs.values()) if isinstance(arg, StochasticScalar)
+        ))
+        targets = (output,) if isinstance(output, StochasticScalar) else ()
+        validate_stochastic_axes((*sources, *targets), n_sims=self.n_sims)
         is_host = host_values(self.values) or any(
-            host_values(x.values if isinstance(x, StochasticScalar) else x) for x in args
+            host_values(value.values if isinstance(value, StochasticScalar) else value)
+            for value in (*args, *kwargs.values())
         )
-        processed_args = tuple(
-            (asnumpy(x.values) if isinstance(x, StochasticScalar) else asnumpy(x) if isinstance(x, xp.ndarray) else x)
-            if is_host
-            else (x.values if isinstance(x, StochasticScalar) else to_backend(x))
-            for x in args
-        )
+
+        def unwrapped(value: t.Any) -> t.Any:
+            if isinstance(value, StochasticScalar):
+                return asnumpy(value.values) if is_host else value.values
+            if is_host and isinstance(value, xp.ndarray):
+                return asnumpy(value)
+            return value if is_host else to_backend(value)
+
+        parsed_args = tuple(unwrapped(value) for value in args)
+        parsed_kwargs = {key: unwrapped(value) for key, value in kwargs.items()}
         if func is np.where:
-            processed_args = ((np if is_host else xp).asarray(processed_args[0]), *processed_args[1:])
-        result = func(*processed_args, **kwargs)
+            parsed_args = ((np if is_host else xp).asarray(parsed_args[0]), *parsed_args[1:])
+        calculated = func(*parsed_args, **parsed_kwargs)
 
-        scalar_result = scalar_or_array(result)
-        if scalar_result is not result:
-            return scalar_result  # type: ignore[return-value]
-        if isinstance(result, (np.number, np.bool_, bool)) or np.isscalar(result):
-            return result  # type: ignore[return-value]
+        if output is not None:
+            destination = output.values if isinstance(output, StochasticScalar) else output
+            if not isinstance(destination, (np.ndarray, xp.ndarray)):
+                raise TypeError("out= must be a NumPy/CuPy array or StochasticScalar")
+            if destination.shape != np.shape(calculated):
+                raise ValueError("out= has an incompatible result shape")
+            if not np.can_cast(calculated.dtype, destination.dtype, casting="same_kind"):
+                raise TypeError("out= cannot represent the result")
+            destination_backend = np if isinstance(destination, np.ndarray) else xp
+            values = asnumpy(calculated) if destination_backend is np else xp.asarray(calculated)
+            destination_backend.copyto(destination, values, casting="same_kind")
+            if isinstance(output, StochasticScalar):
+                couple_stochastic_results((output,), sources, n_sims=self.n_sims)
+            return output
 
-        # A StochasticScalar is one-dimensional. Functions such as stack return
-        # higher-dimensional backend arrays and should remain arrays.
-        if getattr(result, "ndim", None) != 1:
-            return result
-        if len(result) != self.n_sims:
-            if func is np.where:
-                raise ValueError("Stochastic result has incompatible n_sims")
-            # Length-changing summaries are independent of the source scenarios.
-            return StochasticScalar(result)
-        return self._wrap_result_with_coupling(result, args)
+        scalar_result = scalar_or_array(calculated)
+        if scalar_result is not calculated:
+            return scalar_result
+        if getattr(calculated, "ndim", None) != 1:
+            return calculated
+        if len(calculated) == self.n_sims and preserving:
+            return self._wrap_result_with_coupling(calculated, sources)
+        return StochasticScalar(calculated)
 
     def __array__(self, dtype: t.Any = None, copy: bool | None = None) -> npt.NDArray[t.Any]:
         """Convert the StochasticScalar to a numpy array.
