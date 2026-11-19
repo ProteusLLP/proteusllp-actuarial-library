@@ -14,7 +14,8 @@ import typing as t
 # third party
 import numpy as np
 
-from ._maths import asnumpy, xp
+from ._maths import asnumpy as asnumpy
+from ._maths import xp
 
 
 def exp(x: t.Any) -> t.Any:
