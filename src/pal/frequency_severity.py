@@ -707,7 +707,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         if isinstance(output, _ProteusStochasticVariable) and (not preserving or not isinstance(output, FreqSevSims)):
             raise ValueError("Event-wise out= requires an event-aligned FreqSevSims result")
 
-        if func is np.mean and len(args) == 1 and args[0] is self:
+        if func is np.mean and args and args[0] is self and all(value is None for value in args[1:]):
             mean_result = func(self.aggregate(), **kwargs)
             if output is None:
                 return mean_result
