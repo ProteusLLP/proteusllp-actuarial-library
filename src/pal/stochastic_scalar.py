@@ -132,10 +132,14 @@ class StochasticScalar(ProteusStochasticVariable):
             if not destinations or any(destination is None for destination in destinations):
                 raise ValueError("Masked stochastic ufuncs require out= for every output to define unselected values")
 
+        masked_reduce = method == "reduce" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask))
         is_host = (
             host_values(self.values)
             or any(host_values(x.values if isinstance(x, StochasticScalar) else x) for x in inputs)
             or host_values(raw_mask)
+            # CuPy's ufunc.reduce does not accept where=. Operations with a
+            # neutral identity can mask natively; others need NumPy semantics.
+            or (masked_reduce and ufunc.identity is None)
         )
         operation = getattr(np, ufunc.__name__, ufunc) if is_host else ufunc
 
@@ -149,8 +153,13 @@ class StochasticScalar(ProteusStochasticVariable):
         prepared_inputs = tuple(prepare_input(value) for value in inputs)
         if method == "reduce" and "where" in kwargs:
             raise TypeError("Duplicate where argument")
-        if method == "reduce" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
-            kwargs["where"] = asnumpy(raw_mask) if is_host else to_backend(raw_mask)
+        if masked_reduce:
+            if not is_host and ufunc.identity is not None:
+                # Skipped elements contribute the neutral element. This
+                # preserves CuPy device residency without unsupported where=.
+                prepared_inputs = (xp.where(raw_mask, prepared_inputs[0], ufunc.identity), *prepared_inputs[1:])
+            else:
+                kwargs["where"] = asnumpy(raw_mask) if is_host else to_backend(raw_mask)
         if method not in ("reduce", "__call__") and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
             raise TypeError("where is only supported for elementwise ufuncs or reduce")
 
