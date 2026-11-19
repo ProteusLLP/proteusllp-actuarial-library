@@ -30,6 +30,9 @@ Each record in an evaluation-results JSONL file uses:
 ```
 
 Compute a reproducible aggregate report using:
+
+<!--pytest-codeblocks:skip-->
+
 ```bash
 python scripts/score_ai_evals.py evals/results.jsonl
 ```
