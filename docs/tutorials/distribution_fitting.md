@@ -20,8 +20,8 @@ distribution function (CDF) with the empirical CDF.
 import numpy as np
 import plotly.graph_objects as go
 
-from pal import asnumpy
 from pal.distributions import Gamma
+from pal.maths import asnumpy
 
 rng = np.random.default_rng(42)
 losses = rng.gamma(shape=2.8, scale=35_000, size=500)
