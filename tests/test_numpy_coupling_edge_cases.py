@@ -24,7 +24,6 @@ def test_masked_scalar_reduce_writes_the_scalar_out_not_a_scenario_mask() -> Non
     assert mask.coupled_variable_group is not original_group
 
 
-
 def test_masked_event_reduce_uses_event_mask_and_scalar_out() -> None:
     events = FreqSevSims([0, 0, 2], [2.0, 3.0, 4.0], 3)
     mask = StochasticScalar([True, False, False])
