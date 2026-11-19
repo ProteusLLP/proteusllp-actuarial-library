@@ -24,6 +24,21 @@ def test_masked_scalar_reduce_writes_the_scalar_out_not_a_scenario_mask() -> Non
     assert mask.coupled_variable_group is not original_group
 
 
+
+def test_masked_event_reduce_uses_event_mask_and_scalar_out() -> None:
+    events = FreqSevSims([0, 0, 2], [2.0, 3.0, 4.0], 3)
+    mask = StochasticScalar([True, False, False])
+    destination = np.array(-1.0)
+    original_group = events.coupled_variable_group
+
+    returned = np.add.reduce(events, where=mask, out=destination)
+
+    assert returned is destination
+    assert destination.item() == 5.0
+    assert events.coupled_variable_group is original_group
+    assert mask.coupled_variable_group is not original_group
+
+
 def test_masked_multioutput_scalar_requires_every_destination() -> None:
     source = StochasticScalar([1.25, 2.5, 3.75])
     existing = StochasticScalar([-5.0, -5.0, -5.0])
