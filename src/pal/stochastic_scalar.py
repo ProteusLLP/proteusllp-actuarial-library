@@ -128,17 +128,18 @@ class StochasticScalar(ProteusStochasticVariable):
                 raise TypeError("where must be a boolean mask")
             if mask_shape not in ((), (self.n_sims,)):
                 raise ValueError("where mask has incompatible n_sims")
-        if (
-            method == "__call__"
-            and not destinations
-            and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask))
-        ):
-            raise ValueError("Masked stochastic ufuncs require out= to define unselected simulation values")
+        if method == "__call__" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
+            if not destinations or any(destination is None for destination in destinations):
+                raise ValueError("Masked stochastic ufuncs require out= for every output to define unselected values")
 
+        masked_reduce = method == "reduce" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask))
         is_host = (
             host_values(self.values)
             or any(host_values(x.values if isinstance(x, StochasticScalar) else x) for x in inputs)
             or host_values(raw_mask)
+            # CuPy's ufunc.reduce does not accept where=. Operations with a
+            # neutral identity can mask natively; others need NumPy semantics.
+            or (masked_reduce and ufunc.identity is None)
         )
         operation = getattr(np, ufunc.__name__, ufunc) if is_host else ufunc
 
@@ -152,8 +153,16 @@ class StochasticScalar(ProteusStochasticVariable):
         prepared_inputs = tuple(prepare_input(value) for value in inputs)
         if method == "reduce" and "where" in kwargs:
             raise TypeError("Duplicate where argument")
-        if method == "reduce" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
-            kwargs["where"] = asnumpy(raw_mask) if is_host else to_backend(raw_mask)
+        if masked_reduce:
+            if not is_host and ufunc.identity is not None:
+                # Skipped elements contribute the neutral element. This
+                # preserves CuPy device residency without unsupported where=.
+                prepared_inputs = (
+                    xp.where(to_backend(raw_mask), prepared_inputs[0], ufunc.identity),
+                    *prepared_inputs[1:],
+                )
+            else:
+                kwargs["where"] = asnumpy(raw_mask) if is_host else to_backend(raw_mask)
         if method not in ("reduce", "__call__") and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
             raise TypeError("where is only supported for elementwise ufuncs or reduce")
 
@@ -189,13 +198,17 @@ class StochasticScalar(ProteusStochasticVariable):
                 raw_dest = destination.values if isinstance(destination, StochasticScalar) else destination
                 copy_backend = np if isinstance(raw_dest, np.ndarray) else xp
                 copy_value = asnumpy(value) if copy_backend is np else xp.asarray(value)
-                copy_mask = (
-                    asnumpy(raw_mask)
-                    if copy_backend is np and not isinstance(raw_mask, (bool, np.bool_))
-                    else xp.asarray(raw_mask)
-                    if copy_backend is xp and not isinstance(raw_mask, (bool, np.bool_))
-                    else raw_mask
-                )
+                if method != "__call__":
+                    # The reduction's where= selects inputs, not output positions.
+                    copy_mask = True
+                else:
+                    copy_mask = (
+                        asnumpy(raw_mask)
+                        if copy_backend is np and not isinstance(raw_mask, (bool, np.bool_))
+                        else xp.asarray(raw_mask)
+                        if copy_backend is xp and not isinstance(raw_mask, (bool, np.bool_))
+                        else raw_mask
+                    )
                 copy_backend.copyto(raw_dest, copy_value, where=copy_mask, casting=casting)
                 result_leaves.append(destination)
             coupled_results = tuple(value for value in result_leaves if isinstance(value, StochasticScalar))
@@ -228,7 +241,20 @@ class StochasticScalar(ProteusStochasticVariable):
             raise NotImplementedError("Use a controlled stochastic operation instead of raw NumPy mutation")
 
         kwargs = dict(kwargs)
+        if func is np.nan_to_num and not kwargs.get("copy", args[1] if len(args) > 1 else True):
+            raise ValueError("np.nan_to_num(copy=False) would mutate stochastic values without a controlled operation")
+
+        # NumPy permits positional out= for several array functions. Extract it
+        # before unwrapping, otherwise NumPy writes directly into the stochastic
+        # destination and bypasses coupling management.
+        output_index = 3 if func in (np.clip, np.sum, np.mean) else 2 if func in (np.round, np.around) else None
+        has_keyword_out = "out" in kwargs
         output = kwargs.pop("out", None)
+        if output_index is not None and len(args) > output_index:
+            if has_keyword_out:
+                raise TypeError("out= was supplied both positionally and by keyword")
+            output = args[output_index]
+            args = (*args[:output_index], None, *args[output_index + 1 :])
         preserving = func in (np.where, np.clip, np.round, np.around, np.nan_to_num, np.isclose)
         # The one-argument form of where returns positions, not scenario values.
         if func is np.where and len(args) != 3:
