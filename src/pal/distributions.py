@@ -34,7 +34,7 @@ from ._compat import override
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
 from ._value_arrays import stochastic_array
 from .config import config
-from .couplings import validate_stochastic_axes
+from .couplings import couple_stochastic_results, validate_stochastic_axes
 from .fitting import fit_distribution, mean_excess
 from .fitting_remaining import fit_remaining, mean_excess_remaining
 from .qmc import (
@@ -80,8 +80,7 @@ def _special_call(function: t.Callable[..., t.Any], *args: t.Any) -> t.Any:
         if len(result) != stochastic_args[0].n_sims:
             raise ValueError("Special function result has incompatible n_sims")
         wrapped = StochasticScalar(result)
-        for arg in stochastic_args:
-            wrapped.coupled_variable_group.merge(arg.coupled_variable_group)
+        couple_stochastic_results((wrapped,), stochastic_args)
         return wrapped
     return scalar_or_array(result)
 
@@ -109,8 +108,7 @@ def _discrete_count_ppf(
         if getattr(result, "ndim", None) != 1 or len(result) != stochastic_args[0].n_sims:
             raise ValueError("Discrete quantile result has incompatible n_sims")
         wrapped = StochasticScalar(result)
-        for arg in stochastic_args:
-            wrapped.coupled_variable_group.merge(arg.coupled_variable_group)
+        couple_stochastic_results((wrapped,), stochastic_args)
         return wrapped
     return t.cast(ReturnType, scalar_or_array(result))
 
@@ -177,9 +175,7 @@ class DistributionBase:
         result = self._generate(n_sims, rng)
         if result.n_sims != n_sims:
             raise ValueError("Generated result has incompatible n_sims")
-        # Merge coupled variable groups from parameters if applicable.
-        for param in stochastic_params:
-            result.coupled_variable_group.merge(param.coupled_variable_group)
+        couple_stochastic_results((result,), stochastic_params, n_sims=n_sims)
         return result
 
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
