@@ -123,16 +123,16 @@ severity model. AIC alone is not a substitute for these checks.
 For a ground-up severity \(X\) and attachment \(d\), the theoretical
 mean excess is
 
-$$
+```{math}
 e(d) = \mathbb{E}[X-d \mid X>d].
-$$
+```
 
 Multiplying this conditional mean by the probability of exceeding the
 attachment gives the expected excess loss **per ground-up claim**:
 
-$$
+```{math}
 \mathbb{E}[(X-d)_+] = \Pr(X>d)\,e(d).
-$$
+```
 
 <!--pytest-codeblocks:cont-->
 
