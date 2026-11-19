@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import typing as t
 from dataclasses import dataclass
+from enum import Enum
 
 import numpy as np
 from scipy import integrate, optimize, special, stats
@@ -30,6 +31,17 @@ def _supported_families() -> tuple[type[DistributionBase], ...]:
     )
 
 
+class _FitMethod(str, Enum):
+    """Stable estimator labels; FitResult exposes their string values."""
+
+    MLE = "mle"
+    ANALYTIC = "analytic_mle"
+    PROFILE = "profile_mle"
+    INTEGER = "integer_mle"
+    ENDPOINT = "endpoint_mle"
+    MULTINOMIAL = "multinomial_mle"
+
+
 @dataclass(frozen=True)
 class FitResult(t.Generic[_T]):
     """Parameter estimates and likelihood diagnostics for a fitted distribution.
@@ -49,7 +61,7 @@ class FitResult(t.Generic[_T]):
     n_observations: int
     n_censored: int
     threshold: float
-    method: str = "mle"
+    method: str = _FitMethod.MLE.value
 
 
 def _prepare(
@@ -281,6 +293,7 @@ def fit_distribution(
         n_observations=len(x),
         n_censored=int(np.sum(c)),
         threshold=threshold,
+        method=_FitMethod.ANALYTIC.value if family is _distributions.Pareto else _FitMethod.MLE.value,
     )
 
 
@@ -735,6 +748,7 @@ def _fit_exponential(
         n_observations=len(x),
         n_censored=int(np.sum(censored)),
         threshold=threshold,
+        method=_FitMethod.ANALYTIC.value,
     )
 
 
