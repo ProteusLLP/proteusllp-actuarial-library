@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 import json
 import runpy
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -69,3 +71,43 @@ def test_evaluation_prompts_are_distinct_and_have_objective_rubrics() -> None:
         assert task["prompt"]
         assert task["required_behaviour"]
         assert task["failure_modes"]
+
+
+def test_offline_skill_installer_refuses_accidental_overwrite(tmp_path: Path) -> None:
+    """The agent skill can be copied into another project's skills directory."""
+    root = Path(__file__).resolve().parents[1]
+    installer = root / "scripts" / "install_pal_skill.py"
+    args = [sys.executable, str(installer), "--target", str(tmp_path)]
+
+    first = subprocess.run(args, capture_output=True, text=True, check=True)
+    installed = tmp_path / "pal-modeling" / "SKILL.md"
+    assert installed.is_file()
+    assert "Installed PAL modelling skill" in first.stdout
+
+    duplicate = subprocess.run(args, capture_output=True, text=True, check=False)
+    assert duplicate.returncode != 0
+    assert "already exists" in duplicate.stderr
+
+    subprocess.run([*args, "--force"], capture_output=True, text=True, check=True)
+    assert installed.is_file()
+
+
+def test_evaluation_score_script_reports_strict_pass_rate(tmp_path: Path) -> None:
+    """The scorecard is reproducible and never executes assistant code."""
+    root = Path(__file__).resolve().parents[1]
+    score_script = root / "scripts" / "score_ai_evals.py"
+    results = tmp_path / "results.jsonl"
+    records = [
+        {"task_id": "PAL-001", "runs": True, "public_api": True, "numerical": True, "semantics": True, "coupling": True},
+        {"task_id": "PAL-002", "runs": True, "public_api": True, "numerical": False, "semantics": True, "coupling": True},
+    ]
+    results.write_text("\\n".join(json.dumps(record) for record in records) + "\\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [sys.executable, str(score_script), str(results)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "Tasks assessed: 2" in completed.stdout
+    assert "pass: 1/2 (50.0%)" in completed.stdout
