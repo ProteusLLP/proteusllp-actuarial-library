@@ -22,6 +22,7 @@ from ._maths import xp as np
 
 # Local imports
 from .config import config
+from .couplings import couple_stochastic_results
 from .qmc import RandomizedQMCGenerator, _draw_active_scenarios, _draw_scenarios
 from .types import RandomGenerator
 
@@ -155,10 +156,8 @@ class Copula(ABC):
             "dim1",
             {f"{type(self).__name__}_{i}": StochasticScalar(sample) for i, sample in enumerate(uniform_samples)},
         )
-        # Merge all variables into the same coupled group
-        first_scalar = result[0]
-        for val in result:
-            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
+        couple_stochastic_results(result.values.values(), n_sims=len(result[0]))
+
         return result
 
     def _generate_base(
