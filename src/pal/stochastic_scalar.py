@@ -98,7 +98,7 @@ class StochasticScalar(ProteusStochasticVariable):
             None,
         )
         if other_variable is not None:
-            return other_variable.__array_ufunc__(ufunc, method, *inputs, **kwargs)
+            return t.cast(t.Any, other_variable).__array_ufunc__(ufunc, method, *inputs, **kwargs)
 
         if method == "at":
             raise NotImplementedError("In-place ufunc.at is unsupported on stochastic variables; use explicit values")
