@@ -122,8 +122,8 @@ class StochasticScalar(ProteusStochasticVariable):
 
         raw_mask = where.values if isinstance(where, StochasticScalar) else where
         if not isinstance(raw_mask, (bool, np.bool_)):
-            mask_shape = np.shape(raw_mask)
-            mask_dtype = np.asarray(asnumpy(raw_mask)).dtype
+            mask_shape = raw_mask.shape if hasattr(raw_mask, "shape") else np.shape(raw_mask)
+            mask_dtype = raw_mask.dtype if hasattr(raw_mask, "dtype") else np.asarray(raw_mask).dtype
             if mask_dtype.kind != "b":
                 raise TypeError("where must be a boolean mask")
             if mask_shape not in ((), (self.n_sims,)):
