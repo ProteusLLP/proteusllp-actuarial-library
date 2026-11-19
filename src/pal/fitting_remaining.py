@@ -19,8 +19,32 @@ if t.TYPE_CHECKING:
 
 _T = t.TypeVar("_T", bound="DistributionBase")
 
-_CONTINUOUS = {"Beta", "Normal", "Logistic", "NonCentralChiSquared", "StudentsT"}
-_DISCRETE = {"Poisson", "NegBinomial", "Binomial", "HyperGeometric", "Bernoulli"}
+def _continuous_families() -> frozenset[type[DistributionBase]]:
+    """Resolve PAL distribution classes when fitting is first invoked."""
+    from . import distributions as _distributions
+
+    return frozenset((
+        _distributions.Beta,
+        _distributions.Normal,
+        _distributions.Logistic,
+        _distributions.NonCentralChiSquared,
+        _distributions.StudentsT,
+    ))
+
+
+def _discrete_families() -> frozenset[type[DistributionBase]]:
+    """Resolve PAL distribution classes when fitting is first invoked."""
+    from . import distributions as _distributions
+
+    return frozenset((
+        _distributions.Poisson,
+        _distributions.NegBinomial,
+        _distributions.Binomial,
+        _distributions.HyperGeometric,
+        _distributions.Bernoulli,
+    ))
+
+
 
 
 def _input(
@@ -92,20 +116,21 @@ def fit_remaining(
     right censoring and left truncation. Other families use complete samples.
     Binomial and hypergeometric require known experiment sizes.
     """
-    family = distribution.__name__
-    if family in _CONTINUOUS:
+    from . import distributions as _distributions
+    family = distribution
+    if family in _continuous_families():
         return _fit_continuous(distribution, observations, weights, censored, threshold, options)
     if censored is not None or threshold is not None:
-        raise ValueError(f"{family} fitting does not support truncation or censoring")
-    if family in _DISCRETE:
+        raise ValueError(f"{family.__name__} fitting does not support truncation or censoring")
+    if family in _discrete_families():
         return _fit_discrete(distribution, observations, weights, options)
-    if family == "MBBEFD":
+    if family is _distributions.MBBEFD:
         return _fit_mbbefd(distribution, observations, weights, options)
-    if family == "Uniform":
+    if family is _distributions.Uniform:
         return _fit_uniform(distribution, observations, weights, options)
-    if family == "Categorical":
+    if family is _distributions.Categorical:
         return _fit_categorical(distribution, observations, weights, options)
-    raise ValueError(f"Unsupported PAL fitting family: {family}")
+    raise ValueError(f"Unsupported PAL fitting family: {family.__name__}")
 
 
 def _fit_continuous(
@@ -117,7 +142,8 @@ def _fit_continuous(
     options: dict[str, t.Any],
 ) -> FitResult[_T]:
     """Estimate a continuous family's parameters with a full likelihood."""
-    family = cls.__name__
+    from . import distributions as _distributions
+    family = cls
     x, w = _input(observations, weights)
     if not np.all(np.isfinite(x)):
         raise ValueError("continuous observations must be finite")
@@ -134,11 +160,11 @@ def _fit_continuous(
         if not np.isfinite(threshold) or np.any(x < threshold) or np.any((x == threshold) & ~c):
             raise ValueError("observations must exceed the truncation threshold")
 
-    loc = float(options.pop("loc", 0.0)) if family == "Beta" else 0.0
-    scale = float(options.pop("scale", 1.0)) if family == "Beta" else 1.0
+    loc = float(options.pop("loc", 0.0)) if family is _distributions.Beta else 0.0
+    scale = float(options.pop("scale", 1.0)) if family is _distributions.Beta else 1.0
     if options:
-        raise TypeError(f"Unsupported fitting options for {family}: {sorted(options)}")
-    if family == "Beta":
+        raise TypeError(f"Unsupported fitting options for {family.__name__}: {sorted(options)}")
+    if family is _distributions.Beta:
         if not np.isfinite(loc) or not np.isfinite(scale) or scale <= 0:
             raise ValueError("Beta support requires finite loc and positive scale")
         y = (x - loc) / scale
@@ -146,7 +172,7 @@ def _fit_continuous(
             raise ValueError("uncensored Beta observations must lie within its open support")
         if np.any(y[c] < 0) or np.any(y[c] >= 1):
             raise ValueError("Beta censoring points must lie below the upper support")
-    if family == "NonCentralChiSquared" and np.any(x < 0):
+    if family is _distributions.NonCentralChiSquared and np.any(x < 0):
         raise ValueError("noncentral chi-squared observations must be nonnegative")
 
     total = float(np.sum(w))
@@ -154,14 +180,14 @@ def _fit_continuous(
     variance = float(np.sum(w * (x - mu) ** 2) / total)
     std = max(np.sqrt(variance), 1e-6)
     if variance <= 0:
-        raise ValueError(f"{family} parameters cannot be fitted to a constant sample")
+        raise ValueError(f"{family.__name__} parameters cannot be fitted to a constant sample")
 
-    if family == "Normal" and not np.any(c) and threshold is None:
+    if family is _distributions.Normal and not np.any(c) and threshold is None:
         estimates = {"mu": mu, "sigma": std}
         ll = float(np.sum(w * stats.norm.logpdf(x, loc=mu, scale=std)))
         return _result(cls(**estimates), estimates, ll, w, k=2, method="analytic_mle")
 
-    if family == "Beta":
+    if family is _distributions.Beta:
         y = (x - loc) / scale
         center = float(np.average(y, weights=w))
         v = float(np.average((y - center) ** 2, weights=w))
@@ -175,7 +201,7 @@ def _fit_continuous(
         def frozen(p: dict[str, float]) -> t.Any:
             return stats.beta(a=p["alpha"], b=p["beta"], loc=loc, scale=scale)
 
-    elif family in {"Normal", "Logistic"}:
+    elif family in (_distributions.Normal, _distributions.Logistic):
         starts = [[mu, np.log(std)], [float(np.median(x)), np.log(std)]]
         k = 2
 
@@ -183,10 +209,10 @@ def _fit_continuous(
             return {"mu": float(raw[0]), "sigma": float(np.exp(raw[1]))}
 
         def frozen(p: dict[str, float]) -> t.Any:
-            rv = stats.norm if family == "Normal" else stats.logistic
+            rv = stats.norm if family is _distributions.Normal else stats.logistic
             return rv(loc=p["mu"], scale=p["sigma"])
 
-    elif family == "StudentsT":
+    elif family is _distributions.StudentsT:
         starts = [[np.log(v), mu, np.log(std)] for v in (2.0, 5.0, 12.0)]
         k = 3
 
@@ -197,8 +223,8 @@ def _fit_continuous(
             return stats.t(df=p["nu"], loc=p["mu"], scale=p["sigma"])
 
     else:
-        if family != "NonCentralChiSquared":
-            raise ValueError(f"Unsupported continuous fitting family: {family}")
+        if family is not _distributions.NonCentralChiSquared:
+            raise ValueError(f"Unsupported continuous fitting family: {family.__name__}")
         starts = [
             [np.log(max(mu / 2, 0.5)), np.sqrt(max(mu / 2, 0.1))],
             [np.log(max(mu, 0.5)), 0.0],
@@ -240,7 +266,7 @@ def _fit_continuous(
     ]
     best = min(fits, key=lambda v: float(v.fun))
     if best.fun >= 1e100:
-        raise RuntimeError(f"No finite {family} likelihood could be obtained")
+        raise RuntimeError(f"No finite {family.__name__} likelihood could be obtained")
     estimated = params(best.x)
     return _result(
         cls(**estimated),
@@ -272,26 +298,27 @@ def _fit_discrete(
     options: dict[str, t.Any],
 ) -> FitResult[_T]:
     """Fit counting distributions with required fixed experiment parameters."""
-    family = cls.__name__
+    from . import distributions as _distributions
+    family = cls
     x, w = _counts(observations, weights)
     mu = float(np.average(x, weights=w))
-    if family == "Poisson":
+    if family is _distributions.Poisson:
         pars: dict[str, t.Any] = {"mean": mu}
         rv = stats.poisson(mu)
         k = 1
         method = "analytic_mle"
-    elif family in {"Binomial", "Bernoulli"}:
-        n = 1 if family == "Bernoulli" else options.pop("n", None)
+    elif family in (_distributions.Binomial, _distributions.Bernoulli):
+        n = 1 if family is _distributions.Bernoulli else options.pop("n", None)
         if n is None or int(n) != n or n < 1:
             raise ValueError("Binomial fitting requires a positive integer trial count n")
         if np.any(x > n):
             raise ValueError("observed counts exceed the binomial trial count")
         p = mu / n
-        pars = {"p": p} if family == "Bernoulli" else {"n": int(n), "p": p}
+        pars = {"p": p} if family is _distributions.Bernoulli else {"n": int(n), "p": p}
         rv = stats.binom(n, p)
         k = 1
         method = "analytic_mle"
-    elif family == "NegBinomial":
+    elif family is _distributions.NegBinomial:
         if mu == 0:
             raise ValueError("negative binomial shape is unidentified for all-zero counts")
         variance = float(np.average((x - mu) ** 2, weights=w))
@@ -353,7 +380,7 @@ def _fit_discrete(
         method = "integer_mle"
 
     if options:
-        raise TypeError(f"Unsupported {family} fitting options: {sorted(options)}")
+        raise TypeError(f"Unsupported {family.__name__} fitting options: {sorted(options)}")
     ll = float(np.dot(w, rv.logpmf(x)))
     return _result(cls(**pars), pars, ll, w, k=k, method=method)
 
@@ -508,10 +535,11 @@ def mean_excess_remaining(
     Numeric support is required; dates and categories do not have a loss
     magnitude interpretation.
     """
-    family = type(distribution).__name__
-    allowed = _CONTINUOUS | _DISCRETE | {"MBBEFD", "Uniform"}
+    from . import distributions as _distributions
+    family = type(distribution)
+    allowed = _continuous_families() | _discrete_families() | {_distributions.MBBEFD, _distributions.Uniform}
     if family not in allowed:
-        raise ValueError(f"No numeric mean excess for {family}")
+        raise ValueError(f"No numeric mean excess for {family.__name__}")
     from .stochastic_scalar import StochasticScalar
 
     pars: dict[str, float] = {}
@@ -527,7 +555,7 @@ def mean_excess_remaining(
     for index, d in np.ndenumerate(ds):
         if not np.isfinite(d):
             continue
-        if family == "MBBEFD":
+        if family is _distributions.MBBEFD:
             model = t.cast(t.Any, distribution)
             if d >= 1:
                 continue
@@ -539,14 +567,14 @@ def mean_excess_remaining(
                 if survival > 0:
                     result[index] = expected * (1.0 - float(model.exposure_curve(d))) / survival
             continue
-        if family == "Uniform":
+        if family is _distributions.Uniform:
             a, b = pars["a"], pars["b"]
             if d < a:
                 result[index] = 0.5 * (a + b) - d
             elif d < b:
                 result[index] = 0.5 * (b - d)
             continue
-        if family == "Beta":
+        if family is _distributions.Beta:
             a, b, scale, loc = pars["alpha"], pars["beta"], pars["scale"], pars["loc"]
             u = (d - loc) / scale
             if u < 0:
@@ -556,17 +584,17 @@ def mean_excess_remaining(
                 moment = a / (a + b) * stats.beta.sf(u, a + 1, b)
                 result[index] = scale * moment / sf + loc - d if sf > 0 else np.nan
             continue
-        if family == "Normal":
+        if family is _distributions.Normal:
             mu, sigma = pars["mu"], pars["sigma"]
             z = (d - mu) / sigma
             result[index] = mu - d + sigma * np.exp(stats.norm.logpdf(z) - stats.norm.logsf(z))
             continue
-        if family == "Logistic":
+        if family is _distributions.Logistic:
             mu, sigma = pars["mu"], pars["sigma"]
             z = (d - mu) / sigma
             result[index] = sigma if z > 35 else sigma * np.logaddexp(0, -z) / special.expit(-z)
             continue
-        if family == "StudentsT":
+        if family is _distributions.StudentsT:
             nu, mu, sigma = pars["nu"], pars["mu"], pars["sigma"]
             if nu <= 1:
                 result[index] = np.inf
@@ -575,7 +603,7 @@ def mean_excess_remaining(
                 residual = np.exp(stats.t.logpdf(z, nu) - stats.t.logsf(z, nu))
                 result[index] = mu - d + sigma * (nu + z * z) / (nu - 1) * residual
             continue
-        if family == "NonCentralChiSquared":
+        if family is _distributions.NonCentralChiSquared:
             df, nonc = pars["df"], pars["nonc"]
             rv = stats.ncx2(df, nonc)
             if d < 0:
@@ -586,16 +614,16 @@ def mean_excess_remaining(
             continue
         # Counts: first truncated moment divided by survival.
         k = int(np.floor(d))
-        if family == "Poisson":
+        if family is _distributions.Poisson:
             lam = pars["mean"]
             sf = stats.poisson.sf(k, lam)
             moment = lam * stats.poisson.sf(k - 1, lam)
-        elif family in {"Binomial", "Bernoulli"}:
-            n = 1 if family == "Bernoulli" else int(pars["n"])
+        elif family in (_distributions.Binomial, _distributions.Bernoulli):
+            n = 1 if family is _distributions.Bernoulli else int(pars["n"])
             p = pars["p"]
             sf = stats.binom.sf(k, n, p)
             moment = n * p * stats.binom.sf(k - 1, n - 1, p)
-        elif family == "NegBinomial":
+        elif family is _distributions.NegBinomial:
             n, p = pars["n"], pars["p"]
             sf = stats.nbinom.sf(k, n, p)
             moment = n * (1 - p) / p * stats.nbinom.sf(k - 1, n + 1, p)
