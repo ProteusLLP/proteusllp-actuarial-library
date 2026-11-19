@@ -96,14 +96,15 @@ def test_event_sum_scalar_out_is_written_and_returned(positional: bool) -> None:
     assert events.coupled_variable_group is original_group
 
 
-def test_event_mean_scalar_out_uses_per_simulation_aggregate() -> None:
-    events = FreqSevSims([0, 0, 2], [2.0, 3.0, 4.0], 3)
+@pytest.mark.parametrize("positional", [False, True])
+def test_event_mean_scalar_out_uses_per_simulation_aggregate(positional: bool) -> None:
+    events = FreqSevSims([0, 0, 2, 2], [2.0, 3.0, 4.0, 5.0], 3)
     destination = np.array(-1.0)
 
-    returned = np.mean(events, out=destination)
+    returned = np.mean(events, None, None, destination) if positional else np.mean(events, out=destination)
 
     assert returned is destination
-    assert destination.item() == 3.0
+    assert destination.item() == pytest.approx(14.0 / 3.0)
 
 
 def test_non_scenario_positional_out_is_rejected_before_mutation() -> None:
