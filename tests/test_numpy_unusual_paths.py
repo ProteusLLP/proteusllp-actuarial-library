@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from pal import StochasticScalar
+from pal import FreqSevSims, StochasticScalar
 from pal._maths import asnumpy
 
 
@@ -151,3 +151,70 @@ def test_mutating_numpy_array_function_is_rejected() -> None:
     with pytest.raises(NotImplementedError, match="ufunc.at"):
         np.add.at(source, [0], 1)
     np.testing.assert_allclose(asnumpy(source.values), [1.0, 2.0, 3.0])
+
+
+def test_event_out_preserves_original_object_and_claim_layout() -> None:
+    events = FreqSevSims([0, 0, 2], [3.0, 4.0, 5.0], 3)
+    destination = FreqSevSims([0, 0, 2], [-1.0, -1.0, -1.0], 3)
+    mask = StochasticScalar([True, False, True])
+
+    returned = np.add(events, 2.0, out=destination, where=mask)
+
+    assert returned is destination
+    np.testing.assert_allclose(asnumpy(destination.values), [5.0, 6.0, 7.0])
+    assert destination.coupled_variable_group is events.coupled_variable_group
+    assert mask.coupled_variable_group is events.coupled_variable_group
+
+
+def test_event_multioutput_ufunc_links_both_results() -> None:
+    events = FreqSevSims([0, 1, 1], [1.25, 2.5, 3.75], 2)
+    fraction, integer = np.modf(events)
+
+    assert isinstance(fraction, FreqSevSims)
+    assert isinstance(integer, FreqSevSims)
+    assert fraction.coupled_variable_group is events.coupled_variable_group
+    assert integer.coupled_variable_group is events.coupled_variable_group
+    np.testing.assert_allclose(asnumpy(fraction.values), [0.25, 0.5, 0.75])
+    np.testing.assert_allclose(asnumpy(integer.values), [1.0, 2.0, 3.0])
+
+
+def test_event_multioutput_invalid_second_destination_is_atomic() -> None:
+    events = FreqSevSims([0, 1, 1], [1.25, 2.5, 3.75], 2)
+    first = FreqSevSims([0, 1, 1], [-1.0, -1.0, -1.0], 2)
+    second = FreqSevSims([0, 0, 1], [-1.0, -1.0, -1.0], 2)
+    original = first.coupled_variable_group
+
+    with pytest.raises(ValueError, match="Event simulation indices"):
+        np.modf(events, out=(first, second))
+
+    assert first.coupled_variable_group is original
+    assert events.coupled_variable_group is not original
+    np.testing.assert_array_equal(asnumpy(first.values), [-1.0] * 3)
+
+
+def test_event_where_broadcasts_scenario_branches_by_claim_index() -> None:
+    condition = FreqSevSims([0, 1, 1], [True, True, False], 2)
+    scenario_values = StochasticScalar([10.0, 20.0])
+    fallback = FreqSevSims([0, 1, 1], [0.0, 0.0, 3.0], 2)
+
+    result = np.where(condition, scenario_values, fallback)
+
+    assert isinstance(result, FreqSevSims)
+    np.testing.assert_allclose(asnumpy(result.values), [10.0, 20.0, 3.0])
+    assert scenario_values.coupled_variable_group is condition.coupled_variable_group
+    assert fallback.coupled_variable_group is condition.coupled_variable_group
+
+
+def test_event_masked_call_without_out_rejects_undefined_values() -> None:
+    events = FreqSevSims([0, 1], [2.0, 3.0], 2)
+    with pytest.raises(ValueError, match="out="):
+        np.add(events, 1.0, where=[True, False])
+
+
+def test_event_round_out_preserves_identity_and_coupling() -> None:
+    events = FreqSevSims([0, 1], [2.35, 3.45], 2)
+    destination = FreqSevSims([0, 1], [0.0, 0.0], 2)
+    returned = np.round(events, 1, out=destination)
+    assert returned is destination
+    np.testing.assert_allclose(asnumpy(destination.values), [2.4, 3.4])
+    assert destination.coupled_variable_group is events.coupled_variable_group
