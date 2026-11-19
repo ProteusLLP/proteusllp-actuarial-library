@@ -58,7 +58,6 @@ cdf_figure.add_scatter(
 cdf_figure.add_scatter(
     x=cdf_grid,
     y=asnumpy(gamma_fit.distribution.cdf(cdf_grid)),
-
     mode="lines",
     name="Fitted Gamma CDF",
 )
@@ -202,7 +201,6 @@ for distribution_class, fit in candidate_fits.items():
     mean_excess_figure.add_scatter(
         x=attachments,
         y=asnumpy(fit.distribution.mean_excess(attachments)),
-
         name=f"Fitted {distribution_class.__name__}",
         mode="lines",
     )
