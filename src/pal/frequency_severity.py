@@ -595,8 +595,10 @@ class FreqSevSims(_ProteusStochasticVariable):
                 raise TypeError("where must be a boolean mask")
             if mask_shape not in ((), (len(self.values),)):
                 raise ValueError("Event where mask has incompatible event count")
-        if method == "__call__" and not destinations and not (
-            isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)
+        if (
+            method == "__call__"
+            and not destinations
+            and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask))
         ):
             raise ValueError("Masked event-wise ufuncs require out= to define unselected events")
 
@@ -614,9 +616,7 @@ class FreqSevSims(_ProteusStochasticVariable):
 
         if method == "reduce" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
             kwargs["where"] = asnumpy(raw_mask) if host else to_backend(raw_mask)
-        elif method not in ("__call__", "reduce") and not (
-            isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)
-        ):
+        elif method not in ("__call__", "reduce") and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
             raise TypeError("where is only supported for elementwise ufuncs or reduce")
         calculated = getattr(operation, method)(*prepared_inputs, **kwargs)
         results = calculated if isinstance(calculated, tuple) else (calculated,)
@@ -680,9 +680,7 @@ class FreqSevSims(_ProteusStochasticVariable):
             couple_stochastic_results(coupled_outputs, sources, n_sims=self.n_sims)
         return tuple(outputs) if len(outputs) > 1 else outputs[0]
 
-    def __array_function__(
-        self, func: Callable[..., t.Any], _: t.Any, args: t.Any, kwargs: t.Any
-    ) -> t.Any:
+    def __array_function__(self, func: Callable[..., t.Any], _: t.Any, args: t.Any, kwargs: t.Any) -> t.Any:
         """Dispatch supported array functions without mixing claim and scenario axes."""
         supported = (np.where, np.sum, np.array_equal, np.minimum, np.maximum, np.mean, np.round)
         if func not in supported:
@@ -702,9 +700,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         preserving = func in (np.where, np.minimum, np.maximum, np.round)
         if func is np.where and len(args) != 3:
             preserving = False
-        if isinstance(output, _ProteusStochasticVariable) and (
-            not preserving or not isinstance(output, FreqSevSims)
-        ):
+        if isinstance(output, _ProteusStochasticVariable) and (not preserving or not isinstance(output, FreqSevSims)):
             raise ValueError("Event-wise out= requires an event-aligned FreqSevSims result")
 
         if func is np.mean and len(args) == 1 and args[0] is self:
