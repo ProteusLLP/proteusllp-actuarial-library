@@ -11,7 +11,7 @@ import pytest
 from pal import FreqSevSims, StochasticScalar
 from pal._maths import asnumpy
 from pal.couplings import couple_stochastic_results
-from pal.distributions import Gamma, Normal
+from pal.distributions import Gamma, HyperGeometric, Normal
 from pal.multivariate_distributions import MultivariateNormal, Wishart
 
 
@@ -117,3 +117,38 @@ def test_coupling_helper_does_not_retain_temporary_variables() -> None:
     gc.collect()
     assert weak() is None
     assert len(source.coupled_variable_group) == 2
+
+
+def test_hypergeometric_probability_methods_preserve_parameter_ancestry() -> None:
+    from scipy.stats import hypergeom
+
+    good = StochasticScalar([5.0, 6.0, 7.0])
+    bad = StochasticScalar([4.0, 5.0, 6.0])
+    draw = HyperGeometric(ngood=good, nbad=bad, n_draws=3)
+    cdf = draw.cdf(1)
+    quantile = draw.invcdf(0.6)
+    assert all(item.coupled_variable_group is good.coupled_variable_group for item in (bad, cdf, quantile))
+    np.testing.assert_allclose(asnumpy(cdf.values), hypergeom.cdf(1, [9, 11, 13], [5, 6, 7], 3))
+    np.testing.assert_allclose(asnumpy(quantile.values), hypergeom.ppf(0.6, [9, 11, 13], [5, 6, 7], 3))
+
+
+def test_python_divmod_links_two_outputs_without_losing_ancestry() -> None:
+    numerator = StochasticScalar([8.0, 9.0, 10.0])
+    divisor = StochasticScalar([2.0, 4.0, 3.0])
+    quotient, remainder = divmod(numerator, divisor)
+    assert quotient.coupled_variable_group is numerator.coupled_variable_group
+    assert remainder.coupled_variable_group is numerator.coupled_variable_group
+    assert divisor.coupled_variable_group is numerator.coupled_variable_group
+    np.testing.assert_allclose(asnumpy(quotient.values), [4.0, 2.0, 3.0])
+    np.testing.assert_allclose(asnumpy(remainder.values), [0.0, 1.0, 1.0])
+
+
+def test_divmod_mismatched_axes_do_not_merge() -> None:
+    numerator = StochasticScalar([1.0, 2.0, 3.0])
+    divisor = StochasticScalar([2.0])
+    first_group = numerator.coupled_variable_group
+    second_group = divisor.coupled_variable_group
+    with pytest.raises(ValueError, match="matching n_sims"):
+        divmod(numerator, divisor)
+    assert numerator.coupled_variable_group is first_group
+    assert divisor.coupled_variable_group is second_group
