@@ -19,7 +19,7 @@ from pal import stats  # type: ignore
 from ._compat import Self
 from ._maths import asnumpy, scalar_or_array, to_backend, xp
 from ._value_arrays import host_values, stochastic_array
-from .couplings import CouplingGroup, ProteusStochasticVariable, validate_stochastic_axes
+from .couplings import CouplingGroup, ProteusStochasticVariable, couple_stochastic_results, validate_stochastic_axes
 from .stats import NumberOrList
 from .types import Numeric, ScipyNumeric
 
@@ -463,7 +463,8 @@ class StochasticScalar(ProteusStochasticVariable):
             return scalar_result
         if getattr(result, "ndim", None) == 1:
             wrapped = StochasticScalar(result)
-            wrapped.coupled_variable_group.merge(self.coupled_variable_group)
+            if wrapped.n_sims == self.n_sims:
+                couple_stochastic_results((wrapped,), (self,))
             return wrapped
         return result
 
@@ -490,8 +491,6 @@ class StochasticScalar(ProteusStochasticVariable):
             )
 
         wrapped_result = StochasticScalar(result_array)
-        for input in inputs:
-            if isinstance(input, ProteusStochasticVariable):
-                input.coupled_variable_group.merge(self.coupled_variable_group)
-        wrapped_result.coupled_variable_group.merge(self.coupled_variable_group)
+        stochastic_inputs = (self, *(value for value in inputs if isinstance(value, ProteusStochasticVariable)))
+        couple_stochastic_results((wrapped_result,), stochastic_inputs, n_sims=self.n_sims)
         return wrapped_result
