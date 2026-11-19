@@ -126,7 +126,6 @@ A small model, end to end
 
    usage
    ai_assistants
-   cookbook
 
 .. toctree::
    :maxdepth: 2

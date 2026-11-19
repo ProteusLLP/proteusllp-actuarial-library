@@ -141,9 +141,8 @@ print(code)
 ```
 
 The search results include relevant caveats (such as how policy limits,
-parameter uncertainty and simulation coupling should be handled). The
-complete [actuarial cookbook](cookbook.md) displays the same executable files
-as the runtime API. An optional [PAL coding-agent skill](https://github.com/ProteusLLP/proteusllp-actuarial-library/tree/main/skills/pal-modeling)
+parameter uncertainty and simulation coupling should be handled). The full recipe source is available in the generated `llms-full.txt` file,
+and through the runtime API. An optional [PAL coding-agent skill](https://github.com/ProteusLLP/proteusllp-actuarial-library/tree/main/skills/pal-modeling)
 provides an agent-independent workflow for discovering and validating PAL
 modelling code.
 

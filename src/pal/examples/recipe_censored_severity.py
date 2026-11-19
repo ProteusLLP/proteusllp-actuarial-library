@@ -7,13 +7,15 @@ ground-up severities. MLE plug-in estimates exclude parameter uncertainty.
 
 import numpy as np
 
+from pal import set_random_seed
 from pal.distributions import LogNormal
+from pal.maths import asnumpy
 
 
 def main() -> None:
     """Fit underlying loss severity using reporting and policy-limit information."""
-    rng = np.random.default_rng(103)
-    ultimate_losses = rng.lognormal(mean=np.log(80_000), sigma=0.95, size=1_500)
+    set_random_seed(103)
+    ultimate_losses = asnumpy(LogNormal(mu=np.log(80_000), sigma=0.95).generate(n_sims=1_500).values)
     reporting_threshold = 75_000.0
     policy_limit = 300_000.0
 
