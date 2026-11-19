@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from pal import asnumpy
 from pal._maths import xp
+from pal.maths import asnumpy
 
 
 def test_asnumpy_converts_backend_values_to_host_numpy():
