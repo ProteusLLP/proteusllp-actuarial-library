@@ -65,7 +65,7 @@ from . import maths as pnp
 # local imports
 from ._compat import Self
 from ._maths import asnumpy, xp
-from .couplings import ProteusStochasticVariable
+from .couplings import ProteusStochasticVariable, couple_stochastic_results
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
 from .types import VectorLike
@@ -108,7 +108,7 @@ def _resample_freqsev(value: FreqSevSims, indices: StochasticScalar) -> FreqSevS
         values=value.values[asnumpy(source_positions) if isinstance(value.values, np.ndarray) else source_positions],
         n_sims=indices.n_sims,
     )
-    result.coupled_variable_group.merge(indices.coupled_variable_group)
+    couple_stochastic_results((result,), (indices,))
     return result
 
 
@@ -449,15 +449,10 @@ class ProteusVariable(t.Generic[T]):
                 # Reduction of vector-like values: return a single StochasticScalar
                 result = StochasticScalar(temp)
 
-                # Merge coupling groups from all original values
-                for value in self.values.values():
-                    if hasattr(value, "coupled_variable_group"):
-                        # Type ignore: we know that this attribute exists because we've
-                        # done a runtime check above.
-                        result.coupled_variable_group.merge(
-                            value.coupled_variable_group  # type: ignore[attr-defined]
-                        )
-
+                stochastic_inputs = (
+                    value for value in self.values.values() if isinstance(value, ProteusStochasticVariable)
+                )
+                couple_stochastic_results((result,), stochastic_inputs)
                 return result
 
             # Other 1D results: distribute evenly across keys
@@ -711,10 +706,12 @@ class ProteusVariable(t.Generic[T]):
             else:
                 result = StochasticScalar(chosen)
 
-        result.coupled_variable_group.merge(selector.coupled_variable_group)
-        for value in leaves:
-            if isinstance(value, ProteusStochasticVariable) and value.n_sims == result.n_sims:
-                result.coupled_variable_group.merge(value.coupled_variable_group)
+        stochastic_leaves = (
+            value
+            for value in leaves
+            if isinstance(value, ProteusStochasticVariable) and value.n_sims == result.n_sims
+        )
+        couple_stochastic_results((result,), (selector, *stochastic_leaves))
         return result
 
     @t.overload
