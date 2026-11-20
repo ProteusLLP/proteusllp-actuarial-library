@@ -930,7 +930,9 @@ def _gb2_log_regularized_beta(alpha: float, beta: float, log_z: np.ndarray) -> n
         # 2F1(alpha, 1-beta; alpha+1; z). Near zero the series is stable.
         result = np.where(
             small,
-            alpha * log_z - np.log(alpha) - special.betaln(alpha, beta)
+            alpha * log_z
+            - np.log(alpha)
+            - special.betaln(alpha, beta)
             + np.log(special.hyp2f1(alpha, 1.0 - beta, alpha + 1.0, z)),
             result,
         )
@@ -1029,10 +1031,6 @@ def _gb2_mean_excess(pars: dict[str, float], attachment: float) -> float:
     log_survival = float(_gb2_log_regularized_beta(q, p, np.asarray(log_z)))
     log_excess_moment = float(_gb2_log_regularized_beta(q - 1 / a, p + 1 / a, np.asarray(log_z)))
     log_conditional_mean = (
-        np.log(b)
-        + special.betaln(p + 1 / a, q - 1 / a)
-        - special.betaln(p, q)
-        + log_excess_moment
-        - log_survival
+        np.log(b) + special.betaln(p + 1 / a, q - 1 / a) - special.betaln(p, q) + log_excess_moment - log_survival
     )
     return float(np.exp(log_conditional_mean) - attachment)
