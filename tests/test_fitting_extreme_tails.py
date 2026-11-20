@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from scipy import special, stats
 
-from pal.distributions import Burr, GPD, Gamma, LogNormal, Pareto, Weibull
+from pal.distributions import GPD, Burr, Gamma, LogNormal, Pareto, Weibull
 from pal.fitting import _gamma_logsf, _log_likelihood
 
 
@@ -120,7 +120,7 @@ def test_burr_mean_excess_closed_form_and_deep_tail():
 
 def test_infinite_mean_and_finite_endpoint_are_distinct_from_underflow():
     """Theoretical infinite means and bounded support retain their semantics."""
-    assert np.isposinf(Burr(power=2.0, shape=0.4, scale=1.0).mean_excess(1e10))
+    assert np.isposinf(Burr(power=2.0, shape=0.4, scale=1.0, loc=0.0).mean_excess(1e10))
     assert np.isposinf(Pareto(shape=0.8, scale=1.0).mean_excess(1e10))
     finite = GPD(shape=-0.5, scale=10.0, loc=2.0)
     assert np.isnan(finite.mean_excess(22.0))
