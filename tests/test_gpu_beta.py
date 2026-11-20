@@ -129,5 +129,7 @@ def test_gpu_beta_arcsine_cdf_near_upper_endpoint() -> None:
     """Use the complementary arcsine expression for upper-tail accuracy."""
     x = np.nextafter(1.0, 0.0)
     actual = float(asnumpy(betainc(0.5, 0.5, x)))
-    expected = scipy.special.betainc(0.5, 0.5, x)
-    np.testing.assert_allclose(1.0 - actual, 1.0 - expected, rtol=1e-8, atol=1e-15)
+    # Independent analytic upper tail. SciPy's direct betainc shortcut also
+    # loses precision here through sqrt(x), so it is not a reliable oracle.
+    expected_upper_tail = 2.0 * np.arcsin(np.sqrt(1.0 - x)) / np.pi
+    np.testing.assert_allclose(1.0 - actual, expected_upper_tail, rtol=1e-8, atol=1e-15)
