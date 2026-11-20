@@ -934,12 +934,7 @@ def _gb2_log_regularized_beta(alpha: float, beta: float, log_z: np.ndarray) -> n
         if np.any(~np.isfinite(correction)) or np.any(correction <= 0.0):
             raise ArithmeticError("Incomplete-beta tail correction did not converge")
         result = np.asarray(result).copy()
-        result[small] = (
-            alpha * log_z[small]
-            - np.log(alpha)
-            - special.betaln(alpha, beta)
-            + np.log(correction)
-        )
+        result[small] = alpha * log_z[small] - np.log(alpha) - special.betaln(alpha, beta) + np.log(correction)
     return result
 
 
@@ -1040,24 +1035,15 @@ def _gb2_mean_excess(pars: dict[str, float], attachment: float) -> float:
         # probabilities, the beta normalisers and z**(q-1/a).
         tail_shape = q - 1.0 / a
         h_survival = float(special.hyp2f1(q, 1.0 - p, q + 1.0, z))
-        h_moment = float(
-            special.hyp2f1(tail_shape, 1.0 - p - 1.0 / a, tail_shape + 1.0, z)
-        )
+        h_moment = float(special.hyp2f1(tail_shape, 1.0 - p - 1.0 / a, tail_shape + 1.0, z))
         if not (np.isfinite(h_survival) and np.isfinite(h_moment)):
             raise ArithmeticError("GB2 incomplete-beta tail ratio did not converge")
         if h_survival <= 0.0 or h_moment <= 0.0:
             raise ArithmeticError("GB2 incomplete-beta tail ratio is invalid")
-        log_conditional_ratio = (
-            -np.log1p(-1.0 / (a * q))
-            - np.log1p(-z) / a
-            + np.log(h_moment)
-            - np.log(h_survival)
-        )
+        log_conditional_ratio = -np.log1p(-1.0 / (a * q)) - np.log1p(-z) / a + np.log(h_moment) - np.log(h_survival)
     else:
         log_survival = float(_gb2_log_regularized_beta(q, p, np.asarray(log_z)))
-        log_moment = float(
-            _gb2_log_regularized_beta(q - 1.0 / a, p + 1.0 / a, np.asarray(log_z))
-        )
+        log_moment = float(_gb2_log_regularized_beta(q - 1.0 / a, p + 1.0 / a, np.asarray(log_z)))
         log_conditional_ratio = (
             np.log(b)
             + special.betaln(p + 1.0 / a, q - 1.0 / a)
