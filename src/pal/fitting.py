@@ -685,9 +685,9 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         and thresholds beyond a finite upper endpoint return NaN.
 
     Notes:
-        Closed forms are used for Pareto and GPD. For other severity families,
-        stable conditional survival integration avoids subtracting close tail
-        expectations. This function uses the CPU, without sampling.
+        Analytical expressions are used for Pareto, GPD, Gamma, LogNormal,
+        Weibull and Burr. Other severity families use a conditional survival
+        integral. This function uses the CPU, without sampling.
     """
     from . import distributions as _distributions
 
