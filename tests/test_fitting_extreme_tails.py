@@ -204,3 +204,17 @@ def test_gb2_mean_excess_below_support():
     distribution = GeneralizedBetaPrime(a=1.0, b=10.0, p=1.0, q=3.0)
     assert distribution.mean_excess(0.0) == pytest.approx(5.0)
     assert distribution.mean_excess(-3.0) == pytest.approx(8.0)
+
+
+def test_gb2_large_beta_shape_log_survival_underflow():
+    """A large tail shape can underflow betainc before z reaches 1e-8."""
+    q = 100.0
+    b = 1.0
+    x = np.array([1e5, 1e6])
+    params = {"a": 1.0, "b": b, "p": 2.0, "q": q}
+    _, log_sf = _gb2_terms(x, params)
+    z = 1.0 / (1.0 + x / b)
+    # I_z(q,2) = z**q * (q + 1 - q*z).
+    expected = q * np.log(z) + np.log(q + 1.0 - q * z)
+    np.testing.assert_allclose(log_sf, expected, rtol=1e-12, atol=1e-9)
+    assert np.all(np.isfinite(log_sf))
