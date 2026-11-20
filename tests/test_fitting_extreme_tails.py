@@ -29,9 +29,7 @@ def test_gamma_extreme_truncated_censored_loglikelihood(shape, scale, threshold)
         log_sf = -z + np.log1p(z)
         log_pdf = np.log(z) - z - np.log(scale)
         log_sf_threshold = -z0 + np.log1p(z0)
-    expected = np.sum(
-        weights * (np.where(censored, log_sf, log_pdf) - log_sf_threshold)
-    )
+    expected = np.sum(weights * (np.where(censored, log_sf, log_pdf) - log_sf_threshold))
     actual = _log_likelihood(
         Gamma,
         {"alpha": shape, "theta": scale},
@@ -53,9 +51,7 @@ def test_gamma_log_survival_preserves_unrepresentable_probabilities():
     for shape in (0.2, 2.5, 10.0):
         assert np.isfinite(_gamma_logsf(shape, 1000.0))
         # In the representable region the continuation leaves SciPy unchanged.
-        assert _gamma_logsf(shape, 10.0) == pytest.approx(
-            stats.gamma.logsf(10.0, a=shape), rel=1e-12
-        )
+        assert _gamma_logsf(shape, 10.0) == pytest.approx(stats.gamma.logsf(10.0, a=shape), rel=1e-12)
 
 
 def test_gamma_mean_excess_is_finite_after_survival_underflow():
@@ -83,9 +79,7 @@ def test_weibull_mean_excess_uses_stable_incomplete_gamma():
     assert Weibull(shape=1.0, scale=3.0).mean_excess(2500.0) == pytest.approx(3.0)
     d, scale = 800.0, 10.0
     expected = scale * np.sqrt(np.pi) / 2.0 * special.erfcx(d / scale)
-    assert Weibull(shape=2.0, scale=scale).mean_excess(d) == pytest.approx(
-        expected, rel=1e-8
-    )
+    assert Weibull(shape=2.0, scale=scale).mean_excess(d) == pytest.approx(expected, rel=1e-8)
     shifted = Weibull(shape=1.0, scale=3.0, loc=5.0)
     assert shifted.mean_excess(0.0) == pytest.approx(8.0)
     assert shifted.mean_excess(1000.0) == pytest.approx(3.0)
@@ -98,24 +92,16 @@ def test_lognormal_mean_excess_matches_independent_log_normal_tail_ratio():
     log_ratio = mu + 0.5 * sigma**2 - np.log(d)
     log_ratio += stats.norm.logsf(z - sigma) - stats.norm.logsf(z)
     expected = d * np.expm1(log_ratio)
-    assert LogNormal(mu=mu, sigma=sigma).mean_excess(d) == pytest.approx(
-        expected, rel=1e-9
-    )
+    assert LogNormal(mu=mu, sigma=sigma).mean_excess(d) == pytest.approx(expected, rel=1e-9)
 
 
 def test_burr_mean_excess_closed_form_and_deep_tail():
     """Lomax special case, shifted support and far-tail beta expansion."""
     d = 1e8
-    assert Burr(power=1.0, shape=3.0, scale=10.0, loc=0.0).mean_excess(d) == pytest.approx(
-        (d + 10.0) / 2.0, rel=1e-12
-    )
-    assert Burr(power=1.0, shape=3.0, scale=10.0, loc=5.0).mean_excess(0.0) == pytest.approx(
-        10.0, rel=1e-12
-    )
+    assert Burr(power=1.0, shape=3.0, scale=10.0, loc=0.0).mean_excess(d) == pytest.approx((d + 10.0) / 2.0, rel=1e-12)
+    assert Burr(power=1.0, shape=3.0, scale=10.0, loc=5.0).mean_excess(0.0) == pytest.approx(10.0, rel=1e-12)
     # Burr XII with power=2 and shape=2 has asymptotic MRL d/(2*2-1).
-    assert Burr(power=2.0, shape=2.0, scale=10.0, loc=0.0).mean_excess(1e8) == pytest.approx(
-        1e8 / 3.0, rel=2e-7
-    )
+    assert Burr(power=2.0, shape=2.0, scale=10.0, loc=0.0).mean_excess(1e8) == pytest.approx(1e8 / 3.0, rel=2e-7)
 
 
 def test_infinite_mean_and_finite_endpoint_are_distinct_from_underflow():
