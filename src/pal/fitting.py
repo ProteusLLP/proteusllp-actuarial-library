@@ -945,9 +945,9 @@ def _gb2_log_regularized_beta(alpha: float, beta: float, log_z: np.ndarray) -> n
 def _gb2_terms(x: np.ndarray, pars: dict[str, float]) -> tuple[np.ndarray, np.ndarray]:
     """Log-density and log-survival for the generalised beta prime family."""
     a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
-    log_ratio = np.log(x / b)
+    log_ratio = np.log(x) - np.log(b)
     log_power = a * log_ratio
-    log_pdf = np.log(a / b) - special.betaln(p, q) + (a * p - 1) * log_ratio
+    log_pdf = np.log(a) - np.log(b) - special.betaln(p, q) + (a * p - 1) * log_ratio
     log_pdf -= (p + q) * np.logaddexp(0.0, log_power)
     log_survival_argument = -np.logaddexp(0.0, log_power)
     log_sf = _gb2_log_regularized_beta(q, p, log_survival_argument)
@@ -1026,7 +1026,8 @@ def _gb2_mean_excess(pars: dict[str, float], attachment: float) -> float:
     if a * q <= 1:
         return np.inf
     if attachment <= 0.0:
-        return float(b * np.exp(special.betaln(p + 1 / a, q - 1 / a) - special.betaln(p, q)))
+        mean = b * np.exp(special.betaln(p + 1 / a, q - 1 / a) - special.betaln(p, q))
+        return float(mean - attachment)
 
     log_ratio = a * (np.log(attachment) - np.log(b))
     log_z = float(-np.logaddexp(0.0, log_ratio))
