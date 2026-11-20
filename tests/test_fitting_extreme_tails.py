@@ -180,3 +180,27 @@ def test_gb2_censored_truncated_loglikelihood_extreme_tail(scale):
     expected_ll = np.sum(weights * (np.where(censored, expected_sf, expected_pdf) - expected_threshold))
     assert np.isfinite(actual_ll)
     assert actual_ll == pytest.approx(expected_ll, rel=1e-12, abs=1e-9)
+
+
+def test_gb2_log_likelihood_when_scale_ratio_exceeds_float_range():
+    """Log-density and log-survival remain finite when x / scale would overflow."""
+    params = {"a": 1.0, "b": 1e-200, "p": 1.0, "q": 3.0}
+    x = np.array([1e150, 1e200])
+    log_pdf, log_sf = _gb2_terms(x, params)
+    log_u = np.log(x) - np.log(params["b"])
+    expected_sf = -3.0 * np.logaddexp(0.0, log_u)
+    expected_pdf = (
+        np.log(3.0)
+        - np.log(params["b"])
+        - 4.0 * np.logaddexp(0.0, log_u)
+    )
+    np.testing.assert_allclose(log_sf, expected_sf, rtol=1e-12)
+    np.testing.assert_allclose(log_pdf, expected_pdf, rtol=1e-12)
+    assert np.all(np.isfinite(log_sf)) and np.all(np.isfinite(log_pdf))
+
+
+def test_gb2_mean_excess_below_support():
+    """Below its positive support, the mean excess is the mean minus attachment."""
+    distribution = GeneralizedBetaPrime(a=1.0, b=10.0, p=1.0, q=3.0)
+    assert distribution.mean_excess(0.0) == pytest.approx(5.0)
+    assert distribution.mean_excess(-3.0) == pytest.approx(8.0)
