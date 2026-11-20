@@ -357,7 +357,9 @@ __device__ __forceinline__ double pal_ibeta(
         return 0.5;
     }
     if ((a == 0.5) && (b == 0.5)) {
-        return 2.0 * asin(sqrt(x)) / PAL_PI;
+        return x <= 0.5
+            ? 2.0 * asin(sqrt(x)) / PAL_PI
+            : 1.0 - 2.0 * asin(sqrt(1.0 - x)) / PAL_PI;
     }
     if (b == 1.0) {
         return exp(a * log(x));
@@ -513,6 +515,15 @@ __device__ __forceinline__ double pal_ibeta_inverse(
     const double original_a = a;
     const double original_b = b;
     const double original_p = p;
+
+    // Closed forms must precede reflection: 1 - x loses tiny quantiles
+    // when the reflected solution rounds to exactly one.
+    if (b == 1.0) {
+        return exp(log(p) / a);
+    }
+    if (a == 1.0) {
+        return -expm1(log1p(-p) / b);
+    }
 
     bool reflect = false;
     // Central probabilities can have quantiles too close to an endpoint to
