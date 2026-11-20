@@ -9,8 +9,8 @@ import numpy as np
 import pytest
 from scipy import special, stats
 
-from pal.distributions import GPD, Burr, Gamma, LogNormal, Pareto, Weibull
-from pal.fitting import _gamma_logsf, _log_likelihood
+from pal.distributions import GPD, Burr, Gamma, GeneralizedBetaPrime, LogNormal, Pareto, Weibull
+from pal.fitting import _gamma_logsf, _gb2_terms, _log_likelihood
 
 
 @pytest.mark.parametrize("shape,scale,threshold", [(1.0, 2.0, 2000.0), (2.0, 2.0, 2000.0)])
@@ -110,3 +110,22 @@ def test_infinite_mean_and_finite_endpoint_are_distinct_from_underflow():
     assert np.isposinf(Pareto(shape=0.8, scale=1.0).mean_excess(1e10))
     finite = GPD(shape=-0.5, scale=10.0, loc=2.0)
     assert np.isnan(finite.mean_excess(22.0))
+
+
+def test_gb2_log_survival_does_not_underflow():
+    """For p=1 the GB2 survival is exactly (1+(x/b)**a)**(-q)."""
+    params = {"a": 2.0, "b": 1.0, "p": 1.0, "q": 2.0}
+    x = np.array([1e20, 1e100, 1e200])
+    _, log_sf = _gb2_terms(x, params)
+    expected = -2.0 * np.logaddexp(0.0, 2.0 * np.log(x))
+    np.testing.assert_allclose(log_sf, expected, rtol=1e-12, atol=1e-10)
+    assert np.all(np.isfinite(log_sf))
+
+
+def test_gb2_mean_excess_deep_tail_is_finite():
+    """For p=1, a=1, q=3 the GB2 is Lomax with exact mean excess."""
+    distribution = GeneralizedBetaPrime(a=1.0, b=10.0, p=1.0, q=3.0)
+    for attachment in (1e5, 1e12, 1e100):
+        actual = distribution.mean_excess(attachment)
+        assert np.isfinite(actual)
+        assert actual == pytest.approx((attachment + 10.0) / 2.0, rel=1e-7)
