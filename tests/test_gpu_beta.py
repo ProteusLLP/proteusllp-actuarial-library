@@ -114,3 +114,20 @@ def test_gpu_beta_cdf_is_monotone_and_symmetric() -> None:
 
     assert bool(xp.all(xp.diff(cdf) >= 0))
     np.testing.assert_allclose(asnumpy(cdf + complement), 1.0, rtol=0, atol=3e-14)
+
+
+def test_gpu_beta_shape_one_inverse_retains_tiny_representable_quantile() -> None:
+    """Do not round a tiny original quantile to zero through reflection."""
+    a, b, probability = 1e-7, 1.0, 1.0 - 1e-5
+    actual = float(asnumpy(betaincinv(a, b, probability)))
+    expected = scipy.special.betaincinv(a, b, probability)
+    assert actual > 0.0
+    np.testing.assert_allclose(actual, expected, rtol=2e-12, atol=0.0)
+
+
+def test_gpu_beta_arcsine_cdf_near_upper_endpoint() -> None:
+    """Use the complementary arcsine expression for upper-tail accuracy."""
+    x = np.nextafter(1.0, 0.0)
+    actual = float(asnumpy(betainc(0.5, 0.5, x)))
+    expected = scipy.special.betainc(0.5, 0.5, x)
+    np.testing.assert_allclose(1.0 - actual, 1.0 - expected, rtol=1e-8, atol=1e-15)
