@@ -64,7 +64,6 @@ class FitResult(t.Generic[_T]):
     method: str = _FitMethod.MLE.value
 
 
-
 def _gamma_log_survival_underflow(shape: float, z: float) -> float:
     """Evaluate log Q(shape, z) after the ordinary gamma survival underflows.
 
