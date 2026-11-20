@@ -924,7 +924,8 @@ def _gb2_log_regularized_beta(alpha: float, beta: float, log_z: np.ndarray) -> n
     z = np.exp(log_z)
     with np.errstate(divide="ignore", under="ignore", invalid="ignore"):
         result = np.log(special.betainc(alpha, beta, z))
-    small = log_z < np.log(1e-8)
+    # Large beta shape parameters can underflow even when z exceeds 1e-8.
+    small = (log_z < np.log(1e-8)) | (np.isneginf(result) & np.isfinite(log_z))
     if np.any(small):
         # B_z(alpha,beta) = z**alpha / alpha *
         # 2F1(alpha, 1-beta; alpha+1; z). Evaluate the correction only
