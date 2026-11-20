@@ -206,13 +206,7 @@ def _burr_mean_excess(power: float, shape: float, scale: float, loc: float, d: f
         incomplete = float(special.betainc(a, b, w))
         if incomplete <= 0.0 or not np.isfinite(incomplete):
             raise ArithmeticError("Burr mean excess incomplete beta underflowed")
-        log_value = (
-            np.log(scale)
-            - np.log(power)
-            + special.betaln(a, b)
-            + np.log(incomplete)
-            - shape * log_w
-        )
+        log_value = np.log(scale) - np.log(power) + special.betaln(a, b) + np.log(incomplete) - shape * log_w
     return float(np.exp(log_value))
 
 
@@ -763,14 +757,10 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
             result[index] = _lognormal_mean_excess(pars["mu"], pars["sigma"], float(d))
             continue
         if family is _distributions.Weibull:
-            result[index] = _weibull_mean_excess(
-                pars["shape"], pars["scale"], pars["loc"], float(d)
-            )
+            result[index] = _weibull_mean_excess(pars["shape"], pars["scale"], pars["loc"], float(d))
             continue
         if family is _distributions.Burr:
-            result[index] = _burr_mean_excess(
-                pars["power"], pars["shape"], pars["scale"], pars["loc"], float(d)
-            )
+            result[index] = _burr_mean_excess(pars["power"], pars["shape"], pars["scale"], pars["loc"], float(d))
             continue
 
         if frozen is None:
@@ -780,9 +770,7 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         start = max(float(d), float(lower))
         log_start_sf = float(frozen.logsf(start))
         if not np.isfinite(log_start_sf):
-            raise ArithmeticError(
-                f"{family.__name__} tail survival is numerically unresolved at {d}"
-            )
+            raise ArithmeticError(f"{family.__name__} tail survival is numerically unresolved at {d}")
         log_start_pdf = float(frozen.logpdf(start))
         tail_probability = float(frozen.sf(start))
         # The conditional median gives a representative tail width even if
