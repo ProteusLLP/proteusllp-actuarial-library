@@ -129,3 +129,54 @@ def test_gb2_mean_excess_deep_tail_is_finite():
         actual = distribution.mean_excess(attachment)
         assert np.isfinite(actual)
         assert actual == pytest.approx((attachment + 10.0) / 2.0, rel=1e-7)
+
+
+@pytest.mark.parametrize("survival_coordinate", [0.9, 0.1, 1e-3, 1.1e-6, 0.9e-6, 1e-12, 1e-120])
+def test_gb2_mean_excess_matches_independent_beta_polynomial(survival_coordinate):
+    """For a=1,p=2,q=4 the conditional mean has an exact rational form."""
+    b = 10.0
+    z = survival_coordinate
+    attachment = b * (1.0 - z) / z
+    # I_z(4,2) = z**4*(5-4*z); I_z(3,3) = z**3*(10-15*z+6*z**2).
+    # Simplifying the conditional mean minus d avoids numerical cancellation:
+    # MRL(d) = b*(5/3-z)/(z*(5-4*z)).
+    expected = b * (5.0 / 3.0 - z) / (z * (5.0 - 4.0 * z))
+    model = GeneralizedBetaPrime(a=1.0, b=b, p=2.0, q=4.0)
+    actual = model.mean_excess(attachment)
+    assert np.isfinite(actual)
+    assert actual == pytest.approx(expected, rel=2e-10)
+
+
+@pytest.mark.parametrize("scale", [1e-4, 1.0, 1e20, 1e120])
+def test_gb2_censored_truncated_loglikelihood_extreme_tail(scale):
+    """Check GB2 ground-up density and conditional survival against beta-polynomial laws."""
+    a, b, p, q = 1.0, 10.0, 2.0, 4.0
+    params = {"a": a, "b": b, "p": p, "q": q}
+    threshold = scale
+    losses = scale * np.array([1.1, 1.3, 1.8, 2.5])
+    censored = np.array([False, True, True, False])
+    weights = np.array([1.0, 2.0, 0.5, 1.0])
+
+    def independent_logsf(x):
+        log_u = np.log(x) - np.log(b)
+        log_z = -np.logaddexp(0.0, log_u)
+        z = np.exp(log_z)
+        return q * log_z + np.log1p(q * (1.0 - z))
+
+    def independent_logpdf(x):
+        log_u = np.log(x) - np.log(b)
+        return (p - 1.0) * log_u - np.log(b) - special.betaln(p, q) - (p + q) * np.logaddexp(0.0, log_u)
+
+    log_pdf, log_sf = _gb2_terms(losses, params)
+    threshold_log_sf = float(_gb2_terms(np.array([threshold]), params)[1][0])
+    expected_pdf = independent_logpdf(losses)
+    expected_sf = independent_logsf(losses)
+    expected_threshold = float(independent_logsf(threshold))
+    np.testing.assert_allclose(log_pdf, expected_pdf, rtol=1e-12, atol=1e-10)
+    np.testing.assert_allclose(log_sf, expected_sf, rtol=1e-12, atol=1e-10)
+    assert threshold_log_sf == pytest.approx(expected_threshold, rel=1e-12, abs=1e-10)
+
+    actual_ll = np.sum(weights * (np.where(censored, log_sf, log_pdf) - threshold_log_sf))
+    expected_ll = np.sum(weights * (np.where(censored, expected_sf, expected_pdf) - expected_threshold))
+    assert np.isfinite(actual_ll)
+    assert actual_ll == pytest.approx(expected_ll, rel=1e-12, abs=1e-9)
