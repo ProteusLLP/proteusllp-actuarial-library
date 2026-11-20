@@ -918,6 +918,25 @@ def _fit_exponential(
     )
 
 
+def _gb2_log_regularized_beta(alpha: float, beta: float, log_z: np.ndarray) -> np.ndarray:
+    """Stable log I_z(alpha, beta), including probabilities below float underflow."""
+    log_z = np.asarray(log_z, dtype=float)
+    z = np.exp(log_z)
+    with np.errstate(divide="ignore", under="ignore", invalid="ignore"):
+        result = np.log(special.betainc(alpha, beta, z))
+    small = log_z < np.log(1e-8)
+    if np.any(small):
+        # B_z(alpha,beta) = z**alpha / alpha *
+        # 2F1(alpha, 1-beta; alpha+1; z). Near zero the series is stable.
+        result = np.where(
+            small,
+            alpha * log_z - np.log(alpha) - special.betaln(alpha, beta)
+            + np.log(special.hyp2f1(alpha, 1.0 - beta, alpha + 1.0, z)),
+            result,
+        )
+    return result
+
+
 def _gb2_terms(x: np.ndarray, pars: dict[str, float]) -> tuple[np.ndarray, np.ndarray]:
     """Log-density and log-survival for the generalised beta prime family."""
     a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
@@ -925,8 +944,8 @@ def _gb2_terms(x: np.ndarray, pars: dict[str, float]) -> tuple[np.ndarray, np.nd
     log_power = a * log_ratio
     log_pdf = np.log(a / b) - special.betaln(p, q) + (a * p - 1) * log_ratio
     log_pdf -= (p + q) * np.logaddexp(0.0, log_power)
-    survival_argument = special.expit(-log_power)
-    log_sf = np.log(special.betainc(q, p, survival_argument))
+    log_survival_argument = -np.logaddexp(0.0, log_power)
+    log_sf = _gb2_log_regularized_beta(q, p, log_survival_argument)
     return log_pdf, log_sf
 
 
@@ -1002,16 +1021,18 @@ def _gb2_mean_excess(pars: dict[str, float], attachment: float) -> float:
     if a * q <= 1:
         return np.inf
     log_ratio = a * (np.log(max(attachment, 0.0)) - np.log(b)) if attachment > 0 else -np.inf
-    z = special.expit(-log_ratio)
-    survival = float(special.betainc(q, p, z))
-    excess_moment = float(special.betainc(q - 1 / a, p + 1 / a, z))
-    if survival <= 0 or excess_moment <= 0:
-        return np.nan
+    log_z = float(-np.logaddexp(0.0, log_ratio))
+    if log_z < np.log(1e-8):
+        # GB2 has a regularly varying tail of index a*q. This leading
+        # mean-residual-life term has relative error O(exp(log_z)).
+        return float(attachment / (a * q - 1.0))
+    log_survival = float(_gb2_log_regularized_beta(q, p, np.asarray(log_z)))
+    log_excess_moment = float(_gb2_log_regularized_beta(q - 1 / a, p + 1 / a, np.asarray(log_z)))
     log_conditional_mean = (
         np.log(b)
         + special.betaln(p + 1 / a, q - 1 / a)
         - special.betaln(p, q)
-        + np.log(excess_moment)
-        - np.log(survival)
+        + log_excess_moment
+        - log_survival
     )
     return float(np.exp(log_conditional_mean) - attachment)
