@@ -189,11 +189,7 @@ def test_gb2_log_likelihood_when_scale_ratio_exceeds_float_range():
     log_pdf, log_sf = _gb2_terms(x, params)
     log_u = np.log(x) - np.log(params["b"])
     expected_sf = -3.0 * np.logaddexp(0.0, log_u)
-    expected_pdf = (
-        np.log(3.0)
-        - np.log(params["b"])
-        - 4.0 * np.logaddexp(0.0, log_u)
-    )
+    expected_pdf = np.log(3.0) - np.log(params["b"]) - 4.0 * np.logaddexp(0.0, log_u)
     np.testing.assert_allclose(log_sf, expected_sf, rtol=1e-12)
     np.testing.assert_allclose(log_pdf, expected_pdf, rtol=1e-12)
     assert np.all(np.isfinite(log_sf)) and np.all(np.isfinite(log_pdf))
