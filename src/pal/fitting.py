@@ -927,14 +927,17 @@ def _gb2_log_regularized_beta(alpha: float, beta: float, log_z: np.ndarray) -> n
     small = log_z < np.log(1e-8)
     if np.any(small):
         # B_z(alpha,beta) = z**alpha / alpha *
-        # 2F1(alpha, 1-beta; alpha+1; z). Near zero the series is stable.
-        result = np.where(
-            small,
-            alpha * log_z
+        # 2F1(alpha, 1-beta; alpha+1; z). Evaluate the correction only
+        # where z is small, avoiding unnecessary special-function calls.
+        correction = special.hyp2f1(alpha, 1.0 - beta, alpha + 1.0, z[small])
+        if np.any(~np.isfinite(correction)) or np.any(correction <= 0.0):
+            raise ArithmeticError("Incomplete-beta tail correction did not converge")
+        result = np.asarray(result).copy()
+        result[small] = (
+            alpha * log_z[small]
             - np.log(alpha)
             - special.betaln(alpha, beta)
-            + np.log(special.hyp2f1(alpha, 1.0 - beta, alpha + 1.0, z)),
-            result,
+            + np.log(correction)
         )
     return result
 
@@ -1018,19 +1021,49 @@ def _fit_gb2(
 
 
 def _gb2_mean_excess(pars: dict[str, float], attachment: float) -> float:
-    """The GB2 mean excess from complementary incomplete beta moments."""
+    """GB2 mean residual life from complementary incomplete beta moments."""
     a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
     if a * q <= 1:
         return np.inf
-    log_ratio = a * (np.log(max(attachment, 0.0)) - np.log(b)) if attachment > 0 else -np.inf
+    if attachment <= 0.0:
+        return float(b * np.exp(special.betaln(p + 1 / a, q - 1 / a) - special.betaln(p, q)))
+
+    log_ratio = a * (np.log(attachment) - np.log(b))
     log_z = float(-np.logaddexp(0.0, log_ratio))
-    if log_z < np.log(1e-8):
-        # GB2 has a regularly varying tail of index a*q. This leading
-        # mean-residual-life term has relative error O(exp(log_z)).
-        return float(attachment / (a * q - 1.0))
-    log_survival = float(_gb2_log_regularized_beta(q, p, np.asarray(log_z)))
-    log_excess_moment = float(_gb2_log_regularized_beta(q - 1 / a, p + 1 / a, np.asarray(log_z)))
-    log_conditional_mean = (
-        np.log(b) + special.betaln(p + 1 / a, q - 1 / a) - special.betaln(p, q) + log_excess_moment - log_survival
-    )
-    return float(np.exp(log_conditional_mean) - attachment)
+    z = float(np.exp(log_z))
+    if log_z < np.log(1e-6):
+        # Exact incomplete-beta identity:
+        # B_z(A,B) = z**A/A * 2F1(A, 1-B; A+1; z).
+        # Taking the ratio of the two beta moments cancels the tiny
+        # probabilities, the beta normalisers and z**(q-1/a).
+        tail_shape = q - 1.0 / a
+        h_survival = float(special.hyp2f1(q, 1.0 - p, q + 1.0, z))
+        h_moment = float(
+            special.hyp2f1(tail_shape, 1.0 - p - 1.0 / a, tail_shape + 1.0, z)
+        )
+        if not (np.isfinite(h_survival) and np.isfinite(h_moment)):
+            raise ArithmeticError("GB2 incomplete-beta tail ratio did not converge")
+        if h_survival <= 0.0 or h_moment <= 0.0:
+            raise ArithmeticError("GB2 incomplete-beta tail ratio is invalid")
+        log_conditional_ratio = (
+            -np.log1p(-1.0 / (a * q))
+            - np.log1p(-z) / a
+            + np.log(h_moment)
+            - np.log(h_survival)
+        )
+    else:
+        log_survival = float(_gb2_log_regularized_beta(q, p, np.asarray(log_z)))
+        log_moment = float(
+            _gb2_log_regularized_beta(q - 1.0 / a, p + 1.0 / a, np.asarray(log_z))
+        )
+        log_conditional_ratio = (
+            np.log(b)
+            + special.betaln(p + 1.0 / a, q - 1.0 / a)
+            - special.betaln(p, q)
+            + log_moment
+            - log_survival
+            - np.log(attachment)
+        )
+    # Computing E[X|X>d]/d - 1 using expm1 avoids cancellation when
+    # the mean residual life is small compared with attachment.
+    return float(attachment * np.expm1(log_conditional_ratio))
