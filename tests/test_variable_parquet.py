@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from pal import FreqSevSims, ProteusVariable, StochasticScalar
+from pal._maths import asnumpy
 from pal.serialization import load, save
 from pal.variable_io import to_dataframe as encode_snapshot
 
@@ -32,7 +33,7 @@ def test_columnar_parquet_avoids_long_dataframe(tmp_path, monkeypatch):
     assert b"pal.variable.columnar" in metadata.metadata
     restored = load(path)
     for label, value in samples.items():
-        np.testing.assert_array_equal(restored[label].values, value.values)
+        np.testing.assert_array_equal(asnumpy(restored[label].values), asnumpy(value.values))
 
 
 def test_columnar_parquet_mixed_types_nested_and_empty_claims(tmp_path):
@@ -52,13 +53,13 @@ def test_columnar_parquet_mixed_types_nested_and_empty_claims(tmp_path):
     save(original, path)
     restored = load(path)
     assert restored.dim_name == "region"
-    np.testing.assert_array_equal(restored["UK"]["capital"].values, a.values)
+    np.testing.assert_array_equal(asnumpy(restored["UK"]["capital"].values), asnumpy(a.values))
     assert restored["UK"]["capital"].values.dtype == np.dtype("uint64")
-    np.testing.assert_array_equal(restored["UK"]["rating"].values, b.values)
-    np.testing.assert_array_equal(restored["US"]["date"].values, c.values)
+    np.testing.assert_array_equal(asnumpy(restored["UK"]["rating"].values), asnumpy(b.values))
+    np.testing.assert_array_equal(asnumpy(restored["US"]["date"].values), asnumpy(c.values))
     assert restored["US"]["date"].values.dtype == c.values.dtype
     assert restored["US"]["premium"] == 1_000_000
-    np.testing.assert_array_equal(restored["UK"]["event"].sim_index, [1, 0, 1])
+    np.testing.assert_array_equal(asnumpy(restored["UK"]["event"].sim_index), [1, 0, 1])
     assert restored["UK"]["event"].n_sims == 4
 
 
@@ -88,11 +89,11 @@ def test_existing_parquet_file_remains_readable(tmp_path):
     old = tmp_path / "old.parquet"
     encode_snapshot(original).to_parquet(old, index=False)
     restored = load(old)
-    np.testing.assert_array_equal(restored["A"].values, [10.0, 20.0])
+    np.testing.assert_array_equal(asnumpy(restored["A"].values), [10.0, 20.0])
     conventional = tmp_path / "ordinary.parquet"
     pd.DataFrame({"Simulation": [0, 1], "risk": ["A", "A"], "loss": [5.0, 6.0]}).to_parquet(conventional, index=False)
     imported = ProteusVariable.from_parquet(conventional, "risk", "loss")
-    np.testing.assert_array_equal(imported["A"].values, [5.0, 6.0])
+    np.testing.assert_array_equal(asnumpy(imported["A"].values), [5.0, 6.0])
 
 
 def test_parquet_coupling_is_recreated_independent_of_original(tmp_path):
