@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from pal import FreqSevSims, ProteusVariable, StochasticScalar
+from pal._maths import asnumpy
 from pal.serialization import load, save
 
 
@@ -40,7 +41,7 @@ def test_wide_data_exchange_is_readable_without_pal(tmp_path, format):
     assert not any(str(column).startswith("_pal_") for column in frame)
     np.testing.assert_array_equal(frame["Motor"], [1.5, 2.0, 3.5])
     assert imported.dim_name == "class"
-    np.testing.assert_array_equal(imported["Property"].values, [10.0, 20.0, 30.0])
+    np.testing.assert_array_equal(asnumpy(imported["Property"].values), [10.0, 20.0, 30.0])
 
 
 def test_long_data_exchange_has_ordinary_dimensions_and_values(tmp_path):
@@ -55,7 +56,7 @@ def test_long_data_exchange_has_ordinary_dimensions_and_values(tmp_path):
     path = tmp_path / "long.csv"
     model.to_csv(path, layout="long")
     imported = ProteusVariable.from_csv(path, dim_name="LoB")
-    np.testing.assert_array_equal(imported["Motor"].values, [10.0, 20.0])
+    np.testing.assert_array_equal(asnumpy(imported["Motor"].values), [10.0, 20.0])
 
 
 def test_claim_events_have_simple_long_format_and_optional_sim_count(tmp_path):
@@ -70,8 +71,8 @@ def test_claim_events_have_simple_long_format_and_optional_sim_count(tmp_path):
     restored = ProteusVariable.from_csv(path, dim_name="LoB", n_sims=5)["Cat"]
     assert isinstance(restored, FreqSevSims)
     assert restored.n_sims == 5
-    np.testing.assert_array_equal(restored.sim_index, [2, 0, 2])
-    np.testing.assert_array_equal(restored.values, [100.0, 10.0, 200.0])
+    np.testing.assert_array_equal(asnumpy(restored.sim_index), [2, 0, 2])
+    np.testing.assert_array_equal(asnumpy(restored.values), [100.0, 10.0, 200.0])
 
 
 def test_deterministic_exchange_table():
@@ -96,7 +97,7 @@ def test_object_snapshot_is_not_an_exchange_table(tmp_path):
     with pytest.raises(ValueError):
         load(exchange)
     restored = load(snapshot)
-    np.testing.assert_array_equal(restored["Motor"].values, [4.0, 5.0])
+    np.testing.assert_array_equal(asnumpy(restored["Motor"].values), [4.0, 5.0])
 
 
 def test_wide_import_rejects_duplicate_or_missing_simulations():
@@ -114,4 +115,4 @@ def test_wide_exchange_10000_simulations_avoids_per_value_json():
     frame = model.to_dataframe()
     assert frame.shape == (10000, 11)
     for i in range(10):
-        np.testing.assert_array_equal(frame[f"risk{i}"], model[f"risk{i}"].values)
+        np.testing.assert_array_equal(frame[f"risk{i}"], asnumpy(model[f"risk{i}"].values))
