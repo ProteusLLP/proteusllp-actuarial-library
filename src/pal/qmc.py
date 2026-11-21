@@ -566,10 +566,12 @@ def _sample_generalized_inverse_gaussian(
     """
     if isinstance(rng, RandomizedQMCGenerator):
         return _scipy_on_backend(
-            lambda u, index, b, location, factor: scipy_stats.geninvgauss.ppf(
-                u, index, b, loc=location, scale=factor
-            ),
-            rng.uniform(size=n_sims), p, shape, loc, scale,
+            lambda u, index, b, location, factor: scipy_stats.geninvgauss.ppf(u, index, b, loc=location, scale=factor),
+            rng.uniform(size=n_sims),
+            p,
+            shape,
+            loc,
+            scale,
         )
     if xp is not np and not type(rng).__module__.startswith("numpy"):
         seed = int(asnumpy(rng.randint(0, 2**31 - 1)))
@@ -577,8 +579,12 @@ def _sample_generalized_inverse_gaussian(
     else:
         host_rng = rng
     result = scipy_stats.geninvgauss.rvs(
-        asnumpy(p), asnumpy(shape), loc=asnumpy(loc), scale=asnumpy(scale),
-        size=n_sims, random_state=host_rng,
+        asnumpy(p),
+        asnumpy(shape),
+        loc=asnumpy(loc),
+        scale=asnumpy(scale),
+        size=n_sims,
+        random_state=host_rng,
     )
     return xp.asarray(result)
 
