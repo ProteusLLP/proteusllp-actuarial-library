@@ -69,6 +69,10 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[test]"
 
+      - name: Install Parquet engine (Python 3.13)
+        if: matrix.python-version == '3.13'
+        run: pip install -e ".[parquet]"
+
       - name: Run tests
         run: |
           pytest -v --cov=pal --cov-report=xml --cov-report=term --codeblocks
