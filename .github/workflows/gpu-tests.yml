@@ -118,7 +118,7 @@ jobs:
 
       - name: Benchmark GPU-native probability methods against SciPy CPU
         run: |
-          python -m benchmarks.benchmark_gpu_distributions --sizes 1024,8192,65536 \
+          python -m benchmarks.benchmark_gpu_distributions --sizes 1024,8192,65536,262144,1048576 \
             --warmups 1 --repeats 3 \
             --output "$RUNNER_TEMP/pal-gpu-distributions.json" \
             --summary "$RUNNER_TEMP/pal-gpu-distributions.md"
