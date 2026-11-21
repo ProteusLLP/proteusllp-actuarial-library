@@ -57,11 +57,15 @@ a performance improvement. Faster results alone do not establish correctness.
 To compare the new Arrow-native columnar representation against the earlier
 long-form DataFrame representation, run:
 
+<!--pytest-codeblocks:skip-->
+
 ```bash
 python -m benchmarks.benchmark_variable_io --simulations 20000 --variables 20
 ```
 
 For a larger synthetic model, skip the memory-intensive row-form baseline:
+
+<!--pytest-codeblocks:skip-->
 
 ```bash
 python -m benchmarks.benchmark_variable_io --simulations 100000 --variables 100 --compact-only
