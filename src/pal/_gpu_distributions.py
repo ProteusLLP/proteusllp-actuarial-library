@@ -58,6 +58,81 @@ def noncentral_chisquare_cdf(x: t.Any, df: t.Any, nonc: t.Any) -> t.Any:
     return xp.where(x <= 0, 0.0, xp.clip(result.reshape(shape), 0.0, 1.0))
 
 
+
+def noncentral_chisquare_cdf_recurrence(x: t.Any, df: t.Any, nonc: t.Any) -> t.Any:
+    """Experimental GPU CDF with one gamma-CDF call and contiguous recurrences.
+
+    Instead of evaluating the incomplete gamma function at every Poisson
+    term, evaluate it at the Poisson mode and use the order recurrence for
+    lower incomplete gamma ratios on both sides. Work in bounded path chunks
+    to avoid materialising huge path-by-Poisson-offset matrices.
+    """
+    x, df, nonc = xp.broadcast_arrays(
+        xp.asarray(x, dtype=xp.float64),
+        xp.asarray(df, dtype=xp.float64),
+        xp.asarray(nonc, dtype=xp.float64),
+    )
+    shape = x.shape
+    xx = x.ravel()
+    degrees = df.ravel()
+    mu = nonc.ravel() / 2.0
+    if not xx.size:
+        return xp.empty_like(x)
+    largest = float(xp.max(mu))
+    radius = math.ceil(12.0 * math.sqrt(largest + 1.0) + 40.0)
+    if radius > 4096:
+        raise NotImplementedError("Noncentral chi-square exceeds tested Poisson-mixture range")
+    j = xp.arange(1, radius + 1, dtype=xp.float64)[None, :]
+    output = xp.empty_like(xx)
+    # Two power-series matrices and their cumulative sums fit into device
+    # memory even when the full simulation has millions of paths.
+    chunk_size = max(128, 1_000_000 // radius)
+    for start in range(0, xx.size, chunk_size):
+        stop = min(xx.size, start + chunk_size)
+        xpart = xx[start:stop]
+        dfpart = degrees[start:stop]
+        mean = mu[start:stop]
+        mode = xp.floor(mean)
+        a0 = dfpart / 2.0 + mode
+        z = xp.maximum(xpart / 2.0, 1e-300)
+        logz = xp.log(z)
+        logmean = xp.log(xp.maximum(mean, 1e-300))
+        base_cdf = special.gammainc(a0, z)
+        w0 = xp.exp(-mean + mode * logmean - special.gammaln(mode + 1.0))
+        result = w0 * base_cdf
+
+        positive_k = mode[:, None] + j
+        gp = xp.exp(
+            (a0[:, None] + j - 1.0) * logz[:, None]
+            - z[:, None]
+            - special.gammaln(a0[:, None] + j)
+        )
+        cdf_above = xp.clip(base_cdf[:, None] - xp.cumsum(gp, axis=1), 0.0, 1.0)
+        positive_logweights = -mean[:, None] + positive_k * logmean[:, None] - special.gammaln(positive_k + 1.0)
+        weights_above = xp.exp(xp.where(mean[:, None] > 0.0, positive_logweights, -xp.inf))
+        result += xp.sum(weights_above * cdf_above, axis=1)
+
+        negative_k = mode[:, None] - j
+        # Terms beyond the lower k=0 boundary are ignored, so keep the
+        # gamma-order arguments positive to avoid invalid special values.
+        downward_a = xp.maximum(a0[:, None] - j, 1e-300)
+        gm = xp.exp(
+            downward_a * logz[:, None]
+            - z[:, None]
+            - special.gammaln(downward_a + 1.0)
+        )
+        cdf_below = xp.clip(base_cdf[:, None] + xp.cumsum(gm, axis=1), 0.0, 1.0)
+        negative_logweights = (
+            -mean[:, None]
+            + negative_k * logmean[:, None]
+            - special.gammaln(xp.maximum(negative_k + 1.0, 1.0))
+        )
+        weights_below = xp.exp(xp.where(negative_k >= 0.0, negative_logweights, -xp.inf))
+        result += xp.sum(weights_below * cdf_below, axis=1)
+        output[start:stop] = xp.where(xpart <= 0.0, 0.0, xp.clip(result, 0.0, 1.0))
+    return output.reshape(shape)
+
+
 def noncentral_chisquare_ppf(u: t.Any, df: t.Any, nonc: t.Any) -> t.Any:
     """Invert the GPU-native CDF with a vectorised bracketed bisection.
 
