@@ -6,7 +6,11 @@ import numpy as np
 import pytest
 from scipy import stats
 
-from pal._gpu_distributions import generalized_inverse_gaussian_mc, noncentral_chisquare_cdf
+from pal._gpu_distributions import (
+    generalized_inverse_gaussian_mc,
+    noncentral_chisquare_cdf,
+    noncentral_chisquare_cdf_recurrence,
+)
 from pal._maths import asnumpy, create_random_generator, xp
 from pal.distributions import GeneralizedInverseGaussian, NonCentralChiSquared
 from pal.qmc import RandomizedQMCGenerator
@@ -21,6 +25,18 @@ def test_poisson_mixture_matches_scipy_tail_probabilities(df: float, nonc: float
     probabilities = np.asarray([1e-10, 1e-6, 0.001, 0.1, 0.5, 0.9, 0.999, 1 - 1e-6])
     quantiles = stats.ncx2.ppf(probabilities, df, nonc)
     actual = noncentral_chisquare_cdf(xp.asarray(quantiles), df, nonc)
+    np.testing.assert_allclose(asnumpy(actual), probabilities, atol=4e-11, rtol=2e-9)
+
+
+@pytest.mark.parametrize(
+    ("df", "nonc"),
+    [(0.5, 0.0), (1.0, 0.1), (2.0, 1.0), (5.0, 10.0), (20.0, 500.0), (30.0, 10000.0)],
+)
+def test_gpu_recurrence_cdf_matches_tail_reference(df: float, nonc: float) -> None:
+    """Gamma-order recurrence should preserve CDF accuracy across both tails."""
+    probabilities = np.asarray([1e-10, 1e-6, 0.001, 0.1, 0.5, 0.9, 0.999, 1 - 1e-6])
+    quantiles = stats.ncx2.ppf(probabilities, df, nonc)
+    actual = noncentral_chisquare_cdf_recurrence(xp.asarray(quantiles), df, nonc)
     np.testing.assert_allclose(asnumpy(actual), probabilities, atol=4e-11, rtol=2e-9)
 
 
