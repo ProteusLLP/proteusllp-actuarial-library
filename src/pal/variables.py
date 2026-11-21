@@ -951,8 +951,10 @@ class ProteusVariable(t.Generic[T]):
         return cls.from_dataframe(frame, dim_name, values_column, simulation_column)
 
     def to_parquet(self, file_name: str | os.PathLike[str]) -> None:
-        """Write a variable hierarchy as Parquet (requires pyarrow or fastparquet)."""
-        self.to_dataframe().to_parquet(file_name, index=False)
+        """Write compact Parquet with typed value columns (requires pyarrow)."""
+        from .variable_parquet import write_parquet
+
+        write_parquet(self, file_name)
 
     @classmethod
     def from_parquet(
@@ -962,9 +964,10 @@ class ProteusVariable(t.Generic[T]):
         values_column: str = "value",
         simulation_column: str | None = "Simulation",
     ) -> ProteusVariable[t.Any]:
-        """Load a PAL Parquet export or a conventional tabular Parquet file."""
-        frame: pd.DataFrame = pd.read_parquet(file_name)
-        return cls.from_dataframe(frame, dim_name, values_column, simulation_column)
+        """Load compact PAL Parquet, earlier PAL exports, or ordinary tables."""
+        from .variable_parquet import read_parquet
+
+        return read_parquet(file_name, dim_name, values_column, simulation_column)
 
     @classmethod
     def from_dict(
