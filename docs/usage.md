@@ -128,6 +128,54 @@ When importing an existing third-party claim listing that has no
 `N Simulations` column, pass `n_sims=...` if needed. Column mappings also
 work for third-party data, for example `event_column="ClaimId"`.
 
+### Cloud storage: Azure, S3 and other fsspec filesystems
+
+All CSV and Parquet interchange methods and `pal.serialization.save/load`
+accept remote URLs as well as local paths. The filesystem is provided by
+[fsspec](https://filesystem-spec.readthedocs.io/). Install the appropriate
+optional backend, with PyArrow for Parquet:
+
+```bash
+pip install "proteusllp-actuarial-library[parquet,azure]"
+# Or: pip install "proteusllp-actuarial-library[parquet,s3]"
+# Both: pip install "proteusllp-actuarial-library[parquet,cloud]"
+```
+
+A cloud account/container or bucket can be selected directly in the URL.
+The optional `storage_options` are passed to the filesystem driver:
+
+<!--pytest.mark.skip-->
+
+```python
+from pal import ProteusVariable
+from pal.serialization import save, load
+
+# Azure Blob Storage (adlfs). Use your environment's Azure credentials.
+azure_path = "az://my-container/models/losses.parquet"
+portfolio.to_parquet(azure_path, storage_options={"account_name": "myaccount"})
+restored = ProteusVariable.from_parquet(
+    azure_path, storage_options={"account_name": "myaccount"}
+)
+
+# Amazon S3 (s3fs). In normal production use, an IAM role supplies access.
+s3_path = "s3://my-bucket/models/pal-snapshot.parquet"
+save(portfolio, s3_path)
+restored_snapshot = load(s3_path)
+```
+
+The same arguments are available on `to_csv/from_csv`,
+`to_parquet/from_parquet` and `save/load`. Azure's `abfs://` scheme is
+supported by adlfs as well. Supply credentials through managed identities,
+IAM roles or filesystem options; never hardcode long-lived secrets in source
+files. Already-open binary file objects can also be passed directly. For
+unnamed streams in `save/load`, specify `format="parquet"` or `format="csv"`.
+PAL leaves a caller-owned stream open.
+
+The storage abstraction works with one file at a time. Tabular imports
+currently materialise the dataset in pandas rather than using out-of-core
+Parquet filtering or partition-aware loading. Parquet datasets made of
+multiple files are not yet supported by the high-level variable methods.
+
 ### CPU and GPU arrays
 
 Tabular CSV/Parquet and pandas/Arrow storage is host-based. Exporting numeric
