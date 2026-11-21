@@ -1562,9 +1562,7 @@ class NonCentralChiSquared(DistributionBase):
         """Compute the cumulative distribution function."""
         self._validated_params()
         self._validate_probability_inputs(x)
-        cdf_function = (
-            special.chndtr if xp is np else lambda *values: _scipy_on_backend(scipy_special.chndtr, *values)
-        )
+        cdf_function = special.chndtr if xp is np else lambda *values: _scipy_on_backend(scipy_special.chndtr, *values)
         return _special_call(
             cdf_function,
             x,
@@ -2518,7 +2516,11 @@ class GeneralizedInverseGaussian(DistributionBase):
             lambda value, index, shape, location, scale: geninvgauss.cdf(
                 value, index, shape, loc=location, scale=scale
             ),
-            values, p, scipy_shape, loc, scipy_scale,
+            values,
+            p,
+            scipy_shape,
+            loc,
+            scipy_scale,
         )
         return self._wrap_result(result, x)
 
@@ -2532,7 +2534,11 @@ class GeneralizedInverseGaussian(DistributionBase):
             lambda value, index, shape, location, scale: geninvgauss.ppf(
                 value, index, shape, loc=location, scale=scale
             ),
-            values, p, scipy_shape, loc, scipy_scale,
+            values,
+            p,
+            scipy_shape,
+            loc,
+            scipy_scale,
         )
         return self._wrap_result(result, u)
 
