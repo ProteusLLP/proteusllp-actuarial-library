@@ -87,9 +87,7 @@ def write_parquet(variable: ProteusVariable[t.Any], path: str | os.PathLike[str]
         else:
             kind, n_sims = "scalar", 1
             samples = (
-                np.asarray([np.datetime64(value)])
-                if isinstance(value, (dt.date, dt.datetime))
-                else np.asarray([value])
+                np.asarray([np.datetime64(value)]) if isinstance(value, (dt.date, dt.datetime)) else np.asarray([value])
             )
 
         if not parts:
@@ -131,9 +129,7 @@ def _read_column(table: t.Any, name: str, dtype: str, pa: t.Any) -> np.ndarray:
         raise ValueError(f"Invalid values in PAL column {name!r}") from exc
 
 
-def _rebuild(
-    leaves: list[tuple[tuple[tuple[str, str], ...], t.Any]], level: int
-) -> ProteusVariable[t.Any]:
+def _rebuild(leaves: list[tuple[tuple[tuple[str, str], ...], t.Any]], level: int) -> ProteusVariable[t.Any]:
     dimensions = {path[level][0] for path, _ in leaves if len(path) > level}
     if len(dimensions) != 1 or any(len(path) <= level for path, _ in leaves):
         raise ValueError("Inconsistent PAL variable dimension structure")
@@ -204,12 +200,7 @@ def read_parquet(
             leaf = StochasticScalar(values)
         elif kind == "freqsev":
             indices = _read_column(table, f"sim_index_{index}", "<i8", pa)
-            if (
-                group_id < 0
-                or len(indices) != len(values)
-                or np.any(indices < 0)
-                or np.any(indices >= n_sims)
-            ):
+            if group_id < 0 or len(indices) != len(values) or np.any(indices < 0) or np.any(indices >= n_sims):
                 raise ValueError("Invalid frequency-severity PAL leaf")
             leaf = FreqSevSims(indices, values, n_sims)
         else:
