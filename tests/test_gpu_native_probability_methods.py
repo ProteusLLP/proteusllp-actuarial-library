@@ -63,3 +63,14 @@ def test_gpu_native_hot_paths_do_not_call_host_scipy() -> None:
         draws = gig.generate(256, rng=create_random_generator(146))
         assert isinstance(draws.values, xp.ndarray)
         assert bool(xp.all(draws.values > 0))
+
+
+@pytest.mark.skipif(xp is np, reason="Requires a CuPy backend")
+@pytest.mark.parametrize(("df", "nonc"), [(1.0, 0.0), (3.0, 0.5), (5.0, 3.0), (10.0, 30.0)])
+def test_gpu_rqmc_poisson_mixture_has_correct_noncentral_chisquare_law(df: float, nonc: float) -> None:
+    """Two-coordinate Sobol Poisson/gamma mixture must preserve the target distribution."""
+    sample = RandomizedQMCGenerator(seed=146, dimensions=32).noncentral_chisquare(df, nonc, size=8192)
+    assert isinstance(sample, xp.ndarray)
+    checkpoints = stats.ncx2.ppf([0.05, 0.25, 0.5, 0.75, 0.95], df, nonc)
+    observed = np.mean(asnumpy(sample)[:, None] < checkpoints[None, :], axis=0)
+    np.testing.assert_allclose(observed, [0.05, 0.25, 0.5, 0.75, 0.95], atol=0.015)
