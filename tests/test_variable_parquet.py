@@ -37,9 +37,9 @@ def test_columnar_parquet_avoids_long_dataframe(tmp_path, monkeypatch):
 
 def test_columnar_parquet_mixed_types_nested_and_empty_claims(tmp_path):
     """Data types and zero-claim scenario count must survive typed storage."""
-    a = StochasticScalar(np.array([2**63 + 1, 2**64 - 1], dtype=np.uint64))
-    b = StochasticScalar(np.array(["AA", "BBB"], dtype="U3"))
-    c = StochasticScalar(np.array(["2026-01-01", "2026-12-31"], dtype="datetime64[D]"))
+    a = StochasticScalar(np.array([2**63 + 1, 2**64 - 1, 23, 45], dtype=np.uint64))
+    b = StochasticScalar(np.array(["AA", "BBB", "A", "CCC"], dtype="U3"))
+    c = StochasticScalar(np.array(["2026-01-01", "2026-06-01", "2026-09-01", "2026-12-31"], dtype="datetime64[D]"))
     event = FreqSevSims([1, 0, 1], [10.0, 20.0, 30.0], 4)
     original = ProteusVariable(
         "region",
@@ -64,21 +64,22 @@ def test_columnar_parquet_mixed_types_nested_and_empty_claims(tmp_path):
 
 def test_compact_parquet_empty_vectors(tmp_path):
     """Zero simulations and zero events have unambiguous typed columns."""
-    original = ProteusVariable(
-        "risk",
-        {
-            "zero draws": StochasticScalar(np.array([], dtype=np.float64)),
-            "zero claims": FreqSevSims([], np.array([], dtype=np.int32), n_sims=3),
-        },
-    )
+    # PAL containers require a consistent simulation axis, so test these
+    # different n_sims values in separate snapshots.
+    zero_draws = ProteusVariable("risk", {"zero draws": StochasticScalar(np.array([], dtype=np.float64))})
     path = tmp_path / "empty.parquet"
-    save(original, path)
+    save(zero_draws, path)
     restored = load(path)
     assert restored["zero draws"].n_sims == 0
     assert restored["zero draws"].values.dtype == np.float64
-    assert restored["zero claims"].n_sims == 3
-    assert restored["zero claims"].values.dtype == np.int32
-    assert len(restored["zero claims"].sim_index) == 0
+
+    zero_claims = ProteusVariable("risk", {"zero claims": FreqSevSims([], np.array([], dtype=np.int32), 3)})
+    claims_path = tmp_path / "zero-claims.parquet"
+    save(zero_claims, claims_path)
+    restored_claims = load(claims_path)["zero claims"]
+    assert restored_claims.n_sims == 3
+    assert restored_claims.values.dtype == np.int32
+    assert len(restored_claims.sim_index) == 0
 
 
 def test_existing_parquet_file_remains_readable(tmp_path):
