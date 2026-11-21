@@ -324,9 +324,7 @@ def from_dataframe(
             # Exported PAL event IDs give a global order. External data often
             # numbers claims separately within each simulation.
             sort_columns = (
-                [simulation_column, event_column]
-                if claims[event_column].duplicated().any()
-                else [event_column]
+                [simulation_column, event_column] if claims[event_column].duplicated().any() else [event_column]
             )
             ordered = claims.sort_values(sort_columns, kind="stable")
             indices = ordered[simulation_column].to_numpy(dtype=np.int64)
