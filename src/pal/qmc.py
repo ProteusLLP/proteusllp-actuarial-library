@@ -575,12 +575,17 @@ def _sample_inverse_gaussian(rng: t.Any, n_sims: int, mu: t.Any, lambda_: t.Any)
 def _sample_generalized_inverse_gaussian(
     rng: t.Any, n_sims: int, p: t.Any, shape: t.Any, scale: t.Any, loc: t.Any
 ) -> t.Any:
-    """Use GPU-native rejection for MC and SciPy inverse CDF for RQMC.
+    """Use GPU sampling for MC and half-order RQMC; SciPy for general RQMC.
 
-    The RQMC inverse transform remains a host fallback, retaining its
-    one-Sobol-coordinate quantile semantics pending a GPU-native GIG CDF.
+    Half-order GIGs admit an exact two-coordinate inverse-Gaussian transform.
+    The general RQMC inverse transform retains its CPU host fallback.
     """
     if isinstance(rng, RandomizedQMCGenerator):
+        # The exact inverse-Gaussian transform uses two Sobol coordinates,
+        # like PAL's existing inverse-Gaussian RQMC generator. Keep SciPy's
+        # one-dimensional inverse only for non-half-order GIG parameters.
+        if xp is not np and bool(xp.all(xp.abs(xp.asarray(p)) == 0.5)):
+            return generalized_inverse_gaussian_mc(rng, n_sims, p, shape, scale, loc)
         return _scipy_on_backend(
             lambda u, index, b, location, factor: scipy_stats.geninvgauss.ppf(u, index, b, loc=location, scale=factor),
             rng.uniform(size=n_sims),
