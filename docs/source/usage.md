@@ -59,6 +59,92 @@ portfolio = ProteusVariable(
 
 Variable containers support numpy operations and can be added, multiplied together etc. Operations involving multiple variable containers will attempt to match on dictionary labels.
 
+### Data interchange with CSV, Parquet and pandas
+
+For exchanging results with spreadsheets, analytics tools and other systems,
+`ProteusVariable.to_dataframe()`, `to_csv()` and `to_parquet()`
+produce ordinary tables without PAL-specific metadata. A one-dimensional
+portfolio of simulation arrays uses a **wide** table by default, with one
+row per simulation and one column per portfolio component:
+
+```python
+from pal import ProteusVariable, StochasticScalar
+
+losses = ProteusVariable("class", {
+    "Motor": StochasticScalar([100, 200, 150]),
+    "Property": StochasticScalar([300, 250, 400]),
+})
+
+data = losses.to_dataframe()
+assert list(data.columns) == ["Simulation", "Motor", "Property"]
+recreated_from_data = ProteusVariable.from_dataframe(data, dim_name="class")
+```
+
+Use `layout="long"` for a conventional dimension / simulation / value
+table, or for per-claim `FreqSevSims` data. Other programs can read these
+files directly with pandas, Arrow, Excel or their own CSV readers.
+
+```python
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from pal import ProteusVariable, StochasticScalar
+
+losses = ProteusVariable("class", {
+    "Motor": StochasticScalar([100, 200]),
+    "Property": StochasticScalar([300, 250]),
+})
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "losses.csv"
+    losses.to_csv(path, layout="long")
+    imported = ProteusVariable.from_csv(path, "class", "value")
+    assert imported["Motor"].n_sims == 2
+```
+
+Parquet is preferred for large numerical tables; install the optional
+`parquet` extra to enable pandas Parquet import/export. For an ordinary
+table, use `losses.to_parquet("losses.parquet")` and
+`ProteusVariable.from_parquet("losses.parquet", dim_name="class")`.
+
+**Data interchange is not PAL object persistence.** Coupling relationships,
+some Python/NumPy type distinctions, and unobserved trailing zero-claim
+simulations cannot in general be inferred from an ordinary table. For an
+event listing, specify `n_sims` when importing if the final simulations
+have no claims.
+
+### Saving and restoring PAL objects
+
+Use `pal.serialization.save()` and `load()` when the file is a snapshot
+that PAL will read later. This preserves the nested variable hierarchy,
+deterministic and stochastic leaf types, NumPy dtypes, complete simulation
+counts, event ordering, and coupling relationships *among saved leaves*.
+Coupling to variables outside the saved object is not retained.
+
+```python
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from pal import ProteusVariable, StochasticScalar
+from pal.serialization import load, save
+
+portfolio = ProteusVariable("class", {
+    "Motor": StochasticScalar([100, 200]),
+    "Property": StochasticScalar([300, 250]),
+})
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "portfolio.csv"
+    save(portfolio, path)
+    restored = load(path)
+    assert restored["Motor"].n_sims == 2
+```
+
+For large object snapshots, use a `.parquet` path instead. The versioned
+snapshot format uses compact typed Arrow columns and PAL schema metadata;
+it is intended for PAL-to-PAL storage rather than third-party data exchange.
+CSV snapshots are available but much slower. These are distinct APIs and
+their file formats should not be used interchangeably.
+
+An existing ordinary scenario CSV remains importable with the familiar
+`ProteusVariable.from_csv(path, dim_name, values_column)` call.
+
 ### Date and categorical simulations
 
 Simulated values can represent claim dates, regions, policy types and other

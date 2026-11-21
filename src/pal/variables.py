@@ -12,10 +12,9 @@ Key features:
 - Correlation analysis and upsampling capabilities
 - Export functionality for analysis and reporting
 
-NOTE: The serialization/deserialization methods (from_csv, from_dict, from_series)
-      are currently incomplete and have significant limitations. A comprehensive
-      codec system is planned to address these issues.
-      See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
+NOTE: CSV, Parquet and DataFrame round-trips support nested value hierarchies.
+      Legacy from_dict and from_series are still limited; see issue #22 for
+      further serialization work.
 
 The ProteusVariable is designed for actuarial applications such as:
 - Multi-factor risk modeling (e.g., frequency, severity, inflation)
@@ -897,59 +896,190 @@ class ProteusVariable(t.Generic[T]):
         except Exception as e:
             return False, f"Error validating FreqSevSims consistency: {str(e)}", None
 
+    def to_dataframe(
+        self,
+        layout: str = "auto",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        simulation_column: str = "Simulation",
+        event_column: str = "Event",
+        values_column: str = "value",
+    ) -> pd.DataFrame:
+        """Export as wide, nested MultiIndex, or long-form tabular data.
+
+        Auto selects MultiIndex for regular nested stochastic variables and
+        long form for claim lists or other heterogeneous data.
+        Use pal.serialization.save for object persistence and coupling.
+        """
+        from .data_interchange import to_dataframe
+
+        return to_dataframe(
+            self,
+            layout=layout,
+            dimension_columns=dimension_columns,
+            simulation_column=simulation_column,
+            event_column=event_column,
+            values_column=values_column,
+        )
+
+    @classmethod
+    def from_dataframe(
+        cls,
+        data: pd.DataFrame,
+        dim_name: str | None = None,
+        values_column: str = "value",
+        simulation_column: str | None = "Simulation",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        event_column: str = "Event",
+        n_sims: int | None = None,
+    ) -> ProteusVariable[t.Any]:
+        """Read conventional tables, including nested dimension columns."""
+        from .data_interchange import from_dataframe
+
+        return from_dataframe(
+            data,
+            dim_name,
+            values_column,
+            simulation_column,
+            dimension_columns=dimension_columns,
+            event_column=event_column,
+            n_sims=n_sims,
+        )
+
+    def to_csv(
+        self,
+        file_name: str | os.PathLike[str] | t.IO[t.Any],
+        layout: str = "auto",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        simulation_column: str = "Simulation",
+        event_column: str = "Event",
+        values_column: str = "value",
+        storage_options: t.Mapping[str, t.Any] | None = None,
+    ) -> None:
+        """Export ordinary CSV to a local path, cloud URI or file-like object."""
+        from .storage import open_file
+
+        frame = self.to_dataframe(
+            layout=layout,
+            dimension_columns=dimension_columns,
+            simulation_column=simulation_column,
+            event_column=event_column,
+            values_column=values_column,
+        )
+        with open_file(file_name, "wb", storage_options=storage_options) as output:
+            frame.to_csv(output, index=isinstance(frame.columns, pd.MultiIndex), encoding="utf-8")
+
     @classmethod
     def from_csv(
         cls,
-        file_name: str,
-        dim_name: str,
-        values_column: str,
-        simulation_column: str = "Simulation",
-    ) -> ProteusVariable[StochasticScalar]:
-        """Import a ProteusVariable from a CSV file.
+        file_name: str | os.PathLike[str] | t.IO[t.Any],
+        dim_name: str | None = None,
+        values_column: str = "value",
+        simulation_column: str | None = "Simulation",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        event_column: str = "Event",
+        n_sims: int | None = None,
+        header_rows: int | None = None,
+        storage_options: t.Mapping[str, t.Any] | None = None,
+    ) -> ProteusVariable[t.Any]:
+        """Import CSV from any filesystem, including PAL's MultiIndex headers.
 
-        This method currently has significant limitations and will be replaced
-        with a more comprehensive serialization system.
-
-        Current Limitations:
-        - Only supports one-dimensional variables
-        - Always creates StochasticScalar values regardless of intended type
-        - Cannot preserve generic type information through deserialization
-        - No support for nested ProteusVariable structures
-
-        Args:
-            file_name: Path to the CSV file to read
-            dim_name: Name of the dimension column in the CSV
-            values_column: Name of the column containing the values
-            simulation_column: Name of the column containing simulation indices
-
-        Returns:
-            ProteusVariable with StochasticScalar values loaded from the CSV
-
-        TODO: Implement comprehensive codec system for proper serialization
-              See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
+        header_rows overrides automatic detection for external pandas CSV.
+        Existing positional arguments for one-dimensional imports are retained.
         """
-        # Type ignore: pandas-stubs has complex overloads causing Pyright to report
-        # the function signature as "partially unknown" despite correct usage
-        df: pd.DataFrame = pd.read_csv(file_name)  # type: ignore[misc]
-        pivoted_df = df.pivot(index=simulation_column, columns=dim_name, values=values_column)
-        count = df[dim_name].value_counts()
-        # Type ignore: pandas-stubs overloads cause "partially unknown" warnings
-        pivoted_df.sort_index(inplace=True)  # type: ignore[misc]
+        import csv
 
-        # classmethods can't preserve generic type parameters so we need a type ignore
-        # here. When data is loaded, the contents of the ProteusVariable will be
-        # whatever was present in the CSV file. It may be necessary to separate these
-        # factory functions from ProteusVariable completely.
-        result = cls(
+        from .storage import open_file
+
+        with open_file(file_name, "rb", storage_options=storage_options) as input_file:
+            if header_rows is None and simulation_column is not None:
+                # Read only the first few records; do not load large claim lists
+                # or download remote files merely to identify header rows.
+                reader = csv.reader(
+                    line.decode("utf-8-sig") if isinstance(line, bytes) else line for line in input_file
+                )
+                rows = [row for _, row in zip(range(33), reader)]
+                for i in range(2, len(rows)):
+                    row = rows[i]
+                    if (
+                        row
+                        and row[0] == simulation_column
+                        and all(not cell for cell in row[1:])
+                        and all(rows[k] and rows[k][0] for k in range(i))
+                    ):
+                        header_rows = i
+                        break
+                input_file.seek(0)
+            if header_rows is not None:
+                if header_rows < 2:
+                    raise ValueError("MultiIndex CSV requires at least two header rows")
+                frame: pd.DataFrame = pd.read_csv(input_file, header=list(range(header_rows)), index_col=0)
+            else:
+                frame = pd.read_csv(input_file)
+        return cls.from_dataframe(
+            frame,
             dim_name,
-            {
-                str(label): StochasticScalar(pivoted_df[label].values[: count[label]])  # type: ignore[misc]
-                for label in df[dim_name].unique()  # type: ignore[misc]
-            },
+            values_column,
+            simulation_column,
+            dimension_columns=dimension_columns,
+            event_column=event_column,
+            n_sims=n_sims,
         )
-        result.n_sims = max(count)
 
-        return result  # type: ignore
+    def to_parquet(
+        self,
+        file_name: str | os.PathLike[str] | t.IO[t.Any],
+        layout: str = "auto",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        simulation_column: str = "Simulation",
+        event_column: str = "Event",
+        values_column: str = "value",
+        storage_options: t.Mapping[str, t.Any] | None = None,
+    ) -> None:
+        """Export ordinary Parquet to a local path, cloud URI or binary stream."""
+        from .storage import open_file
+
+        frame = self.to_dataframe(
+            layout=layout,
+            dimension_columns=dimension_columns,
+            simulation_column=simulation_column,
+            event_column=event_column,
+            values_column=values_column,
+        )
+        with open_file(file_name, "wb", storage_options=storage_options) as output:
+            frame.to_parquet(output, index=isinstance(frame.columns, pd.MultiIndex))
+
+    @classmethod
+    def from_parquet(
+        cls,
+        file_name: str | os.PathLike[str] | t.IO[t.Any],
+        dim_name: str | None = None,
+        values_column: str = "value",
+        simulation_column: str | None = "Simulation",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        event_column: str = "Event",
+        n_sims: int | None = None,
+        storage_options: t.Mapping[str, t.Any] | None = None,
+    ) -> ProteusVariable[t.Any]:
+        """Read ordinary Parquet, including nested pandas MultiIndex columns."""
+        from .storage import open_file
+
+        with open_file(file_name, "rb", storage_options=storage_options) as input_file:
+            frame: pd.DataFrame = pd.read_parquet(input_file)
+        return cls.from_dataframe(
+            frame,
+            dim_name,
+            values_column,
+            simulation_column,
+            dimension_columns=dimension_columns,
+            event_column=event_column,
+            n_sims=n_sims,
+        )
 
     @classmethod
     def from_dict(

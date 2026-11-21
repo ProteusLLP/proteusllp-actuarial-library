@@ -137,6 +137,7 @@ A small model, end to end
    tutorials/distributions_guide
    tutorials/distribution_fitting
    tutorials/frequency_severity_modelling
+   tutorials/data_io
    tutorials/coupling_groups_and_copulas
    tutorials/randomized_qmc
 

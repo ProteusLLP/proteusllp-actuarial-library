@@ -208,6 +208,8 @@ compatibility.
   simulation quality and computational cost
 - [Frequency-Severity Modelling](frequency_severity_modelling.md) —
   compound models and event-level analysis
+- [Saving and Sharing PAL Data](data_io.md) —
+  CSV/Parquet exchange, snapshots and cloud storage
 - [Coupling Groups, Copulas and Variable Reordering](coupling_groups_and_copulas.md) —
   dependency structures
 - [Pricing an XoL Reinsurance Program](xol_reinsurance.md) — layers,
