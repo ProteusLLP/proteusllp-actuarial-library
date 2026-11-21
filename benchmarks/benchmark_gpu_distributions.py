@@ -20,6 +20,9 @@ from typing import Any, Callable
 import numpy as np
 import scipy
 from scipy import stats
+from scipy.stats import qmc as scipy_qmc
+
+from pal.qmc import RandomizedQMCGenerator
 
 from pal._gpu_distributions import (
     generalized_inverse_gaussian_mc,
@@ -85,7 +88,7 @@ def _benchmark_one(
 
 
 def compare_methods(sizes: list[int], warmups: int, repeats: int) -> dict[str, Any]:
-    """Measure the three new numerical paths at several simulation sizes."""
+    """Measure probability, RQMC sampling and GIG variants at multiple sizes."""
     if xp is np:
         raise RuntimeError("This benchmark requires PAL_USE_GPU=1 and a CUDA device")
     if repeats < 2 or warmups < 1 or not sizes or any(n <= 0 for n in sizes):
@@ -124,24 +127,40 @@ def compare_methods(sizes: list[int], warmups: int, repeats: int) -> dict[str, A
             )
         )
 
-        # Both CPU and GPU use a stateful RNG, with generation inside timing.
-        p, chi, psi = -0.5, 2.0, 3.0
-        b = float(np.sqrt(chi * psi))
-        scale = float(np.sqrt(chi / psi))
-        cpu_rng = np.random.default_rng(13071984)
-        bridge_rng = np.random.default_rng(13071984)
-        gpu_rng = xp.random.RandomState(13071984)
+        # A two-coordinate Poisson/gamma construction replaces GPU RQMC
+        # 56-fold mixture inversion. Compare against CPU one-coordinate PPF
+        # as a throughput baseline, not as a pathwise equivalent QMC design.
+        sobol_host = scipy_qmc.Sobol(d=1, scramble=True, seed=146).random(n)[:, 0]
+        sobol_gpu = xp.asarray(sobol_host)
         results.append(
             _benchmark_one(
-                "GIG Monte Carlo",
+                "Noncentral Chi2 RQMC",
                 n,
-                lambda: stats.geninvgauss.rvs(p, b, scale=scale, size=n, random_state=cpu_rng),
-                lambda: generalized_inverse_gaussian_mc(gpu_rng, n, p, b, scale, 0.0),
-                lambda: xp.asarray(stats.geninvgauss.rvs(p, b, scale=scale, size=n, random_state=bridge_rng)),
+                lambda: stats.ncx2.ppf(sobol_host, df, nonc),
+                lambda: RandomizedQMCGenerator(seed=146, dimensions=32).noncentral_chisquare(df, nonc, size=n),
+                lambda: xp.asarray(stats.ncx2.ppf(xp.asnumpy(sobol_gpu), df, nonc)),
                 warmups,
                 repeats,
             )
         )
+        for p, label in ((-0.5, "GIG IG(-1/2) MC"), (0.5, "GIG IG(+1/2) MC"), (2.0, "GIG generic MC")):
+            chi, psi = 2.0, 3.0
+            b = float(np.sqrt(chi * psi))
+            scale = float(np.sqrt(chi / psi))
+            cpu_rng = np.random.default_rng(13071984)
+            bridge_rng = np.random.default_rng(13071984)
+            gpu_rng = xp.random.RandomState(13071984)
+            results.append(
+                _benchmark_one(
+                    label,
+                    n,
+                    lambda: stats.geninvgauss.rvs(p, b, scale=scale, size=n, random_state=cpu_rng),
+                    lambda: generalized_inverse_gaussian_mc(gpu_rng, n, p, b, scale, 0.0),
+                    lambda: xp.asarray(stats.geninvgauss.rvs(p, b, scale=scale, size=n, random_state=bridge_rng)),
+                    warmups,
+                    repeats,
+                )
+            )
 
     return {
         "schema_version": 1,
@@ -159,6 +178,7 @@ def compare_methods(sizes: list[int], warmups: int, repeats: int) -> dict[str, A
             "GPU cold-start initialization is excluded through warmup; methods can synchronise scalar loop controls.",
             "Reported speed-up is CPU SciPy median divided by GPU-native median; values below 1 mean GPU is slower.",
             "GIG Monte Carlo is a distributional rather than pathwise comparison.",
+            "RQMC GPU uses two coordinates (Poisson mixture); CPU uses one coordinate (SciPy PPF).",
             "Results depend on parameter values, batch size, GPU model and library versions.",
         ],
         "results": results,
