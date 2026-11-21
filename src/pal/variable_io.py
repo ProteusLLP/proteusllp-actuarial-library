@@ -136,7 +136,7 @@ def _parse_path(value: t.Any) -> tuple[tuple[str, str], ...]:
         if not isinstance(pair, list) or len(pair) != 2 or not all(isinstance(x, str) for x in pair):
             raise ValueError("Invalid dimension name or label in PAL variable path")
         pairs.append((pair[0], pair[1]))
-    if len(set(name for name, _ in pairs)) != len(pairs):
+    if len({name for name, _ in pairs}) != len(pairs):
         raise ValueError("Repeated dimension name in PAL variable path")
     return tuple(pairs)
 
