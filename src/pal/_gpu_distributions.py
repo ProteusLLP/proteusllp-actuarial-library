@@ -58,7 +58,6 @@ def noncentral_chisquare_cdf(x: t.Any, df: t.Any, nonc: t.Any) -> t.Any:
     return xp.where(x <= 0, 0.0, xp.clip(result.reshape(shape), 0.0, 1.0))
 
 
-
 def noncentral_chisquare_cdf_recurrence(x: t.Any, df: t.Any, nonc: t.Any) -> t.Any:
     """Experimental GPU CDF with one gamma-CDF call and contiguous recurrences.
 
@@ -102,11 +101,7 @@ def noncentral_chisquare_cdf_recurrence(x: t.Any, df: t.Any, nonc: t.Any) -> t.A
         result = w0 * base_cdf
 
         positive_k = mode[:, None] + j
-        gp = xp.exp(
-            (a0[:, None] + j - 1.0) * logz[:, None]
-            - z[:, None]
-            - special.gammaln(a0[:, None] + j)
-        )
+        gp = xp.exp((a0[:, None] + j - 1.0) * logz[:, None] - z[:, None] - special.gammaln(a0[:, None] + j))
         cdf_above = xp.clip(base_cdf[:, None] - xp.cumsum(gp, axis=1), 0.0, 1.0)
         positive_logweights = -mean[:, None] + positive_k * logmean[:, None] - special.gammaln(positive_k + 1.0)
         weights_above = xp.exp(xp.where(mean[:, None] > 0.0, positive_logweights, -xp.inf))
@@ -116,16 +111,10 @@ def noncentral_chisquare_cdf_recurrence(x: t.Any, df: t.Any, nonc: t.Any) -> t.A
         # Terms beyond the lower k=0 boundary are ignored, so keep the
         # gamma-order arguments positive to avoid invalid special values.
         downward_a = xp.maximum(a0[:, None] - j, 1e-300)
-        gm = xp.exp(
-            downward_a * logz[:, None]
-            - z[:, None]
-            - special.gammaln(downward_a + 1.0)
-        )
+        gm = xp.exp(downward_a * logz[:, None] - z[:, None] - special.gammaln(downward_a + 1.0))
         cdf_below = xp.clip(base_cdf[:, None] + xp.cumsum(gm, axis=1), 0.0, 1.0)
         negative_logweights = (
-            -mean[:, None]
-            + negative_k * logmean[:, None]
-            - special.gammaln(xp.maximum(negative_k + 1.0, 1.0))
+            -mean[:, None] + negative_k * logmean[:, None] - special.gammaln(xp.maximum(negative_k + 1.0, 1.0))
         )
         weights_below = xp.exp(xp.where(negative_k >= 0.0, negative_logweights, -xp.inf))
         result += xp.sum(weights_below * cdf_below, axis=1)
