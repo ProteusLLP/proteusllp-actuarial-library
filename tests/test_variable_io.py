@@ -115,6 +115,20 @@ def test_deterministic_numeric_text_and_dates(tmp_path):
     assert restored["Valuation date"] == np.datetime64("2026-11-21", "D")
 
 
+
+
+def test_numeric_only_csv_does_not_infer_or_round_payloads(tmp_path):
+    """CSV payloads are JSON literals and must be read as text."""
+    original = ProteusVariable(
+        "risk",
+        {"Extreme": StochasticScalar(np.array([2**63 + 1, 2**64 - 1], dtype=np.uint64))},
+    )
+    path = tmp_path / "numbers.csv"
+    original.to_csv(path)
+    restored = ProteusVariable.from_csv(path)
+    np.testing.assert_array_equal(restored["Extreme"].values, original["Extreme"].values)
+    assert restored["Extreme"].values.dtype == np.dtype("uint64")
+
 def test_string_and_date_stochastic_values():
     original = ProteusVariable(
         "risk",
