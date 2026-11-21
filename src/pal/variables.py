@@ -941,8 +941,13 @@ class ProteusVariable(t.Generic[T]):
         The existing positional call from_csv(path, dim_name, values_column,
         simulation_column) remains supported.
         """
-        # Keep literal JSON payloads, empty markers, and string labels intact.
-        frame: pd.DataFrame = pd.read_csv(file_name, keep_default_na=False)
+        # A PAL export stores JSON scalar literals. Always read these as text:
+        # pandas' automatic numeric inference can overflow large integers.
+        columns = pd.read_csv(file_name, nrows=0).columns
+        if "_pal_schema" in columns:
+            frame: pd.DataFrame = pd.read_csv(file_name, dtype={"value": str}, keep_default_na=False)
+        else:
+            frame = pd.read_csv(file_name, keep_default_na=False)
         return cls.from_dataframe(frame, dim_name, values_column, simulation_column)
 
     def to_parquet(self, file_name: str | os.PathLike[str]) -> None:
