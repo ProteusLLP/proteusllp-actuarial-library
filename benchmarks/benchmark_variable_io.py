@@ -24,6 +24,8 @@ import numpy as np
 import pandas as pd
 
 from pal import ProteusVariable, StochasticScalar
+from pal.serialization import load, save
+from pal.variable_io import to_dataframe as encode_snapshot
 
 
 def measure(fn: Callable[[], Any]) -> tuple[float, float]:
@@ -62,12 +64,12 @@ def run(simulations: int, variables: int, compare: bool) -> dict[str, Any]:
 
     with tempfile.TemporaryDirectory(prefix="pal-parquet-benchmark-") as directory:
         compact_file = Path(directory) / "compact.parquet"
-        write_seconds, write_python_peak = measure(lambda: losses.to_parquet(compact_file))
+        write_seconds, write_python_peak = measure(lambda: save(losses, compact_file))
         restored: ProteusVariable[Any] | None = None
 
         def read_compact() -> None:
             nonlocal restored
-            restored = ProteusVariable.from_parquet(compact_file)
+            restored = load(compact_file)
 
         read_seconds, read_python_peak = measure(read_compact)
         assert restored is not None
@@ -84,10 +86,10 @@ def run(simulations: int, variables: int, compare: bool) -> dict[str, Any]:
         if compare:
             legacy_file = Path(directory) / "row_form.parquet"
             old_write_seconds, old_write_python_peak = measure(
-                lambda: losses.to_dataframe().to_parquet(legacy_file, index=False)
+                lambda: encode_snapshot(losses).to_parquet(legacy_file, index=False)
             )
             old_read_seconds, old_read_python_peak = measure(
-                lambda: ProteusVariable.from_parquet(legacy_file)
+                lambda: load(legacy_file)
             )
             result["legacy_row_format"] = {
                 "write_seconds": old_write_seconds,
