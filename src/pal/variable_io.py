@@ -176,9 +176,11 @@ def _restore_leaf(frame: pd.DataFrame) -> t.Any:
 
     if kind == "stochastic":
         present = sim >= 0
-        if (not np.all(event == -1)) or (
-            not np.array_equal(np.sort(sim[present]), np.arange(n_sims))
-        ) or (np.any(~present) and (n_sims != 0 or len(frame) != 1)):
+        if (
+            (not np.all(event == -1))
+            or (not np.array_equal(np.sort(sim[present]), np.arange(n_sims)))
+            or (np.any(~present) and (n_sims != 0 or len(frame) != 1))
+        ):
             raise ValueError("Stochastic simulations must appear exactly once, indexed from zero")
         ordered = frame.iloc[np.argsort(sim)] if n_sims else frame.iloc[0:0]
         return StochasticScalar(_decode(ordered[_VALUE], dtype))
@@ -284,8 +286,9 @@ def from_dataframe(
     if simulation_column is None:
         if frame[dim_name].duplicated().any():
             raise ValueError("Duplicate dimension labels in deterministic table")
-        return ProteusVariable(dim_name, {str(label): frame.loc[frame[dim_name] == label, values_column].iloc[0]
-                                          for label in labels})
+        return ProteusVariable(
+            dim_name, {str(label): frame.loc[frame[dim_name] == label, values_column].iloc[0] for label in labels}
+        )
 
     if frame[[dim_name, simulation_column]].duplicated().any():
         raise ValueError("Duplicate simulation ID for a dimension label")
