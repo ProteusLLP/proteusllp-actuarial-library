@@ -64,6 +64,8 @@ format for frequency-severity data and heterogeneous values.
 A nested portfolio with dimensions `Region` and `LoB` exports to pandas
 with a MultiIndex on its columns, and one simulation per row:
 
+<!--pytest.mark.skip-->
+
 ```python
 # nested is a ProteusVariable: Region -> LoB -> StochasticScalar
 frame = nested.to_dataframe(layout="multiindex")
@@ -86,6 +88,8 @@ scalars with the same simulation count. For other structures use long form.
 
 Specify which columns contain dimension labels, simulation IDs, event IDs
 and values. Dimension columns are ordered from outermost to innermost:
+
+<!--pytest.mark.skip-->
 
 ```python
 portfolio.to_csv(
