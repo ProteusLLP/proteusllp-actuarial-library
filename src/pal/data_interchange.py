@@ -1,14 +1,14 @@
-"""CSV, Parquet and DataFrame interchange with ordinary tabular data.
+"""Interchange PAL variables with ordinary pandas, CSV and Parquet tables.
 
-Tables contain user-facing dimension labels, simulation IDs, claim-event
-indices and values. These are data extracts, not lossless PAL object snapshots.
-For preserving types, nesting and coupling, use pal.serialization instead.
+These are human-readable data extracts, not PAL object snapshots. Object
+persistence, including coupling, is provided separately by pal.serialization.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import typing as t
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -21,6 +21,8 @@ from .variables import ProteusVariable
 _SIM = "Simulation"
 _EVENT = "Event"
 _VALUE = "value"
+_KIND = "Kind"
+_COUNT = "N Simulations"
 
 
 def _leaves(
@@ -34,64 +36,187 @@ def _leaves(
         yield path, value
 
 
-def to_dataframe(variable: ProteusVariable[t.Any], layout: str = "auto") -> pd.DataFrame:
-    """Create a conventional table for exchange with pandas or other systems.
+def _dimension_names(
+    leaves: list[tuple[tuple[tuple[str, str], ...], t.Any]],
+    dimension_columns: Sequence[str] | None,
+) -> list[str]:
+    depth = max(len(path) for path, _ in leaves)
+    if dimension_columns is not None:
+        if len(dimension_columns) != depth:
+            raise ValueError(f"Expected {depth} dimension column names, got {len(dimension_columns)}")
+        names = list(dimension_columns)
+    else:
+        names = []
+        for level in range(depth):
+            found = {path[level][0] for path, _ in leaves if len(path) > level}
+            if len(found) != 1:
+                raise ValueError(
+                    "Different dimension names occur at the same level; "
+                    "pass dimension_columns to select a common column name"
+                )
+            names.append(next(iter(found)))
+    if len(names) != len(set(names)):
+        raise ValueError("Dimension column names must be distinct")
+    return names
 
-    The default uses a wide table for a one-dimensional collection of equally
-    sized StochasticScalars: Simulation, Motor, Property, etc. Otherwise it uses
-    long-form dimension columns with Simulation, Event (if needed), and value.
-    This interchange representation does not retain coupling metadata or
-    distinguish trailing zero-claim simulations.
+
+def to_dataframe(
+    variable: ProteusVariable[t.Any],
+    layout: str = "auto",
+    *,
+    dimension_columns: Sequence[str] | None = None,
+    simulation_column: str = _SIM,
+    event_column: str = _EVENT,
+    values_column: str = _VALUE,
+    kind_column: str = _KIND,
+    n_sims_column: str = _COUNT,
+) -> pd.DataFrame:
+    """Export as a wide, nested MultiIndex, or long-form pandas DataFrame.
+
+    Auto selects wide for 1D stochastic values, MultiIndex for regular nested
+    stochastic values, and long for heterogeneous, deterministic or claim data.
+    Long claim tables retain their simulation count, including zero-claim
+    simulations, through an ordinary 'N Simulations' column.
     """
-    if layout not in ("auto", "wide", "long"):
-        raise ValueError("layout must be 'auto', 'wide' or 'long'")
+    if layout not in ("auto", "wide", "long", "multiindex"):
+        raise ValueError("layout must be 'auto', 'wide', 'multiindex' or 'long'")
     leaves = list(_leaves(variable))
     if not leaves:
         raise ValueError("Cannot export an empty variable as a table")
-    is_wide = (
-        all(len(path) == 1 and isinstance(value, StochasticScalar) for path, value in leaves)
+    dim_names = _dimension_names(leaves, dimension_columns)
+    reserved = {simulation_column, event_column, values_column, kind_column, n_sims_column}
+    if len(reserved) != 5 or reserved.intersection(dim_names):
+        raise ValueError("Simulation, event, value, kind, count and dimension columns must be distinct")
+
+    homogeneous = (
+        all(isinstance(value, StochasticScalar) for _, value in leaves)
         and len({int(value.n_sims) for _, value in leaves}) == 1
-        and len({path[0][1] for path, _ in leaves}) == len(leaves)
-        and all(path[0][1] not in {_SIM, _VALUE, _EVENT} for path, _ in leaves)
     )
-    if layout == "wide" and not is_wide:
-        raise ValueError("Wide layout requires one-dimensional StochasticScalar leaves with matching n_sims")
-    if layout == "wide" or (layout == "auto" and is_wide):
-        n_sims = int(leaves[0][1].n_sims)
-        data: dict[str, t.Any] = {_SIM: np.arange(n_sims, dtype=np.int64)}
+    depths = {len(path) for path, _ in leaves}
+    regular = homogeneous and len(depths) == 1
+    depth = next(iter(depths)) if len(depths) == 1 else 0
+    paths = [tuple(label for _, label in path) for path, _ in leaves]
+    unique_paths = len(set(paths)) == len(paths)
+    wide = regular and depth == 1 and unique_paths and not set(p[0] for p in paths).intersection(reserved)
+    multiindex = regular and depth >= 2 and unique_paths
+
+    if layout == "wide" and not wide:
+        raise ValueError("Wide layout requires 1D StochasticScalar leaves with matching n_sims")
+    if layout == "multiindex" and not multiindex:
+        raise ValueError("MultiIndex layout requires regular nested StochasticScalar leaves")
+    if layout == "wide" or (layout == "auto" and wide):
+        data: dict[str, t.Any] = {simulation_column: np.arange(int(leaves[0][1].n_sims))}
         for path, value in leaves:
             data[path[0][1]] = asnumpy(value.values)
         return pd.DataFrame(data, copy=False)
+    if layout == "multiindex" or (layout == "auto" and multiindex):
+        values = {labels: asnumpy(value.values) for labels, (_, value) in zip(paths, leaves)}
+        frame = pd.DataFrame(
+            values,
+            index=pd.RangeIndex(int(leaves[0][1].n_sims), name=simulation_column),
+            copy=False,
+        )
+        frame.columns = pd.MultiIndex.from_tuples(list(values), names=dim_names)
+        return frame
 
-    dimensions = list(dict.fromkeys(name for path, _ in leaves for name, _ in path))
-    reserved = {_SIM, _EVENT, _VALUE}
-    if reserved.intersection(dimensions):
-        raise ValueError("Dimension names Simulation, Event and value are reserved in long-form tables")
     include_events = any(isinstance(value, FreqSevSims) for _, value in leaves)
+    include_metadata = include_events or any(
+        isinstance(value, StochasticScalar) and int(value.n_sims) == 0 for _, value in leaves
+    )
     frames: list[pd.DataFrame] = []
     for path, value in leaves:
+        labels = {name: label for name, (_, label) in zip(dim_names, path)}
         if isinstance(value, StochasticScalar):
-            values = np.asarray(asnumpy(value.values))
-            sims = np.arange(len(values), dtype=np.int64)
-            events: t.Any = np.full(len(values), pd.NA, dtype=object)
+            vals = np.asarray(asnumpy(value.values))
+            sims: t.Any = np.arange(len(vals), dtype=np.int64)
+            events: t.Any = np.full(len(vals), pd.NA, dtype=object)
+            kind, count = "stochastic", int(value.n_sims)
         elif isinstance(value, FreqSevSims):
-            values = np.asarray(asnumpy(value.values))
+            vals = np.asarray(asnumpy(value.values))
             sims = np.asarray(asnumpy(value.sim_index), dtype=np.int64)
-            events = np.arange(len(values), dtype=np.int64)
+            events = np.arange(len(vals), dtype=np.int64)
+            kind, count = "frequency_severity", int(value.n_sims)
         else:
-            if isinstance(value, (dt.date, dt.datetime)):
-                values = np.asarray([np.datetime64(value)])
-            else:
-                values = np.asarray([value])
+            vals = np.asarray([np.datetime64(value) if isinstance(value, (dt.date, dt.datetime)) else value])
             sims = np.array([None], dtype=object)
             events = np.array([None], dtype=object)
-        data = dict(path)
-        data.update({_SIM: sims, _VALUE: values})
+            kind, count = "deterministic", None
+
+        # An empty event list must still record the existence and number of
+        # simulations, otherwise export/import silently drops the variable.
+        if len(vals) == 0:
+            vals = np.asarray([None], dtype=object)
+            sims = np.asarray([None], dtype=object)
+            events = np.asarray([None], dtype=object)
+        row: dict[str, t.Any] = dict(labels)
+        row.update({simulation_column: sims, values_column: vals})
         if include_events:
-            data[_EVENT] = events
-        frames.append(pd.DataFrame(data, copy=False))
-    columns = [*dimensions, _SIM, *([_EVENT] if include_events else []), _VALUE]
+            row[event_column] = events
+        if include_metadata:
+            row[kind_column] = kind
+            row[n_sims_column] = count
+        frames.append(pd.DataFrame(row, copy=False))
+
+    columns = [
+        *dim_names,
+        simulation_column,
+        *([event_column] if include_events else []),
+        values_column,
+        *([kind_column, n_sims_column] if include_metadata else []),
+    ]
     return pd.concat(frames, ignore_index=True).reindex(columns=columns)
+
+
+def _nested_variable(
+    values: dict[tuple[str, ...], t.Any], dimension_columns: Sequence[str]
+) -> ProteusVariable[t.Any]:
+    """Reconstruct a heterogeneous hierarchy from its ordered leaf paths."""
+    def build(prefix: tuple[str, ...], level: int) -> ProteusVariable[t.Any]:
+        children: dict[str, t.Any] = {}
+        for path, leaf in values.items():
+            if path[:level] != prefix:
+                continue
+            if len(path) <= level:
+                raise ValueError("Dimension hierarchy contains an invalid path")
+            label = path[level]
+            if label in children:
+                continue
+            if len(path) == level + 1:
+                if any(p[: level + 1] == (*prefix, label) and len(p) > level + 1 for p in values):
+                    raise ValueError("A dimension label cannot be both a leaf and a nested variable")
+                children[label] = leaf
+            else:
+                children[label] = build((*prefix, label), level + 1)
+        return ProteusVariable(str(dimension_columns[level]), children)
+
+    return build((), 0)
+
+
+def _multiindex_import(
+    frame: pd.DataFrame,
+    simulation_column: str | None,
+    dimension_columns: Sequence[str] | None,
+) -> ProteusVariable[t.Any]:
+    if simulation_column is None:
+        raise ValueError("MultiIndex stochastic data requires a simulation index")
+    if frame.index.hasnans or not frame.index.is_unique:
+        raise ValueError("Simulation IDs must be present and unique")
+    level_count = frame.columns.nlevels
+    names = list(dimension_columns) if dimension_columns is not None else list(frame.columns.names)
+    if len(names) != level_count:
+        raise ValueError("dimension_columns must contain one name per header level")
+    if any(name is None for name in names):
+        raise ValueError("MultiIndex column levels must be named or supplied via dimension_columns")
+    ordered = frame.sort_index()
+    vals: dict[tuple[str, ...], t.Any] = {}
+    for column in ordered.columns:
+        path = tuple(str(label) for label in column)
+        if path in vals:
+            raise ValueError("Duplicate MultiIndex column paths")
+        vals[path] = StochasticScalar(ordered[column].to_numpy(copy=False))
+    if not vals:
+        raise ValueError("MultiIndex table has no value columns")
+    return _nested_variable(vals, [str(name) for name in names])
 
 
 def from_dataframe(
@@ -100,91 +225,131 @@ def from_dataframe(
     values_column: str = _VALUE,
     simulation_column: str | None = _SIM,
     *,
+    dimension_columns: Sequence[str] | None = None,
+    event_column: str = _EVENT,
+    kind_column: str = _KIND,
+    n_sims_column: str = _COUNT,
     n_sims: int | None = None,
 ) -> ProteusVariable[t.Any]:
-    """Read a conventional wide table or a one-dimensional long table.
+    """Import wide, long or MultiIndex data, with selectable column mappings.
 
-    For wide data, columns other than Simulation are separate stochastic
-    variables. For long data, specify the label and value column names.
-    An optional Event column identifies individual claims. Supply n_sims
-    for event-list data if there are trailing zero-claim simulations.
-    Data exchange does not preserve coupling groups.
+    Dimension columns can describe multiple nested levels in long data. Event
+    rows create FreqSevSims; the optional N Simulations column keeps zero-claim
+    simulations. This is data interchange; coupling is not reconstructed.
     """
-    if frame.empty:
-        raise ValueError("Cannot import an empty table")
     if "_pal_schema" in frame or "_pal_path" in frame:
-        raise ValueError("PAL object snapshots must be loaded with pal.serialization.load()")
+        raise ValueError("PAL snapshots must be loaded through pal.serialization.load()")
+    if isinstance(frame.columns, pd.MultiIndex):
+        return _multiindex_import(frame, simulation_column, dimension_columns)
+
     if values_column not in frame.columns:
-        # Wide table: one column per variable, one row per simulation.
+        # A wide table has a separate stochastic variable in each value column.
         if simulation_column is None:
             if len(frame) != 1:
                 raise ValueError("Wide deterministic tables must have exactly one row")
-            columns = list(frame.columns)
-            return ProteusVariable(dim_name or "Variable", {str(key): frame[key].iloc[0] for key in columns})
+            return ProteusVariable(dim_name or "Variable", {str(c): frame[c].iloc[0] for c in frame})
         if simulation_column not in frame:
             raise ValueError(f"Missing simulation column {simulation_column!r}")
         if frame[simulation_column].isna().any() or frame[simulation_column].duplicated().any():
             raise ValueError("Simulation IDs must be present and unique in wide tables")
-        labels = [key for key in frame if key != simulation_column]
+        labels = [c for c in frame if c != simulation_column]
         if not labels:
             raise ValueError("Wide table has no value columns")
         ordered = frame.sort_values(simulation_column)
         return ProteusVariable(
-            dim_name or "Variable",
-            {str(key): StochasticScalar(ordered[key].to_numpy(copy=False)) for key in labels},
+            dim_name or (dimension_columns[0] if dimension_columns else "Variable"),
+            {str(c): StochasticScalar(ordered[c].to_numpy(copy=False)) for c in labels},
         )
 
-    if dim_name is None:
-        candidates = [key for key in frame if key not in {values_column, simulation_column, _EVENT}]
-        if len(candidates) != 1:
-            raise ValueError("Provide dim_name to identify the dimension label column")
-        dim_name = str(candidates[0])
-    if dim_name not in frame:
-        raise ValueError(f"Missing dimension column {dim_name!r}")
-    if frame[dim_name].isna().any():
-        raise ValueError("Dimension labels cannot be missing")
-    if frame[values_column].isna().any():
-        raise ValueError("Values cannot be missing in long-form imports")
-
-    if simulation_column is None:
-        if frame[dim_name].duplicated().any():
-            raise ValueError("Duplicate dimension labels in deterministic table")
-        return ProteusVariable(
-            dim_name,
-            {str(label): subset[values_column].iloc[0] for label, subset in frame.groupby(dim_name, sort=False)},
-        )
-    if simulation_column not in frame:
+    control = {values_column, simulation_column, event_column, kind_column, n_sims_column}
+    dimensions = list(dimension_columns) if dimension_columns is not None else [
+        str(c) for c in frame if c not in control
+    ]
+    if dim_name is not None:
+        if dimension_columns is not None and len(dimension_columns) > 1:
+            raise ValueError("Use dimension_columns alone to select nested dimension names")
+        dimensions = [dim_name]
+    if not dimensions or len(dimensions) != len(set(dimensions)):
+        raise ValueError("Provide distinct dimension_columns for long-form data")
+    if any(c not in frame.columns for c in dimensions):
+        raise ValueError("Missing requested dimension column")
+    if any(c in control for c in dimensions):
+        raise ValueError("Dimension and control columns must be distinct")
+    if simulation_column is not None and simulation_column not in frame.columns:
         raise ValueError(f"Missing simulation column {simulation_column!r}")
 
-    variables: dict[str, t.Any] = {}
-    has_events = _EVENT in frame.columns and frame[_EVENT].notna().any()
-    if has_events:
-        valid_sims = frame[simulation_column].dropna()
-        observed = int(valid_sims.max()) + 1 if len(valid_sims) else 0
-        total_sims = observed if n_sims is None else n_sims
-        if total_sims < observed:
-            raise ValueError("n_sims cannot be smaller than the largest simulation index")
-        for label, group in frame.groupby(dim_name, sort=False):
-            if group[_EVENT].isna().any() or group[simulation_column].isna().any():
-                raise ValueError("Mixed deterministic and event-list rows are not supported for import")
-            event_ids = group[_EVENT].to_numpy()
-            if len(np.unique(event_ids)) != len(event_ids):
-                raise ValueError("Event IDs must be unique within each variable")
-            ordered = group.sort_values(_EVENT)
+    leaves: dict[tuple[str, ...], t.Any] = {}
+    for raw_path, group in frame.groupby(dimensions, sort=False, dropna=False):
+        path_values = raw_path if isinstance(raw_path, tuple) else (raw_path,)
+        path: list[str] = []
+        encountered_missing = False
+        for label in path_values:
+            if pd.isna(label):
+                encountered_missing = True
+            elif encountered_missing:
+                raise ValueError("Dimension paths must not contain gaps")
+            else:
+                path.append(str(label))
+        if not path:
+            raise ValueError("Dimension labels cannot all be missing")
+
+        declared_kind: str | None = None
+        if kind_column in group:
+            kinds = group[kind_column].dropna().unique()
+            if len(kinds) > 1:
+                raise ValueError("Conflicting kinds for the same dimension path")
+            if len(kinds):
+                declared_kind = str(kinds[0])
+        has_event = event_column in group and group[event_column].notna().any()
+        has_simulation = simulation_column is not None and group[simulation_column].notna().any()
+        kind = declared_kind or (
+            "frequency_severity" if has_event else "stochastic" if has_simulation else "deterministic"
+        )
+
+        stored_n_sims: int | None = None
+        if n_sims_column in group:
+            counts = group[n_sims_column].dropna().unique()
+            if len(counts) > 1:
+                raise ValueError("Conflicting simulation counts for the same dimension path")
+            if len(counts):
+                stored_n_sims = int(counts[0])
+        if kind == "frequency_severity":
+            if simulation_column is None or event_column not in group:
+                raise ValueError("Frequency-severity input requires simulation and event columns")
+            claims = group.loc[group[event_column].notna()]
+            if claims[event_column].duplicated().any():
+                raise ValueError("Event IDs must be unique within a variable")
+            if claims[simulation_column].isna().any():
+                raise ValueError("Claim rows must have a simulation ID")
+            ordered = claims.sort_values(event_column)
             indices = ordered[simulation_column].to_numpy(dtype=np.int64)
             if (indices < 0).any():
                 raise ValueError("Simulation indices must be nonnegative")
-            variables[str(label)] = FreqSevSims(indices, ordered[values_column].to_numpy(copy=False), total_sims)
-        return ProteusVariable(dim_name, variables)
+            observed = int(indices.max()) + 1 if len(indices) else 0
+            total = n_sims if n_sims is not None else (
+                stored_n_sims if stored_n_sims is not None else observed
+            )
+            if total < observed:
+                raise ValueError("n_sims cannot be smaller than the largest simulation index")
+            vals = ordered[values_column].to_numpy(copy=False) if len(ordered) else np.array([], dtype=float)
+            leaves[tuple(path)] = FreqSevSims(indices, vals, total)
+        elif kind == "stochastic":
+            if simulation_column is None:
+                raise ValueError("Stochastic input requires a simulation column")
+            samples = group.loc[group[simulation_column].notna()]
+            if samples[simulation_column].duplicated().any():
+                raise ValueError("Duplicate simulation ID for a dimension label")
+            ordered = samples.sort_values(simulation_column)
+            if stored_n_sims is not None and len(ordered) != stored_n_sims:
+                raise ValueError("Stochastic data does not match its stored simulation count")
+            leaves[tuple(path)] = StochasticScalar(
+                ordered[values_column].to_numpy(copy=False) if len(ordered) else np.array([], dtype=float)
+            )
+        elif kind == "deterministic":
+            if len(group) != 1:
+                raise ValueError("Deterministic dimension labels must be unique")
+            leaves[tuple(path)] = group[values_column].iloc[0]
+        else:
+            raise ValueError(f"Unknown value kind {kind!r}")
 
-    if frame[simulation_column].isna().any():
-        raise ValueError("Simulation IDs cannot be missing in stochastic tables")
-    if frame[[dim_name, simulation_column]].duplicated().any():
-        raise ValueError("Duplicate simulation ID for a dimension label")
-    sims = np.sort(frame[simulation_column].unique())
-    for label, group in frame.groupby(dim_name, sort=False):
-        ordered = group.sort_values(simulation_column)
-        if not np.array_equal(ordered[simulation_column].to_numpy(), sims):
-            raise ValueError("All dimension labels must have the same simulation IDs")
-        variables[str(label)] = StochasticScalar(ordered[values_column].to_numpy(copy=False))
-    return ProteusVariable(dim_name, variables)
+    return _nested_variable(leaves, dimensions)
