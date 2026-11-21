@@ -52,7 +52,7 @@ def to_dataframe(variable: ProteusVariable[t.Any], layout: str = "auto") -> pd.D
         all(len(path) == 1 and isinstance(value, StochasticScalar) for path, value in leaves)
         and len({int(value.n_sims) for _, value in leaves}) == 1
         and len({path[0][1] for path, _ in leaves}) == len(leaves)
-        and all(path[0][1] != _SIM for path, _ in leaves)
+        and all(path[0][1] not in {_SIM, _VALUE, _EVENT} for path, _ in leaves)
     )
     if layout == "wide" and not is_wide:
         raise ValueError("Wide layout requires one-dimensional StochasticScalar leaves with matching n_sims")
