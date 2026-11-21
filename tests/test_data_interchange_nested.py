@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from pal import FreqSevSims, ProteusVariable, StochasticScalar
+from pal._maths import asnumpy
 
 
 @pytest.fixture
@@ -51,9 +52,9 @@ def test_nested_export_import(nested, tmp_path, format, layout):
 
     assert result.dim_name == "Region"
     assert result["UK"].dim_name == "LoB"
-    np.testing.assert_array_equal(result["UK"]["Motor"].values, [10, 20, 30])
-    np.testing.assert_array_equal(result["UK"]["Property"].values, [2.5, 3.5, 4.5])
-    np.testing.assert_array_equal(result["US"]["Motor"].values, [40, 50, 60])
+    np.testing.assert_array_equal(asnumpy(result["UK"]["Motor"].values), [10, 20, 30])
+    np.testing.assert_array_equal(asnumpy(result["UK"]["Property"].values), [2.5, 3.5, 4.5])
+    np.testing.assert_array_equal(asnumpy(result["US"]["Motor"].values), [40, 50, 60])
 
 
 def test_auto_layout_prefers_multiindex_for_nested_stochastic(nested):
@@ -86,7 +87,7 @@ def test_custom_column_names_for_nested_long(nested, tmp_path, format):
         )
     assert result.dim_name == "Market"
     assert result["UK"].dim_name == "Class"
-    np.testing.assert_array_equal(result["US"]["Property"].values, [6.5, 7.5, 8.5])
+    np.testing.assert_array_equal(asnumpy(result["US"]["Property"].values), [6.5, 7.5, 8.5])
 
 
 @pytest.mark.parametrize("format", ["csv", "parquet"])
@@ -106,7 +107,7 @@ def test_custom_multiindex_headers(nested, tmp_path, format):
         result = ProteusVariable.from_parquet(path, simulation_column="Run")
     assert result.dim_name == "Market"
     assert result["UK"].dim_name == "Business"
-    np.testing.assert_array_equal(result["US"]["Property"].values, [6.5, 7.5, 8.5])
+    np.testing.assert_array_equal(asnumpy(result["US"]["Property"].values), [6.5, 7.5, 8.5])
 
 
 @pytest.mark.parametrize("format", ["csv", "parquet"])
@@ -137,8 +138,8 @@ def test_trailing_zero_claim_simulations_roundtrip_without_n_sims(tmp_path, form
         variable.to_parquet(path)
         result = ProteusVariable.from_parquet(path)["Cat"]
     assert result.n_sims == 12
-    np.testing.assert_array_equal(result.sim_index, [0, 2, 0])
-    np.testing.assert_array_equal(result.values, [10.0, 20.0, 30.0])
+    np.testing.assert_array_equal(asnumpy(result.sim_index), [0, 2, 0])
+    np.testing.assert_array_equal(asnumpy(result.values), [10.0, 20.0, 30.0])
 
 
 def test_configurable_external_claim_columns():
@@ -160,21 +161,21 @@ def test_configurable_external_claim_columns():
     )["Property"]
     assert isinstance(result, FreqSevSims)
     assert result.n_sims == 8
-    np.testing.assert_array_equal(result.sim_index, [2, 0, 2])
+    np.testing.assert_array_equal(asnumpy(result.sim_index), [2, 0, 2])
 
 
 def test_custom_external_wide_simulation_column():
     frame = pd.DataFrame({"Run": [11, 10], "A": [5, 4], "B": [7, 6]})
     result = ProteusVariable.from_dataframe(frame, simulation_column="Run", dim_name="LoB")
     assert result.dim_name == "LoB"
-    np.testing.assert_array_equal(result["A"].values, [4, 5])
+    np.testing.assert_array_equal(asnumpy(result["A"].values), [4, 5])
 
 
 def test_multiindex_external_dataframe(nested):
     frame = nested.to_dataframe(layout="multiindex")
     renamed = frame.rename_axis(index="Run")
     result = ProteusVariable.from_dataframe(renamed, simulation_column="Run")
-    np.testing.assert_array_equal(result["UK"]["Motor"].values, [10, 20, 30])
+    np.testing.assert_array_equal(asnumpy(result["UK"]["Motor"].values), [10, 20, 30])
 
 
 def test_three_levels_nested_roundtrip_csv(tmp_path):
@@ -191,7 +192,7 @@ def test_three_levels_nested_roundtrip_csv(tmp_path):
     model.to_csv(path)
     restored = ProteusVariable.from_csv(path)
     assert restored["GB"]["Motor"].dim_name == "Coverage"
-    np.testing.assert_array_equal(restored["GB"]["Motor"]["Comp"].values, [7, 8])
+    np.testing.assert_array_equal(asnumpy(restored["GB"]["Motor"]["Comp"].values), [7, 8])
 
 
 def test_irregular_nested_variable_auto_uses_long(tmp_path):
@@ -207,7 +208,7 @@ def test_irregular_nested_variable_auto_uses_long(tmp_path):
     path = tmp_path / "irregular.csv"
     model.to_csv(path, layout="long")
     restored = ProteusVariable.from_csv(path)
-    np.testing.assert_array_equal(restored["France"]["Property"].values, [3.0, 4.0])
+    np.testing.assert_array_equal(asnumpy(restored["France"]["Property"].values), [3.0, 4.0])
 
 
 def test_exported_zero_sim_stochastic_can_be_imported(tmp_path):
@@ -245,5 +246,5 @@ def test_external_claim_ordinals_can_restart_for_each_simulation():
     )
     result = ProteusVariable.from_dataframe(frame, n_sims=4)["Cat"]
     assert result.n_sims == 4
-    np.testing.assert_array_equal(result.sim_index, [0, 0, 1, 1])
-    np.testing.assert_array_equal(result.values, [10.0, 20.0, 30.0, 40.0])
+    np.testing.assert_array_equal(asnumpy(result.sim_index), [0, 0, 1, 1])
+    np.testing.assert_array_equal(asnumpy(result.values), [10.0, 20.0, 30.0, 40.0])
