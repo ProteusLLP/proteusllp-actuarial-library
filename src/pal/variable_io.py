@@ -103,7 +103,9 @@ def to_dataframe(variable: ProteusVariable[t.Any]) -> pd.DataFrame:
             if not np.issubdtype(indices.dtype, np.integer):
                 raise TypeError("Frequency-severity simulation indices must be integers")
             for event, (simulation, sample) in enumerate(zip(indices, samples)):
-                rows.append(_row(encoded_path, "freqsev", dtype, n_sims, group, int(simulation), event, _encode(sample)))
+                rows.append(
+                    _row(encoded_path, "freqsev", dtype, n_sims, group, int(simulation), event, _encode(sample))
+                )
             populated = set(indices.tolist())
             for simulation in range(n_sims):
                 if simulation not in populated:
