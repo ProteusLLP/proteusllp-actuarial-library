@@ -79,10 +79,13 @@ def to_dataframe(variable: ProteusVariable[t.Any], layout: str = "auto") -> pd.D
             sims = np.asarray(asnumpy(value.sim_index), dtype=np.int64)
             events = np.arange(len(values), dtype=np.int64)
         else:
-            values = np.asarray([np.datetime64(value)]) if isinstance(value, (dt.date, dt.datetime)) else np.asarray([value])
+            if isinstance(value, (dt.date, dt.datetime)):
+                values = np.asarray([np.datetime64(value)])
+            else:
+                values = np.asarray([value])
             sims = np.array([None], dtype=object)
             events = np.array([None], dtype=object)
-        data = {name: label for name, label in path}
+        data = dict(path)
         data.update({_SIM: sims, _VALUE: values})
         if include_events:
             data[_EVENT] = events
