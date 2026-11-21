@@ -433,7 +433,17 @@ class RandomizedQMCGenerator:
         )
 
     def noncentral_chisquare(self, df: t.Any, nonc: t.Any, size: t.Any = None) -> t.Any:
-        """Draw noncentral chi-squared quantiles."""
+        """Draw a noncentral chi-square through two RQMC coordinates on GPU.
+
+        The exact Poisson-mixture representation is X|K ~ chi2(df+2K),
+        K ~ Poisson(nonc/2). Both marginal inversions use CuPy operations
+        for fixed moderate noncentrality. This avoids the expensive repeated
+        Poisson-mixture CDF inversion of a single Sobol coordinate.
+        """
+        if xp is not np and isinstance(nonc, (int, float, np.integer, np.floating)) and 0 <= nonc <= 16000:
+            shape = self._shape(size, df, nonc)
+            count = self.poisson(float(nonc) / 2, size=shape)
+            return self.chisquare(xp.asarray(df) + 2 * count, size=shape)
         return self._quantiles(
             scipy_stats.ncx2.ppf,
             size,
