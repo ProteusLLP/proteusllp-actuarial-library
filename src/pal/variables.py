@@ -12,10 +12,9 @@ Key features:
 - Correlation analysis and upsampling capabilities
 - Export functionality for analysis and reporting
 
-NOTE: The serialization/deserialization methods (from_csv, from_dict, from_series)
-      are currently incomplete and have significant limitations. A comprehensive
-      codec system is planned to address these issues.
-      See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
+NOTE: CSV, Parquet and DataFrame round-trips support nested value hierarchies.
+      Legacy from_dict and from_series are still limited; see issue #22 for
+      further serialization work.
 
 The ProteusVariable is designed for actuarial applications such as:
 - Multi-factor risk modeling (e.g., frequency, severity, inflation)
@@ -897,59 +896,70 @@ class ProteusVariable(t.Generic[T]):
         except Exception as e:
             return False, f"Error validating FreqSevSims consistency: {str(e)}", None
 
+    def to_dataframe(self) -> pd.DataFrame:
+        """Export deterministic and simulated leaves to a lossless tabular format.
+
+        The DataFrame retains dimension names, labels, leaf types, simulation
+        indices and claim records. It can be round-tripped through CSV/Parquet.
+        """
+        from .variable_io import to_dataframe
+
+        return to_dataframe(self)
+
+    @classmethod
+    def from_dataframe(
+        cls,
+        data: pd.DataFrame,
+        dim_name: str | None = None,
+        values_column: str = "value",
+        simulation_column: str | None = "Simulation",
+    ) -> ProteusVariable[t.Any]:
+        """Load a PAL export or build a variable from a conventional table.
+
+        For an ordinary table, supply a dimension column, value column and
+        optionally a simulation column. Pass simulation_column=None for
+        deterministic data.
+        """
+        from .variable_io import from_dataframe
+
+        return from_dataframe(data, dim_name, values_column, simulation_column)
+
+    def to_csv(self, file_name: str | os.PathLike[str]) -> None:
+        """Write a variable hierarchy to a self-describing CSV file."""
+        self.to_dataframe().to_csv(file_name, index=False)
+
     @classmethod
     def from_csv(
         cls,
-        file_name: str,
-        dim_name: str,
-        values_column: str,
-        simulation_column: str = "Simulation",
-    ) -> ProteusVariable[StochasticScalar]:
-        """Import a ProteusVariable from a CSV file.
+        file_name: str | os.PathLike[str],
+        dim_name: str | None = None,
+        values_column: str = "value",
+        simulation_column: str | None = "Simulation",
+    ) -> ProteusVariable[t.Any]:
+        """Load a PAL CSV export or a conventional dimension/simulation CSV.
 
-        This method currently has significant limitations and will be replaced
-        with a more comprehensive serialization system.
-
-        Current Limitations:
-        - Only supports one-dimensional variables
-        - Always creates StochasticScalar values regardless of intended type
-        - Cannot preserve generic type information through deserialization
-        - No support for nested ProteusVariable structures
-
-        Args:
-            file_name: Path to the CSV file to read
-            dim_name: Name of the dimension column in the CSV
-            values_column: Name of the column containing the values
-            simulation_column: Name of the column containing simulation indices
-
-        Returns:
-            ProteusVariable with StochasticScalar values loaded from the CSV
-
-        TODO: Implement comprehensive codec system for proper serialization
-              See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
+        The existing positional call from_csv(path, dim_name, values_column,
+        simulation_column) remains supported.
         """
-        # Type ignore: pandas-stubs has complex overloads causing Pyright to report
-        # the function signature as "partially unknown" despite correct usage
-        df: pd.DataFrame = pd.read_csv(file_name)  # type: ignore[misc]
-        pivoted_df = df.pivot(index=simulation_column, columns=dim_name, values=values_column)
-        count = df[dim_name].value_counts()
-        # Type ignore: pandas-stubs overloads cause "partially unknown" warnings
-        pivoted_df.sort_index(inplace=True)  # type: ignore[misc]
+        # Keep literal JSON payloads, empty markers, and string labels intact.
+        frame: pd.DataFrame = pd.read_csv(file_name, keep_default_na=False)
+        return cls.from_dataframe(frame, dim_name, values_column, simulation_column)
 
-        # classmethods can't preserve generic type parameters so we need a type ignore
-        # here. When data is loaded, the contents of the ProteusVariable will be
-        # whatever was present in the CSV file. It may be necessary to separate these
-        # factory functions from ProteusVariable completely.
-        result = cls(
-            dim_name,
-            {
-                str(label): StochasticScalar(pivoted_df[label].values[: count[label]])  # type: ignore[misc]
-                for label in df[dim_name].unique()  # type: ignore[misc]
-            },
-        )
-        result.n_sims = max(count)
+    def to_parquet(self, file_name: str | os.PathLike[str]) -> None:
+        """Write a variable hierarchy as Parquet (requires pyarrow or fastparquet)."""
+        self.to_dataframe().to_parquet(file_name, index=False)
 
-        return result  # type: ignore
+    @classmethod
+    def from_parquet(
+        cls,
+        file_name: str | os.PathLike[str],
+        dim_name: str | None = None,
+        values_column: str = "value",
+        simulation_column: str | None = "Simulation",
+    ) -> ProteusVariable[t.Any]:
+        """Load a PAL Parquet export or a conventional tabular Parquet file."""
+        frame: pd.DataFrame = pd.read_parquet(file_name)
+        return cls.from_dataframe(frame, dim_name, values_column, simulation_column)
 
     @classmethod
     def from_dict(
