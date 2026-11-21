@@ -48,8 +48,8 @@ def write_parquet(variable: ProteusVariable[t.Any], path: str | os.PathLike[str]
     Install the optional parquet extra to supply PyArrow.
     """
     try:
-        import pyarrow as pa
-        import pyarrow.parquet as pq
+        import pyarrow as pa  # pyright: ignore[reportMissingImports]  # Optional parquet extra
+        import pyarrow.parquet as pq  # pyright: ignore[reportMissingImports]  # Optional parquet extra
     except ImportError as exc:
         raise ImportError("Compact Parquet I/O requires pyarrow; install the parquet extra") from exc
 
@@ -73,6 +73,7 @@ def write_parquet(variable: ProteusVariable[t.Any], path: str | os.PathLike[str]
                 group_ids[identity] = len(group_ids)
             group = group_ids[identity]
 
+        indices: np.ndarray | None = None
         if isinstance(value, StochasticScalar):
             kind, n_sims, samples = "stochastic", int(value.n_sims), _array(value.values)
             if n_sims != len(samples):
@@ -97,6 +98,8 @@ def write_parquet(variable: ProteusVariable[t.Any], path: str | os.PathLike[str]
         names.append(f"values_{index}")
         columns.append(_list_column(samples, pa))
         if kind == "freqsev":
+            if indices is None:
+                raise ValueError("Missing frequency-severity simulation indices")
             names.append(f"sim_index_{index}")
             columns.append(_list_column(indices.astype(np.int64, copy=False), pa))
         leaves.append({"path": parts, "kind": kind, "dtype": dtype, "n_sims": n_sims, "group": group})
@@ -157,8 +160,8 @@ def read_parquet(
 ) -> ProteusVariable[t.Any]:
     """Read compact PAL Parquet or any earlier PAL/conventional Parquet table."""
     try:
-        import pyarrow as pa
-        import pyarrow.parquet as pq
+        import pyarrow as pa  # pyright: ignore[reportMissingImports]  # Optional parquet extra
+        import pyarrow.parquet as pq  # pyright: ignore[reportMissingImports]  # Optional parquet extra
     except ImportError:
         return from_dataframe(pd.read_parquet(path), dim_name, values_column, simulation_column)
 
