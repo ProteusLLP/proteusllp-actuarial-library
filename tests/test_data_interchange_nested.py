@@ -232,3 +232,18 @@ def test_reject_conflicting_simulation_counts():
     )
     with pytest.raises(ValueError, match="Conflicting simulation counts"):
         ProteusVariable.from_dataframe(frame)
+
+
+def test_external_claim_ordinals_can_restart_for_each_simulation():
+    frame = pd.DataFrame(
+        {
+            "LoB": ["Cat", "Cat", "Cat", "Cat"],
+            "Simulation": [1, 0, 1, 0],
+            "Event": [1, 0, 0, 1],
+            "value": [40.0, 10.0, 30.0, 20.0],
+        }
+    )
+    result = ProteusVariable.from_dataframe(frame, n_sims=4)["Cat"]
+    assert result.n_sims == 4
+    np.testing.assert_array_equal(result.sim_index, [0, 0, 1, 1])
+    np.testing.assert_array_equal(result.values, [10.0, 20.0, 30.0, 40.0])
