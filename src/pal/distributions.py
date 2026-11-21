@@ -32,6 +32,7 @@ from scipy.stats import geninvgauss
 
 # Local imports
 from ._compat import override
+from ._gpu_distributions import noncentral_chisquare_cdf, noncentral_chisquare_ppf
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
 from ._value_arrays import stochastic_array
 from .config import config
@@ -1515,8 +1516,9 @@ class NonCentralChiSquared(DistributionBase):
         nonc: Noncentrality parameter :math:`\lambda\geq0`.
 
     Notes:
-        Random generation runs on the active backend. On GPU, CDF and inverse
-        CDF use SciPy on the host and return results on the GPU.
+        Random generation and GPU CDF/inverse CDF use device-resident CuPy
+        calculations. The latter evaluate a truncated Poisson mixture and
+        bracketed inversion; their runtime depends on noncentrality.
     """
 
     @classmethod
@@ -1562,7 +1564,7 @@ class NonCentralChiSquared(DistributionBase):
         """Compute the cumulative distribution function."""
         self._validated_params()
         self._validate_probability_inputs(x)
-        cdf_function = special.chndtr if xp is np else lambda *values: _scipy_on_backend(scipy_special.chndtr, *values)
+        cdf_function = special.chndtr if xp is np else noncentral_chisquare_cdf
         return _special_call(
             cdf_function,
             x,
@@ -1575,9 +1577,7 @@ class NonCentralChiSquared(DistributionBase):
         """Compute the inverse cumulative distribution function."""
         self._validated_params()
         self._validate_probability_inputs(u)
-        ppf_function = (
-            special.chndtrix if xp is np else lambda *values: _scipy_on_backend(scipy_special.chndtrix, *values)
-        )
+        ppf_function = special.chndtrix if xp is np else noncentral_chisquare_ppf
         return _special_call(
             ppf_function,
             u,
