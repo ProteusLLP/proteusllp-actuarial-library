@@ -896,15 +896,16 @@ class ProteusVariable(t.Generic[T]):
         except Exception as e:
             return False, f"Error validating FreqSevSims consistency: {str(e)}", None
 
-    def to_dataframe(self) -> pd.DataFrame:
-        """Export deterministic and simulated leaves to a lossless tabular format.
+    def to_dataframe(self, layout: str = "auto") -> pd.DataFrame:
+        """Export values to an ordinary table for use outside PAL.
 
-        The DataFrame retains dimension names, labels, leaf types, simulation
-        indices and claim records. It can be round-tripped through CSV/Parquet.
+        Auto layout uses a wide table for homogeneous simulation arrays,
+        otherwise a long table with dimension, simulation and value columns.
+        For lossless object persistence use pal.serialization.save instead.
         """
-        from .variable_io import to_dataframe
+        from .data_interchange import to_dataframe
 
-        return to_dataframe(self)
+        return to_dataframe(self, layout=layout)
 
     @classmethod
     def from_dataframe(
@@ -913,20 +914,17 @@ class ProteusVariable(t.Generic[T]):
         dim_name: str | None = None,
         values_column: str = "value",
         simulation_column: str | None = "Simulation",
+        *,
+        n_sims: int | None = None,
     ) -> ProteusVariable[t.Any]:
-        """Load a PAL export or build a variable from a conventional table.
+        """Build a variable from conventional wide or long tabular data."""
+        from .data_interchange import from_dataframe
 
-        For an ordinary table, supply a dimension column, value column and
-        optionally a simulation column. Pass simulation_column=None for
-        deterministic data.
-        """
-        from .variable_io import from_dataframe
+        return from_dataframe(data, dim_name, values_column, simulation_column, n_sims=n_sims)
 
-        return from_dataframe(data, dim_name, values_column, simulation_column)
-
-    def to_csv(self, file_name: str | os.PathLike[str]) -> None:
-        """Write a variable hierarchy to a self-describing CSV file."""
-        self.to_dataframe().to_csv(file_name, index=False)
+    def to_csv(self, file_name: str | os.PathLike[str], layout: str = "auto") -> None:
+        """Export ordinary CSV for spreadsheets and external data pipelines."""
+        self.to_dataframe(layout=layout).to_csv(file_name, index=False)
 
     @classmethod
     def from_csv(
@@ -935,26 +933,16 @@ class ProteusVariable(t.Generic[T]):
         dim_name: str | None = None,
         values_column: str = "value",
         simulation_column: str | None = "Simulation",
+        *,
+        n_sims: int | None = None,
     ) -> ProteusVariable[t.Any]:
-        """Load a PAL CSV export or a conventional dimension/simulation CSV.
+        """Import ordinary CSV, retaining the legacy positional column arguments."""
+        frame: pd.DataFrame = pd.read_csv(file_name)
+        return cls.from_dataframe(frame, dim_name, values_column, simulation_column, n_sims=n_sims)
 
-        The existing positional call from_csv(path, dim_name, values_column,
-        simulation_column) remains supported.
-        """
-        # A PAL export stores JSON scalar literals. Always read these as text:
-        # pandas' automatic numeric inference can overflow large integers.
-        columns = pd.read_csv(file_name, nrows=0).columns
-        if "_pal_schema" in columns:
-            frame: pd.DataFrame = pd.read_csv(file_name, dtype={"value": str}, keep_default_na=False)
-        else:
-            frame = pd.read_csv(file_name, keep_default_na=False)
-        return cls.from_dataframe(frame, dim_name, values_column, simulation_column)
-
-    def to_parquet(self, file_name: str | os.PathLike[str]) -> None:
-        """Write compact Parquet with typed value columns (requires pyarrow)."""
-        from .variable_parquet import write_parquet
-
-        write_parquet(self, file_name)
+    def to_parquet(self, file_name: str | os.PathLike[str], layout: str = "auto") -> None:
+        """Export ordinary typed Parquet for pandas, Arrow and data pipelines."""
+        self.to_dataframe(layout=layout).to_parquet(file_name, index=False)
 
     @classmethod
     def from_parquet(
@@ -963,11 +951,12 @@ class ProteusVariable(t.Generic[T]):
         dim_name: str | None = None,
         values_column: str = "value",
         simulation_column: str | None = "Simulation",
+        *,
+        n_sims: int | None = None,
     ) -> ProteusVariable[t.Any]:
-        """Load compact PAL Parquet, earlier PAL exports, or ordinary tables."""
-        from .variable_parquet import read_parquet
-
-        return read_parquet(file_name, dim_name, values_column, simulation_column)
+        """Build PAL variables from an ordinary Parquet table."""
+        frame: pd.DataFrame = pd.read_parquet(file_name)
+        return cls.from_dataframe(frame, dim_name, values_column, simulation_column, n_sims=n_sims)
 
     @classmethod
     def from_dict(
