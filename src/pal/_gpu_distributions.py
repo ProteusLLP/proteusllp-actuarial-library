@@ -78,16 +78,19 @@ def noncentral_chisquare_ppf(u: t.Any, df: t.Any, nonc: t.Any) -> t.Any:
     mean = df + nonc
     deviation = xp.sqrt(2.0 * (df + 2.0 * nonc))
     high = mean + 32.0 * deviation + 128.0
-    low = xp.zeros_like(high)
+    low = xp.full_like(high, xp.log(xp.finfo(xp.float64).tiny))
+    upper_log = xp.log(high)
     # A single GPU-wide bound check, rather than a per-path host transfer.
     if bool(xp.any(noncentral_chisquare_cdf(high, df, nonc) < target)):
         raise RuntimeError("GPU noncentral chi-square inverse CDF upper bracket was insufficient")
     for _ in range(56):
-        middle = (low + high) / 2.0
-        smaller = noncentral_chisquare_cdf(middle, df, nonc) < target
+        middle = (low + upper_log) / 2.0
+        smaller = noncentral_chisquare_cdf(xp.exp(middle), df, nonc) < target
         low = xp.where(smaller, middle, low)
-        high = xp.where(smaller, high, middle)
-    return xp.where(invalid, xp.nan, xp.where(u == 0, 0.0, xp.where(u == 1, xp.inf, (low + high) / 2.0)))
+        upper_log = xp.where(smaller, upper_log, middle)
+    return xp.where(
+        invalid, xp.nan, xp.where(u == 0, 0.0, xp.where(u == 1, xp.inf, xp.exp((low + upper_log) / 2.0)))
+    )
 
 
 def generalized_inverse_gaussian_mc(
