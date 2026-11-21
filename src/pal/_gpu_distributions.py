@@ -86,9 +86,7 @@ def noncentral_chisquare_ppf(u: t.Any, df: t.Any, nonc: t.Any) -> t.Any:
         smaller = noncentral_chisquare_cdf(xp.exp(middle), df, nonc) < target
         low = xp.where(smaller, middle, low)
         upper_log = xp.where(smaller, upper_log, middle)
-    return xp.where(
-        invalid, xp.nan, xp.where(u == 0, 0.0, xp.where(u == 1, xp.inf, xp.exp((low + upper_log) / 2.0)))
-    )
+    return xp.where(invalid, xp.nan, xp.where(u == 0, 0.0, xp.where(u == 1, xp.inf, xp.exp((low + upper_log) / 2.0))))
 
 
 def generalized_inverse_gaussian_mc(rng: t.Any, n_sims: int, p: t.Any, shape: t.Any, scale: t.Any, loc: t.Any) -> t.Any:
