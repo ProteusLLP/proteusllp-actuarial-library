@@ -79,12 +79,17 @@ jobs:
           python -m benchmarks.benchmark_variable_io \
             --simulations 20000 --variables 20 \
             --output "$RUNNER_TEMP/pal-variable-io.json"
-          cat "$RUNNER_TEMP/pal-variable-io.json" >> "$GITHUB_STEP_SUMMARY"
+          python -m benchmarks.benchmark_variable_io \
+            --simulations 100000 --variables 100 --compact-only \
+            --output "$RUNNER_TEMP/pal-variable-io-large.json"
+          for report in "$RUNNER_TEMP"/pal-variable-io*.json; do
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          done
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: pal-performance-variable-io
-          path: ${{ runner.temp }}/pal-variable-io.json
+          path: ${{ runner.temp }}/pal-variable-io*.json
           retention-days: 30
 
   gpu:
