@@ -110,9 +110,7 @@ def test_wide_import_rejects_duplicate_or_missing_simulations():
 
 def test_wide_exchange_10000_simulations_avoids_per_value_json():
     rng = np.random.default_rng(123)
-    model = ProteusVariable(
-        "LoB", {f"risk{i}": StochasticScalar(rng.standard_normal(10000)) for i in range(10)}
-    )
+    model = ProteusVariable("LoB", {f"risk{i}": StochasticScalar(rng.standard_normal(10000)) for i in range(10)})
     frame = model.to_dataframe()
     assert frame.shape == (10000, 11)
     for i in range(10):
