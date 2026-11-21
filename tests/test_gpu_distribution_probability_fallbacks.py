@@ -46,7 +46,7 @@ def test_probability_methods_match_scipy_and_preserve_backend_and_coupling(famil
         for parameter in parameters:
             assert result.coupled_variable_group is parameter.coupled_variable_group
 
-    reference_options = {}
+    reference_options: dict[str, np.ndarray] = {}
     if family == "generalized_inverse_gaussian":
         reference_options["scale"] = np.sqrt(asnumpy(chi.values) / asnumpy(psi.values))
     np.testing.assert_allclose(
@@ -66,7 +66,10 @@ def test_probability_methods_match_scipy_and_preserve_backend_and_coupling(famil
 @pytest.mark.parametrize("family", ["noncentral_chi_squared", "generalized_inverse_gaussian"])
 def test_monte_carlo_sampling_reproducible_and_on_backend(family: str) -> None:
     """Sampling remains reproducible even if GIG uses an external host sampler."""
-    dist = NonCentralChiSquared(5.0, 2.5) if family == "noncentral_chi_squared" else GeneralizedInverseGaussian(-0.5, 2.0, 3.0)
+    if family == "noncentral_chi_squared":
+        dist = NonCentralChiSquared(5.0, 2.5)
+    else:
+        dist = GeneralizedInverseGaussian(-0.5, 2.0, 3.0)
     first = dist.generate(128, rng=create_random_generator(146))
     second = dist.generate(128, rng=create_random_generator(146))
 
