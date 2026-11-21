@@ -279,6 +279,7 @@ def from_dataframe(
         raise ValueError(f"Missing simulation column {simulation_column!r}")
 
     leaves: dict[tuple[str, ...], t.Any] = {}
+    reference_sims: np.ndarray | None = None
     for raw_path, group in frame.groupby(dimensions, sort=False, dropna=False):
         path_values = raw_path if isinstance(raw_path, tuple) else (raw_path,)
         path: list[str] = []
@@ -340,6 +341,11 @@ def from_dataframe(
             if samples[simulation_column].duplicated().any():
                 raise ValueError("Duplicate simulation ID for a dimension label")
             ordered = samples.sort_values(simulation_column)
+            ids = ordered[simulation_column].to_numpy()
+            if reference_sims is None:
+                reference_sims = ids
+            elif not np.array_equal(reference_sims, ids):
+                raise ValueError("All dimension labels must have the same simulation IDs")
             if stored_n_sims is not None and len(ordered) != stored_n_sims:
                 raise ValueError("Stochastic data does not match its stored simulation count")
             leaves[tuple(path)] = StochasticScalar(
