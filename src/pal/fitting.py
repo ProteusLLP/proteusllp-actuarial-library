@@ -64,6 +64,152 @@ class FitResult(t.Generic[_T]):
     method: str = _FitMethod.MLE.value
 
 
+def _gamma_log_survival_underflow(shape: float, z: float) -> float:
+    """Evaluate log Q(shape, z) after the ordinary gamma survival underflows.
+
+    The upper incomplete-gamma continued fraction converges in this regime.
+    The computation stays on the CPU because fitting is deterministic and
+    does not depend on PAL's simulation backend.
+    """
+    if not np.isfinite(z) or z <= shape + 1.0:
+        raise ArithmeticError("Gamma survival continuation requires z > shape + 1")
+    tiny = 1e-300
+    b = z + 1.0 - shape
+    c = 1.0 / tiny
+    d = 1.0 / b
+    h = d
+    for i in range(1, 10001):
+        an = -float(i) * (float(i) - shape)
+        b += 2.0
+        d = an * d + b
+        if abs(d) < tiny:
+            d = tiny
+        c = b + an / c
+        if abs(c) < tiny:
+            c = tiny
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < 1e-13:
+            break
+    else:
+        raise ArithmeticError("Gamma survival continued fraction did not converge")
+    if not np.isfinite(h) or h <= 0.0:
+        raise ArithmeticError("Invalid Gamma survival continued fraction")
+    return float(shape * np.log(z) - z - special.gammaln(shape) + np.log(h))
+
+
+def _gamma_logsf(shape: float, z: float | np.ndarray) -> float | np.ndarray:
+    """Stable log survival of a unit-scale Gamma, including underflowed tails."""
+    values = np.asarray(z, dtype=np.float64)
+    with np.errstate(divide="ignore", invalid="ignore", under="ignore"):
+        result = np.asarray(np.log(special.gammaincc(shape, values)))
+    underflow = np.isneginf(result) & np.isfinite(values) & (values > shape + 1.0)
+    if np.any(underflow):
+        result = result.copy()
+        for index in np.ndindex(values.shape):
+            if underflow[index]:
+                result[index] = _gamma_log_survival_underflow(shape, float(values[index]))
+    return float(result) if result.ndim == 0 else result
+
+
+def _gamma_mean_excess(alpha: float, theta: float, d: float) -> float:
+    """Gamma mean residual life, avoiding loss of tail survival precision."""
+    if d <= 0.0:
+        return alpha * theta - d
+    if alpha == 1.0:
+        return theta
+    z = d / theta
+    if not np.isfinite(z):
+        raise ArithmeticError("Gamma tail attachment exceeds numeric range")
+    if z > max(1e6, 100.0 * alpha):
+        # Leading terms of the upper incomplete Gamma expansion. At this
+        # threshold the omitted terms are negligible for practical shapes.
+        return float(theta * (1.0 + (alpha - 1.0) / z))
+    log_survival = float(_gamma_logsf(alpha, z))
+    log_next_survival = float(_gamma_logsf(alpha + 1.0, z))
+    excess = alpha * np.exp(log_next_survival - log_survival) - z
+    if np.isfinite(excess) and excess > 1e-7 * max(1.0, z):
+        return float(theta * excess)
+    # When subtracting the attachment loses precision, integrate conditional
+    # survival in dimensionless tail-width units instead.
+    integral, error = integrate.quad(
+        lambda u: np.exp(float(_gamma_logsf(alpha, z + u)) - log_survival),
+        0.0,
+        np.inf,
+        epsrel=1e-10,
+        limit=300,
+    )
+    if not np.isfinite(integral) or not np.isfinite(error) or error > 1e-7:
+        raise ArithmeticError("Gamma conditional survival integration did not converge")
+    return float(theta * integral)
+
+
+def _lognormal_mean_excess(mu: float, sigma: float, d: float) -> float:
+    """Conditional first-moment formula with erfcx for upper-tail accuracy."""
+    if d <= 0.0:
+        return float(np.exp(mu + 0.5 * sigma**2) - d)
+    z = (np.log(d) - mu) / sigma
+    if z >= sigma:
+        numerator = special.erfcx((z - sigma) / np.sqrt(2.0))
+        denominator = special.erfcx(z / np.sqrt(2.0))
+        if denominator > 0.0 and np.isfinite(numerator):
+            relative_excess = (numerator - denominator) / denominator
+            if relative_excess > 1e-8:
+                return float(d * relative_excess)
+    log_ratio = mu + 0.5 * sigma**2 - np.log(d)
+    log_ratio += special.log_ndtr(sigma - z) - special.log_ndtr(-z)
+    if np.isfinite(log_ratio) and log_ratio > 1e-10:
+        return float(d * np.expm1(log_ratio))
+    if z > 1e7:
+        # Extreme normal-tail asymptotic, avoiding subtraction of close values.
+        return float(d * sigma / z)
+    raise ArithmeticError("LogNormal mean excess lost numerical precision")
+
+
+def _weibull_mean_excess(shape: float, scale: float, loc: float, d: float) -> float:
+    """Integrate a Weibull survival using the upper incomplete gamma ratio."""
+    a = 1.0 / shape
+    if d <= loc:
+        return float(loc + scale * np.exp(special.gammaln(1.0 + a)) - d)
+    if shape == 1.0:
+        return scale
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        z = float(np.power((d - loc) / scale, shape))
+    if not np.isfinite(z):
+        raise ArithmeticError("Weibull attachment exceeds numeric range")
+    if z > 1e7:
+        log_value = np.log(scale / shape) + (a - 1.0) * np.log(z)
+        log_value += np.log1p((a - 1.0) / z)
+    else:
+        log_value = np.log(scale) + special.gammaln(1.0 + a)
+        log_value += float(_gamma_logsf(a, z)) + z
+    return float(np.exp(log_value))
+
+
+def _burr_mean_excess(power: float, shape: float, scale: float, loc: float, d: float) -> float:
+    """Burr XII mean residual life via the complementary incomplete beta."""
+    if d <= loc:
+        mean = scale * shape * special.beta(1.0 + 1.0 / power, shape - 1.0 / power)
+        return float(loc + mean - d)
+    x = d - loc
+    if power == 1.0:
+        return float((scale + x) / (shape - 1.0))
+    a = shape - 1.0 / power
+    b = 1.0 / power
+    log_w = -np.logaddexp(0.0, power * (np.log(x) - np.log(scale)))
+    w = float(np.exp(log_w))
+    if w < 1e-12 and abs(b - 1.0) * w < 1e-12:
+        # B_w(a,b) = w**a/a * (1 + O(w)) in the far tail.
+        log_value = np.log(scale) - np.log(power) - np.log(a) - b * log_w
+    else:
+        incomplete = float(special.betainc(a, b, w))
+        if incomplete <= 0.0 or not np.isfinite(incomplete):
+            raise ArithmeticError("Burr mean excess incomplete beta underflowed")
+        log_value = np.log(scale) - np.log(power) + special.betaln(a, b) + np.log(incomplete) - shape * log_w
+    return float(np.exp(log_value))
+
+
 def _prepare(
     observations: t.Sequence[float] | np.ndarray,
     threshold: float,
@@ -134,8 +280,8 @@ def _log_likelihood(
         if alpha <= 0 or theta <= 0:
             return -np.inf
         log_pdf = stats.gamma.logpdf(x, a=alpha, scale=theta)
-        log_sf = stats.gamma.logsf(x, a=alpha, scale=theta)
-        log_sf_threshold = float(stats.gamma.logsf(threshold, a=alpha, scale=theta)) if threshold > 0 else 0.0
+        log_sf = _gamma_logsf(alpha, x / theta)
+        log_sf_threshold = float(_gamma_logsf(alpha, threshold / theta)) if threshold > 0 else 0.0
     elif family is _distributions.GPD:
         shape, scale, loc = parameters["shape"], parameters["scale"], parameters["loc"]
         if scale <= 0 or np.any(x < loc):
@@ -456,11 +602,11 @@ def _fit_other(
         if family is _distributions.LogGamma:
             log_x = np.log(x)
             alpha, beta = pars["alpha"], pars["beta"]
-            base = float(stats.gamma.logsf(np.log(threshold), a=alpha, scale=beta)) if threshold > 1.0 else 0.0
+            base = float(_gamma_logsf(alpha, np.log(threshold) / beta)) if threshold > 1.0 else 0.0
             terms = (
                 np.where(
                     censored,
-                    stats.gamma.logsf(log_x, a=alpha, scale=beta),
+                    _gamma_logsf(alpha, log_x / beta),
                     stats.gamma.logpdf(log_x, a=alpha, scale=beta) - log_x,
                 )
                 - base
@@ -533,9 +679,9 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         and thresholds beyond a finite upper endpoint return NaN.
 
     Notes:
-        Closed forms are used for Pareto and GPD. For other severity families,
-        stable conditional survival integration avoids subtracting close tail
-        expectations. This function uses the CPU, without sampling.
+        Analytical expressions are used for Pareto, GPD, Gamma, LogNormal,
+        Weibull and Burr. Other severity families use a conditional survival
+        integral. This function uses the CPU, without sampling.
     """
     from . import distributions as _distributions
 
@@ -579,7 +725,7 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
     for index, d in np.ndenumerate(inputs):
         if not np.isfinite(d):
             continue
-        if d >= upper or (frozen is not None and frozen.logsf(float(d)) == -np.inf):
+        if d >= upper:
             continue
         if inf_mean:
             result[index] = np.inf
@@ -590,8 +736,8 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         if family is _distributions.LogGamma:
             alpha, beta = pars["alpha"], pars["beta"]
             log_cutoff = max(np.log(max(float(d), 1.0)), 0.0)
-            log_num = -alpha * np.log1p(-beta) + stats.gamma.logsf(log_cutoff, a=alpha, scale=beta / (1.0 - beta))
-            log_den = stats.gamma.logsf(log_cutoff, a=alpha, scale=beta)
+            log_num = -alpha * np.log1p(-beta) + float(_gamma_logsf(alpha, log_cutoff * (1.0 - beta) / beta))
+            log_den = float(_gamma_logsf(alpha, log_cutoff / beta))
             result[index] = float(np.exp(log_num - log_den)) - d
             continue
         if family is _distributions.Pareto:
@@ -604,12 +750,27 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
             result[index] = (base - d) + (sigma + xi * (base - loc)) / (1.0 - xi)
             continue
 
+        if family is _distributions.Gamma:
+            result[index] = _gamma_mean_excess(pars["alpha"], pars["theta"], float(d))
+            continue
+        if family is _distributions.LogNormal:
+            result[index] = _lognormal_mean_excess(pars["mu"], pars["sigma"], float(d))
+            continue
+        if family is _distributions.Weibull:
+            result[index] = _weibull_mean_excess(pars["shape"], pars["scale"], pars["loc"], float(d))
+            continue
+        if family is _distributions.Burr:
+            result[index] = _burr_mean_excess(pars["power"], pars["shape"], pars["scale"], pars["loc"], float(d))
+            continue
+
         if frozen is None:
             raise ValueError(f"No continuous survival function for {family.__name__}")
         # Scale by the local inverse hazard. Integrating in units of tail
         # width prevents quadrature missing a narrow tail at a high threshold.
         start = max(float(d), float(lower))
         log_start_sf = float(frozen.logsf(start))
+        if not np.isfinite(log_start_sf):
+            raise ArithmeticError(f"{family.__name__} tail survival is numerically unresolved at {d}")
         log_start_pdf = float(frozen.logpdf(start))
         tail_probability = float(frozen.sf(start))
         # The conditional median gives a representative tail width even if
@@ -757,15 +918,35 @@ def _fit_exponential(
     )
 
 
+def _gb2_log_regularized_beta(alpha: float, beta: float, log_z: np.ndarray) -> np.ndarray:
+    """Stable log I_z(alpha, beta), including probabilities below float underflow."""
+    log_z = np.asarray(log_z, dtype=float)
+    z = np.exp(log_z)
+    with np.errstate(divide="ignore", under="ignore", invalid="ignore"):
+        result = np.log(special.betainc(alpha, beta, z))
+    # Large beta shape parameters can underflow even when z exceeds 1e-8.
+    small = (log_z < np.log(1e-8)) | (np.isneginf(result) & np.isfinite(log_z))
+    if np.any(small):
+        # B_z(alpha,beta) = z**alpha / alpha *
+        # 2F1(alpha, 1-beta; alpha+1; z). Evaluate the correction only
+        # where z is small, avoiding unnecessary special-function calls.
+        correction = special.hyp2f1(alpha, 1.0 - beta, alpha + 1.0, z[small])
+        if np.any(~np.isfinite(correction)) or np.any(correction <= 0.0):
+            raise ArithmeticError("Incomplete-beta tail correction did not converge")
+        result = np.asarray(result).copy()
+        result[small] = alpha * log_z[small] - np.log(alpha) - special.betaln(alpha, beta) + np.log(correction)
+    return result
+
+
 def _gb2_terms(x: np.ndarray, pars: dict[str, float]) -> tuple[np.ndarray, np.ndarray]:
     """Log-density and log-survival for the generalised beta prime family."""
     a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
-    log_ratio = np.log(x / b)
+    log_ratio = np.log(x) - np.log(b)
     log_power = a * log_ratio
-    log_pdf = np.log(a / b) - special.betaln(p, q) + (a * p - 1) * log_ratio
+    log_pdf = np.log(a) - np.log(b) - special.betaln(p, q) + (a * p - 1) * log_ratio
     log_pdf -= (p + q) * np.logaddexp(0.0, log_power)
-    survival_argument = special.expit(-log_power)
-    log_sf = np.log(special.betainc(q, p, survival_argument))
+    log_survival_argument = -np.logaddexp(0.0, log_power)
+    log_sf = _gb2_log_regularized_beta(q, p, log_survival_argument)
     return log_pdf, log_sf
 
 
@@ -836,21 +1017,41 @@ def _fit_gb2(
 
 
 def _gb2_mean_excess(pars: dict[str, float], attachment: float) -> float:
-    """The GB2 mean excess from complementary incomplete beta moments."""
+    """GB2 mean residual life from complementary incomplete beta moments."""
     a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
     if a * q <= 1:
         return np.inf
-    log_ratio = a * (np.log(max(attachment, 0.0)) - np.log(b)) if attachment > 0 else -np.inf
-    z = special.expit(-log_ratio)
-    survival = float(special.betainc(q, p, z))
-    excess_moment = float(special.betainc(q - 1 / a, p + 1 / a, z))
-    if survival <= 0 or excess_moment <= 0:
-        return np.nan
-    log_conditional_mean = (
-        np.log(b)
-        + special.betaln(p + 1 / a, q - 1 / a)
-        - special.betaln(p, q)
-        + np.log(excess_moment)
-        - np.log(survival)
-    )
-    return float(np.exp(log_conditional_mean) - attachment)
+    if attachment <= 0.0:
+        mean = b * np.exp(special.betaln(p + 1 / a, q - 1 / a) - special.betaln(p, q))
+        return float(mean - attachment)
+
+    log_ratio = a * (np.log(attachment) - np.log(b))
+    log_z = float(-np.logaddexp(0.0, log_ratio))
+    z = float(np.exp(log_z))
+    if log_z < np.log(1e-6):
+        # Exact incomplete-beta identity:
+        # B_z(A,B) = z**A/A * 2F1(A, 1-B; A+1; z).
+        # Taking the ratio of the two beta moments cancels the tiny
+        # probabilities, the beta normalisers and z**(q-1/a).
+        tail_shape = q - 1.0 / a
+        h_survival = float(special.hyp2f1(q, 1.0 - p, q + 1.0, z))
+        h_moment = float(special.hyp2f1(tail_shape, 1.0 - p - 1.0 / a, tail_shape + 1.0, z))
+        if not (np.isfinite(h_survival) and np.isfinite(h_moment)):
+            raise ArithmeticError("GB2 incomplete-beta tail ratio did not converge")
+        if h_survival <= 0.0 or h_moment <= 0.0:
+            raise ArithmeticError("GB2 incomplete-beta tail ratio is invalid")
+        log_conditional_ratio = -np.log1p(-1.0 / (a * q)) - np.log1p(-z) / a + np.log(h_moment) - np.log(h_survival)
+    else:
+        log_survival = float(_gb2_log_regularized_beta(q, p, np.asarray(log_z)))
+        log_moment = float(_gb2_log_regularized_beta(q - 1.0 / a, p + 1.0 / a, np.asarray(log_z)))
+        log_conditional_ratio = (
+            np.log(b)
+            + special.betaln(p + 1.0 / a, q - 1.0 / a)
+            - special.betaln(p, q)
+            + log_moment
+            - log_survival
+            - np.log(attachment)
+        )
+    # Computing E[X|X>d]/d - 1 using expm1 avoids cancellation when
+    # the mean residual life is small compared with attachment.
+    return float(attachment * np.expm1(log_conditional_ratio))
