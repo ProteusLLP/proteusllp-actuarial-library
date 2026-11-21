@@ -26,12 +26,12 @@ import typing as t
 from abc import ABC
 
 import numpy as np
+import scipy.special as scipy_special
 import scipy.stats as scipy_stats
 from scipy.stats import geninvgauss
 
 # Local imports
 from ._compat import override
-from ._gpu_distributions import noncentral_chisquare_cdf, noncentral_chisquare_ppf
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
 from ._value_arrays import stochastic_array
 from .config import config
@@ -1515,9 +1515,10 @@ class NonCentralChiSquared(DistributionBase):
         nonc: Noncentrality parameter :math:`\lambda\geq0`.
 
     Notes:
-        Random generation and GPU CDF/inverse CDF use device-resident CuPy
-        calculations. The latter evaluate a truncated Poisson mixture and
-        bracketed inversion; their runtime depends on noncentrality.
+        Monte Carlo generation uses the active backend, and GPU RQMC for
+        fixed moderate noncentrality uses an exact two-coordinate Poisson
+        mixture. The CDF and inverse CDF call SciPy on the host when running
+        with CuPy: measured native GPU inversions were much slower.
     """
 
     @classmethod
@@ -1563,7 +1564,7 @@ class NonCentralChiSquared(DistributionBase):
         """Compute the cumulative distribution function."""
         self._validated_params()
         self._validate_probability_inputs(x)
-        cdf_function = special.chndtr if xp is np else noncentral_chisquare_cdf
+        cdf_function = special.chndtr if xp is np else lambda *values: _scipy_on_backend(scipy_special.chndtr, *values)
         return _special_call(
             cdf_function,
             x,
@@ -1576,7 +1577,7 @@ class NonCentralChiSquared(DistributionBase):
         """Compute the inverse cumulative distribution function."""
         self._validated_params()
         self._validate_probability_inputs(u)
-        ppf_function = special.chndtrix if xp is np else noncentral_chisquare_ppf
+        ppf_function = special.chndtrix if xp is np else lambda *values: _scipy_on_backend(scipy_special.chndtrix, *values)
         return _special_call(
             ppf_function,
             u,
@@ -2442,8 +2443,9 @@ class GeneralizedInverseGaussian(DistributionBase):
         loc: Location parameter :math:`\mu` (default 0).
 
     Notes:
-        On GPU, Monte Carlo sampling uses a vectorised CuPy rejection sampler.
-        CDF/inverse CDF and RQMC quantiles still use SciPy on the host.
+        On GPU, MC and RQMC for p=+/-1/2 use an exact, fast CuPy
+        inverse-Gaussian transform. Other GIG indices and probability
+        evaluations use SciPy host fallbacks.
     """
 
     @classmethod

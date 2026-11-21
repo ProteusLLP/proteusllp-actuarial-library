@@ -19,7 +19,7 @@ import scipy.special as scipy_special
 import scipy.stats as scipy_stats
 from scipy.stats import qmc
 
-from ._gpu_distributions import generalized_inverse_gaussian_mc, noncentral_chisquare_ppf
+from ._gpu_distributions import generalized_inverse_gaussian_mc
 from ._maths import asnumpy, special, to_backend, xp
 
 
@@ -444,13 +444,8 @@ class RandomizedQMCGenerator:
             shape = self._shape(size, df, nonc)
             count = self.poisson(float(nonc) / 2, size=shape)
             return self.chisquare(xp.asarray(df) + 2 * count, size=shape)
-        return self._quantiles(
-            scipy_stats.ncx2.ppf,
-            size,
-            df,
-            nonc,
-            gpu_func=lambda u, degrees, noncentrality: noncentral_chisquare_ppf(u, degrees, noncentrality),
-        )
+        # Stochastic or extreme noncentrality retains the SciPy host PPF.
+        return self._quantiles(scipy_stats.ncx2.ppf, size, df, nonc)
 
     def logseries(self, p: t.Any, size: t.Any = None) -> t.Any:
         """Draw logarithmic-series quantiles."""
@@ -575,17 +570,17 @@ def _sample_inverse_gaussian(rng: t.Any, n_sims: int, mu: t.Any, lambda_: t.Any)
 def _sample_generalized_inverse_gaussian(
     rng: t.Any, n_sims: int, p: t.Any, shape: t.Any, scale: t.Any, loc: t.Any
 ) -> t.Any:
-    """Use GPU sampling for MC and half-order RQMC; SciPy for general RQMC.
+    """Use exact GPU sampling for half-order GIG and SciPy for other indices.
 
-    Half-order GIGs admit an exact two-coordinate inverse-Gaussian transform.
-    The general RQMC inverse transform retains its CPU host fallback.
+    Half-order MC and RQMC use two device-resident random coordinates.
+    The general-index MC sampler falls back to SciPy on the host because
+    the vectorised GPU rejection method is slower even at 65,536 paths.
+    General-index RQMC uses SciPy's one-coordinate quantile transform.
     """
+    half_order_gpu = xp is not np and bool(xp.all(xp.abs(xp.asarray(p)) == 0.5))
+    if half_order_gpu:
+        return generalized_inverse_gaussian_mc(rng, n_sims, p, shape, scale, loc)
     if isinstance(rng, RandomizedQMCGenerator):
-        # The exact inverse-Gaussian transform uses two Sobol coordinates,
-        # like PAL's existing inverse-Gaussian RQMC generator. Keep SciPy's
-        # one-dimensional inverse only for non-half-order GIG parameters.
-        if xp is not np and bool(xp.all(xp.abs(xp.asarray(p)) == 0.5)):
-            return generalized_inverse_gaussian_mc(rng, n_sims, p, shape, scale, loc)
         return _scipy_on_backend(
             lambda u, index, b, location, factor: scipy_stats.geninvgauss.ppf(u, index, b, loc=location, scale=factor),
             rng.uniform(size=n_sims),
@@ -595,8 +590,10 @@ def _sample_generalized_inverse_gaussian(
             scale,
         )
     if xp is not np:
-        return generalized_inverse_gaussian_mc(rng, n_sims, p, shape, scale, loc)
-    host_rng = rng
+        seed = int(asnumpy(rng.randint(0, 2**31 - 1)))
+        host_rng = np.random.default_rng(seed)
+    else:
+        host_rng = rng
     result = scipy_stats.geninvgauss.rvs(
         asnumpy(p),
         asnumpy(shape),
@@ -606,7 +603,6 @@ def _sample_generalized_inverse_gaussian(
         random_state=host_rng,
     )
     return xp.asarray(result)
-
 
 def _scipy_on_backend(function: t.Callable[..., t.Any], *parameters: t.Any) -> t.Any:
     """Evaluate a SciPy function on host arrays and restore PAL's backend."""
