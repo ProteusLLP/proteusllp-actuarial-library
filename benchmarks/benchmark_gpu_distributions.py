@@ -27,6 +27,7 @@ from pal.qmc import RandomizedQMCGenerator
 from pal._gpu_distributions import (
     generalized_inverse_gaussian_mc,
     noncentral_chisquare_cdf,
+    noncentral_chisquare_cdf_recurrence,
     noncentral_chisquare_ppf,
 )
 from pal._maths import xp
@@ -110,6 +111,17 @@ def compare_methods(sizes: list[int], warmups: int, repeats: int) -> dict[str, A
                 n,
                 lambda: stats.ncx2.cdf(host_x, df, nonc),
                 lambda: noncentral_chisquare_cdf(gpu_x, df, nonc),
+                lambda: xp.asarray(stats.ncx2.cdf(xp.asnumpy(gpu_x), df, nonc)),
+                warmups,
+                repeats,
+            )
+        )
+        results.append(
+            _benchmark_one(
+                "Noncentral Chi2 rec CDF",
+                n,
+                lambda: stats.ncx2.cdf(host_x, df, nonc),
+                lambda: noncentral_chisquare_cdf_recurrence(gpu_x, df, nonc),
                 lambda: xp.asarray(stats.ncx2.cdf(xp.asnumpy(gpu_x), df, nonc)),
                 warmups,
                 repeats,
