@@ -47,9 +47,7 @@ def noncentral_chisquare_cdf(x: t.Any, df: t.Any, nonc: t.Any) -> t.Any:
         offsets = xp.arange(first, min(first + 32, offset + 1), dtype=xp.int64)
         indexes = mode[:, None] + offsets[None, :]
         count = xp.maximum(indexes, 0)
-        log_weights = (
-            -mean[:, None] + count * log_mean[:, None] - special.gammaln(count + 1.0)
-        )
+        log_weights = -mean[:, None] + count * log_mean[:, None] - special.gammaln(count + 1.0)
         weights = xp.where(
             (indexes >= 0) & (mean[:, None] > 0),
             xp.exp(log_weights),
@@ -93,9 +91,7 @@ def noncentral_chisquare_ppf(u: t.Any, df: t.Any, nonc: t.Any) -> t.Any:
     )
 
 
-def generalized_inverse_gaussian_mc(
-    rng: t.Any, n_sims: int, p: t.Any, shape: t.Any, scale: t.Any, loc: t.Any
-) -> t.Any:
+def generalized_inverse_gaussian_mc(rng: t.Any, n_sims: int, p: t.Any, shape: t.Any, scale: t.Any, loc: t.Any) -> t.Any:
     """Sample a GIG distribution using log-density rejection on the GPU.
 
     With Z=log(Y), the GIG log density is p*Z-shape*cosh(Z), which is
