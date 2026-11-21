@@ -2443,8 +2443,8 @@ class GeneralizedInverseGaussian(DistributionBase):
         loc: Location parameter :math:`\mu` (default 0).
 
     Notes:
-        On GPU, probability evaluation and sampling use SciPy on the host,
-        returning simulated and probability arrays to the active backend.
+        On GPU, Monte Carlo sampling uses a vectorised CuPy rejection sampler.
+        CDF/inverse CDF and RQMC quantiles still use SciPy on the host.
     """
 
     @classmethod
@@ -2544,7 +2544,7 @@ class GeneralizedInverseGaussian(DistributionBase):
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
-        """Generate random samples using SciPy's GIG sampler."""
+        """Generate using GPU rejection sampling or the CPU SciPy sampler."""
         p, scipy_shape, scipy_scale, loc = self._scipy_params()
         return StochasticScalar(_sample_generalized_inverse_gaussian(rng, n_sims, p, scipy_shape, scipy_scale, loc))
 
