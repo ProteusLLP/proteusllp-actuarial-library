@@ -7,6 +7,8 @@ import pandas as pd
 import pytest
 
 from pal import FreqSevSims, ProteusVariable, StochasticScalar
+from pal.serialization import load, save
+from pal.variable_io import to_dataframe as encode_snapshot
 
 pa = pytest.importorskip("pyarrow")
 pq = pytest.importorskip("pyarrow.parquet")
@@ -23,12 +25,12 @@ def test_columnar_parquet_avoids_long_dataframe(tmp_path, monkeypatch):
         raise AssertionError("Compact Parquet must not create a long-form DataFrame")
 
     monkeypatch.setattr(variable, "to_dataframe", fail_dataframe)
-    variable.to_parquet(path)
+    save(variable, path)
 
     metadata = pq.read_metadata(path)
     assert metadata.num_rows == 1
     assert b"pal.variable.columnar" in metadata.metadata
-    restored = ProteusVariable.from_parquet(path)
+    restored = load(path)
     for label, value in samples.items():
         np.testing.assert_array_equal(restored[label].values, value.values)
 
@@ -47,8 +49,8 @@ def test_columnar_parquet_mixed_types_nested_and_empty_claims(tmp_path):
         },
     )
     path = tmp_path / "mixed.parquet"
-    original.to_parquet(path)
-    restored = ProteusVariable.from_parquet(path)
+    save(original, path)
+    restored = load(path)
     assert restored.dim_name == "region"
     np.testing.assert_array_equal(restored["UK"]["capital"].values, a.values)
     assert restored["UK"]["capital"].values.dtype == np.dtype("uint64")
@@ -70,8 +72,8 @@ def test_compact_parquet_empty_vectors(tmp_path):
         },
     )
     path = tmp_path / "empty.parquet"
-    original.to_parquet(path)
-    restored = ProteusVariable.from_parquet(path)
+    save(original, path)
+    restored = load(path)
     assert restored["zero draws"].n_sims == 0
     assert restored["zero draws"].values.dtype == np.float64
     assert restored["zero claims"].n_sims == 3
@@ -83,8 +85,8 @@ def test_existing_parquet_file_remains_readable(tmp_path):
     """Older PAL row-form files and ordinary Pandas tables are still accepted."""
     original = ProteusVariable("risk", {"A": StochasticScalar([10.0, 20.0])})
     old = tmp_path / "old.parquet"
-    original.to_dataframe().to_parquet(old, index=False)
-    restored = ProteusVariable.from_parquet(old)
+    encode_snapshot(original).to_parquet(old, index=False)
+    restored = load(old)
     np.testing.assert_array_equal(restored["A"].values, [10.0, 20.0])
     conventional = tmp_path / "ordinary.parquet"
     pd.DataFrame({"Simulation": [0, 1], "risk": ["A", "A"], "loss": [5.0, 6.0]}).to_parquet(
@@ -100,8 +102,8 @@ def test_parquet_coupling_is_recreated_independent_of_original(tmp_path):
     third = StochasticScalar([100.0, 200.0])
     original = ProteusVariable("line", {"A": a, "B": b, "C": third})
     path = tmp_path / "coupled.parquet"
-    original.to_parquet(path)
-    restored = ProteusVariable.from_parquet(path)
+    save(original, path)
+    restored = load(path)
     assert restored["A"].coupled_variable_group is restored["B"].coupled_variable_group
     assert restored["C"].coupled_variable_group is not restored["A"].coupled_variable_group
     assert restored["A"].coupled_variable_group is not a.coupled_variable_group
@@ -110,4 +112,4 @@ def test_parquet_coupling_is_recreated_independent_of_original(tmp_path):
 def test_parquet_dtype_rejected_for_unsupported_objects(tmp_path):
     variable = ProteusVariable("line", {"A": {"invalid": 1}})
     with pytest.raises(TypeError, match="dtype"):
-        variable.to_parquet(tmp_path / "invalid.parquet")
+        save(variable, tmp_path / "invalid.parquet")
