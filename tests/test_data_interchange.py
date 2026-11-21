@@ -62,7 +62,7 @@ def test_claim_events_have_simple_long_format_and_optional_sim_count(tmp_path):
     """Interchange cannot infer trailing zero-claim scenarios without n_sims."""
     model = ProteusVariable("LoB", {"Cat": FreqSevSims([2, 0, 2], [100.0, 10.0, 200.0], 5)})
     frame = model.to_dataframe()
-    assert list(frame.columns) == ["LoB", "Simulation", "Event", "value"]
+    assert list(frame.columns) == ["LoB", "Simulation", "Event", "value", "Kind", "N Simulations"]
     assert frame["Simulation"].tolist() == [2, 0, 2]
     assert frame["Event"].tolist() == [0, 1, 2]
     path = tmp_path / "claims.csv"
