@@ -558,12 +558,29 @@ def _sample_inverse_gaussian(rng: t.Any, n_sims: int, mu: t.Any, lambda_: t.Any)
 def _sample_generalized_inverse_gaussian(
     rng: t.Any, n_sims: int, p: t.Any, shape: t.Any, scale: t.Any, loc: t.Any
 ) -> t.Any:
-    """Use an inverse CDF for RQMC and SciPy's established sampler for MC."""
+    """Use SciPy's GIG sampler for MC and its inverse CDF for RQMC.
+
+    SciPy has no CuPy implementation of GIG. For GPU MC, draw one seed from
+    the configured GPU RNG, sample with SciPy, and transfer the result back.
+    This preserves seed reproducibility without a costly per-path PPF.
+    """
     if isinstance(rng, RandomizedQMCGenerator):
-        uniforms = asnumpy(rng.uniform(size=n_sims))
-        result = scipy_stats.geninvgauss.ppf(uniforms, p, shape, loc=loc, scale=scale)
-        return xp.asarray(result)
-    return scipy_stats.geninvgauss.rvs(p, shape, loc=loc, scale=scale, size=n_sims, random_state=rng)
+        return _scipy_on_backend(
+            lambda u, index, b, location, factor: scipy_stats.geninvgauss.ppf(
+                u, index, b, loc=location, scale=factor
+            ),
+            rng.uniform(size=n_sims), p, shape, loc, scale,
+        )
+    if xp is not np and not type(rng).__module__.startswith("numpy"):
+        seed = int(asnumpy(rng.randint(0, 2**31 - 1)))
+        host_rng = np.random.default_rng(seed)
+    else:
+        host_rng = rng
+    result = scipy_stats.geninvgauss.rvs(
+        asnumpy(p), asnumpy(shape), loc=asnumpy(loc), scale=asnumpy(scale),
+        size=n_sims, random_state=host_rng,
+    )
+    return xp.asarray(result)
 
 
 def _scipy_on_backend(function: t.Callable[..., t.Any], *parameters: t.Any) -> t.Any:
