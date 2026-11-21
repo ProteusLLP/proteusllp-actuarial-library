@@ -82,11 +82,16 @@ def test_remote_snapshots_preserve_coupling_and_claims(tmp_path, format):
     b = a * 2
     original = ProteusVariable(
         "Region",
-        {"UK": ProteusVariable("LoB", {
-            "Motor": a,
-            "Doubled": b,
-            "Claims": FreqSevSims([0, 2], [9.0, 19.0], 3),
-        })},
+        {
+            "UK": ProteusVariable(
+                "LoB",
+                {
+                    "Motor": a,
+                    "Doubled": b,
+                    "Claims": FreqSevSims([0, 2], [9.0, 19.0], 3),
+                },
+            )
+        },
     )
     path = f"memory://pal-test-{tmp_path.name}/snapshot.{format}"
     save(original, path)
