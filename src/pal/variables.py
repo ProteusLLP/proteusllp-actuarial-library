@@ -949,15 +949,18 @@ class ProteusVariable(t.Generic[T]):
 
     def to_csv(
         self,
-        file_name: str | os.PathLike[str],
+        file_name: str | os.PathLike[str] | t.IO[t.Any],
         layout: str = "auto",
         *,
         dimension_columns: t.Sequence[str] | None = None,
         simulation_column: str = "Simulation",
         event_column: str = "Event",
         values_column: str = "value",
+        storage_options: t.Mapping[str, t.Any] | None = None,
     ) -> None:
-        """Export ordinary CSV; MultiIndex layouts use multiple header rows."""
+        """Export ordinary CSV to a local path, cloud URI or file-like object."""
+        from .storage import open_file
+
         frame = self.to_dataframe(
             layout=layout,
             dimension_columns=dimension_columns,
@@ -965,12 +968,13 @@ class ProteusVariable(t.Generic[T]):
             event_column=event_column,
             values_column=values_column,
         )
-        frame.to_csv(file_name, index=isinstance(frame.columns, pd.MultiIndex))
+        with open_file(file_name, "wb", storage_options=storage_options) as output:
+            frame.to_csv(output, index=isinstance(frame.columns, pd.MultiIndex), encoding="utf-8")
 
     @classmethod
     def from_csv(
         cls,
-        file_name: str | os.PathLike[str],
+        file_name: str | os.PathLike[str] | t.IO[t.Any],
         dim_name: str | None = None,
         values_column: str = "value",
         simulation_column: str | None = "Simulation",
@@ -979,34 +983,42 @@ class ProteusVariable(t.Generic[T]):
         event_column: str = "Event",
         n_sims: int | None = None,
         header_rows: int | None = None,
+        storage_options: t.Mapping[str, t.Any] | None = None,
     ) -> ProteusVariable[t.Any]:
-        """Import CSV, auto-detecting PAL's ordinary MultiIndex CSV layout.
+        """Import CSV from any filesystem, including PAL's MultiIndex headers.
 
-        header_rows overrides detection for external pandas MultiIndex CSV.
-        Existing positional arguments for legacy 1D imports remain supported.
+        header_rows overrides automatic detection for external pandas CSV.
+        Existing positional arguments for one-dimensional imports are retained.
         """
         import csv
 
-        if header_rows is None and simulation_column is not None:
-            with open(file_name, newline="", encoding="utf-8-sig") as input_file:
-                reader = csv.reader(input_file)
+        from .storage import open_file
+
+        with open_file(file_name, "rb", storage_options=storage_options) as input_file:
+            if header_rows is None and simulation_column is not None:
+                # Read only the first few records; do not load large claim lists
+                # or download remote files merely to identify header rows.
+                reader = csv.reader(
+                    line.decode("utf-8-sig") if isinstance(line, bytes) else line for line in input_file
+                )
                 rows = [row for _, row in zip(range(33), reader)]
-            for i in range(2, len(rows)):
-                row = rows[i]
-                if (
-                    row
-                    and row[0] == simulation_column
-                    and all(not cell for cell in row[1:])
-                    and all(rows[k] and rows[k][0] for k in range(i))
-                ):
-                    header_rows = i
-                    break
-        if header_rows is not None:
-            if header_rows < 2:
-                raise ValueError("MultiIndex CSV requires at least two header rows")
-            frame: pd.DataFrame = pd.read_csv(file_name, header=list(range(header_rows)), index_col=0)
-        else:
-            frame = pd.read_csv(file_name)
+                for i in range(2, len(rows)):
+                    row = rows[i]
+                    if (
+                        row
+                        and row[0] == simulation_column
+                        and all(not cell for cell in row[1:])
+                        and all(rows[k] and rows[k][0] for k in range(i))
+                    ):
+                        header_rows = i
+                        break
+                input_file.seek(0)
+            if header_rows is not None:
+                if header_rows < 2:
+                    raise ValueError("MultiIndex CSV requires at least two header rows")
+                frame: pd.DataFrame = pd.read_csv(input_file, header=list(range(header_rows)), index_col=0)
+            else:
+                frame = pd.read_csv(input_file)
         return cls.from_dataframe(
             frame,
             dim_name,
@@ -1019,15 +1031,18 @@ class ProteusVariable(t.Generic[T]):
 
     def to_parquet(
         self,
-        file_name: str | os.PathLike[str],
+        file_name: str | os.PathLike[str] | t.IO[t.Any],
         layout: str = "auto",
         *,
         dimension_columns: t.Sequence[str] | None = None,
         simulation_column: str = "Simulation",
         event_column: str = "Event",
         values_column: str = "value",
+        storage_options: t.Mapping[str, t.Any] | None = None,
     ) -> None:
-        """Export Parquet preserving pandas MultiIndex headers where present."""
+        """Export ordinary Parquet to a local path, cloud URI or binary stream."""
+        from .storage import open_file
+
         frame = self.to_dataframe(
             layout=layout,
             dimension_columns=dimension_columns,
@@ -1035,12 +1050,13 @@ class ProteusVariable(t.Generic[T]):
             event_column=event_column,
             values_column=values_column,
         )
-        frame.to_parquet(file_name, index=isinstance(frame.columns, pd.MultiIndex))
+        with open_file(file_name, "wb", storage_options=storage_options) as output:
+            frame.to_parquet(output, index=isinstance(frame.columns, pd.MultiIndex))
 
     @classmethod
     def from_parquet(
         cls,
-        file_name: str | os.PathLike[str],
+        file_name: str | os.PathLike[str] | t.IO[t.Any],
         dim_name: str | None = None,
         values_column: str = "value",
         simulation_column: str | None = "Simulation",
@@ -1048,9 +1064,13 @@ class ProteusVariable(t.Generic[T]):
         dimension_columns: t.Sequence[str] | None = None,
         event_column: str = "Event",
         n_sims: int | None = None,
+        storage_options: t.Mapping[str, t.Any] | None = None,
     ) -> ProteusVariable[t.Any]:
-        """Import nested MultiIndex or ordinary wide/long Parquet data."""
-        frame: pd.DataFrame = pd.read_parquet(file_name)
+        """Read ordinary Parquet, including nested pandas MultiIndex columns."""
+        from .storage import open_file
+
+        with open_file(file_name, "rb", storage_options=storage_options) as input_file:
+            frame: pd.DataFrame = pd.read_parquet(input_file)
         return cls.from_dataframe(
             frame,
             dim_name,
