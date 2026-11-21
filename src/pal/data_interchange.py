@@ -149,9 +149,10 @@ def from_dataframe(
     if simulation_column is None:
         if frame[dim_name].duplicated().any():
             raise ValueError("Duplicate dimension labels in deterministic table")
-        return ProteusVariable(dim_name, {
-            str(label): subset[values_column].iloc[0] for label, subset in frame.groupby(dim_name, sort=False)
-        })
+        return ProteusVariable(
+            dim_name,
+            {str(label): subset[values_column].iloc[0] for label, subset in frame.groupby(dim_name, sort=False)},
+        )
     if simulation_column not in frame:
         raise ValueError(f"Missing simulation column {simulation_column!r}")
 
@@ -173,9 +174,7 @@ def from_dataframe(
             indices = ordered[simulation_column].to_numpy(dtype=np.int64)
             if (indices < 0).any():
                 raise ValueError("Simulation indices must be nonnegative")
-            variables[str(label)] = FreqSevSims(
-                indices, ordered[values_column].to_numpy(copy=False), total_sims
-            )
+            variables[str(label)] = FreqSevSims(indices, ordered[values_column].to_numpy(copy=False), total_sims)
         return ProteusVariable(dim_name, variables)
 
     if frame[simulation_column].isna().any():
