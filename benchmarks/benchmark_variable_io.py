@@ -1,4 +1,4 @@
-"""Benchmark compact PAL Parquet against the original long-form Parquet.
+"""Benchmark PAL object snapshots and ordinary Parquet data interchange.
 
 Run with:
     python -m benchmarks.benchmark_variable_io --simulations 20000 --variables 20
@@ -42,7 +42,7 @@ def measure(fn: Callable[[], Any]) -> tuple[float, float]:
 
 
 def run(simulations: int, variables: int, compare: bool) -> dict[str, Any]:
-    """Compare write/read costs and check round-trip values."""
+    """Compare snapshot/interchange write/read costs and validate numeric values."""
     import pyarrow
 
     rng = np.random.default_rng(42)
@@ -81,6 +81,27 @@ def run(simulations: int, variables: int, compare: bool) -> dict[str, Any]:
             "python_peak_write_mib": write_python_peak,
             "python_peak_read_mib": read_python_peak,
             "bytes": os.path.getsize(compact_file),
+        }
+
+        exchange_file = Path(directory) / "interchange.parquet"
+        exchange_write, exchange_write_peak = measure(lambda: losses.to_parquet(exchange_file))
+        external_frame: pd.DataFrame | None = None
+
+        def read_exchange() -> None:
+            nonlocal external_frame
+            external_frame = pd.read_parquet(exchange_file)
+
+        exchange_read, exchange_read_peak = measure(read_exchange)
+        assert external_frame is not None
+        assert list(external_frame.columns)[0] == "Simulation"
+        for label, value in losses.values.items():
+            np.testing.assert_array_equal(external_frame[label].to_numpy(), value.values)
+        result["interchange"] = {
+            "write_seconds": exchange_write,
+            "read_seconds": exchange_read,
+            "python_peak_write_mib": exchange_write_peak,
+            "python_peak_read_mib": exchange_read_peak,
+            "bytes": os.path.getsize(exchange_file),
         }
 
         if compare:
