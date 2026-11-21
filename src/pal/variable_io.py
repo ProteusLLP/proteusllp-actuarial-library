@@ -1,9 +1,9 @@
-"""Tabular import and export for PAL variable hierarchies.
+"""Internal long-form CSV codec for versioned PAL object snapshots.
 
-The versioned long-form schema is shared by DataFrame, CSV and Parquet.
-It records leaf types, data types, simulation identities and claim-event order.
-Coupling relationships among serialized leaves are reconstructed when loading,
-but no connection is retained to objects outside the serialized hierarchy.
+This codec records type, dtype, simulation and event metadata rather than
+producing ordinary third-party data tables. Use pal.serialization.save/load
+for PAL object persistence, and the ProteusVariable.to_csv/from_csv methods
+for conventional data interchange.
 """
 
 from __future__ import annotations
