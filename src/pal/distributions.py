@@ -1577,7 +1577,8 @@ class NonCentralChiSquared(DistributionBase):
         """Compute the inverse cumulative distribution function."""
         self._validated_params()
         self._validate_probability_inputs(u)
-        ppf_function = special.chndtrix if xp is np else lambda *values: _scipy_on_backend(scipy_special.chndtrix, *values)
+        host_ppf = scipy_special.chndtrix
+        ppf_function = special.chndtrix if xp is np else lambda *values: _scipy_on_backend(host_ppf, *values)
         return _special_call(
             ppf_function,
             u,
