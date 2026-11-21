@@ -26,7 +26,6 @@ import typing as t
 from abc import ABC
 
 import numpy as np
-import scipy.special as scipy_special
 import scipy.stats as scipy_stats
 from scipy.stats import geninvgauss
 
