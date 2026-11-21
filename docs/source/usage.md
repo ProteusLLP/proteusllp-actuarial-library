@@ -59,6 +59,63 @@ portfolio = ProteusVariable(
 
 Variable containers support numpy operations and can be added, multiplied together etc. Operations involving multiple variable containers will attempt to match on dictionary labels.
 
+### Reading and writing variables
+
+A `ProteusVariable` can be saved to CSV or Parquet, including nested
+dimensions, deterministic values, stochastic simulations and individual claim
+records in `FreqSevSims`. PAL keeps the original dimension names and data types,
+as well as scenario indices and simulations with no claims.
+
+```python
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from pal import ProteusVariable, StochasticScalar
+
+losses = ProteusVariable("class", {
+    "Motor": StochasticScalar([100, 200, 150]),
+    "Property": StochasticScalar([300, 250, 400]),
+})
+
+data = losses.to_dataframe()
+copy = ProteusVariable.from_dataframe(data)
+
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "losses.csv"
+    losses.to_csv(path)
+    from_file = ProteusVariable.from_csv(path)
+
+# For Parquet, install the optional dependency: pip install "proteusllp-actuarial-library[parquet]"
+# losses.to_parquet("losses.parquet")
+# from_parquet = ProteusVariable.from_parquet("losses.parquet")
+```
+
+The exported DataFrame uses a long-form PAL schema with columns describing
+the dimension path, value type, simulation number and (for individual claims)
+event order. CSV and Parquet use the same schema, so no separate metadata file
+is needed. Dependencies between variables included in the same export are
+restored; links to variables outside the export are not.
+
+An ordinary table can also be imported without PAL metadata by identifying
+the dimension, value and simulation columns:
+
+```python
+import pandas as pd
+from pal import ProteusVariable
+
+scenarios = pd.DataFrame({
+    "Simulation": [0, 0, 1, 1],
+    "class": ["Motor", "Property", "Motor", "Property"],
+    "loss": [100, 300, 200, 250],
+})
+losses = ProteusVariable.from_dataframe(scenarios, "class", "loss")
+```
+
+For a deterministic table, use `simulation_column=None`. The existing
+`ProteusVariable.from_csv(path, dim_name, values_column)` interface for
+ordinary scenario CSV files is also supported. All labels must have the same
+simulation IDs when importing a conventional stochastic table.
+
 ### Date and categorical simulations
 
 Simulated values can represent claim dates, regions, policy types and other
