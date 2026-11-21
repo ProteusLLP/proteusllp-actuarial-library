@@ -896,16 +896,31 @@ class ProteusVariable(t.Generic[T]):
         except Exception as e:
             return False, f"Error validating FreqSevSims consistency: {str(e)}", None
 
-    def to_dataframe(self, layout: str = "auto") -> pd.DataFrame:
-        """Export values to an ordinary table for use outside PAL.
+    def to_dataframe(
+        self,
+        layout: str = "auto",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        simulation_column: str = "Simulation",
+        event_column: str = "Event",
+        values_column: str = "value",
+    ) -> pd.DataFrame:
+        """Export as wide, nested MultiIndex, or long-form tabular data.
 
-        Auto layout uses a wide table for homogeneous simulation arrays,
-        otherwise a long table with dimension, simulation and value columns.
-        For lossless object persistence use pal.serialization.save instead.
+        Auto selects MultiIndex for regular nested stochastic variables and
+        long form for claim lists or other heterogeneous data.
+        Use pal.serialization.save for object persistence and coupling.
         """
         from .data_interchange import to_dataframe
 
-        return to_dataframe(self, layout=layout)
+        return to_dataframe(
+            self,
+            layout=layout,
+            dimension_columns=dimension_columns,
+            simulation_column=simulation_column,
+            event_column=event_column,
+            values_column=values_column,
+        )
 
     @classmethod
     def from_dataframe(
@@ -915,16 +930,42 @@ class ProteusVariable(t.Generic[T]):
         values_column: str = "value",
         simulation_column: str | None = "Simulation",
         *,
+        dimension_columns: t.Sequence[str] | None = None,
+        event_column: str = "Event",
         n_sims: int | None = None,
     ) -> ProteusVariable[t.Any]:
-        """Build a variable from conventional wide or long tabular data."""
+        """Read conventional tables, including nested dimension columns."""
         from .data_interchange import from_dataframe
 
-        return from_dataframe(data, dim_name, values_column, simulation_column, n_sims=n_sims)
+        return from_dataframe(
+            data,
+            dim_name,
+            values_column,
+            simulation_column,
+            dimension_columns=dimension_columns,
+            event_column=event_column,
+            n_sims=n_sims,
+        )
 
-    def to_csv(self, file_name: str | os.PathLike[str], layout: str = "auto") -> None:
-        """Export ordinary CSV for spreadsheets and external data pipelines."""
-        self.to_dataframe(layout=layout).to_csv(file_name, index=False)
+    def to_csv(
+        self,
+        file_name: str | os.PathLike[str],
+        layout: str = "auto",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        simulation_column: str = "Simulation",
+        event_column: str = "Event",
+        values_column: str = "value",
+    ) -> None:
+        """Export ordinary CSV; MultiIndex layouts use multiple header rows."""
+        frame = self.to_dataframe(
+            layout=layout,
+            dimension_columns=dimension_columns,
+            simulation_column=simulation_column,
+            event_column=event_column,
+            values_column=values_column,
+        )
+        frame.to_csv(file_name, index=isinstance(frame.columns, pd.MultiIndex))
 
     @classmethod
     def from_csv(
@@ -934,15 +975,69 @@ class ProteusVariable(t.Generic[T]):
         values_column: str = "value",
         simulation_column: str | None = "Simulation",
         *,
+        dimension_columns: t.Sequence[str] | None = None,
+        event_column: str = "Event",
         n_sims: int | None = None,
+        header_rows: int | None = None,
     ) -> ProteusVariable[t.Any]:
-        """Import ordinary CSV, retaining the legacy positional column arguments."""
-        frame: pd.DataFrame = pd.read_csv(file_name)
-        return cls.from_dataframe(frame, dim_name, values_column, simulation_column, n_sims=n_sims)
+        """Import CSV, auto-detecting PAL's ordinary MultiIndex CSV layout.
 
-    def to_parquet(self, file_name: str | os.PathLike[str], layout: str = "auto") -> None:
-        """Export ordinary typed Parquet for pandas, Arrow and data pipelines."""
-        self.to_dataframe(layout=layout).to_parquet(file_name, index=False)
+        header_rows overrides detection for external pandas MultiIndex CSV.
+        Existing positional arguments for legacy 1D imports remain supported.
+        """
+        import csv
+
+        if header_rows is None and simulation_column is not None:
+            with open(file_name, newline="", encoding="utf-8-sig") as input_file:
+                reader = csv.reader(input_file)
+                rows = [row for _, row in zip(range(33), reader)]
+            for i in range(2, len(rows)):
+                row = rows[i]
+                if (
+                    row
+                    and row[0] == simulation_column
+                    and all(not cell for cell in row[1:])
+                    and all(rows[k] and rows[k][0] for k in range(i))
+                ):
+                    header_rows = i
+                    break
+        if header_rows is not None:
+            if header_rows < 2:
+                raise ValueError("MultiIndex CSV requires at least two header rows")
+            frame: pd.DataFrame = pd.read_csv(
+                file_name, header=list(range(header_rows)), index_col=0
+            )
+        else:
+            frame = pd.read_csv(file_name)
+        return cls.from_dataframe(
+            frame,
+            dim_name,
+            values_column,
+            simulation_column,
+            dimension_columns=dimension_columns,
+            event_column=event_column,
+            n_sims=n_sims,
+        )
+
+    def to_parquet(
+        self,
+        file_name: str | os.PathLike[str],
+        layout: str = "auto",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        simulation_column: str = "Simulation",
+        event_column: str = "Event",
+        values_column: str = "value",
+    ) -> None:
+        """Export Parquet preserving pandas MultiIndex headers where present."""
+        frame = self.to_dataframe(
+            layout=layout,
+            dimension_columns=dimension_columns,
+            simulation_column=simulation_column,
+            event_column=event_column,
+            values_column=values_column,
+        )
+        frame.to_parquet(file_name, index=isinstance(frame.columns, pd.MultiIndex))
 
     @classmethod
     def from_parquet(
@@ -952,11 +1047,21 @@ class ProteusVariable(t.Generic[T]):
         values_column: str = "value",
         simulation_column: str | None = "Simulation",
         *,
+        dimension_columns: t.Sequence[str] | None = None,
+        event_column: str = "Event",
         n_sims: int | None = None,
     ) -> ProteusVariable[t.Any]:
-        """Build PAL variables from an ordinary Parquet table."""
+        """Import nested MultiIndex or ordinary wide/long Parquet data."""
         frame: pd.DataFrame = pd.read_parquet(file_name)
-        return cls.from_dataframe(frame, dim_name, values_column, simulation_column, n_sims=n_sims)
+        return cls.from_dataframe(
+            frame,
+            dim_name,
+            values_column,
+            simulation_column,
+            dimension_columns=dimension_columns,
+            event_column=event_column,
+            n_sims=n_sims,
+        )
 
     @classmethod
     def from_dict(
