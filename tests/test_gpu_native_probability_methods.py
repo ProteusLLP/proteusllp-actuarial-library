@@ -90,3 +90,23 @@ def test_gpu_rqmc_poisson_mixture_has_correct_noncentral_chisquare_law(df: float
     checkpoints = stats.ncx2.ppf([0.05, 0.25, 0.5, 0.75, 0.95], df, nonc)
     observed = np.mean(asnumpy(sample)[:, None] < checkpoints[None, :], axis=0)
     np.testing.assert_allclose(observed, [0.05, 0.25, 0.5, 0.75, 0.95], atol=0.015)
+
+
+@pytest.mark.skipif(xp is np, reason="Requires a CuPy backend")
+@pytest.mark.parametrize("p", [-0.5, 0.5])
+def test_half_order_gig_gpu_rqmc_matches_distribution(p: float) -> None:
+    """Inverse-Gaussian transform uses GPU Sobol dimensions with the correct law."""
+    from pal.qmc import _sample_generalized_inverse_gaussian
+
+    samples = _sample_generalized_inverse_gaussian(
+        RandomizedQMCGenerator(seed=146, dimensions=4),
+        8192,
+        p,
+        2.5,
+        1.0,
+        0.0,
+    )
+    assert isinstance(samples, xp.ndarray)
+    quantiles = stats.geninvgauss(p, 2.5).ppf([0.05, 0.25, 0.5, 0.75, 0.95])
+    observed = np.mean(asnumpy(samples)[:, None] < np.asarray(quantiles)[None, :], axis=0)
+    np.testing.assert_allclose(observed, [0.05, 0.25, 0.5, 0.75, 0.95], atol=0.015)
