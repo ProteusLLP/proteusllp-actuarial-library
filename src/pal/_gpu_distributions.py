@@ -90,7 +90,7 @@ def noncentral_chisquare_ppf(u: t.Any, df: t.Any, nonc: t.Any) -> t.Any:
 
 
 def generalized_inverse_gaussian_mc(rng: t.Any, n_sims: int, p: t.Any, shape: t.Any, scale: t.Any, loc: t.Any) -> t.Any:
-    """Sample a GIG distribution using log-density rejection on the GPU.
+    """Sample GIG on the GPU using exact IG transforms or log-density rejection.
 
     With Z=log(Y), the GIG log density is p*Z-shape*cosh(Z), which is
     strictly concave. A uniform centre and two exponential tails constitute
@@ -101,6 +101,17 @@ def generalized_inverse_gaussian_mc(rng: t.Any, n_sims: int, p: t.Any, shape: t.
     b = xp.broadcast_to(xp.asarray(shape, dtype=xp.float64), (n_sims,))
     factor = xp.broadcast_to(xp.asarray(scale, dtype=xp.float64), (n_sims,))
     location = xp.broadcast_to(xp.asarray(loc, dtype=xp.float64), (n_sims,))
+    # The half-order family has an exact two-draw inverse-Gaussian method.
+    # GIG(-1/2, b) is IG(mean=1, shape=b); GIG(+1/2, b) is its reciprocal.
+    # This avoids the many full-array rejection rounds of the generic case.
+    if bool(xp.all(xp.abs(index) == 0.5)):
+        squared_normal = rng.normal(size=n_sims) ** 2
+        candidate = 2 * b / (2 * b + squared_normal + xp.sqrt(squared_normal * (4 * b + squared_normal)))
+        choice = rng.uniform(size=n_sims)
+        inverse_gaussian = xp.where(choice <= 1 / (1 + candidate), candidate, 1 / candidate)
+        sampled = xp.where(index == 0.5, 1 / inverse_gaussian, inverse_gaussian)
+        return location + factor * sampled
+
     curvature = xp.hypot(index, b)
     a = (curvature + index) / 2.0
     c = (curvature - index) / 2.0
