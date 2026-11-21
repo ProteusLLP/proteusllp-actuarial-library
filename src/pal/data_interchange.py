@@ -317,11 +317,18 @@ def from_dataframe(
             if simulation_column is None or event_column not in group:
                 raise ValueError("Frequency-severity input requires simulation and event columns")
             claims = group.loc[group[event_column].notna()]
-            if claims[event_column].duplicated().any():
-                raise ValueError("Event IDs must be unique within a variable")
+            if claims[[simulation_column, event_column]].duplicated().any():
+                raise ValueError("Event IDs must be unique within each simulation")
             if claims[simulation_column].isna().any():
                 raise ValueError("Claim rows must have a simulation ID")
-            ordered = claims.sort_values(event_column)
+            # Exported PAL event IDs give a global order. External data often
+            # numbers claims separately within each simulation.
+            sort_columns = (
+                [simulation_column, event_column]
+                if claims[event_column].duplicated().any()
+                else [event_column]
+            )
+            ordered = claims.sort_values(sort_columns, kind="stable")
             indices = ordered[simulation_column].to_numpy(dtype=np.int64)
             if (indices < 0).any():
                 raise ValueError("Simulation indices must be nonnegative")
