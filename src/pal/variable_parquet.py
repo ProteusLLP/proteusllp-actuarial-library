@@ -40,7 +40,7 @@ def _list_column(values: np.ndarray, pa: t.Any) -> t.Any:
     return pa.LargeListArray.from_arrays(offsets, _arrow_values(values, pa))
 
 
-def write_parquet(variable: ProteusVariable[t.Any], path: str | os.PathLike[str]) -> None:
+def write_parquet(variable: ProteusVariable[t.Any], path: str | os.PathLike[str] | t.BinaryIO) -> None:
     """Write a compact, self-describing Parquet file using typed Arrow columns.
 
     Each leaf has a typed vector; claim-level leaves additionally store their
@@ -153,7 +153,7 @@ def _rebuild(leaves: list[tuple[tuple[tuple[str, str], ...], t.Any]], level: int
 
 
 def read_parquet(
-    path: str | os.PathLike[str],
+    path: str | os.PathLike[str] | t.BinaryIO,
     dim_name: str | None = None,
     values_column: str = "value",
     simulation_column: str | None = "Simulation",
@@ -165,9 +165,12 @@ def read_parquet(
     except ImportError:
         return from_dataframe(pd.read_parquet(path), dim_name, values_column, simulation_column)
 
-    metadata = pq.read_metadata(path).metadata or {}
+    # One seekable handle works for local and remote fsspec files. Reuse the
+    # reader for the body to avoid reopening the remote object after metadata.
+    reader = pq.ParquetFile(path)
+    metadata = reader.metadata.metadata or {}
     if _METADATA_KEY not in metadata:
-        return from_dataframe(pd.read_parquet(path), dim_name, values_column, simulation_column)
+        return from_dataframe(reader.read().to_pandas(), dim_name, values_column, simulation_column)
 
     try:
         spec = json.loads(metadata[_METADATA_KEY])
@@ -178,7 +181,7 @@ def read_parquet(
     if not spec["leaves"]:
         raise ValueError("PAL Parquet file has no leaves")
 
-    table = pq.read_table(path)
+    table = reader.read()
     leaves: list[tuple[tuple[tuple[str, str], ...], t.Any]] = []
     groups: dict[int, list[ProteusStochasticVariable]] = {}
     for index, info in enumerate(spec["leaves"]):
