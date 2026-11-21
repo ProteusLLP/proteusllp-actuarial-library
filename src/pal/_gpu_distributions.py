@@ -71,7 +71,7 @@ def noncentral_chisquare_ppf(u: t.Any, df: t.Any, nonc: t.Any) -> t.Any:
     )
     if not u.size:
         return xp.empty_like(u)
-    invalid = (u < 0) | (u > 1)
+    invalid = (u < 0) | (u > 1) | xp.isnan(u)
     target = xp.clip(u, 1e-300, 1 - 1e-15)
     mean = df + nonc
     deviation = xp.sqrt(2.0 * (df + 2.0 * nonc))
