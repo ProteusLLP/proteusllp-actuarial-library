@@ -294,11 +294,12 @@ def from_dataframe(
         raise ValueError("Duplicate simulation ID for a dimension label")
     if frame[simulation_column].isna().any():
         raise ValueError("Missing simulation IDs")
-    sims = sorted(frame[simulation_column].unique().tolist())
+    sims = np.sort(frame[simulation_column].unique())
     variables: dict[str, StochasticScalar] = {}
-    for label in labels:
-        subset = frame.loc[frame[dim_name] == label].set_index(simulation_column)
-        if set(subset.index.tolist()) != set(sims):
+    # Group only once: repeated full-table scans are expensive for many LoBs.
+    for label, subset in frame.groupby(dim_name, sort=False):
+        ordered = subset.sort_values(simulation_column)
+        if not np.array_equal(ordered[simulation_column].to_numpy(), sims):
             raise ValueError("All dimension labels must have the same simulation IDs")
-        variables[str(label)] = StochasticScalar(subset.loc[sims, values_column].to_numpy())
+        variables[str(label)] = StochasticScalar(ordered[values_column].to_numpy(copy=False))
     return ProteusVariable(dim_name, variables)
