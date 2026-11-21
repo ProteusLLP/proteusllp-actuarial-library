@@ -759,6 +759,7 @@ def test_inversegaussian_cdf_properties() -> None:
     assert 0.5 < cdf_at_mean < 0.8
 
 
+@pytest.mark.skipif(np.__name__ == "cupy", reason="Large-sample GIG moment test uses CPU sampling")
 def test_generalized_inverse_gaussian() -> None:
     """Test the generalized inverse Gaussian distribution."""
     set_random_seed(12345678910)
