@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from pal import FreqSevSims, ProteusVariable, StochasticScalar
+from pal._maths import asnumpy
 from pal.couplings import couple_stochastic_results
 from pal.serialization import load, save
 from pal.variable_io import from_dataframe as decode_snapshot
@@ -44,9 +45,9 @@ def test_nested_stochastic_roundtrip_with_coupling(storage, tmp_path):
     assert list(restored.values) == ["UK", "US"]
     assert restored["UK"].dim_name == "class"
     assert list(restored["UK"].values) == ["Motor", "Property"]
-    np.testing.assert_array_equal(restored["UK"]["Motor"].values, np.array([1, 2, 3]))
-    np.testing.assert_array_equal(restored["UK"]["Property"].values, np.array([0.5, np.nan, 2.5]))
-    np.testing.assert_array_equal(restored["US"]["Motor"].values, ["low", "medium", "high"])
+    np.testing.assert_array_equal(asnumpy(restored["UK"]["Motor"].values), np.array([1, 2, 3]))
+    np.testing.assert_array_equal(asnumpy(restored["UK"]["Property"].values), np.array([0.5, np.nan, 2.5]))
+    np.testing.assert_array_equal(asnumpy(restored["US"]["Motor"].values), ["low", "medium", "high"])
     assert restored["UK"]["Motor"].values.dtype.kind in "iu"
     assert restored["UK"]["Motor"].coupled_variable_group is restored["UK"]["Property"].coupled_variable_group
     assert restored["US"]["Motor"].coupled_variable_group is not restored["UK"]["Motor"].coupled_variable_group
@@ -76,8 +77,8 @@ def test_freqsev_claims_and_zero_claim_scenarios(storage, tmp_path):
     result = restored["Large losses"]
     assert isinstance(result, FreqSevSims)
     assert result.n_sims == 5
-    np.testing.assert_array_equal(result.sim_index, frequency_severity.sim_index)
-    np.testing.assert_array_equal(result.values, frequency_severity.values)
+    np.testing.assert_array_equal(asnumpy(result.sim_index), asnumpy(frequency_severity.sim_index))
+    np.testing.assert_array_equal(asnumpy(result.values), asnumpy(frequency_severity.values))
 
 
 @pytest.mark.parametrize("n_sims", [0, 3])
@@ -125,7 +126,7 @@ def test_numeric_only_csv_does_not_infer_or_round_payloads(tmp_path):
     path = tmp_path / "numbers.csv"
     save(original, path)
     restored = load(path)
-    np.testing.assert_array_equal(restored["Extreme"].values, original["Extreme"].values)
+    np.testing.assert_array_equal(asnumpy(restored["Extreme"].values), asnumpy(original["Extreme"].values))
     assert restored["Extreme"].values.dtype == np.dtype("uint64")
 
 
@@ -138,8 +139,8 @@ def test_string_and_date_stochastic_values():
         },
     )
     restored = decode_snapshot(encode_snapshot(original))
-    np.testing.assert_array_equal(restored["rating"].values, original["rating"].values)
-    np.testing.assert_array_equal(restored["date"].values, original["date"].values)
+    np.testing.assert_array_equal(asnumpy(restored["rating"].values), asnumpy(original["rating"].values))
+    np.testing.assert_array_equal(asnumpy(restored["date"].values), asnumpy(original["date"].values))
 
 
 def test_import_conventional_simulation_table_and_legacy_csv(tmp_path):
@@ -151,12 +152,12 @@ def test_import_conventional_simulation_table_and_legacy_csv(tmp_path):
         }
     )
     imported = ProteusVariable.from_dataframe(frame, "class", "claim")
-    np.testing.assert_array_equal(imported["Motor"].values, [2.0, 5.0])
-    np.testing.assert_array_equal(imported["Property"].values, [8.0, 7.0])
+    np.testing.assert_array_equal(asnumpy(imported["Motor"].values), [2.0, 5.0])
+    np.testing.assert_array_equal(asnumpy(imported["Property"].values), [8.0, 7.0])
     path = tmp_path / "legacy.csv"
     frame.to_csv(path, index=False)
     legacy = ProteusVariable.from_csv(path, "class", "claim")
-    np.testing.assert_array_equal(legacy["Motor"].values, imported["Motor"].values)
+    np.testing.assert_array_equal(asnumpy(legacy["Motor"].values), asnumpy(imported["Motor"].values))
 
 
 def test_import_conventional_deterministic_table():
