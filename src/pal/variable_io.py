@@ -2,8 +2,8 @@
 
 The versioned long-form schema is shared by DataFrame, CSV and Parquet.
 It records leaf types, data types, simulation identities and claim-event order.
-A serialized variable contains values only: coupling-group identity is not
-portable and is intentionally not recreated when the variable is loaded.
+Coupling relationships among serialized leaves are reconstructed when loading,
+but no connection is retained to objects outside the serialized hierarchy.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from ._maths import asnumpy
+from .couplings import ProteusStochasticVariable, couple_stochastic_results
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
 from .variables import ProteusVariable
@@ -25,11 +26,12 @@ _PATH = "_pal_path"
 _KIND = "_pal_kind"
 _DTYPE = "_pal_dtype"
 _N_SIMS = "_pal_n_sims"
+_GROUP = "_pal_group"
 _VERSION = "_pal_schema"
 _SIM = "Simulation"
 _EVENT = "Event"
 _VALUE = "value"
-_COLUMNS = [_VERSION, _PATH, _KIND, _DTYPE, _N_SIMS, _SIM, _EVENT, _VALUE]
+_COLUMNS = [_VERSION, _PATH, _KIND, _DTYPE, _N_SIMS, _GROUP, _SIM, _EVENT, _VALUE]
 
 
 def _array(values: t.Any) -> np.ndarray:
@@ -54,9 +56,9 @@ def _encode(value: t.Any) -> str:
 
 
 def _row(
-    path: str, kind: str, dtype: str, n_sims: int, simulation: int, event: int, value: str
-) -> tuple[str, str, str, str, int, int, int, str]:
-    return (_SCHEMA, path, kind, dtype, n_sims, simulation, event, value)
+    path: str, kind: str, dtype: str, n_sims: int, group: int, simulation: int, event: int, value: str
+) -> tuple[str, str, str, str, int, int, int, int, str]:
+    return (_SCHEMA, path, kind, dtype, n_sims, group, simulation, event, value)
 
 
 def to_dataframe(variable: ProteusVariable[t.Any]) -> pd.DataFrame:
@@ -66,7 +68,8 @@ def to_dataframe(variable: ProteusVariable[t.Any]) -> pd.DataFrame:
     metadata file. Events are numbered in their original order; a row with
     Event=-1 and an empty value represents a simulation with no claims.
     """
-    rows: list[tuple[str, str, str, str, int, int, int, str]] = []
+    rows: list[tuple[str, str, str, str, int, int, int, int, str]] = []
+    group_ids: dict[int, int] = {}
 
     def visit(value: t.Any, path: list[tuple[str, str]]) -> None:
         if isinstance(value, ProteusVariable):
@@ -77,13 +80,19 @@ def to_dataframe(variable: ProteusVariable[t.Any]) -> pd.DataFrame:
             return
 
         encoded_path = json.dumps(path, ensure_ascii=False, separators=(",", ":"))
+        group = -1
+        if isinstance(value, ProteusStochasticVariable):
+            identity = id(value.coupled_variable_group)
+            if identity not in group_ids:
+                group_ids[identity] = len(group_ids)
+            group = group_ids[identity]
         if isinstance(value, StochasticScalar):
             samples = _array(value.values)
             dtype = _dtype(samples)
             for i, sample in enumerate(samples):
-                rows.append(_row(encoded_path, "stochastic", dtype, value.n_sims, i, -1, _encode(sample)))
+                rows.append(_row(encoded_path, "stochastic", dtype, value.n_sims, group, i, -1, _encode(sample)))
             if value.n_sims == 0:
-                rows.append(_row(encoded_path, "stochastic", dtype, 0, -1, -1, ""))
+                rows.append(_row(encoded_path, "stochastic", dtype, 0, group, -1, -1, ""))
         elif isinstance(value, FreqSevSims):
             samples = _array(value.values)
             indices = _array(value.sim_index)
@@ -94,20 +103,20 @@ def to_dataframe(variable: ProteusVariable[t.Any]) -> pd.DataFrame:
             if not np.issubdtype(indices.dtype, np.integer):
                 raise TypeError("Frequency-severity simulation indices must be integers")
             for event, (simulation, sample) in enumerate(zip(indices, samples)):
-                rows.append(_row(encoded_path, "freqsev", dtype, n_sims, int(simulation), event, _encode(sample)))
+                rows.append(_row(encoded_path, "freqsev", dtype, n_sims, group, int(simulation), event, _encode(sample)))
             populated = set(indices.tolist())
             for simulation in range(n_sims):
                 if simulation not in populated:
-                    rows.append(_row(encoded_path, "freqsev", dtype, n_sims, simulation, -1, ""))
+                    rows.append(_row(encoded_path, "freqsev", dtype, n_sims, group, simulation, -1, ""))
             if n_sims == 0:
-                rows.append(_row(encoded_path, "freqsev", dtype, 0, -1, -1, ""))
+                rows.append(_row(encoded_path, "freqsev", dtype, 0, group, -1, -1, ""))
         else:
             if isinstance(value, (dt.date, dt.datetime)):
                 sample = np.asarray([np.datetime64(value)])
             else:
                 sample = np.asarray([value])
             dtype = _dtype(sample)
-            rows.append(_row(encoded_path, "scalar", dtype, 1, -1, -1, _encode(sample[0])))
+            rows.append(_row(encoded_path, "scalar", dtype, 1, -1, -1, -1, _encode(sample[0])))
 
     visit(variable, [])
     return pd.DataFrame.from_records(rows, columns=_COLUMNS)
@@ -204,8 +213,20 @@ def _from_pal_frame(frame: pd.DataFrame) -> ProteusVariable[t.Any]:
         raise ValueError("Unsupported PAL variable schema version")
 
     leaves: list[tuple[tuple[tuple[str, str], ...], t.Any]] = []
+    groups: dict[int, list[ProteusStochasticVariable]] = {}
     for path, group in frame.groupby(_PATH, sort=False):
-        leaves.append((_parse_path(path), _restore_leaf(group)))
+        value = _restore_leaf(group)
+        group_id = int(_unique(group, _GROUP))
+        if isinstance(value, ProteusStochasticVariable):
+            if group_id < 0:
+                raise ValueError("Missing coupling-group marker for stochastic leaf")
+            groups.setdefault(group_id, []).append(value)
+        elif group_id != -1:
+            raise ValueError("Deterministic leaves cannot belong to a coupling group")
+        leaves.append((_parse_path(path), value))
+    for members in groups.values():
+        if len(members) > 1:
+            couple_stochastic_results(members)
     if not leaves:
         raise ValueError("A PAL variable must have at least one leaf")
 
