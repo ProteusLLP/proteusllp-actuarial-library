@@ -8,7 +8,6 @@ import pytest
 
 from pal import FreqSevSims, ProteusVariable, StochasticScalar
 
-
 pa = pytest.importorskip("pyarrow")
 pq = pytest.importorskip("pyarrow.parquet")
 
