@@ -284,7 +284,7 @@ def from_dataframe(
         path: list[str] = []
         encountered_missing = False
         for label in path_values:
-            if pd.isna(label):
+            if pd.isna(t.cast(t.Any, label)):
                 encountered_missing = True
             elif encountered_missing:
                 raise ValueError("Dimension paths must not contain gaps")
