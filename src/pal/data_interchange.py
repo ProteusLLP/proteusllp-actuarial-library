@@ -167,10 +167,9 @@ def to_dataframe(
     return pd.concat(frames, ignore_index=True).reindex(columns=columns)
 
 
-def _nested_variable(
-    values: dict[tuple[str, ...], t.Any], dimension_columns: Sequence[str]
-) -> ProteusVariable[t.Any]:
+def _nested_variable(values: dict[tuple[str, ...], t.Any], dimension_columns: Sequence[str]) -> ProteusVariable[t.Any]:
     """Reconstruct a heterogeneous hierarchy from its ordered leaf paths."""
+
     def build(prefix: tuple[str, ...], level: int) -> ProteusVariable[t.Any]:
         children: dict[str, t.Any] = {}
         for path, leaf in values.items():
@@ -262,9 +261,9 @@ def from_dataframe(
         )
 
     control = {values_column, simulation_column, event_column, kind_column, n_sims_column}
-    dimensions = list(dimension_columns) if dimension_columns is not None else [
-        str(c) for c in frame if c not in control
-    ]
+    dimensions = (
+        list(dimension_columns) if dimension_columns is not None else [str(c) for c in frame if c not in control]
+    )
     if dim_name is not None:
         if dimension_columns is not None and len(dimension_columns) > 1:
             raise ValueError("Use dimension_columns alone to select nested dimension names")
@@ -327,9 +326,7 @@ def from_dataframe(
             if (indices < 0).any():
                 raise ValueError("Simulation indices must be nonnegative")
             observed = int(indices.max()) + 1 if len(indices) else 0
-            total = n_sims if n_sims is not None else (
-                stored_n_sims if stored_n_sims is not None else observed
-            )
+            total = n_sims if n_sims is not None else (stored_n_sims if stored_n_sims is not None else observed)
             if total < observed:
                 raise ValueError("n_sims cannot be smaller than the largest simulation index")
             vals = ordered[values_column].to_numpy(copy=False) if len(ordered) else np.array([], dtype=float)
