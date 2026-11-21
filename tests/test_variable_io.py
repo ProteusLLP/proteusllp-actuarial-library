@@ -55,7 +55,7 @@ def test_freqsev_claims_and_zero_claim_scenarios(storage, tmp_path):
     """Preserve event order even when event simulation indices are interleaved."""
     frequency_severity = FreqSevSims(
         np.array([2, 0, 2, 3, 0], dtype=np.int64),
-        np.array([100., 10., 200., 40., 20.]),
+        np.array([100.0, 10.0, 200.0, 40.0, 20.0]),
         n_sims=5,
     )
     variable = ProteusVariable("LoB", {"Large losses": frequency_severity})
@@ -79,9 +79,7 @@ def test_freqsev_claims_and_zero_claim_scenarios(storage, tmp_path):
 
 @pytest.mark.parametrize("n_sims", [0, 3])
 def test_freqsev_no_claims(n_sims):
-    variable = ProteusVariable(
-        "risk", {"Cat": FreqSevSims([], np.array([], dtype=np.float64), n_sims=n_sims)}
-    )
+    variable = ProteusVariable("risk", {"Cat": FreqSevSims([], np.array([], dtype=np.float64), n_sims=n_sims)})
     result = ProteusVariable.from_dataframe(variable.to_dataframe())["Cat"]
     assert result.n_sims == n_sims
     assert len(result.sim_index) == 0
@@ -165,22 +163,25 @@ def test_import_conventional_deterministic_table():
     assert restored.values == {"Motor": 10, "Property": 20}
 
 
-@pytest.mark.parametrize("bad_frame", [
-    pd.DataFrame({"risk": ["A", "A"], "value": [1, 2]}),
-    pd.DataFrame({"risk": ["A", "B"], "Simulation": [0, 1], "value": [1, 2]}),
-])
+@pytest.mark.parametrize(
+    "bad_frame",
+    [
+        pd.DataFrame({"risk": ["A", "A"], "value": [1, 2]}),
+        pd.DataFrame({"risk": ["A", "B"], "Simulation": [0, 1], "value": [1, 2]}),
+    ],
+)
 def test_invalid_conventional_tables(bad_frame):
     with pytest.raises(ValueError):
         ProteusVariable.from_dataframe(
-            bad_frame, "risk", "value",
+            bad_frame,
+            "risk",
+            "value",
             simulation_column=None if "Simulation" not in bad_frame.columns else "Simulation",
         )
 
 
 def test_missing_and_duplicated_simulation_ids():
-    frame = pd.DataFrame(
-        {"risk": ["A", "A", "B"], "Simulation": [0, 0, 0], "value": [1, 2, 3]}
-    )
+    frame = pd.DataFrame({"risk": ["A", "A", "B"], "Simulation": [0, 0, 0], "value": [1, 2, 3]})
     with pytest.raises(ValueError, match="Duplicate simulation"):
         ProteusVariable.from_dataframe(frame, "risk")
     frame.loc[1, "Simulation"] = 1
