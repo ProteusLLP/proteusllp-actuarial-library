@@ -89,9 +89,7 @@ def test_existing_parquet_file_remains_readable(tmp_path):
     restored = load(old)
     np.testing.assert_array_equal(restored["A"].values, [10.0, 20.0])
     conventional = tmp_path / "ordinary.parquet"
-    pd.DataFrame({"Simulation": [0, 1], "risk": ["A", "A"], "loss": [5.0, 6.0]}).to_parquet(
-        conventional, index=False
-    )
+    pd.DataFrame({"Simulation": [0, 1], "risk": ["A", "A"], "loss": [5.0, 6.0]}).to_parquet(conventional, index=False)
     imported = ProteusVariable.from_parquet(conventional, "risk", "loss")
     np.testing.assert_array_equal(imported["A"].values, [5.0, 6.0])
 
