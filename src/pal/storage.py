@@ -25,7 +25,7 @@ def open_file(
     mode: str,
     *,
     storage_options: StorageOptions = None,
-) -> Iterator[t.IO[t.Any]]:
+) -> Iterator[t.BinaryIO]:
     """Open a local path, remote URI or caller-owned file-like object.
 
     Remote locations use fsspec, for example s3://bucket/key.parquet or
@@ -34,13 +34,13 @@ def open_file(
     """
     if isinstance(location, (str, os.PathLike)):
         with fsspec.open(os.fspath(location), mode=mode, **dict(storage_options or {})) as stream:
-            yield stream
+            yield t.cast(t.BinaryIO, stream)
     else:
         if storage_options:
             raise ValueError("storage_options cannot be used with an already-open file")
         if ("r" in mode and not hasattr(location, "read")) or ("w" in mode and not hasattr(location, "write")):
             raise TypeError("location must be a path, URI or readable/writable file-like object")
-        yield location
+        yield t.cast(t.BinaryIO, location)
 
 
 def file_extension(location: StorageLocation, format: str | None = None) -> str:
