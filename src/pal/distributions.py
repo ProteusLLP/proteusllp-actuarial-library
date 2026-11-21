@@ -26,6 +26,7 @@ import typing as t
 from abc import ABC
 
 import numpy as np
+import scipy.special as scipy_special
 import scipy.stats as scipy_stats
 from scipy.stats import geninvgauss
 
@@ -1514,8 +1515,10 @@ class NonCentralChiSquared(DistributionBase):
         nonc: Noncentrality parameter :math:`\lambda\geq0`.
 
     Notes:
-        Random generation supports both CPU and GPU execution. CDF and inverse
-        CDF evaluation are currently supported on the CPU only.
+        Monte Carlo generation uses the active backend, and GPU RQMC for
+        fixed moderate noncentrality uses an exact two-coordinate Poisson
+        mixture. The CDF and inverse CDF call SciPy on the host when running
+        with CuPy: measured native GPU inversions were much slower.
     """
 
     @classmethod
@@ -1559,11 +1562,11 @@ class NonCentralChiSquared(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the cumulative distribution function."""
-        if xp.__name__ == "cupy":
-            raise NotImplementedError("NonCentralChiSquared CDF is not supported on GPU.")
         self._validated_params()
+        self._validate_probability_inputs(x)
+        cdf_function = special.chndtr if xp is np else lambda *values: _scipy_on_backend(scipy_special.chndtr, *values)
         return _special_call(
-            special.chndtr,
+            cdf_function,
             x,
             self._params["df"],
             self._params["nonc"],
@@ -1572,11 +1575,12 @@ class NonCentralChiSquared(DistributionBase):
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute the inverse cumulative distribution function."""
-        if xp.__name__ == "cupy":
-            raise NotImplementedError("NonCentralChiSquared inverse CDF is not supported on GPU.")
         self._validated_params()
+        self._validate_probability_inputs(u)
+        host_ppf = scipy_special.chndtrix
+        ppf_function = special.chndtrix if xp is np else lambda *values: _scipy_on_backend(host_ppf, *values)
         return _special_call(
-            special.chndtrix,
+            ppf_function,
             u,
             self._params["df"],
             self._params["nonc"],
@@ -2440,8 +2444,9 @@ class GeneralizedInverseGaussian(DistributionBase):
         loc: Location parameter :math:`\mu` (default 0).
 
     Notes:
-        CDF evaluation, inverse CDF evaluation, and random generation are
-        currently supported on the CPU only.
+        On GPU, MC and RQMC for p=+/-1/2 use an exact, fast CuPy
+        inverse-Gaussian transform. Other GIG indices and probability
+        evaluations use SciPy host fallbacks.
     """
 
     @classmethod
@@ -2479,16 +2484,13 @@ class GeneralizedInverseGaussian(DistributionBase):
 
     def _scipy_params(self) -> tuple[t.Any, t.Any, t.Any, t.Any]:
         """Convert the GIG parameters to SciPy's parameterisation."""
-        if xp.__name__ == "cupy":
-            raise NotImplementedError("GeneralizedInverseGaussian is not supported on GPU.")
-
         p, chi, psi, loc = self._param_values
-        if bool(np.any(chi <= 0)):
+        if bool(xp.any(xp.asarray(chi) <= 0)):
             raise ValueError("chi must be strictly positive.")
-        if bool(np.any(psi <= 0)):
+        if bool(xp.any(xp.asarray(psi) <= 0)):
             raise ValueError("psi must be strictly positive.")
-        scipy_shape = np.sqrt(chi * psi)
-        scipy_scale = np.sqrt(chi / psi)
+        scipy_shape = xp.sqrt(chi * psi)
+        scipy_scale = xp.sqrt(chi / psi)
         return p, scipy_shape, scipy_scale, loc
 
     def _wrap_result(
@@ -2509,34 +2511,42 @@ class GeneralizedInverseGaussian(DistributionBase):
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute cumulative distribution function."""
+        self._validate_probability_inputs(x)
         p, scipy_shape, scipy_scale, loc = self._scipy_params()
         values = x.values if isinstance(x, StochasticScalar) else x
-        result = geninvgauss.cdf(
+        result = _scipy_on_backend(
+            lambda value, index, shape, location, scale: geninvgauss.cdf(
+                value, index, shape, loc=location, scale=scale
+            ),
             values,
             p,
             scipy_shape,
-            loc=loc,
-            scale=scipy_scale,
+            loc,
+            scipy_scale,
         )
         return self._wrap_result(result, x)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
         """Compute inverse cumulative distribution function."""
+        self._validate_probability_inputs(u)
         p, scipy_shape, scipy_scale, loc = self._scipy_params()
         values = u.values if isinstance(u, StochasticScalar) else u
-        result = geninvgauss.ppf(
+        result = _scipy_on_backend(
+            lambda value, index, shape, location, scale: geninvgauss.ppf(
+                value, index, shape, loc=location, scale=scale
+            ),
             values,
             p,
             scipy_shape,
-            loc=loc,
-            scale=scipy_scale,
+            loc,
+            scipy_scale,
         )
         return self._wrap_result(result, u)
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
-        """Generate random samples using SciPy's GIG sampler."""
+        """Generate using GPU rejection sampling or the CPU SciPy sampler."""
         p, scipy_shape, scipy_scale, loc = self._scipy_params()
         return StochasticScalar(_sample_generalized_inverse_gaussian(rng, n_sims, p, scipy_shape, scipy_scale, loc))
 

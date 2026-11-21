@@ -174,8 +174,6 @@ def test_qmc_frequency_severity_preserves_scenario_parameter_coupling():
 
 
 def test_generalized_inverse_gaussian_uses_sobol():
-    if xp.__name__ != "numpy":
-        pytest.skip("The GIG distribution itself is CPU-only.")
     set_sampling_method(SamplingMethod.RQMC, dimensions=2)
     draw = GeneralizedInverseGaussian(p=-0.5, chi=2, psi=3).generate(128)
     assert np.all(np.isfinite(asnumpy(draw.values)))

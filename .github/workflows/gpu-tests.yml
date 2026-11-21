@@ -116,6 +116,14 @@ jobs:
           print(f"GPU smoke-test result: {float(result)}")
           PY
 
+      - name: Benchmark GPU-native probability methods against SciPy CPU
+        run: |
+          python -m benchmarks.benchmark_gpu_distributions --sizes 1024,8192,65536,262144,1048576 \
+            --warmups 1 --repeats 3 \
+            --output "$RUNNER_TEMP/pal-gpu-distributions.json" \
+            --summary "$RUNNER_TEMP/pal-gpu-distributions.md"
+          cat "$RUNNER_TEMP/pal-gpu-distributions.md" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run tests with GPU acceleration
         run: pytest -v --cov=pal --cov-report=term --codeblocks
 
@@ -147,5 +155,6 @@ jobs:
             ${{ runner.temp }}/pal-sampling-gpu.*
             ${{ runner.temp }}/pal-qmc-scaling-gpu.json
             ${{ runner.temp }}/pal-freqsev-gpu.*
+            ${{ runner.temp }}/pal-gpu-distributions.*
           if-no-files-found: ignore
           retention-days: 30
