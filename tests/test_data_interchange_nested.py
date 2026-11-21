@@ -112,9 +112,7 @@ def test_custom_multiindex_headers(nested, tmp_path, format):
 @pytest.mark.parametrize("format", ["csv", "parquet"])
 def test_all_zero_claim_scenarios_roundtrip_without_n_sims(tmp_path, format):
     """Even if no events occur, the file has a row retaining n_sims."""
-    variable = ProteusVariable(
-        "LoB", {"Cat": FreqSevSims([], np.array([], dtype=np.float64), 9)}
-    )
+    variable = ProteusVariable("LoB", {"Cat": FreqSevSims([], np.array([], dtype=np.float64), 9)})
     path = tmp_path / f"empty_claims.{format}"
     if format == "csv":
         variable.to_csv(path)
@@ -129,9 +127,7 @@ def test_all_zero_claim_scenarios_roundtrip_without_n_sims(tmp_path, format):
 
 @pytest.mark.parametrize("format", ["csv", "parquet"])
 def test_trailing_zero_claim_simulations_roundtrip_without_n_sims(tmp_path, format):
-    variable = ProteusVariable(
-        "LoB", {"Cat": FreqSevSims([0, 2, 0], [10.0, 20.0, 30.0], 12)}
-    )
+    variable = ProteusVariable("LoB", {"Cat": FreqSevSims([0, 2, 0], [10.0, 20.0, 30.0], 12)})
     path = tmp_path / f"claims.{format}"
     if format == "csv":
         variable.to_csv(path)
@@ -169,9 +165,7 @@ def test_configurable_external_claim_columns():
 
 def test_custom_external_wide_simulation_column():
     frame = pd.DataFrame({"Run": [11, 10], "A": [5, 4], "B": [7, 6]})
-    result = ProteusVariable.from_dataframe(
-        frame, simulation_column="Run", dim_name="LoB"
-    )
+    result = ProteusVariable.from_dataframe(frame, simulation_column="Run", dim_name="LoB")
     assert result.dim_name == "LoB"
     np.testing.assert_array_equal(result["A"].values, [4, 5])
 
@@ -217,9 +211,7 @@ def test_irregular_nested_variable_auto_uses_long(tmp_path):
 
 
 def test_exported_zero_sim_stochastic_can_be_imported(tmp_path):
-    model = ProteusVariable(
-        "LoB", {"Empty": StochasticScalar(np.array([], dtype=float))}
-    )
+    model = ProteusVariable("LoB", {"Empty": StochasticScalar(np.array([], dtype=float))})
     path = tmp_path / "empty.csv"
     model.to_csv(path, layout="long")
     result = ProteusVariable.from_csv(path)["Empty"]
@@ -228,13 +220,15 @@ def test_exported_zero_sim_stochastic_can_be_imported(tmp_path):
 
 
 def test_reject_conflicting_simulation_counts():
-    frame = pd.DataFrame({
-        "LoB": ["Cat", "Cat"],
-        "Simulation": [0, 0],
-        "Event": [0, 1],
-        "value": [100.0, 200.0],
-        "Kind": ["frequency_severity", "frequency_severity"],
-        "N Simulations": [10, 11],
-    })
+    frame = pd.DataFrame(
+        {
+            "LoB": ["Cat", "Cat"],
+            "Simulation": [0, 0],
+            "Event": [0, 1],
+            "value": [100.0, 200.0],
+            "Kind": ["frequency_severity", "frequency_severity"],
+            "N Simulations": [10, 11],
+        }
+    )
     with pytest.raises(ValueError, match="Conflicting simulation counts"):
         ProteusVariable.from_dataframe(frame)
