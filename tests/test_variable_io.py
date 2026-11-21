@@ -8,6 +8,9 @@ import pytest
 
 from pal import FreqSevSims, ProteusVariable, StochasticScalar
 from pal.couplings import couple_stochastic_results
+from pal.serialization import load, save
+from pal.variable_io import from_dataframe as decode_snapshot
+from pal.variable_io import to_dataframe as encode_snapshot
 
 
 @pytest.mark.parametrize("storage", ["frame", "csv", "parquet"])
@@ -26,16 +29,16 @@ def test_nested_stochastic_roundtrip_with_coupling(storage, tmp_path):
     )
 
     if storage == "frame":
-        restored = ProteusVariable.from_dataframe(original.to_dataframe())
+        restored = decode_snapshot(encode_snapshot(original))
     elif storage == "csv":
         path = tmp_path / "losses.csv"
-        original.to_csv(path)
-        restored = ProteusVariable.from_csv(path)
+        save(original, path)
+        restored = load(path)
     else:
         pytest.importorskip("pyarrow")
         path = tmp_path / "losses.parquet"
-        original.to_parquet(path)
-        restored = ProteusVariable.from_parquet(path)
+        save(original, path)
+        restored = load(path)
 
     assert restored.dim_name == "region"
     assert list(restored.values) == ["UK", "US"]
@@ -60,16 +63,16 @@ def test_freqsev_claims_and_zero_claim_scenarios(storage, tmp_path):
     )
     variable = ProteusVariable("LoB", {"Large losses": frequency_severity})
     if storage == "frame":
-        restored = ProteusVariable.from_dataframe(variable.to_dataframe())
+        restored = decode_snapshot(encode_snapshot(variable))
     elif storage == "csv":
         path = tmp_path / "claims.csv"
-        variable.to_csv(path)
-        restored = ProteusVariable.from_csv(path)
+        save(variable, path)
+        restored = load(path)
     else:
         pytest.importorskip("pyarrow")
         path = tmp_path / "claims.parquet"
-        variable.to_parquet(path)
-        restored = ProteusVariable.from_parquet(path)
+        save(variable, path)
+        restored = load(path)
     result = restored["Large losses"]
     assert isinstance(result, FreqSevSims)
     assert result.n_sims == 5
@@ -80,7 +83,7 @@ def test_freqsev_claims_and_zero_claim_scenarios(storage, tmp_path):
 @pytest.mark.parametrize("n_sims", [0, 3])
 def test_freqsev_no_claims(n_sims):
     variable = ProteusVariable("risk", {"Cat": FreqSevSims([], np.array([], dtype=np.float64), n_sims=n_sims)})
-    result = ProteusVariable.from_dataframe(variable.to_dataframe())["Cat"]
+    result = decode_snapshot(encode_snapshot(variable))["Cat"]
     assert result.n_sims == n_sims
     assert len(result.sim_index) == 0
     assert result.values.dtype == np.float64
@@ -88,7 +91,7 @@ def test_freqsev_no_claims(n_sims):
 
 def test_zero_simulations_stochastic():
     variable = ProteusVariable("risk", {"A": StochasticScalar(np.array([], dtype=np.int32))})
-    restored = ProteusVariable.from_dataframe(variable.to_dataframe())
+    restored = decode_snapshot(encode_snapshot(variable))
     assert restored["A"].n_sims == 0
     assert restored["A"].values.dtype == np.int32
 
@@ -104,8 +107,8 @@ def test_deterministic_numeric_text_and_dates(tmp_path):
         },
     )
     path = tmp_path / "params.csv"
-    original.to_csv(path)
-    restored = ProteusVariable.from_csv(path)
+    save(original, path)
+    restored = load(path)
     assert restored["Retention"] == 1_000_000
     assert isinstance(restored["Retention"], int)
     assert restored["Enabled"] is True
@@ -120,8 +123,8 @@ def test_numeric_only_csv_does_not_infer_or_round_payloads(tmp_path):
         {"Extreme": StochasticScalar(np.array([2**63 + 1, 2**64 - 1], dtype=np.uint64))},
     )
     path = tmp_path / "numbers.csv"
-    original.to_csv(path)
-    restored = ProteusVariable.from_csv(path)
+    save(original, path)
+    restored = load(path)
     np.testing.assert_array_equal(restored["Extreme"].values, original["Extreme"].values)
     assert restored["Extreme"].values.dtype == np.dtype("uint64")
 
@@ -134,7 +137,7 @@ def test_string_and_date_stochastic_values():
             "date": StochasticScalar(np.array(["2025-01-01", "2026-01-01", "2027-01-01"], dtype="datetime64[D]")),
         },
     )
-    restored = ProteusVariable.from_dataframe(original.to_dataframe())
+    restored = decode_snapshot(encode_snapshot(original))
     np.testing.assert_array_equal(restored["rating"].values, original["rating"].values)
     np.testing.assert_array_equal(restored["date"].values, original["date"].values)
 
@@ -190,22 +193,22 @@ def test_missing_and_duplicated_simulation_ids():
 
 def test_invalid_schema_and_events_are_rejected():
     variable = ProteusVariable("risk", {"A": FreqSevSims([0, 1], [1.0, 2.0], 2)})
-    frame = variable.to_dataframe()
+    frame = encode_snapshot(variable)
     frame.loc[0, "_pal_schema"] = "unsupported"
     with pytest.raises(ValueError, match="schema"):
-        ProteusVariable.from_dataframe(frame)
-    frame = variable.to_dataframe()
+        decode_snapshot(frame)
+    frame = encode_snapshot(variable)
     frame.loc[0, "Event"] = 99
     with pytest.raises(ValueError, match="event IDs"):
-        ProteusVariable.from_dataframe(frame)
+        decode_snapshot(frame)
 
 
 def test_unsupported_leaf_is_rejected():
     variable = ProteusVariable("risk", {"A": {"unexpected": "mapping"}})
     with pytest.raises(TypeError, match="dtype"):
-        variable.to_dataframe()
+        encode_snapshot(variable)
 
 
 def test_empty_dimension_is_rejected():
     with pytest.raises(ValueError, match="Empty ProteusVariable"):
-        ProteusVariable("empty", {}).to_dataframe()
+        encode_snapshot(ProteusVariable("empty", {}))
