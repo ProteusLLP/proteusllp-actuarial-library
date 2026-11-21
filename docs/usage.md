@@ -50,6 +50,89 @@ portfolio = ProteusVariable(
 
 Variable containers support numpy operations and can be added, multiplied together etc. Operations involving multiple variable containers will attempt to match on dictionary labels.
 
+
+## CSV, Parquet and pandas interchange
+
+PAL can exchange ordinary tabular data with other systems independently of
+serialising a PAL object. Both import and export support configurable column
+names. The default layout is wide for one-dimensional stochastic variables,
+multi-level pandas headers for regular nested stochastic variables, and long
+format for frequency-severity data and heterogeneous values.
+
+### Nested variables and multi-level headers
+
+A nested portfolio with dimensions \`Region\` and \`LoB\` exports to pandas
+with a MultiIndex on its columns, and one simulation per row:
+
+\`\`\`python
+# nested is a ProteusVariable: Region -> LoB -> StochasticScalar
+frame = nested.to_dataframe(layout="multiindex")
+frame["UK", "Motor"]  # Select one Region / LoB series
+
+nested.to_csv("losses.csv", layout="multiindex")
+restored = ProteusVariable.from_csv("losses.csv")
+
+nested.to_parquet("losses.parquet", layout="multiindex")
+restored = ProteusVariable.from_parquet("losses.parquet")
+\`\`\`
+
+CSV uses multiple named header rows and a Simulation index row; the importer
+recognises that format automatically. Parquet preserves pandas MultiIndex
+metadata. External MultiIndex CSVs can specify \`header_rows=2\` if automatic
+detection does not apply. MultiIndex requires a regular hierarchy of stochastic
+scalars with the same simulation count. For other structures use long form.
+
+### Column mappings and long-form import
+
+Specify which columns contain dimension labels, simulation IDs, event IDs
+and values. Dimension columns are ordered from outermost to innermost:
+
+\`\`\`python
+portfolio.to_csv(
+    "risk_data.csv",
+    layout="long",
+    dimension_columns=["Market", "Class"],
+    simulation_column="Run",
+    event_column="Claim",
+    values_column="Loss",
+)
+
+restored = ProteusVariable.from_csv(
+    "risk_data.csv",
+    dimension_columns=["Market", "Class"],
+    simulation_column="Run",
+    event_column="Claim",
+    values_column="Loss",
+)
+\`\`\`
+
+The same arguments work with \`from_dataframe\`, \`to_dataframe\`,
+\`from_parquet\` and \`to_parquet\`. For one-dimensional data you can keep the
+legacy \`dim_name="LoB"\` argument.
+
+### Frequency-severity event listings
+
+A \`FreqSevSims\` exports as one row per claim. The \`Simulation\` column
+identifies its scenario, \`Event\` its position in the original claim list,
+and \`value\` its severity. The long format also includes \`Kind\` and
+\`N Simulations\`, preserving the number of simulations even when the final
+simulations have no claims. If there are no claims at all, a metadata-only
+row represents the empty claim list. These ordinary columns are readable
+without PAL.
+
+When importing an existing third-party claim listing that has no
+\`N Simulations\` column, pass \`n_sims=...\` if needed. Column mappings also
+work for third-party data, for example \`event_column="ClaimId"\`.
+
+### Interchange versus PAL object snapshots
+
+Use \`ProteusVariable.to_csv/to_parquet\` for tabular exchange and
+\`ProteusVariable.from_csv/from_parquet\` to read it back. These are
+not complete model object snapshots: stochastic coupling and some Python
+types are not retained. For versioned PAL-to-PAL persistence, including
+coupling groups, use \`pal.serialization.save(variable, path)\` and
+\`pal.serialization.load(path)\` instead.
+
 ## Plotting
 
 Plotting methods return Plotly figure objects, so displaying a plot is explicit
