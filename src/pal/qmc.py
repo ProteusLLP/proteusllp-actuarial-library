@@ -19,6 +19,7 @@ import scipy.special as scipy_special
 import scipy.stats as scipy_stats
 from scipy.stats import qmc
 
+from ._gpu_distributions import generalized_inverse_gaussian_mc, noncentral_chisquare_ppf
 from ._maths import asnumpy, special, to_backend, xp
 
 
@@ -433,7 +434,13 @@ class RandomizedQMCGenerator:
 
     def noncentral_chisquare(self, df: t.Any, nonc: t.Any, size: t.Any = None) -> t.Any:
         """Draw noncentral chi-squared quantiles."""
-        return self._quantiles(scipy_stats.ncx2.ppf, size, df, nonc)
+        return self._quantiles(
+            scipy_stats.ncx2.ppf,
+            size,
+            df,
+            nonc,
+            gpu_func=lambda u, degrees, noncentrality: noncentral_chisquare_ppf(u, degrees, noncentrality),
+        )
 
     def logseries(self, p: t.Any, size: t.Any = None) -> t.Any:
         """Draw logarithmic-series quantiles."""
@@ -558,11 +565,10 @@ def _sample_inverse_gaussian(rng: t.Any, n_sims: int, mu: t.Any, lambda_: t.Any)
 def _sample_generalized_inverse_gaussian(
     rng: t.Any, n_sims: int, p: t.Any, shape: t.Any, scale: t.Any, loc: t.Any
 ) -> t.Any:
-    """Use SciPy's GIG sampler for MC and its inverse CDF for RQMC.
+    """Use GPU-native rejection for MC and SciPy inverse CDF for RQMC.
 
-    SciPy has no CuPy implementation of GIG. For GPU MC, draw one seed from
-    the configured GPU RNG, sample with SciPy, and transfer the result back.
-    This preserves seed reproducibility without a costly per-path PPF.
+    The RQMC inverse transform remains a host fallback, retaining its
+    one-Sobol-coordinate quantile semantics pending a GPU-native GIG CDF.
     """
     if isinstance(rng, RandomizedQMCGenerator):
         return _scipy_on_backend(
@@ -573,11 +579,9 @@ def _sample_generalized_inverse_gaussian(
             loc,
             scale,
         )
-    if xp is not np and not type(rng).__module__.startswith("numpy"):
-        seed = int(asnumpy(rng.randint(0, 2**31 - 1)))
-        host_rng = np.random.default_rng(seed)
-    else:
-        host_rng = rng
+    if xp is not np:
+        return generalized_inverse_gaussian_mc(rng, n_sims, p, shape, scale, loc)
+    host_rng = rng
     result = scipy_stats.geninvgauss.rvs(
         asnumpy(p),
         asnumpy(shape),
