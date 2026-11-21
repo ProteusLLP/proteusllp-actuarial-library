@@ -85,16 +85,24 @@ with TemporaryDirectory() as directory:
     losses.to_csv(path)
     from_file = ProteusVariable.from_csv(path)
 
-# For Parquet, install the optional dependency: pip install "proteusllp-actuarial-library[parquet]"
+# For Parquet, install the optional parquet extra.
 # losses.to_parquet("losses.parquet")
 # from_parquet = ProteusVariable.from_parquet("losses.parquet")
 ```
 
-The exported DataFrame uses a long-form PAL schema with columns describing
-the dimension path, value type, simulation number and (for individual claims)
-event order. CSV and Parquet use the same schema, so no separate metadata file
-is needed. Dependencies between variables included in the same export are
-restored; links to variables outside the export are not.
+The exported DataFrame and CSV use a long-form PAL schema, with a separate
+row for each simulation or claim. Parquet uses a compact column-oriented
+format instead: PAL writes the numerical arrays directly as typed Arrow
+columns, with dimensions, types and dependencies stored in the file metadata.
+For large datasets, prefer Parquet. It avoids the expensive per-simulation
+JSON encoding and repeated metadata of the CSV representation.
+
+Both formats preserve dependencies among variables included in the same
+export, but links to variables outside the export are not retained. Older
+long-form PAL Parquet files and ordinary Parquet tables remain readable by
+`ProteusVariable.from_parquet()`. The compact Parquet file is a modelling
+serialization format; read it through PAL rather than relying on its contents
+to look like a flat pandas DataFrame.
 
 An ordinary table can also be imported without PAL metadata by identifying
 the dimension, value and simulation columns:
