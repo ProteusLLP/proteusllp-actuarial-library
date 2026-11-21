@@ -86,8 +86,6 @@ def test_general_index_gig_cpu_bridge_uses_backend_arrays() -> None:
     import pal.qmc as qmc
 
     with patch.object(qmc.scipy_stats.geninvgauss, "rvs", wraps=stats.geninvgauss.rvs) as host:
-        result = GeneralizedInverseGaussian(2.0, 2.0, 3.0).generate(
-            256, rng=create_random_generator(146)
-        )
+        result = GeneralizedInverseGaussian(2.0, 2.0, 3.0).generate(256, rng=create_random_generator(146))
     assert host.called
     assert isinstance(result.values, xp.ndarray)

@@ -604,6 +604,7 @@ def _sample_generalized_inverse_gaussian(
     )
     return xp.asarray(result)
 
+
 def _scipy_on_backend(function: t.Callable[..., t.Any], *parameters: t.Any) -> t.Any:
     """Evaluate a SciPy function on host arrays and restore PAL's backend."""
     return xp.asarray(function(*(asnumpy(value) for value in parameters)))

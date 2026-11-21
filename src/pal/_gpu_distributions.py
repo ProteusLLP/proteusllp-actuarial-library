@@ -11,9 +11,7 @@ import typing as t
 from ._maths import xp
 
 
-def generalized_inverse_gaussian_mc(
-    rng: t.Any, n_sims: int, p: t.Any, shape: t.Any, scale: t.Any, loc: t.Any
-) -> t.Any:
+def generalized_inverse_gaussian_mc(rng: t.Any, n_sims: int, p: t.Any, shape: t.Any, scale: t.Any, loc: t.Any) -> t.Any:
     """Sample half-order GIG exactly by a two-draw inverse-Gaussian transform.
 
     Standard GIG(-1/2,b) equals IG(mean=1,shape=b). Reciprocal symmetry
