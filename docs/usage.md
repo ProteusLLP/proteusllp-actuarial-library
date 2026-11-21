@@ -128,6 +128,15 @@ When importing an existing third-party claim listing that has no
 `N Simulations` column, pass `n_sims=...` if needed. Column mappings also
 work for third-party data, for example `event_column="ClaimId"`.
 
+### CPU and GPU arrays
+
+Tabular CSV/Parquet and pandas/Arrow storage is host-based. Exporting numeric
+GPU-backed values transfers them from CuPy to NumPy, while importing reconstructs
+numeric `StochasticScalar` and `FreqSevSims` values on PAL's active backend.
+Set `PAL_USE_GPU=1` before importing PAL to enable the CuPy backend. Strings
+and dates remain host arrays because CuPy does not support their dtypes.
+PAL snapshots through `save/load` follow the same device transfer boundary.
+
 ### Interchange versus PAL object snapshots
 
 Use `ProteusVariable.to_csv/to_parquet` for tabular exchange and
