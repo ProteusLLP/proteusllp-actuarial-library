@@ -1,4 +1,4 @@
-"""Regression coverage for distribution methods with SciPy GPU fallbacks."""
+"""CPU/GPU parity and coupling regression coverage for probability methods."""
 
 import numpy as np
 import pytest
@@ -11,7 +11,7 @@ from pal.distributions import GeneralizedInverseGaussian, NonCentralChiSquared
 
 @pytest.mark.parametrize("family", ["noncentral_chi_squared", "generalized_inverse_gaussian"])
 def test_probability_methods_match_scipy_and_preserve_backend_and_coupling(family: str) -> None:
-    """SciPy fallbacks must preserve numerical values, device arrays and ancestry."""
+    """Probability methods preserve numerical values, device arrays and ancestry."""
     observations = StochasticScalar(xp.asarray([0.6, 1.5, 2.0, 3.0, 6.0]))
     probabilities = StochasticScalar(xp.asarray([0.02, 0.1, 0.5, 0.9, 0.98]))
 
@@ -65,7 +65,7 @@ def test_probability_methods_match_scipy_and_preserve_backend_and_coupling(famil
 
 @pytest.mark.parametrize("family", ["noncentral_chi_squared", "generalized_inverse_gaussian"])
 def test_monte_carlo_sampling_reproducible_and_on_backend(family: str) -> None:
-    """Sampling remains reproducible even if GIG uses an external host sampler."""
+    """Sampling remains reproducible on both CPU and GPU."""
     if family == "noncentral_chi_squared":
         dist = NonCentralChiSquared(5.0, 2.5)
     else:
