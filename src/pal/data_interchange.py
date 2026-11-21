@@ -97,7 +97,7 @@ def to_dataframe(
     depth = next(iter(depths)) if len(depths) == 1 else 0
     paths = [tuple(label for _, label in path) for path, _ in leaves]
     unique_paths = len(set(paths)) == len(paths)
-    wide = regular and depth == 1 and unique_paths and not set(p[0] for p in paths).intersection(reserved)
+    wide = regular and depth == 1 and unique_paths and not {p[0] for p in paths}.intersection(reserved)
     multiindex = regular and depth >= 2 and unique_paths
 
     if layout == "wide" and not wide:
