@@ -665,7 +665,7 @@ def _fit_other(
             return {"p": float(raw[0]), "chi": float(np.exp(raw[1])), "psi": float(np.exp(raw[2])), "loc": 0.0}
         if family is _distributions.GEV:
             return {"shape": float(raw[0]), "scale": float(np.exp(raw[1])), "loc": float(raw[2])}
-        pars: dict[str, float] = dict(zip(names, (float(np.exp(value)) for value in raw)))
+        pars: dict[str, float] = dict(zip(names, (float(np.exp(value)) for value in raw), strict=False))
         if family not in (_distributions.InverseGaussian, _distributions.LogGamma):
             pars["loc"] = 0.0
         return pars
@@ -1039,7 +1039,7 @@ def _fit_gb2(
     )
 
     def transform(params: np.ndarray) -> dict[str, float]:
-        return dict(zip(("a", "b", "p", "q"), (float(np.exp(v)) for v in params)))
+        return dict(zip(("a", "b", "p", "q"), (float(np.exp(v)) for v in params), strict=False))
 
     def likelihood(params: dict[str, float]) -> float:
         pdf, sf = _gb2_terms(x, params)

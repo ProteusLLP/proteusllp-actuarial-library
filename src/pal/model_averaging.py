@@ -201,7 +201,7 @@ class WeightedDistribution(DistributionBase):
         sources = self._sources(x)
         n_sims = validate_stochastic_axes(sources)
         result: t.Any = 0.0
-        for weight, component in zip(self.weights, self._components()):
+        for weight, component in zip(self.weights, self._components(), strict=False):
             if weight:
                 probability = xp.clip(xp.asarray(to_backend(_raw(component.cdf(x)))), 0.0, 1.0)
                 result = result + weight * probability
@@ -320,7 +320,7 @@ class ModelAveragingResult:
 
     @property
     def model_weights(self) -> dict[type[DistributionBase], float]:
-        return {type(f.distribution): float(w) for f, w in zip(self.fits, self.weights)}
+        return {type(f.distribution): float(w) for f, w in zip(self.fits, self.weights, strict=False)}
 
     def sample_distribution(self, n_sims: int | None = None, rng: t.Any = None) -> WeightedDistribution:
         """Select one model and one joint parameter vector per scenario.

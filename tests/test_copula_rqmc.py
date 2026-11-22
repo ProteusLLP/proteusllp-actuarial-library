@@ -201,7 +201,7 @@ def test_iterative_copulas_keep_one_sobol_path_stream(copula) -> None:
     second_rng = RandomizedQMCGenerator(seed=1211, dimensions=8)
     first = list(copula.generate(n_sims=n, rng=first_rng))
     second = list(copula.generate(n_sims=n, rng=second_rng))
-    for a, b in zip(first, second):
+    for a, b in zip(first, second, strict=False):
         np.testing.assert_array_equal(asnumpy(a.values), asnumpy(b.values))
     assert set(first_rng._streams) == {n}
     assert set(second_rng._streams) == {n}
@@ -268,7 +268,7 @@ def test_every_copula_rqmc_stream_and_reproducibility(copula, expected_median: f
     second = list(copula.generate(n, rng=second_rng))
     different = list(copula.generate(n, rng=different_rng))
     assert len(first) == len(second) == len(different) == 2
-    for a, b, c in zip(first, second, different):
+    for a, b, c in zip(first, second, different, strict=False):
         assert isinstance(a.values, xp.ndarray)
         assert a.values.shape == (n,)
         assert np.all(np.isfinite(asnumpy(a.values)))
@@ -322,7 +322,7 @@ def test_multivariate_copula_pairwise_law_across_sobol_blocks(copula, expected_m
     variables = list(copula.generate(n, rng=rng))
     assert len(variables) == 3
     values = [asnumpy(variable.values) for variable in variables]
-    for variable, margin in zip(variables, values):
+    for variable, margin in zip(variables, values, strict=False):
         assert isinstance(variable.values, xp.ndarray)
         assert margin.shape == (n,)
         assert np.all(np.isfinite(margin))

@@ -41,9 +41,9 @@ def test_shared_helper_rejects_late_result_axis_failure_atomically() -> None:
     with pytest.raises(ValueError, match="incompatible n_sims"):
         couple_stochastic_results((first_leaf, bad_leaf), (source, other))
 
-    assert all(variable.coupled_variable_group is group for variable, group in zip(variables, groups))
+    assert all(variable.coupled_variable_group is group for variable, group in zip(variables, groups, strict=False))
     assert all(len(group) == 1 for group in groups)
-    for variable, before in zip(variables, values):
+    for variable, before in zip(variables, values, strict=False):
         np.testing.assert_array_equal(asnumpy(variable.values), before)
 
 

@@ -65,6 +65,6 @@ def test_incompatible_axes(family, method):
     dist = Burr(power, 0.7, scale, 0.0) if family == "burr" else Weibull(power, scale)
     with pytest.raises(ValueError):
         getattr(dist, method)(argument)
-    for value, group in zip((power, scale, argument), groups):
+    for value, group in zip((power, scale, argument), groups, strict=False):
         assert value.coupled_variable_group is group
     assert power.coupled_variable_group is not scale.coupled_variable_group

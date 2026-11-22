@@ -66,8 +66,9 @@ if t.TYPE_CHECKING:
     from .multivariate_distributions import Wishart as Wishart
 
 TOLERANCE = 1e-10  # Tolerance for numerical comparisons
-# FIXME: Consider replaching with VectorLike from types.py
-ReturnType = t.Union[int, float, StochasticScalar]
+# Review whether VectorLike can represent this alias without widening its
+# semantics: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/184.
+ReturnType = int | float | StochasticScalar
 
 
 def _special_call(function: t.Callable[..., t.Any], *args: t.Any) -> t.Any:
@@ -2839,8 +2840,8 @@ class Uniform(DistributionBase):
 
             unit: t.Literal["D", "us"] = "us" if has_time(t.cast(t.Any, a)) or has_time(t.cast(t.Any, b)) else "D"
             self._date_unit = unit
-            self._date_start = np.datetime64(t.cast(t.Union[dt.date, np.datetime64], a), unit)
-            end = np.datetime64(t.cast(t.Union[dt.date, np.datetime64], b), unit)
+            self._date_start = np.datetime64(t.cast(dt.date | np.datetime64, a), unit)
+            end = np.datetime64(t.cast(dt.date | np.datetime64, b), unit)
             if np.isnat(self._date_start) or np.isnat(end):
                 raise ValueError("Uniform date bounds cannot be NaT")
             self._date_span = int((end - self._date_start) / np.timedelta64(1, unit))

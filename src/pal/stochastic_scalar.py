@@ -183,7 +183,7 @@ class StochasticScalar(ProteusStochasticVariable):
             if method == "__call__" and len(values) != len(destinations):
                 raise ValueError("Unexpected number of ufunc results")
             casting = kwargs.get("casting", "same_kind")
-            for value, destination in zip(values, destinations):
+            for value, destination in zip(values, destinations, strict=False):
                 if destination is None:
                     continue
                 raw_dest = destination.values if isinstance(destination, StochasticScalar) else destination
@@ -195,7 +195,7 @@ class StochasticScalar(ProteusStochasticVariable):
                     raise TypeError("out= cannot represent the result with the requested casting")
 
             result_leaves: list[t.Any] = []
-            for value, destination in zip(values, destinations):
+            for value, destination in zip(values, destinations, strict=False):
                 if destination is None:
                     result_leaves.append(StochasticScalar(value) if method == "__call__" else value)
                     continue
@@ -335,13 +335,8 @@ class StochasticScalar(ProteusStochasticVariable):
         return result
 
     def __getitem__(self, index: ScipyNumeric | StochasticScalar) -> StochasticScalar:
-        # FIXME: Type signature inconsistent with SequenceLike protocol and runtime
-        # - SequenceLike expects __getitem__(int) -> T_co (should return float)
-        # - Runtime: int indexing returns scalar, StochasticScalar returns
-        #   StochasticScalar.
-        # - Current signature claims all indexing returns StochasticScalar (wrong)
-        # Need overloads to match runtime behavior and protocol expectations
-        # See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/24
+        # Integer indexing and stochastic indexing have different return types.
+        # Type overloads are tracked in issue #24.
         # handle an actual numeric index...
         if isinstance(index, ScipyNumeric):
             return self.values[int(index)]  # type: ignore[return-value]

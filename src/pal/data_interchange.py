@@ -111,7 +111,7 @@ def to_dataframe(
             data[path[0][1]] = asnumpy(value.values)
         return pd.DataFrame(data, copy=False)
     if layout == "multiindex" or (layout == "auto" and multiindex):
-        values = {labels: asnumpy(value.values) for labels, (_, value) in zip(paths, leaves)}
+        values = {labels: asnumpy(value.values) for labels, (_, value) in zip(paths, leaves, strict=False)}
         frame = pd.DataFrame(
             values,
             index=pd.RangeIndex(int(leaves[0][1].n_sims), name=simulation_column),
@@ -126,7 +126,7 @@ def to_dataframe(
     )
     frames: list[pd.DataFrame] = []
     for path, value in leaves:
-        labels = {name: label for name, (_, label) in zip(dim_names, path)}
+        labels = {name: label for name, (_, label) in zip(dim_names, path, strict=False)}
         if isinstance(value, StochasticScalar):
             vals = np.asarray(asnumpy(value.values))
             sims: t.Any = np.arange(len(vals), dtype=np.int64)
