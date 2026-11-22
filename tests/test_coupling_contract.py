@@ -38,7 +38,7 @@ def test_shared_helper_rejects_late_result_axis_failure_atomically() -> None:
     groups = tuple(variable.coupled_variable_group for variable in variables)
     values = tuple(asnumpy(variable.values).copy() for variable in variables)
 
-    with pytest.raises(ValueError, match="matching n_sims"):
+    with pytest.raises(ValueError, match="incompatible n_sims"):
         couple_stochastic_results((first_leaf, bad_leaf), (source, other))
 
     assert all(variable.coupled_variable_group is group for variable, group in zip(variables, groups))
