@@ -586,9 +586,7 @@ class StochasticScalar(ProteusStochasticVariable):
             # expressions, but full stochastic arrays cannot change length.
             target = self.n_sims if self.n_sims != 1 else len(value)
             if len(value) != target:
-                raise ValueError(
-                    f"Stochastic result has incompatible n_sims (expected {target}, got {len(value)})"
-                )
+                raise ValueError(f"Stochastic result has incompatible n_sims (expected {target}, got {len(value)})")
             return StochasticScalar(value)
 
         if isinstance(result_array, tuple):
