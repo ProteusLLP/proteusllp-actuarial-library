@@ -1,4 +1,4 @@
-# ruff: noqa: D, I, N, E501
+# ruff: noqa
 # fmt: off
 """Numerical regression cases ported from Proteus Correlation Toolkit."""
 
