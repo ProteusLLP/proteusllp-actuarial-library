@@ -155,8 +155,7 @@ def compute_cluster_statistics(
         outside = [i for i, value in enumerate(cluster_assignments) if value != label]
         within = np.abs(matrix[np.ix_(inside, inside)])
         between = np.abs(matrix[np.ix_(inside, outside)]) if outside else np.array([])
-        a = (float((np.sum(within) - len(inside)) / (len(inside) * (len(inside) - 1)))
-             if len(inside) > 1 else 1.0)
+        a = float((np.sum(within) - len(inside)) / (len(inside) * (len(inside) - 1))) if len(inside) > 1 else 1.0
         b = float(np.mean(between)) if between.size else 0.0
         result[label] = {
             "size": len(inside),
