@@ -7,6 +7,8 @@ marginal samples can be imported with couple=False.
 
 from __future__ import annotations
 
+import sqlite3
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -118,3 +120,40 @@ def test_snapshot_restores_original_group_boundaries(tmp_path):
     restored = load(path)
     assert restored["Source"].coupled_variable_group is restored["Linked"].coupled_variable_group
     assert restored["Source"].coupled_variable_group is not restored["Other"].coupled_variable_group
+
+
+def test_database_roundtrip_through_pandas_retains_joint_scenario_axis():
+    original = ProteusVariable(
+        "Market",
+        {
+            "UK": ProteusVariable(
+                "LoB",
+                {
+                    "Motor": StochasticScalar([10.0, 20.0, 30.0]),
+                    "Property": StochasticScalar([5.0, 7.0, 9.0]),
+                },
+            )
+        },
+    )
+    connection = sqlite3.connect(":memory:")
+    try:
+        original.to_dataframe(layout="long").to_sql(
+            "annual_losses", connection, if_exists="replace", index=False
+        )
+        frame = pd.read_sql_query(
+            "SELECT * FROM annual_losses WHERE Simulation >= ?",
+            connection,
+            params=(0,),
+        )
+    finally:
+        connection.close()
+
+    restored = ProteusVariable.from_dataframe(
+        frame,
+        dimension_columns=["Market", "LoB"],
+        simulation_column="Simulation",
+        values_column="value",
+    )
+    motor, property_loss = restored["UK"]["Motor"], restored["UK"]["Property"]
+    assert motor.coupled_variable_group is property_loss.coupled_variable_group
+    np.testing.assert_array_equal(asnumpy(property_loss.values), [5.0, 7.0, 9.0])
