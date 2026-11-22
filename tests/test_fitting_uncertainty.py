@@ -202,7 +202,6 @@ def test_regular_families_support_uncertainty(family_name: str, kind: str) -> No
         assert np.all(np.isfinite(asnumpy(sampled[name].values)))
 
 
-
 def test_negative_binomial_size_and_probability_have_joint_uncertainty_and_coupling() -> None:
     """The size n is estimated, unlike fixed binomial trial count n."""
     from pal.distributions import NegBinomial
@@ -274,7 +273,6 @@ def test_gev_joint_shape_scale_location_and_support_remain_feasible() -> None:
     for parameter in random_gev._params.values():
         assert isinstance(parameter, StochasticScalar)
         assert parameter.coupled_variable_group is observations_sim.coupled_variable_group
-
 
 
 @pytest.mark.parametrize("method", [SamplingMethod.MC, SamplingMethod.RQMC])
