@@ -51,7 +51,7 @@ parameters are treated on a logarithmic scale so simulations remain positive.
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal.fitting import UncertaintyMethod
+from pal import UncertaintyMethod
 
 uncertain_fit = Gamma.fit(
     losses, uncertainty_method=UncertaintyMethod.ASYMPTOTIC
