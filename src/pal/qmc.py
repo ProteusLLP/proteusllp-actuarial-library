@@ -24,9 +24,7 @@ from scipy.stats import qmc
 from ._maths import asnumpy, special, to_backend, xp
 
 
-def _cpu_parallel_inverse(
-    inverse: t.Callable[..., np.ndarray], uniforms: np.ndarray, *parameters: t.Any
-) -> np.ndarray:
+def _cpu_parallel_inverse(inverse: t.Callable[..., np.ndarray], uniforms: np.ndarray, *parameters: t.Any) -> np.ndarray:
     """Evaluate large SciPy quantile vectors in bounded, independent chunks.
 
     SciPy's inverse incomplete Gamma/Beta ufuncs release the GIL. Using a
@@ -47,9 +45,7 @@ def _cpu_parallel_inverse(
     slices = tuple((start, min(n, start + chunk_size)) for start in range(0, n, chunk_size))
 
     def evaluate(start: int, end: int) -> tuple[int, int, np.ndarray]:
-        params = tuple(
-            arg if arg.ndim == 0 else arg[0] if arg.size == 1 else arg[start:end] for arg in arguments
-        )
+        params = tuple(arg if arg.ndim == 0 else arg[0] if arg.size == 1 else arg[start:end] for arg in arguments)
         return start, end, np.asarray(inverse(*params, uniforms[start:end]))
 
     values = np.empty(n, dtype=np.float64)
