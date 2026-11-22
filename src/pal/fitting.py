@@ -15,6 +15,7 @@ from scipy import integrate, optimize, special, stats
 
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
+    from .fitting_uncertainty import AsymptoticParameterUncertainty
 
 _T = t.TypeVar("_T", bound="DistributionBase", covariant=True)
 
@@ -62,6 +63,26 @@ class FitResult(t.Generic[_T]):
     n_censored: int
     threshold: float
     method: str = _FitMethod.MLE.value
+
+    def asymptotic_uncertainty(
+        self,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> AsymptoticParameterUncertainty[_T]:
+        """Estimate joint parameter covariance from the fitted likelihood.
+
+        Supply the same observations, censoring and frequency weights used
+        for fitting. The default point-estimate distribution is unchanged.
+        The resulting object can create a PAL distribution whose parameters
+        vary together by simulation path.
+        """
+        from .fitting_uncertainty import asymptotic_parameter_uncertainty
+
+        return asymptotic_parameter_uncertainty(
+            self, observations, censored=censored, weights=weights
+        )
 
 
 def _gamma_log_survival_underflow(shape: float, z: float) -> float:
