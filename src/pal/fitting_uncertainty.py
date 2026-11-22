@@ -77,7 +77,7 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
             raise RuntimeError("No PAL random generator is configured")
         dimension = len(self.parameter_names)
         normals = xp.stack(
-            [_sample_rng(rng, "normal", n_sims, 0.0, 1.0) for _ in range(dimension)],
+            [to_backend(_sample_rng(rng, "normal", n_sims, 0.0, 1.0)) for _ in range(dimension)],
             axis=1,
         )
         factor = to_backend(np.linalg.cholesky(self.transformed_covariance))
