@@ -62,8 +62,11 @@ def test_weighted_projection_matches_independent_slsqp_reference() -> None:
 
     result = asnumpy(
         nearest_correlation(
-            matrix, weights=row_weights, minimum_eigenvalue=0.0,
-            tolerance=1e-12, max_iterations=10000,
+            matrix,
+            weights=row_weights,
+            minimum_eigenvalue=0.0,
+            tolerance=1e-12,
+            max_iterations=10000,
         )
     )
     assert objective(np.array([result[0, 1], result[0, 2], result[1, 2]])) <= reference.fun + 1e-7
