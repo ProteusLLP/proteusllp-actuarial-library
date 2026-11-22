@@ -123,7 +123,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ProteusLLP/proteus-research
-          ref: checks/pal-examples-v040
+          ref: main
           path: pal-research
 
       - name: Run ODP research examples with MC and RQMC on GPU
