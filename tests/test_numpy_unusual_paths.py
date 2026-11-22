@@ -25,7 +25,7 @@ def test_masked_ufunc_out_updates_existing_variable_and_joins_all_sources() -> N
 def test_invalid_ufunc_out_axis_and_mask_are_atomic() -> None:
     source = StochasticScalar([1.0, 2.0, 3.0])
     destination = StochasticScalar([-1.0, -1.0, -1.0])
-    mismatched = StochasticScalar([True])
+    mismatched = StochasticScalar([True, False])
     group_source = source.coupled_variable_group
     group_destination = destination.coupled_variable_group
     initial = asnumpy(destination.values).copy()
@@ -63,7 +63,7 @@ def test_invalid_second_ufunc_output_does_not_write_first() -> None:
     bad_integers = StochasticScalar([0.0])
     original_group = fractions.coupled_variable_group
 
-    with pytest.raises(ValueError, match="matching n_sims"):
+    with pytest.raises(ValueError, match="out= destination"):
         np.modf(source, out=(fractions, bad_integers))
 
     np.testing.assert_array_equal(asnumpy(fractions.values), [-1.0] * 3)
