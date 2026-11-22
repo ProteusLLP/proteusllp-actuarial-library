@@ -123,7 +123,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ProteusLLP/proteus-research
-          ref: main
+          ref: analysis/odp-mc-rqmc-results
           path: pal-research
 
       - name: Run ODP research examples with MC and RQMC on GPU
@@ -131,6 +131,12 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/pal-research
         run: |
           python -m pytest -q pal-research/tests/test_pal_research_examples.py
+
+      - name: Compare current and historical ODP MC/RQMC results on GPU
+        env:
+          PYTHONPATH: ${{ github.workspace }}/pal-research
+        run: |
+          python -m odp_paper_origin.model.compare_sampling --sims 131072 --replicate-sims 8192 --replicates 8
 
       - name: Compare MC and RQMC on GPU
         run: |
