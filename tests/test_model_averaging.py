@@ -105,7 +105,7 @@ def test_discrete_model_averaging_and_constraints() -> None:
     with pytest.raises(ValueError, match="weights"):
         WeightedDistribution([Gamma(2, 3)], [0])
     with pytest.raises(ValueError, match="finite AICc"):
-        WeightedDistribution.fit(counts[:3], [Poisson])
+        WeightedDistribution.fit(counts[:2], [Poisson])
 
 
 def test_aicc_fit_accepts_right_censoring_and_preserves_likelihood_diagnostics() -> None:
