@@ -997,7 +997,7 @@ class ProteusVariable(t.Generic[T]):
                 reader = csv.reader(
                     line.decode("utf-8-sig") if isinstance(line, bytes) else line for line in input_file
                 )
-                rows = [row for _, row in zip(range(33), reader)]
+                rows = [row for _, row in zip(range(33), reader, strict=False)]
                 for i in range(2, len(rows)):
                     row = rows[i]
                     if (
@@ -1377,7 +1377,7 @@ class ProteusVariable(t.Generic[T]):
             fraction = 1 - max(distance_from_center - 0.5, 0) / max(outer_distance - 0.5, 1)
             channels = [
                 round(outer_channel + fraction * (inner_channel - outer_channel))
-                for outer_channel, inner_channel in zip(outer_color, inner_color)
+                for outer_channel, inner_channel in zip(outer_color, inner_color, strict=False)
             ]
             return "#" + "".join(f"{channel:02X}" for channel in channels)
 

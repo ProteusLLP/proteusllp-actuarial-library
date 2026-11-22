@@ -24,12 +24,12 @@ from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
 from .variables import ProteusVariable
 
-MultivariateParameter = t.Union[t.Sequence[DistributionParameter], ProteusVariable[t.Any]]
-MultivariateInput = t.Union[npt.ArrayLike, ProteusVariable[t.Any]]
+MultivariateParameter = t.Sequence[DistributionParameter] | ProteusVariable[t.Any]
+MultivariateInput = npt.ArrayLike | ProteusVariable[t.Any]
 MultivariateResult = ProteusVariable[StochasticScalar]
-MatrixInput = t.Union[npt.ArrayLike, ProteusVariable[ProteusVariable[t.Any]]]
+MatrixInput = npt.ArrayLike | ProteusVariable[ProteusVariable[t.Any]]
 MatrixResult = ProteusVariable[ProteusVariable[StochasticScalar]]
-DensityResult = t.Union[float, StochasticScalar]
+DensityResult = float | StochasticScalar
 
 
 def _is_numpy_rng(rng: RandomGenerator) -> bool:

@@ -34,13 +34,13 @@ __all__ = [
     "VectorLike",
 ]
 
-Numeric = t.Union[float, int, np.number]
+Numeric = float | int | np.number
 
 # Type alias for scipy special functions and numpy random generators
 # These functions expect more restrictive types than our general Numeric type.
 # They don't accept complex numbers, _NumericProtocol objects, or general
 # np.number types.
-ScipyNumeric = t.Union[float, int, np.floating, np.integer]
+ScipyNumeric = float | int | np.floating | np.integer
 
 # Type alias for distribution parameters - clean type for documentation
 if t.TYPE_CHECKING:
@@ -228,7 +228,7 @@ class VectorLike(VectorOperations, SupportsArray, t.Protocol[T_co]):
 
 # Union type that includes both the basic numeric types and objects implementing
 # the scalar protocol (comparison operations return bool)
-NumericLike = t.Union[Numeric, NumericProtocol]
+NumericLike = Numeric | NumericProtocol
 
 
 # Generic typing of VectorLike and reduction results is tracked in

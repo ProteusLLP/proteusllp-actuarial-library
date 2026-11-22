@@ -102,7 +102,7 @@ def to_dataframe(variable: ProteusVariable[t.Any]) -> pd.DataFrame:
                 raise ValueError("Frequency-severity simulation indices are out of range")
             if not np.issubdtype(indices.dtype, np.integer):
                 raise TypeError("Frequency-severity simulation indices must be integers")
-            for event, (simulation, sample) in enumerate(zip(indices, samples)):
+            for event, (simulation, sample) in enumerate(zip(indices, samples, strict=False)):
                 rows.append(
                     _row(encoded_path, "freqsev", dtype, n_sims, group, int(simulation), event, _encode(sample))
                 )

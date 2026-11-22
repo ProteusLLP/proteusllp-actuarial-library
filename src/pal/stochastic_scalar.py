@@ -183,7 +183,7 @@ class StochasticScalar(ProteusStochasticVariable):
             if method == "__call__" and len(values) != len(destinations):
                 raise ValueError("Unexpected number of ufunc results")
             casting = kwargs.get("casting", "same_kind")
-            for value, destination in zip(values, destinations):
+            for value, destination in zip(values, destinations, strict=False):
                 if destination is None:
                     continue
                 raw_dest = destination.values if isinstance(destination, StochasticScalar) else destination
@@ -195,7 +195,7 @@ class StochasticScalar(ProteusStochasticVariable):
                     raise TypeError("out= cannot represent the result with the requested casting")
 
             result_leaves: list[t.Any] = []
-            for value, destination in zip(values, destinations):
+            for value, destination in zip(values, destinations, strict=False):
                 if destination is None:
                     result_leaves.append(StochasticScalar(value) if method == "__call__" else value)
                     continue
