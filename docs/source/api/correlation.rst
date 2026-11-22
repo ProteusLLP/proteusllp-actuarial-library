@@ -18,12 +18,14 @@ PAL provides two repair algorithms through :func:`pal.correlation.nearest_correl
 The :func:`pal.correlation.near_corr` function preserves the Proteus Correlation
 Toolkit interface, including the ability to preserve selected entries with a
 list of fixed index pairs (the pattern argument). PAL also implements
-Higham's row-and-column weighted Frobenius norm. Given positive weights
-``w``, it minimises ``sum(w[i] * w[j] * (C[i,j] - A[i,j])**2)``.
-Weights can be supplied as a length-n vector, a positive diagonal matrix,
-or the rank-one matrix ``outer(w, w)``. This is not arbitrary elementwise
-weighting. A congruence transform reduces the problem to unweighted
-alternating projections with a non-unit diagonal.
+Higham's row-and-column weighted Frobenius norm. Given a strictly
+positive weight vector ``w`` of length ``n``, it minimises
+``sum(w[i] * w[j] * (C[i,j] - A[i,j])**2)``.
+The weights are **only a vector**, not an elementwise weight matrix. Define
+``D = diag(sqrt(w))``. The congruence transform ``D @ C @ D`` reduces
+the weighted problem to ordinary Frobenius projections with a prescribed
+diagonal. Multiplying every weight by the same constant does not change
+the solution.
 
 Both repair algorithms work with NumPy and, when PAL is configured for GPU use, CuPy.
 A positive minimum eigenvalue can be requested when positive definiteness
@@ -116,6 +118,11 @@ Usage example
 
    assert np.allclose(np.diag(repaired), 1.0)
    assert np.linalg.eigvalsh(repaired).min() >= -1e-8
+
+   # Prioritise correlations involving the first variable.
+   from pal.correlation import near_corr
+   weighted = near_corr(estimated, weights=np.array([5.0, 1.0, 1.0]))
+   assert weighted.shape == estimated.shape
 
 Reference
 ---------
