@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import numbers
 import typing as t
 
 import numpy.typing as npt
@@ -104,9 +105,9 @@ def nearest_correlation(
         if method == "spectral":
             raise ValueError("Fixed pattern entries require method='higham'.")
         for entry in pattern:
-            if len(entry) != 2 or not all(isinstance(index, int) for index in entry):
+            if len(entry) != 2 or not all(isinstance(index, numbers.Integral) for index in entry):
                 raise ValueError("Each pattern element must be a pair of integer indices.")
-            i, j = entry
+            i, j = (int(index) for index in entry)
             if not (0 <= i < source.shape[0] and 0 <= j < source.shape[0]):
                 raise ValueError("pattern indices must be within the matrix.")
             fixed_rows.append(i)
