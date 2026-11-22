@@ -21,7 +21,7 @@ def _assert_separate_and_unchanged(*variables: StochasticScalar) -> None:
 def test_ufunc_rejects_broadcasting_between_different_scenario_counts(ufunc) -> None:
     long = StochasticScalar([1.0, 2.0, 3.0])
     derived = long * 2
-    singleton = StochasticScalar([10.0])
+    singleton = StochasticScalar([10.0, 11.0])
     prior_long = asnumpy(long.values).copy()
     prior_derived = asnumpy(derived.values).copy()
     prior_singleton = asnumpy(singleton.values).copy()
@@ -41,7 +41,7 @@ def test_ufunc_rejects_broadcasting_between_different_scenario_counts(ufunc) -> 
 
 
 def test_numpy_where_rejects_broadcasting_stochastic_scenarios_atomically() -> None:
-    condition = StochasticScalar([True])
+    condition = StochasticScalar([True, False])
     values = StochasticScalar([1.0, 2.0, 3.0])
     with pytest.raises(ValueError, match="matching n_sims"):
         np.where(condition, values, 0.0)
@@ -49,7 +49,7 @@ def test_numpy_where_rejects_broadcasting_stochastic_scenarios_atomically() -> N
 
 
 def test_elementwise_ufunc_cannot_expand_simulation_axis_through_raw_array() -> None:
-    variable = StochasticScalar([1.0])
+    variable = StochasticScalar([1.0, 2.0])
     original_group = variable.coupled_variable_group
     original_values = asnumpy(variable.values).copy()
     with pytest.raises(ValueError, match="incompatible n_sims"):
@@ -69,8 +69,8 @@ def test_numpy_array_functions_changing_axis_length_do_not_couple() -> None:
     singleton = StochasticScalar([1.0])
     condition = singleton > 0
     singleton_group = singleton.coupled_variable_group
-    with pytest.raises(ValueError, match="incompatible n_sims"):
-        np.where(condition, np.array([10.0, 20.0, 30.0]), 0.0)
+    result = np.where(condition, np.array([10.0, 20.0, 30.0]), 0.0)
+    np.testing.assert_array_equal(asnumpy(result.values), [10.0, 20.0, 30.0])
     assert variable.coupled_variable_group is original_group
     assert singleton.coupled_variable_group is singleton_group
 
@@ -89,7 +89,7 @@ def test_length_changing_reduceat_returns_array_without_coupling() -> None:
 @pytest.mark.parametrize("method", ["cdf", "invcdf"])
 def test_gamma_probability_methods_reject_mismatched_parameter_axes(method: str) -> None:
     shape = StochasticScalar([1.0, 2.0, 3.0])
-    scale = StochasticScalar([1.0])
+    scale = StochasticScalar([1.0, 1.5])
     dist = Gamma(alpha=shape, theta=scale)
     with pytest.raises(ValueError, match="matching n_sims"):
         getattr(dist, method)(0.5 if method == "invcdf" else 2.0)
@@ -99,9 +99,9 @@ def test_gamma_probability_methods_reject_mismatched_parameter_axes(method: str)
 @pytest.mark.parametrize(
     ("family", "first_values", "second_values"),
     [
-        (Gamma, [1.0, 2.0, 3.0], [0.7]),
-        (Normal, [1.0], [0.5, 1.0, 1.5]),
-        (LogNormal, [1.0], [0.5, 1.0, 1.5]),
+        (Gamma, [1.0, 2.0, 3.0], [0.7, 0.9]),
+        (Normal, [1.0, 2.0], [0.5, 1.0, 1.5]),
+        (LogNormal, [1.0, 2.0], [0.5, 1.0, 1.5]),
     ],
 )
 @pytest.mark.parametrize("method", ["cdf", "invcdf"])
@@ -119,7 +119,7 @@ def test_multi_step_probability_failure_does_not_merge_partial_ancestry(
 @pytest.mark.parametrize("distribution", [Poisson, Binomial, NegBinomial])
 def test_discrete_quantiles_reject_mismatched_axes_atomically(distribution) -> None:
     probability = StochasticScalar([0.2, 0.5, 0.8])
-    param = StochasticScalar([3.0])
+    param = StochasticScalar([3.0, 4.0])
     dist = distribution(param) if distribution is Poisson else distribution(param, 0.4)
     with pytest.raises(ValueError, match="matching n_sims"):
         dist.invcdf(probability)
@@ -127,7 +127,7 @@ def test_discrete_quantiles_reject_mismatched_axes_atomically(distribution) -> N
 
 
 def test_distribution_generate_checks_parameter_length_before_rng_use() -> None:
-    param = StochasticScalar([2.0])
+    param = StochasticScalar([2.0, 3.0])
     rng = np.random.default_rng(317)
     with pytest.raises(ValueError, match="matching n_sims"):
         Gamma(alpha=param, theta=1.0).generate(n_sims=3, rng=rng)
