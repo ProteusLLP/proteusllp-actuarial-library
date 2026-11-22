@@ -7,6 +7,7 @@ It is not a calibrated predictive distribution or a Bayesian posterior.
 from __future__ import annotations
 
 import typing as t
+import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -33,6 +34,8 @@ def _coordinate_value(raw: t.Any, kind: str, origin: float, scale: float, module
         return 1.0 / (1.0 + module.exp(-raw))
     if kind == "shiftlog":
         return 1.0 + module.exp(raw)
+    if kind == "lowerlog":
+        return origin + module.exp(raw)
     return origin + scale * raw
 
 
@@ -53,6 +56,8 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
     _transform_kinds: tuple[str, ...] = field(repr=False)
     _origins: np.ndarray = field(repr=False)
     _scales: np.ndarray = field(repr=False)
+    _observed_min: float | None = field(default=None, repr=False)
+    _observed_max: float | None = field(default=None, repr=False)
 
     @property
     def standard_errors(self) -> dict[str, float]:
@@ -84,8 +89,50 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
             result[name] = float(lower), float(upper)
         return result
 
+    def _valid_parameter_rows(self, raw_draws: t.Any) -> t.Any:
+        """Validate *joint* transformed draws on the active simulation backend.
+
+        Marginal bounds are enforced by bijections; additionally check finite
+        machine-precision results and the parameter-dependent likelihood
+        support for GPD/GEV. Invalid rows must be replaced as whole vectors.
+        """
+        from . import distributions as d
+
+        valid = xp.ones(raw_draws.shape[0], dtype=bool)
+        values_by_name: dict[str, t.Any] = {}
+        for i, (name, kind) in enumerate(zip(self.parameter_names, self._transform_kinds)):
+            values = _coordinate_value(raw_draws[:, i], kind, float(self._origins[i]), float(self._scales[i]), xp)
+            values_by_name[name] = values
+            valid &= xp.isfinite(values)
+            if kind == "log":
+                valid &= values > 0.0
+            elif kind == "logit":
+                valid &= (values > 0.0) & (values < 1.0)
+            elif kind == "shiftlog":
+                valid &= values > 1.0
+            elif kind == "lowerlog":
+                valid &= values > float(self._origins[i])
+
+        family = type(self.fit.distribution)
+        if family is d.GPD and self._observed_max is not None:
+            shape = values_by_name["shape"]
+            scale = values_by_name["scale"]
+            loc = float(self.fit.parameters["loc"])
+            valid &= 1.0 + shape * (self._observed_max - loc) / scale > 0.0
+        elif family is d.GEV and self._observed_min is not None and self._observed_max is not None:
+            shape = values_by_name["shape"]
+            scale = values_by_name["scale"]
+            loc = values_by_name["loc"]
+            valid &= 1.0 + shape * (self._observed_min - loc) / scale > 0.0
+            valid &= 1.0 + shape * (self._observed_max - loc) / scale > 0.0
+        return valid
+
     def parameter_samples(self, n_sims: int | None = None, rng: t.Any = None) -> dict[str, t.Any]:
-        """Joint stochastic parameters using active NumPy/CuPy and MC/RQMC."""
+        """Draw joint parameters, preserving bounds, correlations and coupling.
+
+        Infeasible rows are resampled as *entire joint vectors*. Independent
+        clipping or per-parameter rejection would destroy estimated dependence.
+        """
         if n_sims is None:
             n_sims = config.n_sims
         if not isinstance(n_sims, int) or isinstance(n_sims, bool) or n_sims < 1:
@@ -95,12 +142,35 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
         if rng is None:
             raise RuntimeError("No PAL random generator is configured")
         dimension = len(self.parameter_names)
-        normals = xp.stack(
-            [to_backend(_sample_rng(rng, "normal", n_sims, 0.0, 1.0)) for _ in range(dimension)],
-            axis=1,
-        )
         factor = to_backend(np.linalg.cholesky(self.transformed_covariance))
-        raw_draws = to_backend(self._transformed_estimates) + normals @ factor.T
+        center = to_backend(self._transformed_estimates)
+
+        def draw_joint(count: int) -> t.Any:
+            normals = xp.stack(
+                [to_backend(_sample_rng(rng, "normal", count, 0.0, 1.0)) for _ in range(dimension)],
+                axis=1,
+            )
+            return center + normals @ factor.T
+
+        raw_draws = draw_joint(n_sims)
+        rejected_total = 0
+        for attempt in range(33):
+            invalid = ~self._valid_parameter_rows(raw_draws)
+            n_invalid = int(xp.count_nonzero(invalid))
+            if n_invalid == 0:
+                break
+            if attempt == 32:
+                raise ValueError("Unable to simulate admissible parameters from the asymptotic approximation")
+            rejected_total += n_invalid
+            raw_draws[invalid] = draw_joint(n_invalid)
+
+        if rejected_total > 0.05 * n_sims:
+            warnings.warn(
+                "More than 5% of joint asymptotic parameter draws required rejection; "
+                "the Gaussian approximation may be unreliable near parameter/support boundaries",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
         parameters = dict(self.fit.parameters)
         stochastic = []
@@ -115,6 +185,8 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
             value = StochasticScalar(values)
             parameters[name] = value
             stochastic.append(value)
+        # This *one* group contains every uncertain parameter. Distribution
+        # simulation subsequently couples its output to all of these sources.
         couple_stochastic_results(stochastic, n_sims=n_sims)
         return parameters
 
@@ -204,6 +276,7 @@ def asymptotic_parameter_uncertainty(
         (kind == "log" and float(params[name]) <= 0)
         or (kind == "logit" and not 0 < float(params[name]) < 1)
         or (kind == "shiftlog" and float(params[name]) <= 1)
+        or (kind == "lowerlog" and float(params[name]) <= -0.5)
         for name, kind in zip(names, kinds)
     ):
         raise ValueError("MLE is at a parameter boundary; Gaussian parameter uncertainty is invalid")
@@ -231,6 +304,11 @@ def asymptotic_parameter_uncertainty(
             scale_list.append(1.0)
             transformed_list.append(float(np.log(val - 1.0)))
             jacobian_list.append(val - 1.0)
+        elif kind == "lowerlog":
+            origin_list.append(-0.5)
+            scale_list.append(1.0)
+            transformed_list.append(float(np.log(val + 0.5)))
+            jacobian_list.append(val + 0.5)
         else:
             reference = float(params.get("scale", params.get("sigma", 1.0)))
             if family is d.LogNormal and name == "mu":
@@ -272,4 +350,6 @@ def asymptotic_parameter_uncertainty(
         _transform_kinds=kinds,
         _origins=origins,
         _scales=scales,
+        _observed_min=float(np.min(x)) if family is d.GEV else None,
+        _observed_max=float(np.max(x)) if family in (d.GPD, d.GEV) else None,
     )
