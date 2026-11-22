@@ -3152,3 +3152,7 @@ class ContinuousDistributionGenerator(DistributionGeneratorBase):
             )
         distribution_cls = AVAILABLE_CONTINUOUS_DISTRIBUTIONS[distribution_name]
         super().__init__(distribution_cls(*parameters))
+
+
+# Keep weighted model averaging separate from the individual distribution families.
+from .model_averaging import ModelAveragingResult, WeightedDistribution  # noqa: E402

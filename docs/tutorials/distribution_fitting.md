@@ -431,6 +431,104 @@ supported; integer frequency weights represent repeated data points.
 For non-integer weights, PAL does not report the usual frequency-sample
 interpretation of AICc.
 
+## 7. Distribution model uncertainty with AICc weights
+
+A fitted severity model can be uncertain in two different ways: its *parameters*
+are estimated from a finite sample, and the *family* itself may be uncertain.
+PAL represents the second uncertainty as a weighted mixture of candidate
+distributions:
+
+\[
+F(x) = \sum_{j=1}^m w_j F_j(x), \qquad
+w_j = \frac{\exp[-(\mathrm{AICc}_j-\min_k\mathrm{AICc}_k)/2]}
+           {\sum_\ell \exp[-(\mathrm{AICc}_\ell-\min_k\mathrm{AICc}_k)/2]}.
+\]
+
+The following example estimates both sources of uncertainty in one operation.
+It uses two families whose likelihoods are comparable on the same severity
+observations.
+
+```python
+import numpy as np
+
+from pal.distributions import Gamma, LogNormal, WeightedDistribution
+from pal.fitting import UncertaintyMethod
+
+sample = np.random.default_rng(73).gamma(2.4, 25000.0, 600)
+model_fit = WeightedDistribution.fit(
+    sample,
+    [Gamma, LogNormal],
+    uncertainty_method=UncertaintyMethod.ASYMPTOTIC,
+)
+print(model_fit.model_weights)          # Model family -> AICc weight
+print(model_fit.aicc)                   # Model family -> AICc
+print(model_fit.fits[0].parameters)     # Individual MLE diagnostics
+
+# An ordinary model-averaged (marginal) CDF and quantile.
+model_cdf = model_fit.distribution.cdf(100_000)
+model_p99 = model_fit.distribution.invcdf(0.99)
+
+# One model is chosen per simulation scenario; for that model its parameters
+# are drawn jointly using the asymptotic covariance from the original fit.
+scenario_model = model_fit.sample_distribution(n_sims=10_000)
+first_loss = scenario_model.generate(n_sims=10_000)
+second_loss = scenario_model.generate(n_sims=10_000)
+
+assert first_loss.n_sims == second_loss.n_sims == 10_000
+assert first_loss.coupled_variable_group is second_loss.coupled_variable_group
+```
+
+The scenario-specific model identity is **retained** across these two draws.
+The parameter vector for that scenario is retained as well. This is important
+when the modelling question is about uncertainty in the loss-generating model
+for an entire portfolio, rather than a different choice of family for each
+claim. For one-off predictive draws, using
+`model_fit.distribution.generate()` instead draws a model independently
+for each observation.
+
+For the same fitted candidate models, you can override AICc weights while
+preserving the individual MLE estimates and diagnostics:
+
+```python
+manual_fit = WeightedDistribution.fit(
+    sample,
+    [Gamma, LogNormal],
+    model_weights={Gamma: 0.7, LogNormal: 0.3},
+)
+```
+
+Here, `model_weights` refers to distribution-family weights;
+`weights` in a family's fitting function continues to mean observation
+frequency weights.
+
+Manual weights are also possible when constructing a distribution directly:
+
+```python
+from pal.distributions import Gamma, LogNormal, WeightedDistribution
+
+weighted = WeightedDistribution(
+    [Gamma(alpha=2.0, theta=5000), LogNormal(mu=8.5, sigma=0.9)],
+    weights=[0.7, 0.3],
+)
+```
+
+PAL requires finite AICc values and matching likelihood conventions for all
+candidates. AICc is undefined for insufficient effective sample size or
+noninteger frequency weights. Families with incompatible probability measures
+must not be compared by AICc. The candidate models are all fitted to the
+*same* observations, censoring and truncation specification. Family-specific
+options, such as a known Binomial trial count, can be supplied using
+`per_family_options`.
+
+AICc weights quantify relative support **within the selected candidate
+family set**; they are not posterior probabilities or statistically calibrated
+confidence levels for the true data-generating model. PAL currently treats
+these weights as fixed. Joint asymptotic parameter uncertainty is conditional
+on the chosen family, so this does not include uncertainty in estimated
+model weights, structural misspecification shared by all candidates, or
+predictive coverage corrections. Parameter fitting remains on CPU; subsequent
+scenario sampling follows PAL's NumPy/CuPy and MC/RQMC configuration.
+
 ## Further reading
 
 The [Distributions Guide](distributions_guide.md) lists all supported PAL
