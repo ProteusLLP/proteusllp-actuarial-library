@@ -80,9 +80,7 @@ class FitResult(t.Generic[_T]):
         """
         from .fitting_uncertainty import asymptotic_parameter_uncertainty
 
-        return asymptotic_parameter_uncertainty(
-            self, observations, censored=censored, weights=weights
-        )
+        return asymptotic_parameter_uncertainty(self, observations, censored=censored, weights=weights)
 
 
 def _gamma_log_survival_underflow(shape: float, z: float) -> float:
