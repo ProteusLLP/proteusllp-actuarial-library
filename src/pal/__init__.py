@@ -64,6 +64,7 @@ for _distribution_name, _distribution in {
 # Import the public module namespaces explicitly so ``import pal; pal.contracts``
 # and ``from pal import contracts`` are both reliable and discoverable.
 from . import contracts as contracts  # noqa: E402
+from . import correlation as correlation  # noqa: E402
 from . import copulas as copulas  # noqa: E402
 from . import couplings as couplings  # noqa: E402
 from . import frequency_severity as frequency_severity  # noqa: E402
@@ -92,6 +93,7 @@ __all__ = [
     "api",
     "config",
     "contracts",
+    "correlation",
     "copulas",
     "couplings",
     "distributions",
