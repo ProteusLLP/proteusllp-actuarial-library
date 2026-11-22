@@ -6,6 +6,7 @@ from scipy import stats
 
 from pal.config import set_random_seed, set_sampling_method
 from pal.distributions import GPD, Gamma, LogNormal, Pareto
+from pal.maths import asnumpy
 from pal.stochastic_scalar import StochasticScalar
 from pal.types import SamplingMethod
 
@@ -30,8 +31,8 @@ def test_lognormal_information_and_coupled_predictive_simulation() -> None:
     assert isinstance(parameters["mu"], StochasticScalar)
     assert isinstance(parameters["sigma"], StochasticScalar)
     assert parameters["mu"].coupled_variable_group is parameters["sigma"].coupled_variable_group
-    assert np.all(parameters["sigma"].values > 0)
-    assert np.mean(parameters["mu"].values) == pytest.approx(fitted.parameters["mu"], abs=0.04)
+    assert np.all(asnumpy(parameters["sigma"].values) > 0)
+    assert np.mean(asnumpy(parameters["mu"].values)) == pytest.approx(fitted.parameters["mu"], abs=0.04)
 
     severity = uncertainty.sample_distribution(2048, rng=np.random.default_rng(42))
     simulations = severity.generate(2048, rng=np.random.default_rng(43))
@@ -48,7 +49,7 @@ def test_gamma_joint_uncertainty_preserves_parameter_correlation() -> None:
     assert uncertainty.parameter_names == ("alpha", "theta")
     assert uncertainty.covariance[0, 1] < 0
     parameter_draws = uncertainty.parameter_samples(5000, rng=np.random.default_rng(123))
-    draws = np.column_stack((parameter_draws["alpha"].values, parameter_draws["theta"].values))
+    draws = np.column_stack((asnumpy(parameter_draws["alpha"].values), asnumpy(parameter_draws["theta"].values)))
     assert np.min(draws) > 0
     observed_corr = np.corrcoef(draws.T)[0, 1]
     target_corr = uncertainty.covariance[0, 1] / np.sqrt(uncertainty.covariance[0, 0] * uncertainty.covariance[1, 1])
@@ -67,7 +68,7 @@ def test_censored_and_truncated_gpd_uses_full_likelihood_and_fixed_location() ->
     distribution = uncertainty.sample_distribution(500, rng=np.random.default_rng(313))
     assert distribution._params["loc"] == 10
     assert isinstance(distribution._params["shape"], StochasticScalar)
-    assert np.min(distribution._params["scale"].values) > 0
+    assert np.min(asnumpy(distribution._params["scale"].values)) > 0
     with pytest.raises(ValueError, match="match the original fit"):
         fit.asymptotic_uncertainty(observations)
 
@@ -83,7 +84,7 @@ def test_known_scale_pareto_information_matches_analytic_value() -> None:
     assert uncertainty.covariance[0, 0] == pytest.approx(fit.parameters["shape"] ** 2 / n_events, rel=0.002)
     values = uncertainty.parameter_samples(256, rng=np.random.default_rng(98))
     assert values["scale"] == 10
-    assert np.all(values["shape"].values > 0)
+    assert np.all(asnumpy(values["shape"].values) > 0)
 
 
 def test_unsupported_or_nonregular_fits_raise_instead_of_clipping_information() -> None:
@@ -110,9 +111,9 @@ def test_uncertainty_respects_pal_sampling_method(method: SamplingMethod) -> Non
         set_sampling_method(method, dimensions=4)
         set_random_seed(9281)
         parameters = uncertainty.parameter_samples(256)
-        assert np.all(np.isfinite(parameters["sigma"].values))
+        assert np.all(np.isfinite(asnumpy(parameters["sigma"].values)))
         distribution = uncertainty.sample_distribution(256)
         simulation = distribution.generate(256)
-        assert np.all(np.isfinite(simulation.values))
+        assert np.all(np.isfinite(asnumpy(simulation.values)))
     finally:
         set_sampling_method(SamplingMethod.MC)
