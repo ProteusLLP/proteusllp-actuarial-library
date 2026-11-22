@@ -227,5 +227,3 @@ def test_compound_generation_uses_standard_parameter_expansion() -> None:
         asnumpy(expanded._params["component_0_alpha"].values),
         np.repeat(asnumpy(scenario._params["component_0_alpha"].values), 2),
     )
-
-
