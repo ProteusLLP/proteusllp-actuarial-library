@@ -15,11 +15,25 @@ PAL provides two repair algorithms through :func:`pal.correlation.nearest_correl
   It is a convenient one-step approximation, but does not generally yield
   the closest correlation matrix.
 
-The :func:`pal.correlation.near_corr` function preserves the Proteus Correlation\nToolkit interface, including the ability to preserve selected entries with a\nlist of fixed index pairs (the pattern argument). The original toolkit also\naccepted a weights argument but never applied it; PAL raises an error for\nnon-None weights rather than silently ignoring them.\n\nBoth repair algorithms work with NumPy and, when PAL is configured for GPU use, CuPy.
+The :func:`pal.correlation.near_corr` function preserves the Proteus Correlation
+Toolkit interface, including the ability to preserve selected entries with a
+list of fixed index pairs (the pattern argument). PAL also implements
+Higham's row-and-column weighted Frobenius norm. Given positive weights
+``w``, it minimises ``sum(w[i] * w[j] * (C[i,j] - A[i,j])**2)``.
+Weights can be supplied as a length-n vector, a positive diagonal matrix,
+or the rank-one matrix ``outer(w, w)``. This is not arbitrary elementwise
+weighting. A congruence transform reduces the problem to unweighted
+alternating projections with a non-unit diagonal.
+
+Both repair algorithms work with NumPy and, when PAL is configured for GPU use, CuPy.
 A positive minimum eigenvalue can be requested when positive definiteness
 is required for Cholesky factorisation.
 
-.. autofunction:: pal.correlation.near_corr\n\n.. autofunction:: pal.correlation.nearest_correlation\n\n.. autofunction:: pal.correlation.is_psd
+.. autofunction:: pal.correlation.near_corr
+
+.. autofunction:: pal.correlation.nearest_correlation
+
+.. autofunction:: pal.correlation.is_psd
 
 Correlation matrix completion
 -----------------------------
