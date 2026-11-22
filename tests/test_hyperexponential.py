@@ -21,7 +21,7 @@ def test_hyperexponential_cdf_and_inverse_cdf() -> None:
     dist = HyperExponential(weights=weights, rates=rates, loc=loc)
 
     assert dist.cdf(loc) == 0.0
-    expected = sum(weight * (1 - math.exp(-rate)) for weight, rate in zip(weights, rates))
+    expected = sum(weight * (1 - math.exp(-rate)) for weight, rate in zip(weights, rates, strict=False))
     assert dist.cdf(loc + 1) == pytest.approx(expected)
     assert dist.invcdf(0) == loc
     assert math.isinf(float(dist.invcdf(1)))
@@ -68,9 +68,9 @@ def test_hyperexponential_simulated_moments() -> None:
     dist = HyperExponential(weights=weights, rates=rates, loc=loc)
 
     sims = dist.generate(500_000)
-    centred_mean = sum(weight / rate for weight, rate in zip(weights, rates))
+    centred_mean = sum(weight / rate for weight, rate in zip(weights, rates, strict=False))
     expected_mean = loc + centred_mean
-    expected_variance = 2 * sum(weight / rate**2 for weight, rate in zip(weights, rates)) - centred_mean**2
+    expected_variance = 2 * sum(weight / rate**2 for weight, rate in zip(weights, rates, strict=False)) - centred_mean**2
 
     assert sims.mean() == pytest.approx(expected_mean, rel=5e-3)
     assert sims.std() == pytest.approx(math.sqrt(expected_variance), rel=1e-2)

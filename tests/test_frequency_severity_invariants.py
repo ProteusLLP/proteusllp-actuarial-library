@@ -15,7 +15,7 @@ from tests._assertions import assert_allclose, assert_array_equal, host_values
 
 def _per_simulation_values(indices: np.ndarray, values: np.ndarray, n_sims: int) -> list[list[float]]:
     """Construct an independent, order-preserving event list for each simulation."""
-    return [[float(value) for idx, value in zip(indices, values) if int(idx) == sim] for sim in range(n_sims)]
+    return [[float(value) for idx, value in zip(indices, values, strict=False) if int(idx) == sim] for sim in range(n_sims)]
 
 
 @pytest.mark.parametrize("seed", [0, 1, 7, 42, 2026])

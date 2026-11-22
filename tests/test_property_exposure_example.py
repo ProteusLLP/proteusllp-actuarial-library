@@ -2,6 +2,7 @@
 
 import pandas as pd
 import pytest
+
 from pal.examples import example_property_exposure_rating as example
 
 
