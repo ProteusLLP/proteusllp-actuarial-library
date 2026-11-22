@@ -116,12 +116,15 @@ def test_higham_vector_weights_are_available_to_multivariate_distributions() -> 
     np.testing.assert_allclose(asnumpy(model.adjusted_covariance_matrix).diagonal(), [4.0, 9.0, 16.0])
 
 
-@pytest.mark.parametrize("factory", [
-    lambda: GaussianCopula(INDEFINITE, repair="none"),
-    lambda: StudentsTCopula(INDEFINITE, 5, repair="none"),
-    lambda: MultivariateNormal([0.0] * 3, INDEFINITE, repair="none"),
-    lambda: MultivariateStudentsT(5, [0.0] * 3, INDEFINITE, repair="none"),
-])
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: GaussianCopula(INDEFINITE, repair="none"),
+        lambda: StudentsTCopula(INDEFINITE, 5, repair="none"),
+        lambda: MultivariateNormal([0.0] * 3, INDEFINITE, repair="none"),
+        lambda: MultivariateStudentsT(5, [0.0] * 3, INDEFINITE, repair="none"),
+    ],
+)
 def test_repair_none_requires_valid_correlations(factory: object) -> None:
     with pytest.raises(ValueError, match="positive definite"):
         factory()  # type: ignore[operator]
