@@ -101,6 +101,8 @@ def nearest_correlation(
 
     fixed_rows: list[int] = []
     fixed_cols: list[int] = []
+    rows = xp.asarray(fixed_rows, dtype=int)
+    cols = xp.asarray(fixed_cols, dtype=int)
     if pattern is not None:
         if method == "spectral":
             raise ValueError("Fixed pattern entries require method='higham'.")
@@ -190,7 +192,7 @@ def near_corr(
 def is_psd(matrix: npt.ArrayLike) -> bool:
     """Test whether a finite symmetric matrix is positive semidefinite."""
     values = xp.asarray(matrix, dtype=float)
-    if values.ndim != 2 or values.shape[0] != values.shape[1]:
+    if values.ndim != 2 or values.shape[0] != values.shape[1] or values.shape[0] == 0:
         return False
     if not bool(xp.all(xp.isfinite(values))) or not bool(xp.allclose(values, values.T)):
         return False
