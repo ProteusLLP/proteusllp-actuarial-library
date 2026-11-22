@@ -21,18 +21,31 @@ from pal._maths import asnumpy, to_backend
 from pal.config import Config
 
 
-def validate_stochastic_axes(variables: t.Iterable[ProteusStochasticVariable], n_sims: int | None = None) -> int | None:
-    """Validate scenario lengths before calculations or coupling-group mutations.
+def _is_scalar_constant(variable: ProteusStochasticVariable) -> bool:
+    """A length-one StochasticScalar is a constant, not a one-path random factor."""
+    from .stochastic_scalar import StochasticScalar
 
-    Claim-indexed temporaries must not be passed alongside scenario-indexed
-    variables. Their dimensions require a separate, explicit mapping.
+    return isinstance(variable, StochasticScalar) and variable.n_sims == 1
+
+
+def validate_stochastic_axes(variables: t.Iterable[ProteusStochasticVariable], n_sims: int | None = None) -> int | None:
+    """Validate full simulation axes while permitting length-one scalar constants.
+
+    Only StochasticScalar objects with one element can broadcast. Frequency-
+    severity results and nonconstant vectors must always match the full
+    scenario count. This validation does not mutate variables or coupling
+    groups, including when a later input is incompatible.
     """
+    has_constant = False
     for variable in variables:
+        if _is_scalar_constant(variable):
+            has_constant = True
+            continue
         if n_sims is None:
             n_sims = variable.n_sims
         elif variable.n_sims != n_sims:
             raise ValueError(f"Stochastic inputs must have matching n_sims (expected {n_sims}, got {variable.n_sims})")
-    return n_sims
+    return n_sims if n_sims is not None else (1 if has_constant else None)
 
 
 def couple_stochastic_results(
@@ -56,10 +69,21 @@ def couple_stochastic_results(
     sources = tuple(inputs)
     if not output_leaves:
         raise ValueError("At least one stochastic result is required")
-    validate_stochastic_axes((*sources, *output_leaves), n_sims=n_sims)
-
-    anchor = (sources or output_leaves)[0].coupled_variable_group
-    for variable in (*sources, *output_leaves):
+    target_n = validate_stochastic_axes((*sources, *output_leaves), n_sims=n_sims)
+    if target_n is None:
+        raise ValueError("Cannot determine stochastic simulation axis")
+    # A full-length result must be materialised before coupling. Constant
+    # inputs are not attached to a scenario coupling group: reordering them
+    # would incorrectly change their one-element shape.
+    if target_n > 1 and any(variable.n_sims != target_n for variable in output_leaves):
+        raise ValueError("Stochastic result has incompatible n_sims")
+    participants = tuple(
+        variable
+        for variable in (*sources, *output_leaves)
+        if target_n == 1 or not _is_scalar_constant(variable)
+    )
+    anchor = participants[0].coupled_variable_group
+    for variable in participants:
         anchor.merge(variable.coupled_variable_group)
 
 
