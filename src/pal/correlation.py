@@ -9,6 +9,7 @@ import typing as t
 import numpy.typing as npt
 
 from ._maths import xp
+from ._weighted_correlation import weighted_nearest_correlation
 
 __all__ = ["near_corr", "nearest_correlation", "is_psd"]
 
@@ -47,6 +48,7 @@ def nearest_correlation(
     tolerance: float = 1e-10,
     max_iterations: int = 200,
     pattern: t.Sequence[tuple[int, int]] | None = None,
+    weights: npt.ArrayLike | None = None,
 ) -> t.Any:
     """Repair a matrix into a symmetric, positive semidefinite correlation matrix.
 
@@ -68,6 +70,9 @@ def nearest_correlation(
         max_iterations: Maximum number of alternating projections.
         pattern: Optional positions whose symmetric values must remain fixed.
             Only supported by the Higham method.
+        weights: Optional symmetric matrix of positive entrywise importance weights.
+            Minimises the sum of weights times squared correlation changes.
+            Uses an ADMM solver, and cannot be combined with the spectral method.
 
     Returns:
         A unit-diagonal correlation matrix on the configured array backend.
@@ -118,6 +123,14 @@ def nearest_correlation(
             rows = xp.asarray(fixed_rows, dtype=int)
             cols = xp.asarray(fixed_cols, dtype=int)
 
+    if weights is not None:
+        if method == "spectral":
+            raise ValueError("Weighted repair requires method='higham'.")
+        return weighted_nearest_correlation(
+            source, weights, pattern=pattern, minimum_eigenvalue=minimum_eigenvalue,
+            tolerance=tolerance, max_iterations=max_iterations,
+        )
+
     if source.shape[0] == 1:
         return xp.ones((1, 1), dtype=xp.float64)
     smallest = float(xp.linalg.eigvalsh(source)[0].item())
@@ -163,26 +176,21 @@ def near_corr(
     Args:
         matrix: Square matrix of correlation coefficients.
         pattern: Zero-based index pairs of coefficients to hold fixed.
-        weights: Reserved toolkit parameter. The source toolkit accepted this
-            argument but did not apply it. Supplying it raises
-            NotImplementedError rather than silently ignoring the weights.
+        weights: Optional positive symmetric matrix of entrywise weights.
+            Weighted repair minimises the weighted sum of squared changes.
 
     Returns:
         Nearest correlation matrix on the active NumPy or CuPy backend.
 
     Raises:
         ValueError: Invalid matrix or pattern.
-        NotImplementedError: A non-None weights argument is supplied.
         RuntimeError: The algorithm does not converge.
     """
-    if weights is not None:
-        raise NotImplementedError(
-            "The toolkit's weights parameter was not implemented; weighted nearest correlation repair is not supported."
-        )
     return nearest_correlation(
         matrix,
         method="higham",
         pattern=pattern,
+        weights=weights,
         minimum_eigenvalue=1e-8,
         tolerance=1e-10,
         max_iterations=10000,
