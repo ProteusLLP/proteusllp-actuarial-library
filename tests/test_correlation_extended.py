@@ -90,7 +90,8 @@ def test_cluster_result_and_utilities() -> None:
     matrix = np.array([[1, 0.8, 0.2], [0.8, 1, 0.2], [0.2, 0.2, 1]])
     result = cluster_corr(matrix)
     assert set(result.reorder_indices) == {0, 1, 2}
-    np.testing.assert_allclose(asnumpy(result.reordered_matrix), matrix[np.ix_(result.reorder_indices, result.reorder_indices)])
+    expected = matrix[np.ix_(result.reorder_indices, result.reorder_indices)]
+    np.testing.assert_allclose(asnumpy(result.reordered_matrix), expected)
     labels, members = extract_clusters(result.linkage_matrix, 2)
     assert sum(map(len, members.values())) == 3
     assert len(labels) == 3
