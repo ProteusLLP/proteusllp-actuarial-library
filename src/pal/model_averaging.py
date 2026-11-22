@@ -49,6 +49,7 @@ class WeightedDistribution(DistributionBase):
         *,
         model_indices: StochasticScalar | None = None,
     ) -> None:
+        """Validate and normalise candidate models and weights."""
         members = tuple(distributions)
         probabilities = np.asarray(weights, dtype=float)
         if not members or any(not isinstance(d, DistributionBase) for d in members):
@@ -145,7 +146,8 @@ class WeightedDistribution(DistributionBase):
 
     def _evaluate_selected(self, method: str, argument: t.Any) -> t.Any:
         """Evaluate the distribution selected on each aligned scenario path."""
-        assert self.model_indices is not None
+        if self.model_indices is None:
+            raise RuntimeError("No scenario model has been selected")
         sources = self._sources(argument)
         validate_stochastic_axes(sources, n_sims=self.model_indices.n_sims)
         selected = self.model_indices.values
