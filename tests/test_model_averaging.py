@@ -139,3 +139,48 @@ def test_invalid_incomparable_candidates_and_premature_parameter_draws() -> None
         # Scenario-level model selection cannot be used with a different axis.
         fitted = WeightedDistribution.fit(sample, [Gamma, LogNormal])
         fitted.sample_distribution(128).generate(64)
+
+
+@pytest.mark.parametrize("method", [SamplingMethod.MC, SamplingMethod.RQMC])
+def test_compound_model_keeps_same_family_for_each_claim_in_a_scenario(method: SamplingMethod) -> None:
+    from pal.distributions import Uniform
+    from pal.frequency_severity import FrequencySeverityModel
+
+    try:
+        set_sampling_method(method, dimensions=6)
+        set_random_seed(829)
+        base = WeightedDistribution([Uniform(0.0, 1.0), Uniform(10.0, 11.0)], [0.4, 0.6])
+        scenario = base.sample_models(n_sims=256)
+        results = FrequencySeverityModel(Poisson(3.0), scenario).generate(n_sims=256)
+        choices = asnumpy(scenario.model_indices.values)[asnumpy(results.sim_index)]
+        severities = asnumpy(results.values)
+        assert len(severities) > 0
+        assert np.all(severities[choices == 0] <= 1.0)
+        assert np.all(severities[choices == 1] >= 10.0)
+        assert results.coupled_variable_group is scenario.model_indices.coupled_variable_group
+    finally:
+        set_sampling_method(SamplingMethod.MC)
+
+
+@pytest.mark.parametrize("method", [SamplingMethod.MC, SamplingMethod.RQMC])
+def test_compound_model_preserves_uncertain_parameter_scenario_axis(method: SamplingMethod) -> None:
+    from pal.frequency_severity import FrequencySeverityModel
+
+    rng = np.random.default_rng(723)
+    observations = rng.lognormal(mean=3.0, sigma=0.6, size=450)
+    try:
+        set_sampling_method(method, dimensions=6)
+        set_random_seed(924)
+        fitted = WeightedDistribution.fit(
+            observations, [Gamma, LogNormal], uncertainty_method=UncertaintyMethod.ASYMPTOTIC
+        )
+        scenario = fitted.sample_distribution(n_sims=256)
+        result = FrequencySeverityModel(Poisson(1.7), scenario).generate(n_sims=256)
+        assert result.n_sims == 256
+        assert np.all(np.isfinite(asnumpy(result.values)))
+        for family in scenario.distributions:
+            for parameter in family._params.values():
+                if isinstance(parameter, StochasticScalar):
+                    assert parameter.coupled_variable_group is result.coupled_variable_group
+    finally:
+        set_sampling_method(SamplingMethod.MC)
