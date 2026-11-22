@@ -51,7 +51,14 @@ parameters are treated on a logarithmic scale so simulations remain positive.
 <!--pytest-codeblocks:cont-->
 
 ```python
-uncertainty = gamma_fit.asymptotic_uncertainty(losses)
+from pal.fitting import UncertaintyMethod
+
+uncertain_fit = Gamma.fit(
+    losses, uncertainty_method=UncertaintyMethod.ASYMPTOTIC
+)
+uncertainty = uncertain_fit.uncertainty
+assert uncertainty is not None
+
 print("Parameter standard errors:", uncertainty.standard_errors)
 print("Parameter covariance:", uncertainty.covariance)
 print("95% marginal intervals:", uncertainty.confidence_intervals())
@@ -76,13 +83,19 @@ family; it does not account for model misspecification, model selection, or
 uncertainty in the reporting threshold. Marginal Wald intervals should not
 be confused with predictive intervals for future losses.
 
-The initial implementation supports Gamma, LogNormal, fixed-location GPD, and
-Pareto with a known positive scale/threshold, including right-censoring and
-integer frequency weights. Supply the same observation array, censoring mask
-and weights to `asymptotic_uncertainty` as to `fit`. Nonregular settings,
-such as free GPD location or an estimated Pareto lower endpoint, are rejected
-rather than returning unjustified covariance estimates. Extremely small
-samples and tail probabilities may not be well approximated by local normality.
+All PAL distributions expose the `uncertainty_method` option in
+`.fit(...)`. Regular MLE families use the observed-information approximation
+with the fitted covariance, including censoring and integer frequency
+weights where supported by their fitter. The default
+`UncertaintyMethod.NONE` leaves existing point-estimate behaviour unchanged.
+
+Not every fitted parameter admits a regular Gaussian large-sample
+approximation. In particular, discrete integer estimators, unknown uniform
+endpoints, categorical simplex boundaries, free GPD locations, and an
+estimated Pareto lower endpoint require other methods. PAL raises a clear
+error instead of returning unjustified covariance estimates in these cases.
+Extremely small samples and extreme tail probabilities may also be poorly
+approximated by local normality.
 
 For an actuarial treatment of *predictive calibration* beyond this first
 approximation, see Jewson and Sweeting (2026),
