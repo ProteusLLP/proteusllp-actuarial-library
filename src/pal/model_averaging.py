@@ -120,7 +120,7 @@ class WeightedDistribution(DistributionBase):
             kwargs = {**fit_options, **options.get(family, {})}
             if "uncertainty_method" in kwargs:
                 raise TypeError("Specify uncertainty_method only once")
-            fit = getattr(family, "fit")(observations, uncertainty_method=uncertainty_method, **kwargs)
+            fit = t.cast(t.Any, family).fit(observations, uncertainty_method=uncertainty_method, **kwargs)
             if not fit.converged:
                 raise RuntimeError(f"{family.__name__} fit did not converge")
             fitted.append(fit)
