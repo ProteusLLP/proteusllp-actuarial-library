@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from ._maths import asnumpy
+from .couplings import ProteusStochasticVariable, couple_stochastic_results
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
 from .variables import ProteusVariable
@@ -191,10 +192,26 @@ def _nested_variable(values: dict[tuple[str, ...], t.Any], dimension_columns: Se
     return build((), 0)
 
 
+def _couple_imported(variable: ProteusVariable[t.Any], *, couple: bool) -> ProteusVariable[t.Any]:
+    """Preserve the joint scenario axis when importing a table as one dataset.
+
+    A shared simulation ID identifies a joint scenario, not a particular
+    statistical correlation. Opt out when columns represent independent
+    marginal samples that will be re-coupled by a subsequent copula.
+    """
+    if couple:
+        leaves = [value for _, value in _leaves(variable) if isinstance(value, ProteusStochasticVariable)]
+        if len(leaves) > 1:
+            couple_stochastic_results(leaves)
+    return variable
+
+
 def _multiindex_import(
     frame: pd.DataFrame,
     simulation_column: str | None,
     dimension_columns: Sequence[str] | None,
+    *,
+    couple: bool,
 ) -> ProteusVariable[t.Any]:
     if simulation_column is None:
         raise ValueError("MultiIndex stochastic data requires a simulation index")
@@ -215,7 +232,7 @@ def _multiindex_import(
         vals[path] = StochasticScalar(ordered[column].to_numpy(copy=False))
     if not vals:
         raise ValueError("MultiIndex table has no value columns")
-    return _nested_variable(vals, [str(name) for name in names])
+    return _couple_imported(_nested_variable(vals, [str(name) for name in names]), couple=couple)
 
 
 def from_dataframe(
@@ -229,17 +246,21 @@ def from_dataframe(
     kind_column: str = _KIND,
     n_sims_column: str = _COUNT,
     n_sims: int | None = None,
+    couple: bool = True,
 ) -> ProteusVariable[t.Any]:
     """Import wide, long or MultiIndex data, with selectable column mappings.
 
     Dimension columns can describe multiple nested levels in long data. Event
     rows create FreqSevSims; the optional N Simulations column keeps zero-claim
-    simulations. This is data interchange; coupling is not reconstructed.
+    simulations. Imported stochastic leaves sharing the scenario axis are
+    coupled by default so that subsequent reordering preserves their existing
+    joint samples. Use couple=False for independent marginals. Original PAL
+    coupling-group boundaries require pal.serialization.load().
     """
     if "_pal_schema" in frame or "_pal_path" in frame:
         raise ValueError("PAL snapshots must be loaded through pal.serialization.load()")
     if isinstance(frame.columns, pd.MultiIndex):
-        return _multiindex_import(frame, simulation_column, dimension_columns)
+        return _multiindex_import(frame, simulation_column, dimension_columns, couple=couple)
 
     if values_column not in frame.columns:
         # A wide table has a separate stochastic variable in each value column.
@@ -255,9 +276,12 @@ def from_dataframe(
         if not labels:
             raise ValueError("Wide table has no value columns")
         ordered = frame.sort_values(simulation_column)
-        return ProteusVariable(
-            dim_name or (dimension_columns[0] if dimension_columns else "Variable"),
-            {str(c): StochasticScalar(ordered[c].to_numpy(copy=False)) for c in labels},
+        return _couple_imported(
+            ProteusVariable(
+                dim_name or (dimension_columns[0] if dimension_columns else "Variable"),
+                {str(c): StochasticScalar(ordered[c].to_numpy(copy=False)) for c in labels},
+            ),
+            couple=couple,
         )
 
     control = {values_column, simulation_column, event_column, kind_column, n_sims_column}
@@ -360,4 +384,4 @@ def from_dataframe(
         else:
             raise ValueError(f"Unknown value kind {kind!r}")
 
-    return _nested_variable(leaves, dimensions)
+    return _couple_imported(_nested_variable(leaves, dimensions), couple=couple)
