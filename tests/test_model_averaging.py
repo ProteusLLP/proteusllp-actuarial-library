@@ -205,7 +205,7 @@ def test_compound_generation_uses_standard_parameter_expansion() -> None:
     """No special-case compound model logic is needed for weighted distributions."""
     import copy
 
-    from pal.maths import to_backend
+    from pal._maths import to_backend
 
     rng = np.random.default_rng(473)
     observations = rng.lognormal(2.0, 0.7, 400)
