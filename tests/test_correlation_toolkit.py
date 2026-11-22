@@ -3,8 +3,8 @@
 import numpy as np
 from numpy import nan
 
-from pal.maths import asnumpy
 from pal.correlation import is_psd, near_corr
+from pal.maths import asnumpy
 
 
 def make_symmetric(matrix):
@@ -37,8 +37,8 @@ def test_near_corr():
 
 
 def test_example1():
-    """From section 4 of Higham"""
-    A = np.array([[2.0, -1, 0, 0], [-1, 2, -1, 0], [0, -1, 2, -1], [0, 0, -1, 2]])
+    """From section 4 of Higham."""
+    matrix = np.array([[2.0, -1, 0, 0], [-1, 2, -1, 0], [0, -1, 2, -1], [0, 0, -1, 2]])
     expected_result = np.array(
         [
             [1.0000, -0.8084, 0.1916, 0.1068],
@@ -47,12 +47,12 @@ def test_example1():
             [0.1068, 0.1916, -0.8084, 1.000],
         ]
     )
-    assert np.allclose(asnumpy(near_corr(A)), expected_result, atol=1e-4)
+    assert np.allclose(asnumpy(near_corr(matrix)), expected_result, atol=1e-4)
 
 
 def test_example2():
-    """From section 4 of Higham"""
-    A = np.array([[1.0, 1, 0], [1, 1, 1], [0, 1, 1]])
+    """From section 4 of Higham."""
+    matrix = np.array([[1.0, 1, 0], [1, 1, 1], [0, 1, 1]])
 
     expected_result = np.array(
         [
@@ -61,12 +61,12 @@ def test_example2():
             [0.15729811, 0.76068985, 1.0],
         ]
     )
-    assert np.allclose(asnumpy(near_corr(A)), expected_result, atol=1e-8)
+    assert np.allclose(asnumpy(near_corr(matrix)), expected_result, atol=1e-8)
 
 
 def test_example3():
     """Test reference example from Lucas (2001), Section 4.3."""
-    A = np.array(
+    matrix = np.array(
         [
             [1.0000, -0.3250, 0.1881, 0.5760, 0.0064, -0.6111, -0.0724, -0.1589],
             [-0.3250, 1.0000, 0.2048, 0.2436, 0.4058, 0.2730, 0.2869, 0.4241],
@@ -91,12 +91,12 @@ def test_example3():
             [-0.1921, 0.4088, 0.8802, -0.2208, 0.8762, 0.5932, -0.4470, 1.0000],
         ]
     )
-    assert np.allclose(asnumpy(near_corr(A)), expected_result, atol=1e-4)
+    assert np.allclose(asnumpy(near_corr(matrix)), expected_result, atol=1e-4)
 
 
 def test_example4():
     """Test reference example from Lucas (2001), Section 4.3."""
-    A = np.array(
+    matrix = np.array(
         [
             [1.0000, -0.3250, 0.1881, 0.5760, 0.0064, -0.6111, -0.0724, -0.1589],
             [-0.3250, 1.0000, 0.2048, 0.2436, 0.4058, 0.2730, 0.2869, 0.4241],
@@ -109,7 +109,7 @@ def test_example4():
         ]
     )
 
-    pattern = [(i, i) for i in range(0, len(A))] + [(0, 1), (0, 2), (1, 2)]
+    pattern = [(i, i) for i in range(0, len(matrix))] + [(0, 1), (0, 2), (1, 2)]
 
     expected_result = np.array(
         [
@@ -123,23 +123,23 @@ def test_example4():
             [-0.1927, 0.4081, 0.8805, -0.2203, 0.8762, 0.5929, -0.4469, 1.0000],
         ]
     )
-    assert np.allclose(asnumpy(near_corr(A, pattern)), expected_result, atol=1e-4)
+    assert np.allclose(asnumpy(near_corr(matrix, pattern)), expected_result, atol=1e-4)
 
 
 def test_psd():
-    A = np.array([[1.0, 0.5, 0.2], [0.5, 1, 0.7], [0.2, 0.7, 1]])
-    expected_result = A
-    assert np.allclose(asnumpy(near_corr(A)), expected_result, atol=1e-16)
+    matrix = np.array([[1.0, 0.5, 0.2], [0.5, 1, 0.7], [0.2, 0.7, 1]])
+    expected_result = matrix
+    assert np.allclose(asnumpy(near_corr(matrix)), expected_result, atol=1e-16)
 
 
 def test_ispsd():
-    A = np.array([[1.0, 0.5, 0.2], [0.5, 1, 0.7], [0.2, 0.7, 1]])
-    assert is_psd(A)
+    matrix = np.array([[1.0, 0.5, 0.2], [0.5, 1, 0.7], [0.2, 0.7, 1]])
+    assert is_psd(matrix)
 
 
 def test_isnotpsd():
-    A = np.array([[1.0, -0.5, 0.9], [-0.5, 1, 0.7], [0.9, 0.7, 1]])
-    assert not is_psd(A)
+    matrix = np.array([[1.0, -0.5, 0.9], [-0.5, 1, 0.7], [0.9, 0.7, 1]])
+    assert not is_psd(matrix)
 
 
 def test_near_corr_with_fixed_entries():
