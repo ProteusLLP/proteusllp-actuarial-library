@@ -190,7 +190,8 @@ jobs:
           import proteus
           from pal import api
           from pal.correlation import nearest_correlation, complete_corr, cluster_corr
-          from pal.distributions import Gamma, WeightedDistribution
+          from pal.distributions import Gamma
+          from pal.model_averaging import WeightedDistribution
           from pal.serialization import load, save
 
           assert callable(api.recipes)
