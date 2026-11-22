@@ -73,4 +73,4 @@ def weighted_nearest_correlation(
             eigmin = float(xp.linalg.eigvalsh(solution)[0].item())
             if eigmin >= minimum_eigenvalue - 10 * tolerance * max(1, n):
                 return (solution + solution.T) / 2
-    raise RuntimeError("Weighted nearest correlation matrix did not converge; check feasibility or increase max_iterations.")
+    raise RuntimeError("Weighted nearest correlation matrix did not converge; increase max_iterations.")
