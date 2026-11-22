@@ -7,7 +7,7 @@ be used for PAL probability calculations and simulation on supported backends.
 from __future__ import annotations
 
 import typing as t
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from enum import Enum
 
 import numpy as np
@@ -15,6 +15,7 @@ from scipy import integrate, optimize, special, stats
 
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
+    from .fitting_uncertainty import AsymptoticParameterUncertainty
 
 _T = t.TypeVar("_T", bound="DistributionBase", covariant=True)
 
@@ -29,6 +30,13 @@ def _supported_families() -> tuple[type[DistributionBase], ...]:
         _distributions.Gamma,
         _distributions.GPD,
     )
+
+
+class UncertaintyMethod(str, Enum):
+    """Optional frequentist parameter uncertainty attached to a fit result."""
+
+    NONE = "none"
+    ASYMPTOTIC = "asymptotic"
 
 
 class _FitMethod(str, Enum):
@@ -62,6 +70,50 @@ class FitResult(t.Generic[_T]):
     n_censored: int
     threshold: float
     method: str = _FitMethod.MLE.value
+    uncertainty: AsymptoticParameterUncertainty[_T] | None = field(default=None, repr=False, compare=False)
+
+    def asymptotic_uncertainty(
+        self,
+        observations: t.Sequence[float] | np.ndarray,
+        *,
+        censored: t.Sequence[bool] | np.ndarray | None = None,
+        weights: t.Sequence[float] | np.ndarray | None = None,
+    ) -> AsymptoticParameterUncertainty[_T]:
+        """Estimate joint parameter covariance from the fitted likelihood.
+
+        Supply the same observations, censoring and frequency weights used
+        for fitting. The default point-estimate distribution is unchanged.
+        The resulting object can create a PAL distribution whose parameters
+        vary together by simulation path.
+        """
+        from .fitting_uncertainty import asymptotic_parameter_uncertainty
+
+        return asymptotic_parameter_uncertainty(self, observations, censored=censored, weights=weights)
+
+
+def _with_uncertainty(
+    fitted: FitResult[_T],
+    observations: t.Sequence[t.Any] | np.ndarray,
+    *,
+    uncertainty_method: UncertaintyMethod,
+    censored: t.Sequence[bool] | np.ndarray | None = None,
+    weights: t.Sequence[float] | np.ndarray | None = None,
+    threshold_specified: bool = False,
+) -> FitResult[_T]:
+    """Attach optional uncertainty without changing the MLE fitting result."""
+    method = UncertaintyMethod(uncertainty_method)
+    if method is UncertaintyMethod.NONE:
+        return fitted
+    from .fitting_uncertainty import asymptotic_parameter_uncertainty
+
+    result = asymptotic_parameter_uncertainty(
+        fitted,
+        observations,
+        censored=censored,
+        weights=weights,
+        threshold_specified=threshold_specified,
+    )
+    return replace(fitted, uncertainty=result)
 
 
 def _gamma_log_survival_underflow(shape: float, z: float) -> float:
@@ -304,6 +356,7 @@ def fit_distribution(
     censored: t.Sequence[bool] | np.ndarray | None = None,
     weights: t.Sequence[float] | np.ndarray | None = None,
     free_location: bool = False,
+    uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
 ) -> FitResult[_T]:
     """Fit a supported PAL distribution by maximum likelihood.
 
@@ -318,6 +371,7 @@ def fit_distribution(
             repeated observations for information criteria.
         free_location: Fit the three-parameter GPD when True. Only supported
             for GPD; the location defaults to the reporting threshold.
+        uncertainty_method: Optional joint parameter uncertainty method; defaults to None.
 
     Returns:
         Fitted distribution with maximum-likelihood diagnostics.
@@ -332,6 +386,24 @@ def fit_distribution(
         PAL's random-number state. Pareto has a closed-form censored MLE.
         The other families use deterministic numerical optimisation.
     """
+    if UncertaintyMethod(uncertainty_method) is not UncertaintyMethod.NONE:
+        fitted = fit_distribution(
+            distribution,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            free_location=free_location,
+        )
+        return _with_uncertainty(
+            fitted,
+            observations,
+            uncertainty_method=uncertainty_method,
+            censored=censored,
+            weights=weights,
+            threshold_specified=bool(threshold > 0),
+        )
+
     from . import distributions as _distributions
 
     family = distribution

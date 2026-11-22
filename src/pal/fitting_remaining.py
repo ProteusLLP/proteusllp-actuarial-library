@@ -13,7 +13,7 @@ import typing as t
 import numpy as np
 from scipy import integrate, optimize, special, stats
 
-from .fitting import _FitMethod
+from .fitting import UncertaintyMethod, _FitMethod, _with_uncertainty
 
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
@@ -113,6 +113,7 @@ def fit_remaining(
     weights: t.Sequence[float] | np.ndarray | None = None,
     censored: t.Sequence[bool] | np.ndarray | None = None,
     threshold: float | None = None,
+    uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
     **options: t.Any,
 ) -> FitResult[_T]:
     """Fit a PAL distribution not represented by the severity fitting engine.
@@ -121,6 +122,24 @@ def fit_remaining(
     right censoring and left truncation. Other families use complete samples.
     Binomial and hypergeometric require known experiment sizes.
     """
+    if UncertaintyMethod(uncertainty_method) is not UncertaintyMethod.NONE:
+        fitted = fit_remaining(
+            distribution,
+            observations,
+            weights=weights,
+            censored=censored,
+            threshold=threshold,
+            **options,
+        )
+        return _with_uncertainty(
+            fitted,
+            observations,
+            uncertainty_method=uncertainty_method,
+            censored=censored,
+            weights=weights,
+            threshold_specified=threshold is not None,
+        )
+
     from . import distributions as _distributions
 
     family = distribution
