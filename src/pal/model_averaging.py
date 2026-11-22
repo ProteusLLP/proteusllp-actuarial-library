@@ -151,8 +151,10 @@ class WeightedDistribution(DistributionBase):
         selected = self.model_indices.values
         values = xp.zeros(self.model_indices.n_sims, dtype=float)
         for i, distribution in enumerate(self.distributions):
-            evaluated = getattr(distribution, method)(argument)
-            values = xp.where(selected == i, _raw(evaluated), values)
+            evaluated = to_backend(_raw(getattr(distribution, method)(argument)))
+            if method == "cdf":
+                evaluated = xp.clip(evaluated, 0.0, 1.0)
+            values = xp.where(selected == i, evaluated, values)
         result = StochasticScalar(values)
         couple_stochastic_results((result,), sources, n_sims=self.model_indices.n_sims)
         return result
@@ -162,12 +164,17 @@ class WeightedDistribution(DistributionBase):
         if self.model_indices is not None:
             return self._evaluate_selected("cdf", x)
         sources = self._sources(x)
-        validate_stochastic_axes(sources)
+        n_sims = validate_stochastic_axes(sources)
         result: t.Any = 0.0
         for weight, component in zip(self.weights, self.distributions):
             if weight:
-                result = result + weight * component.cdf(x)
-        return result
+                probability = xp.clip(to_backend(_raw(component.cdf(x))), 0.0, 1.0)
+                result = result + weight * probability
+        if n_sims is not None:
+            output = StochasticScalar(xp.broadcast_to(result, (n_sims,)).copy())
+            couple_stochastic_results((output,), sources, n_sims=n_sims)
+            return output
+        return scalar_or_array(result)
 
     def invcdf(self, u: t.Any) -> t.Any:
         """Mixture quantile via bracketed bisection, with GPU-compatible arrays."""
