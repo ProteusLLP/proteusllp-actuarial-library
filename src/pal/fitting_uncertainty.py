@@ -15,7 +15,7 @@ from scipy import stats
 from ._maths import to_backend, xp
 from .config import config
 from .couplings import couple_stochastic_results
-from .fitting import FitResult, _log_likelihood, _prepare
+from .fitting import FitResult, _prepare
 from .qmc import _sample_rng
 from .stochastic_scalar import StochasticScalar
 
