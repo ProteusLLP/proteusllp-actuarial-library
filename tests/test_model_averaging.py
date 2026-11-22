@@ -46,6 +46,24 @@ def test_aicc_fitting_matches_information_criterion_weights() -> None:
     assert np.all(np.isfinite(asnumpy(draws.values)))
 
 
+def test_fit_accepts_user_specified_model_weights() -> None:
+    """Manually selected weights override AICc averaging, not MLE diagnostics."""
+    sample = np.random.default_rng(66).gamma(3.0, 200.0, 500)
+    manual = WeightedDistribution.fit(
+        sample, [Gamma, LogNormal], model_weights={Gamma: 0.9, LogNormal: 0.1}
+    )
+    assert manual.model_weights[Gamma] == pytest.approx(0.9)
+    assert manual.model_weights[LogNormal] == pytest.approx(0.1)
+    assert manual.aicc[Gamma] == pytest.approx(Gamma.fit(sample).aicc)
+    assert manual.aicc[LogNormal] == pytest.approx(LogNormal.fit(sample).aicc)
+    sequence = WeightedDistribution.fit(sample, [Gamma, LogNormal], model_weights=[3.0, 1.0])
+    assert np.allclose(sequence.weights, [0.75, 0.25])
+    with pytest.raises(ValueError, match="model_weights mapping"):
+        WeightedDistribution.fit(sample, [Gamma, LogNormal], model_weights={Gamma: 1.0})
+    with pytest.raises(ValueError, match="weights"):
+        WeightedDistribution.fit(sample, [Gamma, LogNormal], model_weights=[0, 0])
+
+
 def test_joint_parameter_uncertainty_and_persistent_model_choice() -> None:
     rng = np.random.default_rng(222)
     sample = rng.lognormal(2.0, 0.6, 600)
@@ -184,3 +202,36 @@ def test_compound_model_preserves_uncertain_parameter_scenario_axis(method: Samp
                     assert parameter.coupled_variable_group is result.coupled_variable_group
     finally:
         set_sampling_method(SamplingMethod.MC)
+
+
+def test_compound_generation_uses_standard_parameter_expansion() -> None:
+    """No special-case compound model logic is needed for weighted distributions."""
+    import copy
+
+    rng = np.random.default_rng(473)
+    observations = rng.lognormal(2.0, 0.7, 400)
+    fit = WeightedDistribution.fit(
+        observations, [Gamma, LogNormal], uncertainty_method=UncertaintyMethod.ASYMPTOTIC
+    )
+    scenario = fit.sample_distribution(256, rng=np.random.default_rng(474))
+    event_indices = np.repeat(np.arange(256), 2)
+    expanded = copy.copy(scenario)
+    expanded._params = {
+        key: (
+            StochasticScalar(value.values[event_indices])
+            if isinstance(value, StochasticScalar)
+            else value
+        )
+        for key, value in scenario._params.items()
+    }
+    result = expanded.generate(512, rng=np.random.default_rng(475))
+    selected = asnumpy(scenario.model_indices.values[event_indices])
+    assert np.array_equal(asnumpy(expanded.model_indices.values), selected)
+    assert result.n_sims == 512
+    assert np.all(asnumpy(result.values) >= 0)
+    assert not np.array_equal(
+        asnumpy(expanded._params["component_0_alpha"].values),
+        asnumpy(scenario._params["component_0_alpha"].values),
+    )
+
+
