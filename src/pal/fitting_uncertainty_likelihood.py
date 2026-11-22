@@ -52,6 +52,8 @@ def _parameter_names(family: type[t.Any], parameters: dict[str, t.Any], threshol
     if family is d.NonCentralChiSquared and parameters["nonc"] <= 0.0:
         raise ValueError("Noncentral chi-squared fitted noncentrality is at the boundary")
     if family is d.GEV:
+        if parameters["shape"] <= -0.5:
+            raise ValueError("Usual asymptotic GEV inference requires shape > -0.5")
         return ("shape", "scale", "loc")
     if family in (*_supported_families(), *_other_families(), *_continuous_families(), *_discrete_families(), d.MBBEFD):
         return tuple(name for name in parameters if name not in ("loc", "n", "n_draws", "ngood", "nbad"))
