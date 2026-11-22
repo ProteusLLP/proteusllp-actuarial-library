@@ -64,6 +64,34 @@ jobs:
             ${{ runner.temp }}/pal-memory-cpu.*
           retention-days: 30
 
+  variable-io:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install PAL and PyArrow
+        run: pip install -e ".[parquet]"
+      - name: Benchmark columnar and legacy variable I/O
+        run: |
+          python -m benchmarks.benchmark_variable_io \
+            --simulations 20000 --variables 20 \
+            --output "$RUNNER_TEMP/pal-variable-io.json"
+          python -m benchmarks.benchmark_variable_io \
+            --simulations 100000 --variables 100 --compact-only \
+            --output "$RUNNER_TEMP/pal-variable-io-large.json"
+          for report in "$RUNNER_TEMP"/pal-variable-io*.json; do
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pal-performance-variable-io
+          path: ${{ runner.temp }}/pal-variable-io*.json
+          retention-days: 30
+
   gpu:
     if: github.event_name == 'workflow_dispatch' && inputs.run_gpu && github.ref == 'refs/heads/main'
     runs-on: proteus-gpu

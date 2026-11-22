@@ -40,7 +40,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -e ".[test,gpu]" "cupy-cuda12x[ctk]"
+        run: pip install -e ".[test,gpu,parquet]" "cupy-cuda12x[ctk]"
 
       - name: Determine CuPy kernel-cache compatibility
         id: cupy-cache-compatibility

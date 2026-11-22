@@ -50,6 +50,163 @@ portfolio = ProteusVariable(
 
 Variable containers support numpy operations and can be added, multiplied together etc. Operations involving multiple variable containers will attempt to match on dictionary labels.
 
+
+## CSV, Parquet and pandas interchange
+
+PAL can exchange ordinary tabular data with other systems independently of
+serialising a PAL object. Both import and export support configurable column
+names. The default layout is wide for one-dimensional stochastic variables,
+multi-level pandas headers for regular nested stochastic variables, and long
+format for frequency-severity data and heterogeneous values.
+
+**Imported coupling:** Stochastic variables loaded together from one DataFrame,
+CSV or Parquet file are coupled by default because their simulation IDs describe
+one joint set of scenarios. Coupling preserves existing row-wise scenario
+relationships under subsequent permutations; it does not introduce a correlation
+or specify a copula. Pass `couple=False` to `from_dataframe`, `from_csv` or
+`from_parquet` when importing independent marginal samples that should remain
+in separate groups. If you need to preserve the *original* grouping of a PAL
+model, use `pal.serialization.save/load`. See the
+[Saving and Sharing PAL Data tutorial](tutorials/data_io.md) for examples,
+including relational databases through pandas.
+
+### Nested variables and multi-level headers
+
+A nested portfolio with dimensions `Region` and `LoB` exports to pandas
+with a MultiIndex on its columns, and one simulation per row:
+
+<!--pytest.mark.skip-->
+
+```python
+# nested is a ProteusVariable: Region -> LoB -> StochasticScalar
+frame = nested.to_dataframe(layout="multiindex")
+frame["UK", "Motor"]  # Select one Region / LoB series
+
+nested.to_csv("losses.csv", layout="multiindex")
+restored = ProteusVariable.from_csv("losses.csv")
+
+nested.to_parquet("losses.parquet", layout="multiindex")
+restored = ProteusVariable.from_parquet("losses.parquet")
+```
+
+CSV uses multiple named header rows and a Simulation index row; the importer
+recognises that format automatically. Parquet preserves pandas MultiIndex
+metadata. External MultiIndex CSVs can specify `header_rows=2` if automatic
+detection does not apply. MultiIndex requires a regular hierarchy of stochastic
+scalars with the same simulation count. For other structures use long form.
+
+### Column mappings and long-form import
+
+Specify which columns contain dimension labels, simulation IDs, event IDs
+and values. Dimension columns are ordered from outermost to innermost:
+
+<!--pytest.mark.skip-->
+
+```python
+portfolio.to_csv(
+    "risk_data.csv",
+    layout="long",
+    dimension_columns=["Market", "Class"],
+    simulation_column="Run",
+    event_column="Claim",
+    values_column="Loss",
+)
+
+restored = ProteusVariable.from_csv(
+    "risk_data.csv",
+    dimension_columns=["Market", "Class"],
+    simulation_column="Run",
+    event_column="Claim",
+    values_column="Loss",
+)
+```
+
+The same arguments work with `from_dataframe`, `to_dataframe`,
+`from_parquet` and `to_parquet`. For one-dimensional data you can keep the
+legacy `dim_name="LoB"` argument.
+
+### Frequency-severity event listings
+
+A `FreqSevSims` exports as one row per claim. The `Simulation` column
+identifies its scenario, `Event` its position in the original claim list,
+and `value` its severity. The long format also includes `Kind` and
+`N Simulations`, preserving the number of simulations even when the final
+simulations have no claims. If there are no claims at all, a metadata-only
+row represents the empty claim list. These ordinary columns are readable
+without PAL.
+
+When importing an existing third-party claim listing that has no
+`N Simulations` column, pass `n_sims=...` if needed. Column mappings also
+work for third-party data, for example `event_column="ClaimId"`.
+
+### Cloud storage: Azure, S3 and other fsspec filesystems
+
+All CSV and Parquet interchange methods and `pal.serialization.save/load`
+accept remote URLs as well as local paths. The filesystem is provided by
+[fsspec](https://filesystem-spec.readthedocs.io/). Install the appropriate
+optional backend, with PyArrow for Parquet:
+
+```bash
+pip install "proteusllp-actuarial-library[parquet,azure]"
+# Or: pip install "proteusllp-actuarial-library[parquet,s3]"
+# Both: pip install "proteusllp-actuarial-library[parquet,cloud]"
+```
+
+A cloud account/container or bucket can be selected directly in the URL.
+The optional `storage_options` are passed to the filesystem driver:
+
+<!--pytest.mark.skip-->
+
+```python
+from pal import ProteusVariable
+from pal.serialization import save, load
+
+# Azure Blob Storage (adlfs). Use your environment's Azure credentials.
+azure_path = "az://my-container/models/losses.parquet"
+portfolio.to_parquet(azure_path, storage_options={"account_name": "myaccount"})
+restored = ProteusVariable.from_parquet(
+    azure_path, storage_options={"account_name": "myaccount"}
+)
+
+# Amazon S3 (s3fs). In normal production use, an IAM role supplies access.
+s3_path = "s3://my-bucket/models/pal-snapshot.parquet"
+save(portfolio, s3_path)
+restored_snapshot = load(s3_path)
+```
+
+The same arguments are available on `to_csv/from_csv`,
+`to_parquet/from_parquet` and `save/load`. Azure's `abfs://` scheme is
+supported by adlfs as well. Supply credentials through managed identities,
+IAM roles or filesystem options; never hardcode long-lived secrets in source
+files. Already-open binary file objects can also be passed directly. For
+unnamed streams in `save/load`, specify `format="parquet"` or `format="csv"`.
+PAL leaves a caller-owned stream open.
+
+The storage abstraction works with one file at a time. Tabular imports
+currently materialise the dataset in pandas rather than using out-of-core
+Parquet filtering or partition-aware loading. Parquet datasets made of
+multiple files are not yet supported by the high-level variable methods.
+
+### CPU and GPU arrays
+
+Tabular CSV/Parquet and pandas/Arrow storage is host-based. Exporting numeric
+GPU-backed values transfers them from CuPy to NumPy, while importing reconstructs
+numeric `StochasticScalar` and `FreqSevSims` values on PAL's active backend.
+Set `PAL_USE_GPU=1` before importing PAL to enable the CuPy backend. Strings
+and dates remain host arrays because CuPy does not support their dtypes.
+PAL snapshots through `save/load` follow the same device transfer boundary.
+
+### Interchange versus PAL object snapshots
+
+Use `ProteusVariable.to_csv/to_parquet` for tabular exchange and
+`ProteusVariable.from_csv/from_parquet` to read it back. These are
+not complete model object snapshots: original coupling-group boundaries and
+some Python types are not retained. On import, stochastic columns sharing a
+simulation axis form one coupling group by default (`couple=False` disables
+this). For versioned PAL-to-PAL persistence, including
+coupling groups, use `pal.serialization.save(variable, path)` and
+`pal.serialization.load(path)` instead.
+
 ## Plotting
 
 Plotting methods return Plotly figure objects, so displaying a plot is explicit

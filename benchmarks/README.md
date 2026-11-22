@@ -51,3 +51,29 @@ To profile memory for it, use `--cases portfolio --portfolio-lobs 100
 
 Run normal correctness, numerical and stochastic-coupling tests before accepting
 a performance improvement. Faster results alone do not establish correctness.
+
+## Variable I/O: compact versus row-form Parquet
+
+To compare the new Arrow-native columnar representation against the earlier
+long-form DataFrame representation, run:
+
+<!--pytest-codeblocks:skip-->
+
+```bash
+python -m benchmarks.benchmark_variable_io --simulations 20000 --variables 20
+```
+
+For a larger synthetic model, skip the memory-intensive row-form baseline:
+
+<!--pytest-codeblocks:skip-->
+
+```bash
+python -m benchmarks.benchmark_variable_io --simulations 100000 --variables 100 --compact-only
+```
+
+Requires PAL's optional `parquet` dependency. The script reports read and
+write wall times, Parquet file sizes and traced Python memory peaks, together
+with runtime and dependency versions. Python tracing does not capture all
+NumPy/Arrow native allocations, so do not treat the figures as total peak RSS.
+The benchmark validates round-trip numeric values and is not a performance
+regression gate.
