@@ -122,7 +122,6 @@ def test_uncertainty_respects_pal_sampling_method(method: SamplingMethod) -> Non
         set_sampling_method(SamplingMethod.MC)
 
 
-
 def test_uncertainty_method_is_an_option_in_every_distribution_fit() -> None:
     """All PAL distribution fits expose one consistently named method option."""
     from pal import distributions as d
@@ -192,9 +191,7 @@ def test_regular_families_support_uncertainty(family_name: str, kind: str) -> No
         "fisk": lambda: stats.fisk.rvs(c=2.5, scale=3, size=550, random_state=rng),
     }[kind]()
     options = {"n": 12} if kind == "binomial" else {}
-    fit = getattr(d, family_name).fit(
-        sample, uncertainty_method=UncertaintyMethod.ASYMPTOTIC, **options
-    )
+    fit = getattr(d, family_name).fit(sample, uncertainty_method=UncertaintyMethod.ASYMPTOTIC, **options)
     assert fit.uncertainty is not None
     assert np.linalg.eigvalsh(fit.uncertainty.covariance).min() > 0
     sampled = fit.uncertainty.parameter_samples(128, rng=np.random.default_rng(47))
