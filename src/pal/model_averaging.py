@@ -225,7 +225,9 @@ class WeightedDistribution(DistributionBase):
         # quantiles at the same probability. No guess at a support bound needed.
         internal = xp.clip(probabilities, np.finfo(float).eps, 1 - np.finfo(float).eps)
         components = self._components()
-        brackets = [xp.asarray(to_backend(_raw(d.invcdf(internal)))) for d in components]
+        # PAL inverse-CDF implementations accept backend arrays at runtime,
+        # although the public DistributionParameter alias is scalar-oriented.
+        brackets = [xp.asarray(to_backend(_raw(d.invcdf(t.cast(t.Any, internal))))) for d in components]
         left = brackets[0]
         right = brackets[0]
         for bracket in brackets[1:]:
