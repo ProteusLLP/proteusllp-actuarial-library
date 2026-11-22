@@ -221,6 +221,12 @@ def test_negative_binomial_size_and_probability_have_joint_uncertainty_and_coupl
     assert np.all(asnumpy(size.values) > 0)
     assert np.all((asnumpy(probability.values) > 0) & (asnumpy(probability.values) < 1))
     assert np.std(asnumpy(size.values)) > 0.0
+    normalised_n = np.log(asnumpy(size.values))
+    normalised_p = np.log(asnumpy(probability.values) / (1.0 - asnumpy(probability.values)))
+    drawn_correlation = np.corrcoef(normalised_n, normalised_p)[0, 1]
+    covariance = fit.uncertainty.transformed_covariance
+    expected_correlation = covariance[0, 1] / np.sqrt(covariance[0, 0] * covariance[1, 1])
+    assert drawn_correlation == pytest.approx(expected_correlation, abs=0.065)
     stochastic_frequency = fit.uncertainty.sample_distribution(512, rng=np.random.default_rng(184))
     frequency = stochastic_frequency.generate(512, rng=np.random.default_rng(185))
     assert frequency.coupled_variable_group is stochastic_frequency._params["n"].coupled_variable_group
