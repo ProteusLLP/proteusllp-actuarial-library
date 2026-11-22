@@ -1,6 +1,8 @@
 """Tests for joint likelihood-based uncertainty in fitted severity parameters."""
 
 import inspect
+import warnings
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -198,3 +200,77 @@ def test_regular_families_support_uncertainty(family_name: str, kind: str) -> No
     for name in fit.uncertainty.parameter_names:
         assert isinstance(sampled[name], StochasticScalar)
         assert np.all(np.isfinite(asnumpy(sampled[name].values)))
+
+
+
+def test_negative_binomial_size_and_probability_have_joint_uncertainty_and_coupling() -> None:
+    """The size n is estimated, unlike fixed binomial trial count n."""
+    from pal.distributions import NegBinomial
+
+    rng = np.random.default_rng(182)
+    observed = rng.negative_binomial(4.2, 0.46, size=700)
+    fit = NegBinomial.fit(observed, uncertainty_method=UncertaintyMethod.ASYMPTOTIC)
+    assert fit.uncertainty is not None
+    assert fit.uncertainty.parameter_names == ("n", "p")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        draws = fit.uncertainty.parameter_samples(2048, rng=np.random.default_rng(183))
+    size, probability = draws["n"], draws["p"]
+    assert isinstance(size, StochasticScalar)
+    assert isinstance(probability, StochasticScalar)
+    assert size.coupled_variable_group is probability.coupled_variable_group
+    assert np.all(asnumpy(size.values) > 0)
+    assert np.all((asnumpy(probability.values) > 0) & (asnumpy(probability.values) < 1))
+    assert np.std(asnumpy(size.values)) > 0.0
+    stochastic_frequency = fit.uncertainty.sample_distribution(512, rng=np.random.default_rng(184))
+    frequency = stochastic_frequency.generate(512, rng=np.random.default_rng(185))
+    assert frequency.coupled_variable_group is stochastic_frequency._params["n"].coupled_variable_group
+    assert frequency.coupled_variable_group is stochastic_frequency._params["p"].coupled_variable_group
+
+
+def test_gpd_joint_draws_remain_within_support_without_independent_clipping() -> None:
+    """Reject full joint parameter vectors when the fitted data violate support."""
+    rng = np.random.default_rng(192)
+    observations = stats.genpareto.rvs(c=-0.14, scale=8.0, size=900, random_state=rng)
+    fitted = GPD.fit(observations, uncertainty_method=UncertaintyMethod.ASYMPTOTIC)
+    assert fitted.uncertainty is not None
+    # Stress the approximation so its joint shape/scale support matters.
+    stressed = replace(
+        fitted.uncertainty,
+        transformed_covariance=fitted.uncertainty.transformed_covariance * 20,
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        samples = stressed.parameter_samples(1500, rng=np.random.default_rng(193))
+    shape = asnumpy(samples["shape"].values)
+    scale = asnumpy(samples["scale"].values)
+    assert np.all(shape > -0.5)
+    assert np.all(scale > 0.0)
+    assert np.all(1.0 + shape * np.max(observations) / scale > 0)
+    assert samples["shape"].coupled_variable_group is samples["scale"].coupled_variable_group
+
+
+def test_gev_joint_shape_scale_location_and_support_remain_feasible() -> None:
+    """Preserve full shape/scale/location dependence and observed-data support."""
+    from pal.distributions import GEV
+
+    rng = np.random.default_rng(802)
+    observed = stats.genextreme.rvs(c=0.12, loc=100, scale=15, size=800, random_state=rng)
+    fitted = GEV.fit(observed, uncertainty_method=UncertaintyMethod.ASYMPTOTIC)
+    assert fitted.uncertainty is not None
+    assert fitted.uncertainty.parameter_names == ("shape", "scale", "loc")
+    samples = fitted.uncertainty.parameter_samples(1200, rng=np.random.default_rng(803))
+    shape = asnumpy(samples["shape"].values)
+    scale = asnumpy(samples["scale"].values)
+    location = asnumpy(samples["loc"].values)
+    assert np.all(shape > -0.5)
+    assert np.all(scale > 0.0)
+    assert np.all(1 + shape * (np.min(observed) - location) / scale > 0)
+    assert np.all(1 + shape * (np.max(observed) - location) / scale > 0)
+    assert samples["shape"].coupled_variable_group is samples["scale"].coupled_variable_group
+    assert samples["shape"].coupled_variable_group is samples["loc"].coupled_variable_group
+    random_gev = fitted.uncertainty.sample_distribution(256, rng=np.random.default_rng(804))
+    observations_sim = random_gev.generate(256, rng=np.random.default_rng(805))
+    for parameter in random_gev._params.values():
+        assert isinstance(parameter, StochasticScalar)
+        assert parameter.coupled_variable_group is observations_sim.coupled_variable_group
