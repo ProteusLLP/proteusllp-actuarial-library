@@ -112,9 +112,7 @@ class WeightedDistribution(DistributionBase):
         if any(f not in candidates for f in options):
             raise ValueError("per_family_options contains a family not in candidates")
         if any(
-            key in {"weights", "censored", "threshold"}
-            for family_options in options.values()
-            for key in family_options
+            key in {"weights", "censored", "threshold"} for family_options in options.values() for key in family_options
         ):
             raise ValueError("Observation, censoring and truncation options must be shared across all families")
         fitted: list[FitResult[t.Any]] = []
@@ -170,10 +168,7 @@ class WeightedDistribution(DistributionBase):
         """
         result: list[DistributionBase] = []
         for i, distribution in enumerate(self.distributions):
-            parameters = {
-                name: self._params[f"component_{i}_{name}"]
-                for name in self._component_parameter_names[i]
-            }
+            parameters = {name: self._params[f"component_{i}_{name}"] for name in self._component_parameter_names[i]}
             if all(parameters[name] is distribution._params[name] for name in parameters):
                 result.append(distribution)
             else:
@@ -340,9 +335,7 @@ class ModelAveragingResult:
         if rng is None:
             raise RuntimeError("No PAL random generator is configured")
         components = [
-            fit.uncertainty.sample_distribution(n_sims, rng)
-            if fit.uncertainty is not None
-            else fit.distribution
+            fit.uncertainty.sample_distribution(n_sims, rng) if fit.uncertainty is not None else fit.distribution
             for fit in self.fits
         ]
         return WeightedDistribution(components, self.weights).sample_models(n_sims, rng)
