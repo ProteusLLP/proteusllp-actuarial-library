@@ -151,7 +151,6 @@ def _validate_matrix(matrix: npt.ArrayLike, dimension: int, name: str) -> t.Any:
         raise ValueError(f"{name} must be positive definite.") from error
 
 
-
 def _prepare_elliptical_scale(
     matrix: npt.ArrayLike,
     dimension: int,
