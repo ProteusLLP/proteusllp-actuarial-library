@@ -166,9 +166,7 @@ class FrequencySeverityModel:
         uniforms = xp.clip(uniforms, np.nextafter(0.0, 1.0), np.nextafter(1.0, 0.0))
 
         severity_distribution = self.sev_dist
-        if isinstance(self.sev_dist, distributions.WeightedDistribution):
-            severity_distribution = self.sev_dist.for_events(event_indices)
-        elif any(isinstance(value, StochasticScalar) for value in self.sev_dist._params.values()):
+        if any(isinstance(value, StochasticScalar) for value in self.sev_dist._params.values()):
             # Each claim receives the parameter value of its simulation.
             # Temporary claim-indexed scalars must not be coupled with the
             # original simulation-indexed parameters.
@@ -219,9 +217,6 @@ class FrequencySeverityModel:
         if rng is None:
             rng = config.rng
         severity_params = getattr(self.sev_dist, "_params", {})
-        weighted_severity = isinstance(self.sev_dist, distributions.WeightedDistribution)
-        weighted_sources = self.sev_dist._sources() if weighted_severity else ()
-        validate_stochastic_axes(weighted_sources, n_sims=n_sims)
         stochastic_params = {
             name: param for name, param in severity_params.items() if isinstance(param, StochasticScalar)
         }
@@ -247,16 +242,11 @@ class FrequencySeverityModel:
         if isinstance(rng, RandomizedQMCGenerator):
             values = self._qmc_severities(n_sims, counts.astype(np.int64), event_indices, total_events, rng)
             result = FreqSevSims(event_indices, values, n_sims)
-            couple_stochastic_results(
-                (result,), (n_events, *stochastic_params.values(), *weighted_sources), n_sims=n_sims
-            )
+            couple_stochastic_results((result,), (n_events, *stochastic_params.values()), n_sims=n_sims)
             return result
 
         severity_distribution = self.sev_dist
-        if weighted_severity:
-            sample_indices = event_indices if total_events else xp.asarray([0], dtype=int)
-            severity_distribution = self.sev_dist.for_events(sample_indices)
-        elif stochastic_params:
+        if stochastic_params:
             # Generate one severity per claim, using the parameter values of that
             # claim's simulation. Do not modify the reusable distribution instance.
             severity_distribution = copy(self.sev_dist)
@@ -277,7 +267,7 @@ class FrequencySeverityModel:
         values = sev.values[:total_events]
         result = FreqSevSims(event_indices, values, n_sims)
         # Link original simulation-level parameters, never expanded claim-level temporaries.
-        couple_stochastic_results((result,), (n_events, *stochastic_params.values(), *weighted_sources), n_sims=n_sims)
+        couple_stochastic_results((result,), (n_events, *stochastic_params.values()), n_sims=n_sims)
         return result
 
 
