@@ -3155,4 +3155,5 @@ class ContinuousDistributionGenerator(DistributionGeneratorBase):
 
 
 # Keep weighted model averaging separate from the individual distribution families.
-from .model_averaging import ModelAveragingResult, WeightedDistribution  # noqa: E402
+from .model_averaging import ModelAveragingResult as ModelAveragingResult  # noqa: E402
+from .model_averaging import WeightedDistribution as WeightedDistribution  # noqa: E402
