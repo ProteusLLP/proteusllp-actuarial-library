@@ -233,6 +233,7 @@ def is_psd(matrix: npt.ArrayLike) -> bool:
         return False
     return float(xp.linalg.eigvalsh(values)[0].item()) >= -1e-12
 
+
 # Import dependent modules after the primary repair functions are defined.
 from .correlation_cliques import (  # noqa: E402
     check_all_cliques_in_correlation_matrix,
