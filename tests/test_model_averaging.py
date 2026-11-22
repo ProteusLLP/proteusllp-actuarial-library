@@ -208,6 +208,8 @@ def test_compound_generation_uses_standard_parameter_expansion() -> None:
     """No special-case compound model logic is needed for weighted distributions."""
     import copy
 
+    from pal.maths import to_backend
+
     rng = np.random.default_rng(473)
     observations = rng.lognormal(2.0, 0.7, 400)
     fit = WeightedDistribution.fit(
@@ -215,23 +217,24 @@ def test_compound_generation_uses_standard_parameter_expansion() -> None:
     )
     scenario = fit.sample_distribution(256, rng=np.random.default_rng(474))
     event_indices = np.repeat(np.arange(256), 2)
+    backend_indices = to_backend(event_indices)
     expanded = copy.copy(scenario)
     expanded._params = {
         key: (
-            StochasticScalar(value.values[event_indices])
+            StochasticScalar(value.values[backend_indices])
             if isinstance(value, StochasticScalar)
             else value
         )
         for key, value in scenario._params.items()
     }
     result = expanded.generate(512, rng=np.random.default_rng(475))
-    selected = asnumpy(scenario.model_indices.values[event_indices])
+    selected = asnumpy(scenario.model_indices.values[backend_indices])
     assert np.array_equal(asnumpy(expanded.model_indices.values), selected)
     assert result.n_sims == 512
     assert np.all(asnumpy(result.values) >= 0)
-    assert not np.array_equal(
+    assert np.array_equal(
         asnumpy(expanded._params["component_0_alpha"].values),
-        asnumpy(scenario._params["component_0_alpha"].values),
+        np.repeat(asnumpy(scenario._params["component_0_alpha"].values), 2),
     )
 
 
