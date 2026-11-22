@@ -274,3 +274,33 @@ def test_gev_joint_shape_scale_location_and_support_remain_feasible() -> None:
     for parameter in random_gev._params.values():
         assert isinstance(parameter, StochasticScalar)
         assert parameter.coupled_variable_group is observations_sim.coupled_variable_group
+
+
+
+@pytest.mark.parametrize("method", [SamplingMethod.MC, SamplingMethod.RQMC])
+def test_fitted_parameter_coupling_propagates_through_frequency_severity(
+    method: SamplingMethod,
+) -> None:
+    """Keep one severity parameter value per simulation, not per claim."""
+    from pal import FrequencySeverityModel
+    from pal.distributions import Poisson
+
+    observations = np.random.default_rng(511).gamma(2.0, 1000.0, 500)
+    fitted = Gamma.fit(observations, uncertainty_method=UncertaintyMethod.ASYMPTOTIC)
+    assert fitted.uncertainty is not None
+    try:
+        set_sampling_method(method, dimensions=8)
+        set_random_seed(925)
+        severity = fitted.uncertainty.sample_distribution(n_sims=256)
+        model = FrequencySeverityModel(Poisson(2.0), severity)
+        simulations = model.generate(256)
+        alpha, theta = severity._params["alpha"], severity._params["theta"]
+        assert isinstance(alpha, StochasticScalar)
+        assert isinstance(theta, StochasticScalar)
+        assert alpha.coupled_variable_group is theta.coupled_variable_group
+        assert simulations.coupled_variable_group is alpha.coupled_variable_group
+        assert simulations.aggregate().coupled_variable_group is alpha.coupled_variable_group
+        assert simulations.n_sims == alpha.n_sims == theta.n_sims == 256
+        assert np.all(np.isfinite(asnumpy(simulations.values)))
+    finally:
+        set_sampling_method(SamplingMethod.MC)
