@@ -124,6 +124,9 @@ def test_discrete_model_averaging_and_constraints() -> None:
         WeightedDistribution([Gamma(2, 3)], [0])
     with pytest.raises(ValueError, match="finite AICc"):
         WeightedDistribution.fit(counts[:2], [Poisson])
+    manual = WeightedDistribution.fit(counts[:2], [Poisson], model_weights=[1.0])
+    assert np.isnan(manual.fits[0].aicc)
+    assert manual.weights[0] == pytest.approx(1.0)
 
 
 def test_aicc_fit_accepts_right_censoring_and_preserves_likelihood_diagnostics() -> None:
