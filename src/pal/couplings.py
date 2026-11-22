@@ -78,9 +78,7 @@ def couple_stochastic_results(
     if target_n > 1 and any(variable.n_sims != target_n for variable in output_leaves):
         raise ValueError("Stochastic result has incompatible n_sims")
     participants = tuple(
-        variable
-        for variable in (*sources, *output_leaves)
-        if target_n == 1 or not _is_scalar_constant(variable)
+        variable for variable in (*sources, *output_leaves) if target_n == 1 or not _is_scalar_constant(variable)
     )
     anchor = participants[0].coupled_variable_group
     for variable in participants:
