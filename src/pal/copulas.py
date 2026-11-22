@@ -365,8 +365,11 @@ class StudentsTCopula(EllipticalCopula):
         Raises UserWarning if correlation coefficients require adjustment.
         """
         super().__init__(
-            matrix, matrix_type=matrix_type,
-            repair=repair, weights=weights, pattern=pattern,
+            matrix,
+            matrix_type=matrix_type,
+            repair=repair,
+            weights=weights,
+            pattern=pattern,
         )
         if dof <= 0:
             raise ValueError("Degrees of Freedom must be positive")
