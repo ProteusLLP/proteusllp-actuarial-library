@@ -61,9 +61,7 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
             result[name] = float(lower), float(upper)
         return result
 
-    def parameter_samples(
-        self, n_sims: int | None = None, rng: t.Any = None
-    ) -> dict[str, t.Any]:
+    def parameter_samples(self, n_sims: int | None = None, rng: t.Any = None) -> dict[str, t.Any]:
         """Joint parameter draws using PAL's CPU/GPU and MC/RQMC generator.
 
         The scenario-indexed parameters are coupled to preserve dependency
@@ -97,16 +95,12 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
         couple_stochastic_results(stochastic, n_sims=n_sims)
         return parameters
 
-    def sample_distribution(
-        self, n_sims: int | None = None, rng: t.Any = None
-    ) -> _T:
+    def sample_distribution(self, n_sims: int | None = None, rng: t.Any = None) -> _T:
         """Create the same PAL distribution with scenario-varying parameters."""
         return type(self.fit.distribution)(**self.parameter_samples(n_sims, rng))
 
 
-def _observed_hessian(
-    objective: t.Callable[[np.ndarray], float], center: np.ndarray
-) -> np.ndarray:
+def _observed_hessian(objective: t.Callable[[np.ndarray], float], center: np.ndarray) -> np.ndarray:
     """Centered finite-difference Hessian in transformed coordinates."""
     size = len(center)
     steps = 5e-4 * (1.0 + np.abs(center))
@@ -170,16 +164,12 @@ def asymptotic_parameter_uncertainty(
         names = ("shape", "scale")
         positive = frozenset(("scale",))
     elif family is distributions.Pareto:
-        if fit.threshold <= 0 or not np.isclose(
-            fit.parameters["scale"], fit.threshold, rtol=0, atol=1e-12
-        ):
+        if fit.threshold <= 0 or not np.isclose(fit.parameters["scale"], fit.threshold, rtol=0, atol=1e-12):
             raise ValueError("Pareto asymptotic uncertainty requires a known scale (positive threshold)")
         names = ("shape",)
         positive = frozenset(names)
     else:
-        raise NotImplementedError(
-            f"Asymptotic parameter uncertainty is not yet implemented for {family.__name__}"
-        )
+        raise NotImplementedError(f"Asymptotic parameter uncertainty is not yet implemented for {family.__name__}")
 
     x, c, w = _prepare(observations, fit.threshold, censored, weights)
     if not np.all(w == np.floor(w)):
