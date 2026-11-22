@@ -3,7 +3,7 @@
 import numpy as np
 from numpy import nan
 
-from pal._maths import asnumpy
+from pal.maths import asnumpy
 from pal.correlation import is_psd, near_corr
 
 
