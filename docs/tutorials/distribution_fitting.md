@@ -5,10 +5,10 @@ The result is a fitted PAL distribution, together with its estimated parameters
 and likelihood diagnostics. You can use the distribution for probability
 calculations and simulation just like one constructed with known parameters.
 
-The examples use synthetic data. Importantly, **calculations using fitted
-parameters treat those estimates as fixed**: they do not account for
-parameter uncertainty. This matters particularly when estimating rare,
-large losses.
+The examples use synthetic data. By default, **a fitted distribution uses
+fixed maximum-likelihood parameter estimates**. PAL also offers an optional
+joint asymptotic parameter-uncertainty approximation for common severity
+families. This matters particularly when estimating rare, large losses.
 
 ## 1. Fit a Gamma distribution
 
@@ -40,6 +40,55 @@ The Gamma parameters are \(\alpha\) (shape) and \(\theta\) (scale). The
 fitting result also provides AICc, the observation count and the convergence
 status. Here MLE uses a numerical optimisation; other distributions such as
 an unconstrained Normal or a Poisson have analytical MLEs.
+
+### Including parameter uncertainty
+
+A fitted Gamma has correlated uncertainty in its shape and scale. We can
+estimate the covariance using the inverse **observed information**, computed
+from the same maximum-likelihood function used for fitting. Positive
+parameters are treated on a logarithmic scale so simulations remain positive.
+
+<!--pytest-codeblocks:cont-->
+
+```python
+uncertainty = gamma_fit.asymptotic_uncertainty(losses)
+print("Parameter standard errors:", uncertainty.standard_errors)
+print("Parameter covariance:", uncertainty.covariance)
+print("95% marginal intervals:", uncertainty.confidence_intervals())
+
+uncertain_gamma = uncertainty.sample_distribution(n_sims=10_000)
+simulated_losses = uncertain_gamma.generate(n_sims=10_000)
+assert simulated_losses.n_sims == 10_000
+```
+
+For each simulation path, PAL first draws a **jointly correlated parameter
+vector**, and then uses that parameter vector to simulate the future loss.
+The uncertain parameter values are PAL stochastic scalars, retaining their
+scenario alignment through downstream operations and frequency-severity
+models. The original fitted distribution in `gamma_fit.distribution` remains
+unchanged. Parameter draws and loss draws follow the configured Monte Carlo
+or randomized quasi-Monte Carlo method, using the active CPU or GPU backend.
+
+The covariance is a **large-sample local approximation**, not an exact
+confidence distribution, posterior, or calibrated predictive distribution.
+It accounts for sampling uncertainty conditional on the selected distribution
+family; it does not account for model misspecification, model selection, or
+uncertainty in the reporting threshold. Marginal Wald intervals should not
+be confused with predictive intervals for future losses.
+
+The initial implementation supports Gamma, LogNormal, fixed-location GPD, and
+Pareto with a known positive scale/threshold, including right-censoring and
+integer frequency weights. Supply the same observation array, censoring mask
+and weights to `asymptotic_uncertainty` as to `fit`. Nonregular settings,
+such as free GPD location or an estimated Pareto lower endpoint, are rejected
+rather than returning unjustified covariance estimates. Extremely small
+samples and tail probabilities may not be well approximated by local normality.
+
+For an actuarial treatment of *predictive calibration* beyond this first
+approximation, see Jewson and Sweeting (2026),
+[Including parameter uncertainty in loss distributions using calibrating priors](https://doi.org/10.1017/S1748499525100237).
+Their objective-prior and asymptotic predictive corrections are a distinct
+next step for PAL; they are not implemented by this covariance calculation.
 
 <!--pytest-codeblocks:cont-->
 
