@@ -50,20 +50,15 @@ approximation to the likelihood.
 <!--pytest-codeblocks:cont-->
 
 ```python
-from pal.fitting import UncertaintyMethod
-
-fit_with_uncertainty = Gamma.fit(
-    losses, uncertainty_method=UncertaintyMethod.ASYMPTOTIC
-)
+fit_with_uncertainty = Gamma.fit(losses, uncertainty_method="asymptotic")
 
 uncertainty = fit_with_uncertainty.uncertainty
 assert uncertainty is not None
 print("Parameter standard errors:", uncertainty.standard_errors)
 
 # Draw one correlated pair of Gamma parameters per simulation.
-severity = uncertainty.sample_distribution(n_sims=10_000)
-simulated_losses = severity.generate(n_sims=10_000)
-assert simulated_losses.n_sims == 10_000
+uncertain_gamma = uncertainty.sample_distribution()
+simulated_losses = uncertain_gamma.generate()
 ```
 
 PAL draws shape and scale **together**, retaining their estimated
