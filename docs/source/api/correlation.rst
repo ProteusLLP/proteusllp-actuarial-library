@@ -29,7 +29,11 @@ the solution.
 
 Both repair algorithms work with NumPy and, when PAL is configured for GPU use, CuPy.
 A positive minimum eigenvalue can be requested when positive definiteness
-is required for Cholesky factorisation.
+is required for Cholesky factorisation. Gaussian and Student's t copulas and
+multivariate normal and Student's t distributions apply Higham repair by
+default when their input correlation matrices require adjustment, emitting
+a warning and providing an ``adjusted_correlation_matrix`` property for
+inspection. Set ``repair="none"`` on those classes to disable automatic repair.
 
 .. autofunction:: pal.correlation.near_corr
 
