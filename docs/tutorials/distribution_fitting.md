@@ -503,8 +503,11 @@ For the same fitted candidate models, you can override AICc weights while
 preserving the individual MLE estimates and diagnostics:
 
 ```python
+import numpy as np
+
 from pal.distributions import Gamma, LogNormal, WeightedDistribution
 
+sample = np.random.default_rng(73).gamma(2.4, 25_000.0, 600)
 manual_fit = WeightedDistribution.fit(
     sample,
     [Gamma, LogNormal],
