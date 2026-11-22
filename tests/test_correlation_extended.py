@@ -67,9 +67,7 @@ def test_weight_validation(bad_weights: np.ndarray) -> None:
 
 
 def test_non_chordal_four_cycle_and_cliques() -> None:
-    missing = np.array(
-        [[1, 0.4, np.nan, 0.1], [0.4, 1, 0.2, np.nan], [np.nan, 0.2, 1, 0.3], [0.1, np.nan, 0.3, 1]]
-    )
+    missing = np.array([[1, 0.4, np.nan, 0.1], [0.4, 1, 0.2, np.nan], [np.nan, 0.2, 1, 0.3], [0.1, np.nan, 0.3, 1]])
     assert not check_incomplete_matrix_is_chordal(missing)
     edges = get_edges_from_incomplete_matrix(missing)
     assert len(edges) == 4
