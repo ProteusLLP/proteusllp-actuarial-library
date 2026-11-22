@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pal._maths import asnumpy
+from pal.maths import asnumpy
 from pal.correlation import nearest_correlation
 
 
