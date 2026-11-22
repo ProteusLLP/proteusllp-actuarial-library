@@ -6,12 +6,14 @@ PAL supports two different operations:
 
 | Task | API | What is retained? |
 | --- | --- | --- |
-| Exchange data with pandas, Excel or another system | `to_dataframe`, `to_csv`, `to_parquet` and corresponding `from_*` methods | Dimensions, values, simulation IDs and claim event indices |
+| Exchange data with pandas, Excel or another system | `to_dataframe`, `to_csv`, `to_parquet` and corresponding `from_*` methods | Dimensions, values, simulation IDs and claim event indices; imported joint scenarios form one coupling group by default |
 | Save a PAL object for reuse in PAL | `pal.serialization.save` and `load` | The above, plus leaf types, numeric dtypes and internal coupling groups |
 
 Use **data interchange** when another system should understand the file.
 Use **serialization** when a subsequent PAL calculation needs to recover the
-same variable structure and dependence relationships.
+same variable structure and the original coupling-group boundaries. An ordinary
+table does not record those boundaries, although PAL can couple the jointly
+imported scenarios.
 
 Parquet is generally preferable for large numerical datasets because it
 stores data in a typed, compressed columnar format. CSV is convenient for
@@ -94,7 +96,7 @@ from_parquet = ProteusVariable.from_parquet(parquet_path)
 
 Install `pip install "proteusllp-actuarial-library[parquet]"` to enable
 Parquet. Exported CSV and Parquet files can be imported again; the special
-PAL snapshot format in section 5 is a different kind of file.
+PAL snapshot format in section 6 is a different kind of file.
 
 ## 3. Choose the dimension, simulation and value columns
 
@@ -163,7 +165,55 @@ the full number of simulations, including an entirely zero-claim portfolio.
 For an *external* claims listing that does not record this information,
 pass `n_sims=` to the importer.
 
-## 5. Save a PAL snapshot when coupling must survive
+## 5. Coupling groups when importing joint scenarios
+
+A simulation ID identifies the same scenario across multiple risk variables.
+For example, UK Motor and UK Property results in simulation 2 may reflect
+the same economic and catastrophe conditions. If PAL later reorders scenarios
+for one variable, its corresponding values in other variables from that
+scenario should move together.
+
+By default, PAL puts all stochastic leaves **imported in one call** into
+one coupling group, because they share the scenario axis. This preserves
+their joint simulated outcomes during subsequent reordering.
+
+<!--pytest-codeblocks:cont-->
+
+```python
+assert (
+    from_csv["UK"]["Motor"].coupled_variable_group
+    is from_csv["UK"]["Property"].coupled_variable_group
+)
+```
+
+A **coupling group is not a copula or correlation model**. Coupling does
+not change any imported values, generate a correlation, or infer a dependency
+structure. It only tells PAL to apply the same future permutation to the
+variables. The dependence already present in the data remains as imported.
+
+If the columns instead contain independently sampled **marginal**
+distributions that you plan to connect using a copula, opt out:
+
+<!--pytest-codeblocks:cont-->
+
+```python
+marginals = ProteusVariable.from_dataframe(frame, couple=False)
+assert (
+    marginals["UK"]["Motor"].coupled_variable_group
+    is not marginals["UK"]["Property"].coupled_variable_group
+)
+```
+
+The `couple` option is supported by `from_dataframe`, `from_csv` and
+`from_parquet`. Separate imports never automatically merge their groups.
+If an ordinary table contains several independently sampled groups, import
+those subsets separately or use `couple=False` and establish the intended
+groups as part of the model.
+
+When you require the **original group boundaries**, rather than one
+joint group for an imported table, save a PAL snapshot.
+
+## 6. Save a PAL snapshot when coupling must survive
 
 Tabular interchange represents results, not every relationship between
 variables. If two stochastic variables are coupled, such as gross losses
@@ -199,7 +249,7 @@ read it with `load`, not `ProteusVariable.from_parquet` or pandas.
 Conversely, load ordinary table files through `ProteusVariable.from_csv`
 or `ProteusVariable.from_parquet`, not `load`.
 
-## 6. Write the same data to cloud storage
+## 7. Write the same data to cloud storage
 
 The file paths above can also be cloud URLs. PAL uses
 [fsspec](https://filesystem-spec.readthedocs.io/) for S3, Azure Blob
@@ -249,6 +299,79 @@ from_memory = ProteusVariable.from_csv(memory_path)
 assert from_memory["UK"]["Property"].mean() == 98.75
 ```
 
+## 8. Read and write SQL databases through pandas
+
+PAL does not need a database-specific storage API. Pandas reads and writes
+database tables, while PAL's DataFrame methods convert the resulting
+records into actuarial variables.
+
+For a small, runnable example, use an in-memory SQLite database. Long-form
+data maps naturally onto relational columns, including the simulation ID
+that identifies the corresponding outcomes across lines of business.
+
+<!--pytest-codeblocks:cont-->
+
+```python
+import sqlite3
+
+connection = sqlite3.connect(":memory:")
+try:
+    portfolio.to_dataframe(layout="long").to_sql(
+        "annual_losses", connection, if_exists="replace", index=False
+    )
+    # Parameterised queries avoid interpolating user input into SQL.
+    records = pd.read_sql_query(
+        "SELECT * FROM annual_losses WHERE Simulation >= ?",
+        connection,
+        params=(0,),
+    )
+finally:
+    connection.close()
+
+from_database = ProteusVariable.from_dataframe(
+    records,
+    dimension_columns=["Market", "LoB"],
+    simulation_column="Simulation",
+    values_column="value",
+)
+assert from_database["UK"]["Motor"].mean() == 120.0
+assert (
+    from_database["UK"]["Motor"].coupled_variable_group
+    is from_database["US"]["Property"].coupled_variable_group
+)
+```
+
+For SQL Server, PostgreSQL or another production database, install
+[SQLAlchemy](https://www.sqlalchemy.org/) and the relevant database driver,
+then pass the resulting engine to pandas. For example:
+
+<!--pytest-codeblocks:skip-->
+
+```python
+from sqlalchemy import create_engine
+
+# Configure the URL and credentials for your own environment.
+engine = create_engine("postgresql+psycopg://user:password@host/database")
+portfolio.to_dataframe(layout="long").to_sql(
+    "annual_losses", engine, if_exists="append", index=False, chunksize=10_000
+)
+with engine.connect() as connection:
+    records = pd.read_sql_query(
+        "SELECT * FROM annual_losses", connection
+    )
+restored = ProteusVariable.from_dataframe(
+    records, dimension_columns=["Market", "LoB"]
+)
+```
+
+Prefer connection configuration from environment variables, managed
+identities or secrets managers to credentials embedded in source code.
+Filter and aggregate in SQL before importing large tables into PAL,
+and use SQLAlchemy for transactional writes and database-specific upserts.
+If an SQL query returns only part of a jointly simulated portfolio, its
+variables will be coupled within that import, not automatically to
+variables loaded by separate queries.
+
 ## Practical considerations
 
 - **GPU:** pandas and Arrow operate on host memory, so exporting moves
@@ -256,7 +379,9 @@ assert from_memory["UK"]["Property"].mean() == 98.75
   numeric stochastic values use PAL's active backend again.
 - **External data:** column types and some distinctions between types may
   have to be inferred from CSV. Use Parquet or PAL snapshots when types
-  matter. Ordinary interchange does not preserve coupling groups.
+  matter. Ordinary interchange does not preserve the original coupling-group
+  boundaries; by default it creates one joint group for stochastic leaves
+  in the same imported table. Pass `couple=False` for independent marginals.
 - **Large datasets:** Parquet is usually faster and more compact than CSV.
   Current high-level imports load an individual file into memory; selective
   column reads, row-group filtering and partitioned datasets are not yet
