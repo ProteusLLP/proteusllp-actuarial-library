@@ -43,51 +43,33 @@ an unconstrained Normal or a Poisson have analytical MLEs.
 
 ### Including parameter uncertainty
 
-A fitted Gamma has correlated uncertainty in its shape and scale. We can
-estimate the covariance using the inverse **observed information**, computed
-from the same maximum-likelihood function used for fitting. Positive
-parameters are treated on a logarithmic scale so simulations remain positive.
+For a Gamma distribution, both the shape and scale estimates are uncertain
+because they have been fitted from a finite sample. PAL can estimate their
+joint sampling uncertainty and use it when generating scenarios.
 
 <!--pytest-codeblocks:cont-->
 
 ```python
 from pal.fitting import UncertaintyMethod
 
-uncertain_fit = Gamma.fit(
-    losses, uncertainty_method=UncertaintyMethod.ASYMPTOTIC
-)
-uncertainty = uncertain_fit.uncertainty
-assert uncertainty is not None
+fit = Gamma.fit(losses, uncertainty_method=UncertaintyMethod.ASYMPTOTIC)
+assert fit.uncertainty is not None
 
-print("Parameter standard errors:", uncertainty.standard_errors)
-print("Parameter covariance:", uncertainty.covariance)
-print("95% marginal intervals:", uncertainty.confidence_intervals())
+# The parameters are fitted together and sampled together.
+print(fit.uncertainty.standard_errors)
+severity = fit.uncertainty.sample_distribution(n_sims=10_000)
+future_losses = severity.generate(n_sims=10_000)
 
-uncertain_gamma = uncertainty.sample_distribution(n_sims=10_000)
-simulated_losses = uncertain_gamma.generate(n_sims=10_000)
-assert simulated_losses.n_sims == 10_000
+assert future_losses.n_sims == 10_000
+assert severity._params["alpha"].coupled_variable_group is future_losses.coupled_variable_group
+assert severity._params["theta"].coupled_variable_group is future_losses.coupled_variable_group
 ```
 
-For each simulation path, PAL first draws a **jointly correlated parameter
-vector**, and then uses that parameter vector to simulate the future loss.
-The uncertain parameter values are PAL stochastic scalars in **one coupling
-group**, retaining their scenario alignment through downstream operations and
-frequency-severity models. Each claim in a simulation uses that simulation's
-parameter vector, and all parameters are reordered together by downstream
-coupling. The original fitted distribution in `gamma_fit.distribution` remains
-unchanged. Parameter draws and loss draws follow the configured Monte Carlo
-or randomized quasi-Monte Carlo method, using the active CPU or GPU backend.
-
-PAL draws in unconstrained coordinates and transforms each parameter into its
-admissible domain: positive quantities via logarithms, probabilities via
-logits, and GPD/GEV shape parameters above the regularity boundary of
-\(-1/2\). For GPD and GEV, it also checks the **joint** shape, scale and
-location values against the support of the observed sample. Infeasible
-samples are redrawn as complete parameter vectors, never clipped or
-resampled independently, preserving their estimated joint dependence.
-A warning is raised when more than 5% of the initial scenario count needs
-replacement, since the local normal approximation can be unreliable near
-a boundary and rejection reduces the benefit of RQMC.
+Each simulation has one correlated pair of Gamma parameters, and PAL
+retains that pair when simulating claims from the same scenario.
+The original fitted `fit.distribution` retains fixed MLE parameters.
+The same approach works with PAL's Monte Carlo, randomized quasi-Monte Carlo,
+and supported GPU simulations.
 
 The covariance is a **large-sample local approximation**, not an exact
 confidence distribution, posterior, or calibrated predictive distribution.
