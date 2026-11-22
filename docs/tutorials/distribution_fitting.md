@@ -56,27 +56,34 @@ uncertainty = fit_with_uncertainty.uncertainty
 assert uncertainty is not None
 print("Parameter standard errors:", uncertainty.standard_errors)
 
-# Draw one correlated pair of Gamma parameters per simulation.
+# This returns an ordinary Gamma distribution with stochastic parameters.
 uncertain_gamma = uncertainty.sample_distribution()
+assert isinstance(uncertain_gamma, Gamma)
 simulated_losses = uncertain_gamma.generate()
 ```
 
-PAL draws shape and scale **together**, retaining their estimated
-correlation. Both parameters are positive, and their stochastic values
-are **coupled** with the simulated losses. The same parameter pair can
-therefore be used consistently for all claims within a scenario when
-the severity distribution is used in a frequency-severity model.
+`uncertain_gamma` is an ordinary PAL `Gamma` instance whose
+`alpha` and `theta` parameters are `StochasticScalar` objects.
+PAL draws the two parameters **together**, retaining their estimated
+correlation. They are **coupled** with the simulated losses, so every
+claim within a given scenario can use the same parameter pair in a
+frequency-severity model. PAL also keeps parameter draws within their
+admissible bounds.
 
-PAL respects each parameter's permitted range and checks additional
-joint constraints where necessary. The fitted point-estimate
-distribution remains available as `fit_with_uncertainty.distribution`.
-The default `Gamma.fit(losses)` uses fixed MLE parameters.
+The point-estimate distribution remains available as
+`fit_with_uncertainty.distribution`. Calling `Gamma.fit(losses)`
+without an uncertainty method continues to use fixed MLE parameters.
 
-This is a **large-sample approximation** to parameter uncertainty,
-not an exact predictive distribution, and may be less reliable for
-small samples or extreme tail probabilities. For further research on
-predictive calibration, see Jewson and Sweeting (2026),
-[Including parameter uncertainty in loss distributions using calibrating priors](https://doi.org/10.1017/S1748499525100237).
+The covariance-based approach uses a large-sample approximation.
+Alternatives include parameter bootstrapping, Bayesian posterior
+prediction, and predictive calibration. For examples, see Jewson and
+Sweeting (2026),
+[Including parameter uncertainty in loss distributions using calibrating priors](https://doi.org/10.1017/S1748499525100237),
+and Norman,
+[Exact Frequentist Prediction Intervals for a Gamma Distribution with Unknown Shape and Scale](https://github.com/ProteusLLP/proteus-research/blob/main/gamma_prediction/paper/gamma_prediction_interval_final.tex),
+which derives finite-sample prediction intervals using an augmented
+sufficient statistic. The latter constructs prediction limits directly
+rather than simulating uncertain Gamma parameters.
 
 <!--pytest-codeblocks:cont-->
 
