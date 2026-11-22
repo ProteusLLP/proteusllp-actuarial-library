@@ -1,11 +1,14 @@
 """Tests for joint likelihood-based uncertainty in fitted severity parameters."""
 
+import inspect
+
 import numpy as np
 import pytest
 from scipy import stats
 
 from pal.config import set_random_seed, set_sampling_method
 from pal.distributions import GPD, Gamma, LogNormal, Pareto
+from pal.fitting import UncertaintyMethod
 from pal.maths import asnumpy
 from pal.stochastic_scalar import StochasticScalar
 from pal.types import SamplingMethod
@@ -117,3 +120,84 @@ def test_uncertainty_respects_pal_sampling_method(method: SamplingMethod) -> Non
         assert np.all(np.isfinite(asnumpy(simulation.values)))
     finally:
         set_sampling_method(SamplingMethod.MC)
+
+
+
+def test_uncertainty_method_is_an_option_in_every_distribution_fit() -> None:
+    """All PAL distribution fits expose one consistently named method option."""
+    from pal import distributions as d
+
+    families = [
+        cls
+        for cls in vars(d).values()
+        if inspect.isclass(cls)
+        and issubclass(cls, d.DistributionBase)
+        and cls.__module__ == d.__name__
+        and "fit" in cls.__dict__
+    ]
+    assert len(families) >= 30
+    for family in families:
+        signature = inspect.signature(family.fit)
+        assert "uncertainty_method" in signature.parameters
+        assert signature.parameters["uncertainty_method"].default is UncertaintyMethod.NONE
+
+
+def test_fit_populates_uncertainty_when_requested() -> None:
+    rng = np.random.default_rng(142)
+    observations = rng.gamma(2.0, 3.0, 400)
+    standard = Gamma.fit(observations)
+    assert standard.uncertainty is None
+    fitted = Gamma.fit(observations, uncertainty_method=UncertaintyMethod.ASYMPTOTIC)
+    assert fitted.uncertainty is not None
+    assert fitted.parameters == standard.parameters
+    assert fitted.log_likelihood == standard.log_likelihood
+    assert fitted.uncertainty.standard_errors["alpha"] > 0
+    assert fitted.uncertainty.standard_errors["theta"] > 0
+    random_severity = fitted.uncertainty.sample_distribution(256, rng=np.random.default_rng(51))
+    assert random_severity.generate(256).n_sims == 256
+
+
+@pytest.mark.parametrize(
+    ("family_name", "kind"),
+    [
+        ("Normal", "normal"),
+        ("Logistic", "logistic"),
+        ("Beta", "beta"),
+        ("Poisson", "poisson"),
+        ("Binomial", "binomial"),
+        ("Bernoulli", "bernoulli"),
+        ("NegBinomial", "nbinom"),
+        ("Weibull", "weibull"),
+        ("Exponential", "exponential"),
+        ("InverseGamma", "invgamma"),
+        ("LogLogistic", "fisk"),
+    ],
+)
+def test_regular_families_support_uncertainty(family_name: str, kind: str) -> None:
+    """Smoke-test observed information, covariance and parameter simulation."""
+    from pal import distributions as d
+
+    rng = np.random.default_rng(622)
+    sample = {
+        "normal": lambda: rng.normal(2.0, 2.0, 550),
+        "logistic": lambda: stats.logistic.rvs(loc=1.0, scale=3.0, size=550, random_state=rng),
+        "beta": lambda: rng.beta(3.5, 4.2, 550),
+        "poisson": lambda: rng.poisson(3.5, 550),
+        "binomial": lambda: rng.binomial(12, 0.4, 550),
+        "bernoulli": lambda: rng.binomial(1, 0.45, 550),
+        "nbinom": lambda: rng.negative_binomial(3, 0.4, 550),
+        "weibull": lambda: rng.weibull(1.6, 550) * 5,
+        "exponential": lambda: rng.exponential(4, 550),
+        "invgamma": lambda: stats.invgamma.rvs(a=3.5, scale=5.0, size=550, random_state=rng),
+        "fisk": lambda: stats.fisk.rvs(c=2.5, scale=3, size=550, random_state=rng),
+    }[kind]()
+    options = {"n": 12} if kind == "binomial" else {}
+    fit = getattr(d, family_name).fit(
+        sample, uncertainty_method=UncertaintyMethod.ASYMPTOTIC, **options
+    )
+    assert fit.uncertainty is not None
+    assert np.linalg.eigvalsh(fit.uncertainty.covariance).min() > 0
+    sampled = fit.uncertainty.parameter_samples(128, rng=np.random.default_rng(47))
+    for name in fit.uncertainty.parameter_names:
+        assert isinstance(sampled[name], StochasticScalar)
+        assert np.all(np.isfinite(asnumpy(sampled[name].values)))
