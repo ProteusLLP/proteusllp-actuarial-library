@@ -8,6 +8,7 @@ the fitted joint asymptotic covariance. Neither is a Bayesian posterior.
 from __future__ import annotations
 
 import typing as t
+from copy import copy
 from dataclasses import dataclass
 
 import numpy as np
@@ -238,6 +239,36 @@ class WeightedDistribution(DistributionBase):
         choices = _model_indices(self.weights, n_sims, rng)
         couple_stochastic_results((choices,), sources, n_sims=n_sims)
         return WeightedDistribution(self.distributions, self.weights, model_indices=choices)
+
+    def for_events(self, simulation_indices: t.Any) -> WeightedDistribution:
+        """Expand one scenario parameter vector and model identity per claim.
+
+        This is an internal view used by FrequencySeverityModel. Its event-
+        indexed temporaries are never coupled to the original scenario axis.
+        """
+        from ._maths import asnumpy
+        from ._value_arrays import host_values
+
+        indices = to_backend(simulation_indices)
+        members: list[DistributionBase] = []
+        for distribution in self.distributions:
+            member = copy(distribution)
+            member._params = {
+                name: (
+                    StochasticScalar(
+                        value.values[asnumpy(indices) if host_values(value.values) else indices]
+                    )
+                    if isinstance(value, StochasticScalar)
+                    else value
+                )
+                for name, value in distribution._params.items()
+            }
+            members.append(member)
+        selected = None
+        if self.model_indices is not None:
+            values = self.model_indices.values
+            selected = StochasticScalar(values[asnumpy(indices) if host_values(values) else indices])
+        return WeightedDistribution(members, self.weights, model_indices=selected)
 
     def generate(self, n_sims: int | None = None, rng: t.Any = None) -> StochasticScalar:
         """Draw one loss per scenario, retaining model/parameter coupling."""
