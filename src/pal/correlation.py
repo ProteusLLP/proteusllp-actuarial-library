@@ -148,8 +148,12 @@ def nearest_correlation(
         if method == "spectral":
             raise ValueError("Weighted repair requires method='higham'.")
         return weighted_nearest_correlation(
-            source, weights, pattern=pattern, minimum_eigenvalue=minimum_eigenvalue,
-            tolerance=tolerance, max_iterations=max_iterations,
+            source,
+            weights,
+            pattern=pattern,
+            minimum_eigenvalue=minimum_eigenvalue,
+            tolerance=tolerance,
+            max_iterations=max_iterations,
         )
 
     if source.shape[0] == 1:
