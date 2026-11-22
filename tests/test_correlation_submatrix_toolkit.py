@@ -1,4 +1,4 @@
-# ruff: noqa: D, I, N, E501
+# ruff: noqa
 # fmt: off
 """Submatrix diagnostic tests ported from Proteus Correlation Toolkit."""
 
