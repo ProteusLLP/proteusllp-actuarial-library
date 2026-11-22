@@ -11,7 +11,28 @@ import numpy.typing as npt
 from ._maths import xp
 from ._weighted_correlation import weighted_nearest_correlation
 
-__all__ = ["near_corr", "nearest_correlation", "is_psd"]
+__all__ = [
+    "near_corr",
+    "nearest_correlation",
+    "is_psd",
+    "complete_corr",
+    "complete_corr_sparse",
+    "complete_corr_dense",
+    "cluster_corr",
+    "ClusteringResult",
+    "analyze_threshold_ranges",
+    "extract_clusters",
+    "compute_cluster_statistics",
+    "get_adjacency_matrx",
+    "get_adjacency_matrix",
+    "get_edges_from_adjacency_matrix",
+    "get_edges_from_incomplete_matrix",
+    "get_all_cliques",
+    "get_big_cliques_from_edges",
+    "check_all_cliques_in_correlation_matrix",
+    "check_incomplete_matrix_is_chordal",
+    "find_non_pd_submatrix",
+]
 
 Method = t.Literal["higham", "spectral"]
 
@@ -205,3 +226,24 @@ def is_psd(matrix: npt.ArrayLike) -> bool:
     if not bool(xp.all(xp.isfinite(values))) or not bool(xp.allclose(values, values.T)):
         return False
     return float(xp.linalg.eigvalsh(values)[0].item()) >= -1e-12
+
+# Import dependent modules after the primary repair functions are defined.
+from .correlation_cliques import (  # noqa: E402
+    check_all_cliques_in_correlation_matrix,
+    check_incomplete_matrix_is_chordal,
+    find_non_pd_submatrix,
+    get_adjacency_matrix,
+    get_adjacency_matrx,
+    get_all_cliques,
+    get_big_cliques_from_edges,
+    get_edges_from_adjacency_matrix,
+    get_edges_from_incomplete_matrix,
+)
+from .correlation_clustering import (  # noqa: E402
+    ClusteringResult,
+    analyze_threshold_ranges,
+    cluster_corr,
+    compute_cluster_statistics,
+    extract_clusters,
+)
+from .correlation_completion import complete_corr, complete_corr_dense, complete_corr_sparse  # noqa: E402
