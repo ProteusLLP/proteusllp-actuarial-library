@@ -54,7 +54,11 @@ def _parameter_names(family: type[t.Any], parameters: dict[str, t.Any], threshol
 def _transform_types(family: type[t.Any], names: tuple[str, ...]) -> tuple[str, ...]:
     from . import distributions as d
 
-    real = {"mu", "shape" if family in (d.GPD, d.GEV) else "", "p" if family is d.GeneralizedInverseGaussian else ""}
+    real = {"mu"} if family in (d.Normal, d.Logistic, d.LogNormal, d.StudentsT) else set()
+    if family in (d.GPD, d.GEV):
+        real.add("shape")
+    if family is d.GeneralizedInverseGaussian:
+        real.add("p")
     if family is d.GEV:
         real.add("loc")
     probability = {"p"} if family in (d.Binomial, d.Bernoulli, d.NegBinomial) else set()
