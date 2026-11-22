@@ -15,8 +15,8 @@ from pathlib import Path
 
 import fsspec
 
-StorageLocation = str | os.PathLike[str] | t.IO[t.Any]
-StorageOptions = Mapping[str, t.Any] | None
+StorageLocation = t.Union[str, os.PathLike[str], t.IO[t.Any]]
+StorageOptions = t.Optional[Mapping[str, t.Any]]
 
 
 @contextmanager
