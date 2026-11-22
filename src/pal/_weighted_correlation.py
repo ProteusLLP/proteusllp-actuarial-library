@@ -17,31 +17,14 @@ from ._maths import xp
 
 
 def _row_weights(weights: t.Any, size: int) -> t.Any:
-    """Read positive row/column weights, accepting legacy matrix forms."""
-    raw = xp.asarray(weights, dtype=xp.float64)
-    if raw.ndim == 1 and raw.shape == (size,):
-        vector = raw
-    elif raw.ndim == 2 and raw.shape == (size, size):
-        if not bool(xp.all(xp.isfinite(raw))):
-            raise ValueError("weights must be finite.")
-        if bool(xp.allclose(raw, xp.diag(xp.diag(raw)), rtol=1e-12, atol=1e-12)):
-            # A diagonal weight matrix W = diag(w).
-            vector = xp.diag(raw)
-        else:
-            # Also accept a full matrix of factorisable entrywise weights w_i*w_j.
-            if not bool(xp.all(xp.diag(raw) > 0)):
-                raise ValueError("weights must be strictly positive.")
-            vector = xp.sqrt(xp.diag(raw))
-            if not bool(xp.allclose(raw, vector[:, None] * vector[None, :], rtol=1e-9, atol=1e-12)):
-                raise ValueError(
-                    "weights must be a vector, a positive diagonal matrix, "
-                    "or an outer product of positive row/column weights."
-                )
-    else:
-        raise ValueError("weights must be a vector of length n or an n-by-n matrix.")
+    """Validate and normalise a positive vector of row/column weights."""
+    vector = xp.asarray(weights, dtype=xp.float64)
+    if vector.ndim != 1 or vector.shape != (size,):
+        raise ValueError("weights must be a one-dimensional vector of length n.")
     if not bool(xp.all(xp.isfinite(vector))) or not bool(xp.all(vector > 0)):
         raise ValueError("weights must be finite and strictly positive.")
-    # Only relative weights matter. Normalise to improve eigensolver conditioning.
+    # Multiplying all weights by a constant does not change the minimiser.
+    # Normalise before constructing the congruence matrix.
     return vector / xp.mean(vector)
 
 
@@ -57,9 +40,10 @@ def weighted_nearest_correlation(
     """Compute Higham's nearest correlation matrix in a diagonal weighted norm.
 
     A positive weight vector w defines the quadratic objective
-    sum_ij w_i*w_j*(C_ij - A_ij)**2. A positive diagonal matrix diag(w) or
-    a separable matrix outer(w, w) is accepted as well. Arbitrary elementwise
-    weights are not representable by a simple congruence transformation.
+    sum_ij w_i*w_j*(C_ij - A_ij)**2. The weights argument must be a
+    strictly positive vector of length n. Each weight rescales one row
+    and its corresponding column through D = diag(sqrt(w)); an
+    elementwise n-by-n matrix is not accepted.
 
     Fixed correlations in pattern are preserved symmetrically, and
     minimum_eigenvalue imposes C >= minimum_eigenvalue * I. Dykstra's
