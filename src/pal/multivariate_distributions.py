@@ -15,8 +15,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 import numpy.typing as npt
 
-from ._maths import asnumpy, special, to_backend, xp
 from ._correlation_preparation import RepairMode, prepare_correlation_matrix
+from ._maths import asnumpy, special, to_backend, xp
 from .config import config
 from .couplings import couple_stochastic_results
 from .qmc import _draw_scenarios
