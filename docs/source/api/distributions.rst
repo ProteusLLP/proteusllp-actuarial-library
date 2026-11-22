@@ -58,6 +58,15 @@ Multivariate distributions
 Multivariate samples are returned as a :class:`pal.variables.ProteusVariable`
 with one named :class:`pal.variables.StochasticScalar` per component.
 
+Multivariate normal and Student's t models automatically repair invalid
+correlations using Higham's algorithm, raising a ``UserWarning`` when repair
+is necessary. The marginal variances or scale-matrix diagonal are preserved.
+The ``adjusted_correlation_matrix`` property gives the correlations used;
+``adjusted_covariance_matrix`` (normal) and ``adjusted_scale_matrix``
+(Student's t) give the full adjusted matrices. Valid matrices are unchanged.
+Pass ``repair="none"`` to require a valid input, or use Higham's positive
+vector ``weights`` and fixed-entry ``pattern`` parameters.
+
 .. autosummary::
    :toctree: distributions
    :nosignatures:
