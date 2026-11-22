@@ -104,7 +104,7 @@ class WeightedDistribution(DistributionBase):
             raise ValueError("families must be nonempty and contain no duplicates")
         if any(not isinstance(f, type) or not issubclass(f, DistributionBase) for f in candidates):
             raise TypeError("families must contain PAL distribution classes")
-        from .distributions import Categorical, HyperGeometric, MBBEFD, Uniform
+        from .distributions import MBBEFD, Categorical, HyperGeometric, Uniform
 
         if any(f in (Categorical, HyperGeometric, MBBEFD, Uniform) for f in candidates):
             raise ValueError("AICc model averaging does not support nonregular or mixed-measure families")
