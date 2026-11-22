@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from pal.maths import asnumpy
 from pal.correlation import nearest_correlation
+from pal.maths import asnumpy
 
 
 @pytest.mark.parametrize("method", ["higham", "spectral"])
