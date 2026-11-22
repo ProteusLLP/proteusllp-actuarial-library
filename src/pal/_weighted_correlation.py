@@ -100,12 +100,9 @@ def weighted_nearest_correlation(
 
         change = float((xp.linalg.norm(result - previous) / xp.maximum(1.0, xp.linalg.norm(result))).item())
         if change <= tolerance:
-            candidate = result / outer_root
+            candidate = (result + result.T) * (0.5 / outer_root)
+            # Inverting Y = D(C - mI)D restores mI to the diagonal.
             candidate[index, index] = 1.0
-            candidate = (candidate + candidate.T) * 0.5
-            if minimum_eigenvalue:
-                candidate = candidate + xp.eye(n) * minimum_eigenvalue
-                candidate[index, index] = 1.0
             # Check feasibility on the original correlation scale.
             if float(xp.linalg.eigvalsh(candidate)[0].item()) >= minimum_eigenvalue - 10.0 * tolerance:
                 return candidate
