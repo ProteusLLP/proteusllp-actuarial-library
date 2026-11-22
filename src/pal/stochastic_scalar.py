@@ -114,7 +114,11 @@ class StochasticScalar(ProteusStochasticVariable):
         stochastic_inputs = tuple(value for value in inputs if isinstance(value, StochasticScalar))
         mask_source = (where,) if isinstance(where, StochasticScalar) else ()
         output_sources = tuple(value for value in destinations if isinstance(value, StochasticScalar))
-        validate_stochastic_axes((self, *stochastic_inputs, *mask_source, *output_sources))
+        target_n_sims = validate_stochastic_axes((self, *stochastic_inputs, *mask_source, *output_sources))
+        if target_n_sims is None:
+            raise ValueError("Cannot determine stochastic simulation axis")
+        if target_n_sims > 1 and any(value.n_sims != target_n_sims for value in output_sources):
+            raise ValueError("Stochastic out= destination has incompatible n_sims")
 
         # Only elementwise operations preserve scenario alignment in the output.
         if method != "__call__" and output_sources:
@@ -126,7 +130,7 @@ class StochasticScalar(ProteusStochasticVariable):
             mask_dtype = raw_mask.dtype if hasattr(raw_mask, "dtype") else np.asarray(raw_mask).dtype
             if mask_dtype.kind != "b":
                 raise TypeError("where must be a boolean mask")
-            if mask_shape not in ((), (self.n_sims,)):
+            if mask_shape not in ((), (1,), (target_n_sims,)):
                 raise ValueError("where mask has incompatible n_sims")
         if method == "__call__" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
             if not destinations or any(destination is None for destination in destinations):
@@ -213,7 +217,9 @@ class StochasticScalar(ProteusStochasticVariable):
                 result_leaves.append(destination)
             coupled_results = tuple(value for value in result_leaves if isinstance(value, StochasticScalar))
             if coupled_results:
-                couple_stochastic_results(coupled_results, (self, *stochastic_inputs, *mask_source), n_sims=self.n_sims)
+                couple_stochastic_results(
+                    coupled_results, (self, *stochastic_inputs, *mask_source), n_sims=target_n_sims
+                )
             result = tuple(result_leaves) if len(result_leaves) > 1 else result_leaves[0]
             return result
 
@@ -264,7 +270,11 @@ class StochasticScalar(ProteusStochasticVariable):
 
         sources = (self, *(arg for arg in (*args, *kwargs.values()) if isinstance(arg, StochasticScalar)))
         targets = (output,) if isinstance(output, StochasticScalar) else ()
-        validate_stochastic_axes((*sources, *targets), n_sims=self.n_sims)
+        target_n_sims = validate_stochastic_axes((*sources, *targets))
+        if target_n_sims is None:
+            raise ValueError("Cannot determine stochastic simulation axis")
+        if target_n_sims > 1 and any(value.n_sims != target_n_sims for value in targets):
+            raise ValueError("Stochastic out= destination has incompatible n_sims")
         is_host = host_values(self.values) or any(
             host_values(value.values if isinstance(value, StochasticScalar) else value)
             for value in (*args, *kwargs.values())
@@ -295,7 +305,7 @@ class StochasticScalar(ProteusStochasticVariable):
             values = asnumpy(calculated) if destination_backend is np else xp.asarray(calculated)
             destination_backend.copyto(destination, values, casting="same_kind")
             if isinstance(output, StochasticScalar):
-                couple_stochastic_results((output,), sources, n_sims=self.n_sims)
+                couple_stochastic_results((output,), sources, n_sims=target_n_sims)
             return output
 
         scalar_result = scalar_or_array(calculated)
@@ -304,7 +314,7 @@ class StochasticScalar(ProteusStochasticVariable):
         if getattr(calculated, "ndim", None) != 1:
             return calculated
         if preserving:
-            if len(calculated) != self.n_sims:
+            if self.n_sims != 1 and len(calculated) != target_n_sims:
                 raise ValueError("Stochastic result has incompatible n_sims")
             return self._wrap_result_with_coupling(calculated, sources)
         return StochasticScalar(calculated)
@@ -543,6 +553,8 @@ class StochasticScalar(ProteusStochasticVariable):
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
         """Reorder the simulations in the variable."""
         order = asnumpy(new_order) if host_values(self.values) else new_order
+        if self.n_sims == 1 and len(new_order) != 1:
+            return  # A deterministic constant is independent of scenario order.
         self.values = self.values[order]
 
     def _wrap_reduction_result(self, result: t.Any) -> t.Any:
@@ -570,10 +582,11 @@ class StochasticScalar(ProteusStochasticVariable):
                 return scalar_result
             if getattr(value, "ndim", None) != 1:
                 return value
-            if len(value) != self.n_sims:
-                raise ValueError(
-                    f"Stochastic result has incompatible n_sims (expected {self.n_sims}, got {len(value)})"
-                )
+            # A length-one constant can participate in longer scenario
+            # expressions, but full stochastic arrays cannot change length.
+            target = self.n_sims if self.n_sims != 1 else len(value)
+            if len(value) != target:
+                raise ValueError(f"Stochastic result has incompatible n_sims (expected {target}, got {len(value)})")
             return StochasticScalar(value)
 
         if isinstance(result_array, tuple):
@@ -584,5 +597,5 @@ class StochasticScalar(ProteusStochasticVariable):
         result_leaves = tuple(value for value in leaves if isinstance(value, StochasticScalar))
         if result_leaves:
             stochastic_inputs = (self, *(value for value in inputs if isinstance(value, ProteusStochasticVariable)))
-            couple_stochastic_results(result_leaves, stochastic_inputs, n_sims=self.n_sims)
+            couple_stochastic_results(result_leaves, stochastic_inputs, n_sims=result_leaves[0].n_sims)
         return prepared

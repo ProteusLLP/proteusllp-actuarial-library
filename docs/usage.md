@@ -29,6 +29,10 @@ gamma_var = Gamma(alpha=2.5, theta=2).generate()
 lognormal_var = LogNormal(mu=1, sigma=0.5).generate()
 ```
 
+### Constant stochastic scalars
+
+A one-simulation `StochasticScalar` represents a constant across all simulations.
+
 ## Variable Containers
 
 Variables can be grouped into containers with the `ProteusVariable` class:

@@ -176,6 +176,8 @@ class FrequencySeverityModel:
                     StochasticScalar(
                         value.values[asnumpy(event_indices) if host_values(value.values) else event_indices]
                     )
+                    if isinstance(value, StochasticScalar) and value.n_sims != 1
+                    else value.values[0]
                     if isinstance(value, StochasticScalar)
                     else value
                 )
@@ -221,7 +223,7 @@ class FrequencySeverityModel:
             name: param for name, param in severity_params.items() if isinstance(param, StochasticScalar)
         }
         for name, param in stochastic_params.items():
-            if param.n_sims != n_sims:
+            if param.n_sims not in (1, n_sims):
                 raise ValueError(
                     f"Stochastic severity parameter {name!r} must have one value per simulation "
                     f"({n_sims} values), got {param.n_sims}"
@@ -256,6 +258,8 @@ class FrequencySeverityModel:
                     StochasticScalar(
                         param.values[asnumpy(sample_indices) if host_values(param.values) else sample_indices]
                     )
+                    if isinstance(param, StochasticScalar) and param.n_sims != 1
+                    else param.values[0]
                     if isinstance(param, StochasticScalar)
                     else param
                 )
@@ -540,7 +544,7 @@ class FreqSevSims(_ProteusStochasticVariable):
             return asnumpy(x.values) if host else x.values
         elif isinstance(x, StochasticScalar):
             values = asnumpy(x.values) if host else x.values
-            return values[indices]
+            return values[0] if x.n_sims == 1 else values[indices]
         elif isinstance(x, (np.ndarray, xp.ndarray)):
             backend_array = asnumpy(x) if host else to_backend(x)
             return backend_array[indices]  # type: ignore[misc]
