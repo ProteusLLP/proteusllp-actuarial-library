@@ -73,14 +73,14 @@ ReturnType = t.Union[int, float, StochasticScalar]
 def _special_call(function: t.Callable[..., t.Any], *args: t.Any) -> t.Any:
     """Call a SciPy-compatible special function on active-backend values."""
     stochastic_args = [arg for arg in args if isinstance(arg, StochasticScalar)]
-    validate_stochastic_axes(stochastic_args)
+    target_n_sims = validate_stochastic_axes(stochastic_args)
     processed_args = [arg.values if isinstance(arg, StochasticScalar) else to_backend(arg) for arg in args]
     result = function(*processed_args)
     if stochastic_args and getattr(result, "ndim", None) == 1:
-        if len(result) != stochastic_args[0].n_sims:
+        if target_n_sims not in (None, 1) and len(result) != target_n_sims:
             raise ValueError("Special function result has incompatible n_sims")
         wrapped = StochasticScalar(result)
-        couple_stochastic_results((wrapped,), stochastic_args)
+        couple_stochastic_results((wrapped,), stochastic_args, n_sims=len(result))
         return wrapped
     return scalar_or_array(result)
 
