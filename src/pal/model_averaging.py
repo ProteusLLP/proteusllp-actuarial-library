@@ -186,7 +186,7 @@ class WeightedDistribution(DistributionBase):
         selected = self.model_indices.values
         values = xp.zeros(self.model_indices.n_sims, dtype=float)
         for i, distribution in enumerate(self._components()):
-            evaluated = to_backend(_raw(getattr(distribution, method)(argument)))
+            evaluated = xp.asarray(to_backend(_raw(getattr(distribution, method)(argument))))
             if method == "cdf":
                 evaluated = xp.clip(evaluated, 0.0, 1.0)
             values = xp.where(selected == i, evaluated, values)
@@ -203,7 +203,7 @@ class WeightedDistribution(DistributionBase):
         result: t.Any = 0.0
         for weight, component in zip(self.weights, self._components()):
             if weight:
-                probability = xp.clip(to_backend(_raw(component.cdf(x))), 0.0, 1.0)
+                probability = xp.clip(xp.asarray(to_backend(_raw(component.cdf(x)))), 0.0, 1.0)
                 result = result + weight * probability
         if n_sims is not None:
             output = StochasticScalar(xp.broadcast_to(result, (n_sims,)).copy())
@@ -217,7 +217,7 @@ class WeightedDistribution(DistributionBase):
             return self._evaluate_selected("invcdf", u)
         sources = self._sources(u)
         n_sims = validate_stochastic_axes(sources)
-        probabilities = to_backend(_raw(u))
+        probabilities = xp.asarray(to_backend(_raw(u)))
         if bool(xp.any(~xp.isfinite(probabilities) | (probabilities < 0) | (probabilities > 1))):
             raise ValueError("u must contain finite probabilities between zero and one")
 
@@ -225,7 +225,7 @@ class WeightedDistribution(DistributionBase):
         # quantiles at the same probability. No guess at a support bound needed.
         internal = xp.clip(probabilities, np.finfo(float).eps, 1 - np.finfo(float).eps)
         components = self._components()
-        brackets = [to_backend(_raw(d.invcdf(internal))) for d in components]
+        brackets = [xp.asarray(to_backend(_raw(d.invcdf(internal)))) for d in components]
         left = brackets[0]
         right = brackets[0]
         for bracket in brackets[1:]:
