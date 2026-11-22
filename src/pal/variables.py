@@ -933,8 +933,9 @@ class ProteusVariable(t.Generic[T]):
         dimension_columns: t.Sequence[str] | None = None,
         event_column: str = "Event",
         n_sims: int | None = None,
+        couple: bool = True,
     ) -> ProteusVariable[t.Any]:
-        """Read conventional tables, including nested dimension columns."""
+        """Read tables; couple leaves sharing the imported scenario IDs by default."""
         from .data_interchange import from_dataframe
 
         return from_dataframe(
@@ -945,6 +946,7 @@ class ProteusVariable(t.Generic[T]):
             dimension_columns=dimension_columns,
             event_column=event_column,
             n_sims=n_sims,
+            couple=couple,
         )
 
     def to_csv(
@@ -984,6 +986,7 @@ class ProteusVariable(t.Generic[T]):
         n_sims: int | None = None,
         header_rows: int | None = None,
         storage_options: t.Mapping[str, t.Any] | None = None,
+        couple: bool = True,
     ) -> ProteusVariable[t.Any]:
         """Import CSV from any filesystem, including PAL's MultiIndex headers.
 
@@ -1027,6 +1030,7 @@ class ProteusVariable(t.Generic[T]):
             dimension_columns=dimension_columns,
             event_column=event_column,
             n_sims=n_sims,
+            couple=couple,
         )
 
     def to_parquet(
@@ -1065,6 +1069,7 @@ class ProteusVariable(t.Generic[T]):
         event_column: str = "Event",
         n_sims: int | None = None,
         storage_options: t.Mapping[str, t.Any] | None = None,
+        couple: bool = True,
     ) -> ProteusVariable[t.Any]:
         """Read ordinary Parquet, including nested pandas MultiIndex columns."""
         from .storage import open_file
@@ -1079,6 +1084,7 @@ class ProteusVariable(t.Generic[T]):
             dimension_columns=dimension_columns,
             event_column=event_column,
             n_sims=n_sims,
+            couple=couple,
         )
 
     @classmethod
