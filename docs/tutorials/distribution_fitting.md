@@ -486,7 +486,22 @@ claim. For one-off predictive draws, using
 `model_fit.distribution.generate()` instead draws a model independently
 for each observation.
 
-Manual weights are also possible:
+For the same fitted candidate models, you can override AICc weights while
+preserving the individual MLE estimates and diagnostics:
+
+```python
+manual_fit = WeightedDistribution.fit(
+    sample,
+    [Gamma, LogNormal],
+    model_weights={Gamma: 0.7, LogNormal: 0.3},
+)
+```
+
+Here, `model_weights` refers to distribution-family weights;
+`weights` in a family's fitting function continues to mean observation
+frequency weights.
+
+Manual weights are also possible when constructing a distribution directly:
 
 ```python
 from pal.distributions import Gamma, LogNormal, WeightedDistribution
