@@ -10,9 +10,16 @@ from __future__ import annotations
 import typing as t
 
 import numpy as np
-from scipy import special, stats
+from scipy import stats
 
-from .fitting import _frozen_distribution, _gb2_terms, _gamma_logsf, _log_likelihood, _other_families, _supported_families
+from .fitting import (
+    _frozen_distribution,
+    _gamma_logsf,
+    _gb2_terms,
+    _log_likelihood,
+    _other_families,
+    _supported_families,
+)
 from .fitting_remaining import _continuous_families, _discrete_families
 
 
