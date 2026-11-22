@@ -70,11 +70,24 @@ assert simulated_losses.n_sims == 10_000
 
 For each simulation path, PAL first draws a **jointly correlated parameter
 vector**, and then uses that parameter vector to simulate the future loss.
-The uncertain parameter values are PAL stochastic scalars, retaining their
-scenario alignment through downstream operations and frequency-severity
-models. The original fitted distribution in `gamma_fit.distribution` remains
+The uncertain parameter values are PAL stochastic scalars in **one coupling
+group**, retaining their scenario alignment through downstream operations and
+frequency-severity models. Each claim in a simulation uses that simulation's
+parameter vector, and all parameters are reordered together by downstream
+coupling. The original fitted distribution in `gamma_fit.distribution` remains
 unchanged. Parameter draws and loss draws follow the configured Monte Carlo
 or randomized quasi-Monte Carlo method, using the active CPU or GPU backend.
+
+PAL draws in unconstrained coordinates and transforms each parameter into its
+admissible domain: positive quantities via logarithms, probabilities via
+logits, and GPD/GEV shape parameters above the regularity boundary of
+\(-1/2\). For GPD and GEV, it also checks the **joint** shape, scale and
+location values against the support of the observed sample. Infeasible
+samples are redrawn as complete parameter vectors, never clipped or
+resampled independently, preserving their estimated joint dependence.
+A warning is raised when more than 5% of the initial scenario count needs
+replacement, since the local normal approximation can be unreliable near
+a boundary and rejection reduces the benefit of RQMC.
 
 The covariance is a **large-sample local approximation**, not an exact
 confidence distribution, posterior, or calibrated predictive distribution.
