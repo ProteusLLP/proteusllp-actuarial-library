@@ -12,7 +12,6 @@ from pal.copulas import GaussianCopula, StudentsTCopula
 from pal.maths import asnumpy
 from pal.multivariate_distributions import MultivariateNormal, MultivariateStudentsT
 
-
 INDEFINITE = np.array([[1.0, 0.9, 0.9], [0.9, 1.0, -0.8], [0.9, -0.8, 1.0]])
 
 
