@@ -6,7 +6,7 @@ on its diagonal. Estimated or manually specified correlation matrices can
 violate these conditions, making them unsuitable for copulas and multivariate
 simulation.
 
-PAL provides two algorithms through :func:`pal.correlation.nearest_correlation`:
+PAL provides two repair algorithms through :func:`pal.correlation.nearest_correlation`:
 
 * **Higham** (the default) minimises the Frobenius distance to the input
   subject to the correlation-matrix constraints. It uses alternating
@@ -15,11 +15,11 @@ PAL provides two algorithms through :func:`pal.correlation.nearest_correlation`:
   It is a convenient one-step approximation, but does not generally yield
   the closest correlation matrix.
 
-Both algorithms work with NumPy and, when PAL is configured for GPU use, CuPy.
+The :func:`pal.correlation.near_corr` function preserves the Proteus Correlation\nToolkit interface, including the ability to preserve selected entries with a\nlist of fixed index pairs (the pattern argument). The original toolkit also\naccepted a weights argument but never applied it; PAL raises an error for\nnon-None weights rather than silently ignoring them.\n\nBoth repair algorithms work with NumPy and, when PAL is configured for GPU use, CuPy.
 A positive minimum eigenvalue can be requested when positive definiteness
 is required for Cholesky factorisation.
 
-.. autofunction:: pal.correlation.nearest_correlation
+.. autofunction:: pal.correlation.near_corr\n\n.. autofunction:: pal.correlation.nearest_correlation\n\n.. autofunction:: pal.correlation.is_psd
 
 Usage example
 -------------
