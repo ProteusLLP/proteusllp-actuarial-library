@@ -586,7 +586,7 @@ class GPD(DistributionBase):
             censored=censored,
             weights=weights,
             free_location=free_location,
-                    uncertainty_method=uncertainty_method,
+            uncertainty_method=uncertainty_method,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -876,7 +876,13 @@ class Beta(DistributionBase):
     ) -> FitResult[Beta]:
         """Estimate distribution parameters from observed values."""
         return fit_remaining(
-            cls, observations, weights=weights, censored=censored, threshold=threshold, loc=loc, scale=scale,
+            cls,
+            observations,
+            weights=weights,
+            censored=censored,
+            threshold=threshold,
+            loc=loc,
+            scale=scale,
             uncertainty_method=uncertainty_method,
         )
 
