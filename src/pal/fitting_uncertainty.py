@@ -123,7 +123,6 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
         return type(self.fit.distribution)(**self.parameter_samples(n_sims, rng))
 
 
-
 def _observed_hessian(objective: t.Callable[[np.ndarray], float], center: np.ndarray) -> np.ndarray:
     """Centered finite-difference Hessian in transformed coordinates."""
     size = len(center)
@@ -151,6 +150,7 @@ def _observed_hessian(objective: t.Callable[[np.ndarray], float], center: np.nda
     if not np.all(np.isfinite(hessian)):
         raise ValueError("Observed information is not finite near the fitted parameters")
     return hessian
+
 
 def asymptotic_parameter_uncertainty(
     fit: FitResult[_T],
@@ -181,9 +181,7 @@ def asymptotic_parameter_uncertainty(
     is_severity = family in (*_supported_families(), *_other_families())
 
     if is_severity:
-        x, c, w = _prepare(
-            observations, fit.threshold, censored, weights, allow_any_real=family is d.GEV
-        )
+        x, c, w = _prepare(observations, fit.threshold, censored, weights, allow_any_real=family is d.GEV)
     else:
         x, w = _input(observations, weights)
         x = np.asarray(x, dtype=float)
