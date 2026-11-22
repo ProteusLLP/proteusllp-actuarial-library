@@ -10,10 +10,7 @@ pytestmark = pytest.mark.skipif(xp.__name__ != "cupy", reason="requires a CuPy b
 
 @pytest.mark.parametrize("method", ["higham", "spectral"])
 def test_correlation_repair_remains_on_gpu(monkeypatch: pytest.MonkeyPatch, method: str) -> None:
-    matrix = xp.asarray(
-        [[1.0, 0.8, 0.8, 0.6], [0.8, 1.0, -0.4, 0.7],
-         [0.8, -0.4, 1.0, -0.9], [0.6, 0.7, -0.9, 1.0]]
-    )
+    matrix = xp.asarray([[1.0, 0.8, 0.8, 0.6], [0.8, 1.0, -0.4, 0.7], [0.8, -0.4, 1.0, -0.9], [0.6, 0.7, -0.9, 1.0]])
 
     def reject_host_copy(*args: object, **kwargs: object) -> None:
         raise AssertionError("unexpected GPU-to-CPU copy")
