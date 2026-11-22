@@ -99,6 +99,12 @@ class WeightedDistribution(DistributionBase):
         options = per_family_options or {}
         if any(f not in candidates for f in options):
             raise ValueError("per_family_options contains a family not in candidates")
+        if any(
+            key in {"weights", "censored", "threshold"}
+            for family_options in options.values()
+            for key in family_options
+        ):
+            raise ValueError("Observation, censoring and truncation options must be shared across all families")
         fitted: list[FitResult[t.Any]] = []
         for family in candidates:
             kwargs = {**fit_options, **options.get(family, {})}
@@ -183,12 +189,23 @@ class WeightedDistribution(DistributionBase):
             right = xp.maximum(right, bracket)
         if bool(xp.any(~xp.isfinite(left) | ~xp.isfinite(right))):
             raise ValueError("Cannot bracket the mixture quantile for these parameters")
-        for _ in range(70):
-            middle = left + 0.5 * (right - left)
-            cumulative = to_backend(_raw(self.cdf(StochasticScalar(middle) if n_sims is not None else middle)))
-            left = xp.where(cumulative < internal, middle, left)
-            right = xp.where(cumulative >= internal, middle, right)
-        result = left + 0.5 * (right - left)
+        if isinstance(self.distributions[0], DiscreteDistributionBase):
+            # The discrete quantile is the smallest integer with CDF >= p.
+            left = xp.floor(left)
+            right = xp.ceil(right)
+            for _ in range(70):
+                middle = xp.floor(left + 0.5 * (right - left))
+                cumulative = to_backend(_raw(self.cdf(StochasticScalar(middle) if n_sims is not None else middle)))
+                left = xp.where(cumulative < internal, middle + 1, left)
+                right = xp.where(cumulative >= internal, middle, right)
+            result = left
+        else:
+            for _ in range(70):
+                middle = left + 0.5 * (right - left)
+                cumulative = to_backend(_raw(self.cdf(StochasticScalar(middle) if n_sims is not None else middle)))
+                left = xp.where(cumulative < internal, middle, left)
+                right = xp.where(cumulative >= internal, middle, right)
+            result = left + 0.5 * (right - left)
         if bool(xp.any(probabilities == 0)):
             endpoints = [to_backend(_raw(d.invcdf(0.0))) for d in self.distributions]
             bottom = endpoints[0]
@@ -233,7 +250,7 @@ class WeightedDistribution(DistributionBase):
             raise RuntimeError("No PAL random generator is configured")
         sources = self._sources()
         validate_stochastic_axes(sources, n_sims=n_sims)
-        chosen = self.model_indices or _model_indices(self.weights, n_sims, rng)
+        chosen = self.model_indices if self.model_indices is not None else _model_indices(self.weights, n_sims, rng)
         generated = [distribution.generate(n_sims, rng) for distribution in self.distributions]
         values = generated[0].values
         for i in range(1, len(generated)):
