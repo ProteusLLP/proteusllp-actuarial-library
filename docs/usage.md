@@ -29,6 +29,31 @@ gamma_var = Gamma(alpha=2.5, theta=2).generate()
 lognormal_var = LogNormal(mu=1, sigma=0.5).generate()
 ```
 
+### Constant stochastic scalars
+
+A one-element `StochasticScalar` is treated as a deterministic constant when
+combined with a longer simulation. This is convenient when constructing
+multi-stage models with default values, such as reserve accumulators:
+
+```python
+from pal import StochasticScalar
+from pal.distributions import Gamma
+
+constant = StochasticScalar([2.0])
+losses = Gamma(3.0, 100.0).generate()
+total = losses + constant  # Add 2 to every simulated loss
+assert total.n_sims == losses.n_sims
+assert constant.n_sims == 1
+```
+
+The singleton retains its compact representation and is not coupled to a
+full-length simulation group, because its value cannot change under a
+scenario reordering. Results of operations are full-length stochastic
+variables coupled to their nonconstant simulation inputs. Two distinct
+full-length simulation sizes must still agree; ordinary mismatched vectors
+cannot broadcast. This convention applies to Monte Carlo and randomised
+quasi-Monte Carlo, including the NumPy and CuPy backends.
+
 ## Variable Containers
 
 Variables can be grouped into containers with the `ProteusVariable` class:
