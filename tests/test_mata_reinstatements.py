@@ -11,8 +11,6 @@ The paper's model:
   - Free reinstatements (c=0) with K=1 or K=infinity
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pal.config import set_default_n_sims, set_random_seed
