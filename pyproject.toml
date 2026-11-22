@@ -35,7 +35,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-parquet = ["pyarrow>=14.0"]
+parquet = [
+    "pyarrow>=14.0,<21; python_version < '3.11'",
+    "pyarrow>=14.0; python_version >= '3.11'",
+]
 s3 = ["s3fs>=2023.6.0"]
 azure = ["adlfs>=2023.6.0"]
 cloud = ["s3fs>=2023.6.0", "adlfs>=2023.6.0"]
