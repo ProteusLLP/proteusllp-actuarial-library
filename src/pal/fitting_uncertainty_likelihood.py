@@ -35,7 +35,7 @@ def _parameter_names(family: type[t.Any], parameters: dict[str, t.Any], threshol
         raise ValueError("Categorical probabilities require simplex-constrained uncertainty")
     if family is d.Pareto:
         if threshold <= 0 or not np.isclose(parameters["scale"], threshold, rtol=0, atol=1e-12):
-            raise ValueError("Pareto uncertainty requires a known lower endpoint (positive threshold)")
+            raise ValueError("Pareto uncertainty requires a known scale/lower endpoint (positive threshold)")
         return ("shape",)
     if family is d.GPD:
         if not np.isclose(parameters["loc"], threshold, rtol=0, atol=1e-12):
