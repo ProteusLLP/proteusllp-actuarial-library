@@ -217,7 +217,9 @@ class StochasticScalar(ProteusStochasticVariable):
                 result_leaves.append(destination)
             coupled_results = tuple(value for value in result_leaves if isinstance(value, StochasticScalar))
             if coupled_results:
-                couple_stochastic_results(coupled_results, (self, *stochastic_inputs, *mask_source), n_sims=target_n_sims)
+                couple_stochastic_results(
+                    coupled_results, (self, *stochastic_inputs, *mask_source), n_sims=target_n_sims
+                )
             result = tuple(result_leaves) if len(result_leaves) > 1 else result_leaves[0]
             return result
 
