@@ -1,3 +1,5 @@
+# ruff: noqa: D, I, N, E501
+# fmt: off
 """
 Comprehensive clustering tests - systematic coverage of all clustering functionality.
 
