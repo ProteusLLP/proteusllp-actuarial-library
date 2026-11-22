@@ -371,6 +371,7 @@ def fit_distribution(
             repeated observations for information criteria.
         free_location: Fit the three-parameter GPD when True. Only supported
             for GPD; the location defaults to the reporting threshold.
+        uncertainty_method: Optional joint parameter uncertainty method; defaults to None.
 
     Returns:
         Fitted distribution with maximum-likelihood diagnostics.
