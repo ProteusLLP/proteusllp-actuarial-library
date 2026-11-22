@@ -449,6 +449,8 @@ It uses two families whose likelihoods are comparable on the same severity
 observations.
 
 ```python
+import numpy as np
+
 from pal.distributions import Gamma, LogNormal, WeightedDistribution
 from pal.fitting import UncertaintyMethod
 
@@ -487,6 +489,8 @@ for each observation.
 Manual weights are also possible:
 
 ```python
+from pal.distributions import Gamma, LogNormal, WeightedDistribution
+
 weighted = WeightedDistribution(
     [Gamma(alpha=2.0, theta=5000), LogNormal(mu=8.5, sigma=0.9)],
     weights=[0.7, 0.3],
