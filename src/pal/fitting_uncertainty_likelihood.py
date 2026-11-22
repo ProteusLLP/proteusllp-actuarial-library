@@ -70,10 +70,13 @@ def _transform_types(family: type[t.Any], names: tuple[str, ...]) -> tuple[str, 
         real.add("loc")
     probability = {"p"} if family in (d.Binomial, d.Bernoulli, d.NegBinomial) else set()
     return tuple(
-        "logit" if name in probability else
-        "shiftlog" if family is d.MBBEFD and name == "g" else
-        "linear" if name in real else
-        "log"
+        "logit"
+        if name in probability
+        else "shiftlog"
+        if family is d.MBBEFD and name == "g"
+        else "linear"
+        if name in real
+        else "log"
         for name in names
     )
 
@@ -117,9 +120,7 @@ def _loglik(
     if family in _other_families():
         if family is d.GeneralizedBetaPrime:
             density, survival = _gb2_terms(x, params)
-            truncation = (
-                float(_gb2_terms(np.array([threshold]), params)[1][0]) if threshold > 0 else 0.0
-            )
+            truncation = float(_gb2_terms(np.array([threshold]), params)[1][0]) if threshold > 0 else 0.0
             terms = np.where(c, survival, density) - truncation
             value = float(np.dot(w, terms))
             return value if np.isfinite(value) else -np.inf
@@ -127,11 +128,14 @@ def _loglik(
             alpha, beta = params["alpha"], params["beta"]
             lx = np.log(x)
             base = float(_gamma_logsf(alpha, np.log(threshold) / beta)) if threshold > 1 else 0.0
-            terms = np.where(
-                c,
-                _gamma_logsf(alpha, lx / beta),
-                stats.gamma.logpdf(lx, a=alpha, scale=beta) - lx,
-            ) - base
+            terms = (
+                np.where(
+                    c,
+                    _gamma_logsf(alpha, lx / beta),
+                    stats.gamma.logpdf(lx, a=alpha, scale=beta) - lx,
+                )
+                - base
+            )
             value = float(np.dot(w, terms))
             return value if np.isfinite(value) else -np.inf
         rv = _frozen_distribution(family, params)
