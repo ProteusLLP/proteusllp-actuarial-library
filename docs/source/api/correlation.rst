@@ -21,6 +21,70 @@ is required for Cholesky factorisation.
 
 .. autofunction:: pal.correlation.near_corr\n\n.. autofunction:: pal.correlation.nearest_correlation\n\n.. autofunction:: pal.correlation.is_psd
 
+Correlation matrix completion
+-----------------------------
+
+When some pairwise correlations are unknown, put NaN in the corresponding
+lower-triangular entries and use the maximum-determinant completion. The
+known correlations are held fixed. The `auto` setting chooses between
+primal (dense) and dual (sparse) formulations.
+
+.. autofunction:: pal.correlation.complete_corr
+
+.. autofunction:: pal.correlation.complete_corr_sparse
+
+.. autofunction:: pal.correlation.complete_corr_dense
+
+Clustering and graph diagnostics
+--------------------------------
+
+Cluster correlated risks by hierarchical linkage, obtaining a reordered
+matrix, linkage matrix, and original-variable ordering.
+
+.. autofunction:: pal.correlation.cluster_corr
+
+.. autoclass:: pal.correlation.ClusteringResult
+   :members:
+
+.. autofunction:: pal.correlation.analyze_threshold_ranges
+
+.. autofunction:: pal.correlation.extract_clusters
+
+.. autofunction:: pal.correlation.compute_cluster_statistics
+
+The clique functions identify maximally connected sets of specified
+pairwise correlations. They can detect infeasible groups of coefficients
+before attempting matrix completion.
+
+.. autofunction:: pal.correlation.get_all_cliques
+
+.. autofunction:: pal.correlation.get_big_cliques_from_edges
+
+.. autofunction:: pal.correlation.get_edges_from_incomplete_matrix
+
+.. autofunction:: pal.correlation.get_edges_from_adjacency_matrix
+
+.. autofunction:: pal.correlation.get_adjacency_matrx
+
+.. autofunction:: pal.correlation.check_all_cliques_in_correlation_matrix
+
+.. autofunction:: pal.correlation.check_incomplete_matrix_is_chordal
+
+.. autofunction:: pal.correlation.find_non_pd_submatrix
+
+Backend behaviour
+-----------------
+
+Unweighted and weighted nearest-correlation repair run on PAL's active
+NumPy or CuPy backend using eigenvalue decompositions and array operations.
+
+Matrix completion uses SciPy root-finding on the CPU. Hierarchical linkage
+also uses SciPy on the CPU. Both accept CuPy inputs but transfer the matrix
+to the CPU for those calculations, and return the resulting correlation
+matrix on PAL's active backend. Clustering linkage metadata and graph
+clique enumeration are CPU-side. This transfer is not a GPU acceleration
+of the underlying optimisation or graph algorithms.
+
 Usage example
 -------------
 
