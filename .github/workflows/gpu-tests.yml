@@ -119,6 +119,19 @@ jobs:
       - name: Run tests with GPU acceleration
         run: pytest -v --cov=pal --cov-report=term --codeblocks
 
+      - name: Check out PAL-based research examples
+        uses: actions/checkout@v7
+        with:
+          repository: ProteusLLP/proteus-research
+          ref: main
+          path: pal-research
+
+      - name: Run ODP research examples with MC and RQMC on GPU
+        env:
+          PYTHONPATH: ${{ github.workspace }}/pal-research
+        run: |
+          python -m pytest -q pal-research/tests/test_pal_research_examples.py
+
       - name: Compare MC and RQMC on GPU
         run: |
           python -m benchmarks.benchmark_sampling --sizes 1024,4096 --replicates 4 \
