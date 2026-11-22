@@ -45,8 +45,12 @@ def _parameter_names(family: type[t.Any], parameters: dict[str, t.Any], threshol
         return ("shape", "scale")
     if family is d.Beta:
         return ("alpha", "beta")
-    if family is d.Binomial or family is d.Bernoulli:
+    if family in (d.Binomial, d.Bernoulli):
         return ("p",)
+    if family is d.NegBinomial:
+        # n is an estimated continuous size for PAL's negative-binomial MLE.
+        # The fixed binomial trial count n is not estimated.
+        return ("n", "p")
     if family is d.MBBEFD and parameters["g"] <= 1.0:
         raise ValueError("MBBEFD fitted g=1 is a nonregular boundary")
     if family is d.NonCentralChiSquared and parameters["nonc"] <= 0.0:
@@ -64,8 +68,10 @@ def _transform_types(family: type[t.Any], names: tuple[str, ...]) -> tuple[str, 
     from . import distributions as d
 
     real = {"mu"} if family in (d.Normal, d.Logistic, d.LogNormal, d.StudentsT) else set()
-    if family in (d.GPD, d.GEV):
-        real.add("shape")
+    # Shape > -1/2 is the regular likelihood region for the GPD/GEV.
+    # Sample this region via a smooth bijection rather than truncating
+    # independently sampled parameter components.
+    lower_bounded = {"shape"} if family in (d.GPD, d.GEV) else set()
     if family is d.GeneralizedInverseGaussian:
         real.add("p")
     if family is d.GEV:
@@ -76,6 +82,8 @@ def _transform_types(family: type[t.Any], names: tuple[str, ...]) -> tuple[str, 
         if name in probability
         else "shiftlog"
         if family is d.MBBEFD and name == "g"
+        else "lowerlog"
+        if name in lower_bounded
         else "linear"
         if name in real
         else "log"
