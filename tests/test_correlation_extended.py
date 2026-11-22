@@ -56,36 +56,52 @@ def test_weighted_projection_matches_independent_slsqp_reference() -> None:
         options={"ftol": 1e-12, "maxiter": 500},
     )
     assert reference.success
-    result = asnumpy(near_corr(matrix, weights=row_weights))
+    # Compare at the same eigenvalue bound as SLSQP (PSD, without a
+    # positive floor). near_corr() uses a small positive floor by default.
+    from pal.correlation import nearest_correlation
+
+    result = asnumpy(
+        nearest_correlation(
+            matrix, weights=row_weights, minimum_eigenvalue=0.0,
+            tolerance=1e-12, max_iterations=10000,
+        )
+    )
     assert objective(np.array([result[0, 1], result[0, 2], result[1, 2]])) <= reference.fun + 1e-7
 
 
 @pytest.mark.parametrize(
     "bad_weights",
     [
-        np.diag([1.0, 0.0, 1.0]),
+        np.diag([1.0, 1.0, 1.0]),
+        np.ones((3, 3)),
+        np.outer([1.0, 2.0, 3.0], [1.0, 2.0, 3.0]),
         np.ones((2, 2)),
-        np.full((3, 3), np.nan),
+        np.ones((3, 1)),
+        np.array([1.0, 2.0]),
+        np.array(2.0),
+        np.array([0.0, 1.0, 1.0]),
         np.array([-1.0, 1.0, 1.0]),
-        np.array([[1.0, 2.0, 1.0], [2.0, 1.0, 1.0], [1.0, 1.0, 1.0]]),
+        np.array([np.nan, 1.0, 1.0]),
+        np.array([np.inf, 1.0, 1.0]),
     ],
 )
 def test_weight_validation(bad_weights: np.ndarray) -> None:
+    """Higham weights must be a strictly positive length-n vector."""
     with pytest.raises(ValueError, match="weights"):
         near_corr(np.eye(3), weights=bad_weights)
 
 
-def test_weighted_vector_and_matrix_forms_are_equivalent() -> None:
-    """Diagonal and rank-one weight matrices encode the same row weights."""
+def test_weighted_vector_scale_invariance_and_uniform_weights() -> None:
+    """Rescaling all weights must not change the weighted optimum."""
     matrix = np.array([[1.0, 0.9, 0.9], [0.9, 1.0, -0.8], [0.9, -0.8, 1.0]])
     weights = np.array([2.0, 5.0, 1.0])
     vector = asnumpy(near_corr(matrix, weights=weights))
-    diagonal = asnumpy(near_corr(matrix, weights=np.diag(weights)))
-    outer = asnumpy(near_corr(matrix, weights=np.outer(weights, weights)))
     scaled = asnumpy(near_corr(matrix, weights=3.0 * weights))
-    np.testing.assert_allclose(vector, diagonal, atol=1e-8)
-    np.testing.assert_allclose(vector, outer, atol=1e-8)
+    uniform = asnumpy(near_corr(matrix, weights=np.ones(3)))
+    unweighted = asnumpy(near_corr(matrix))
+
     np.testing.assert_allclose(vector, scaled, atol=1e-8)
+    np.testing.assert_allclose(uniform, unweighted, atol=1e-7)
 
 
 def test_weighted_minimum_eigenvalue_floor() -> None:
