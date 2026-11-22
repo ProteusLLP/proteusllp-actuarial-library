@@ -259,6 +259,9 @@ class EllipticalCopula(Copula, ABC):
             pattern=pattern,
             name="Copula correlation matrix",
         )
+        # Preserve the exact coefficients used by the factor independently
+        # of the existing mutable correlation_matrix attribute.
+        self._adjusted_correlation_matrix = adjusted.copy()
         self.correlation_matrix = adjusted
         if matrix_type == "chol" and not self.was_repaired:
             # A supplied factor already represents the requested correlations.
@@ -270,7 +273,7 @@ class EllipticalCopula(Copula, ABC):
     @property
     def adjusted_correlation_matrix(self) -> t.Any:
         """The correlations actually used for simulation, as a copy."""
-        return self.correlation_matrix.copy()
+        return self._adjusted_correlation_matrix.copy()
 
 
 class GaussianCopula(EllipticalCopula):
