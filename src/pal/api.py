@@ -19,6 +19,7 @@ __all__ = ["catalog", "describe", "modules", "recipe", "recipes", "search"]
 _PUBLIC_MODULES: tuple[str, ...] = (
     "config",
     "contracts",
+    "correlation",
     "copulas",
     "couplings",
     "distributions",

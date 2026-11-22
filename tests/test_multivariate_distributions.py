@@ -305,7 +305,7 @@ def test_matrix_distribution_stochastic_parameter_coupling() -> None:
 @pytest.mark.parametrize(
     ("constructor", "match"),
     [
-        (lambda: MultivariateNormal([0.0, 0.0], [[1.0, 2.0], [2.0, 1.0]]), "positive definite"),
+        (lambda: MultivariateNormal([0.0, 0.0], [[1.0, 2.0], [2.0, 1.0]], repair="none"), "positive definite"),
         (lambda: MultivariateStudentsT(0.0, [0.0], [[1.0]]), "nu"),
         (lambda: Dirichlet([1.0, -1.0]), "positive"),
         (lambda: InvertedDirichlet([1.0]), "at least 2"),

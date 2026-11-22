@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 import numpy.typing as npt
 
+from ._correlation_preparation import RepairMode, prepare_correlation_matrix
 from ._maths import asnumpy, special, to_backend, xp
 from .config import config
 from .couplings import couple_stochastic_results
@@ -148,6 +149,39 @@ def _validate_matrix(matrix: npt.ArrayLike, dimension: int, name: str) -> t.Any:
         return xp.linalg.cholesky(values)
     except xp.linalg.LinAlgError as error:
         raise ValueError(f"{name} must be positive definite.") from error
+
+
+def _prepare_elliptical_scale(
+    matrix: npt.ArrayLike,
+    dimension: int,
+    name: str,
+    *,
+    repair: RepairMode,
+    weights: npt.ArrayLike | None,
+    pattern: t.Sequence[tuple[int, int]] | None,
+) -> tuple[t.Any, t.Any, t.Any, bool]:
+    """Repair correlations while retaining each component's scale."""
+    values = xp.asarray(matrix, dtype=xp.float64)
+    if values.ndim != 2 or values.shape != (dimension, dimension):
+        raise ValueError(f"{name} must be a {dimension} by {dimension} matrix.")
+    if not bool(xp.all(xp.isfinite(values))):
+        raise ValueError(f"{name} values must be finite.")
+    diagonal = xp.diag(values)
+    if not bool(xp.all(diagonal > 0)):
+        raise ValueError(f"{name} must have a strictly positive diagonal.")
+    standard_deviations = xp.sqrt(diagonal)
+    outer_scale = standard_deviations[:, None] * standard_deviations[None, :]
+    correlations = values / outer_scale
+    adjusted, changed = prepare_correlation_matrix(
+        correlations,
+        repair=repair,
+        weights=weights,
+        pattern=pattern,
+        name=f"{name} correlation matrix",
+    )
+    adjusted_scale = adjusted * outer_scale
+    chol = xp.linalg.cholesky(adjusted_scale)
+    return chol, adjusted, adjusted_scale, changed
 
 
 def _observation_matrix(x: MultivariateInput, dimension: int) -> tuple[t.Any, list[StochasticScalar]]:
@@ -451,6 +485,10 @@ class MultivariateNormal(MultivariateDistributionBase):
         covariance: Covariance matrix :math:`\Sigma`.
         component_names: Optional names for the components.
         dim_name: Name of the component dimension.
+        repair: "higham" (default) repairs invalid correlations, warning when changed;
+            "none" requires a valid matrix.
+        weights: Optional positive vector of Higham row/column weights.
+        pattern: Optional index pairs of correlations to hold fixed.
     """
 
     def __init__(
@@ -460,15 +498,44 @@ class MultivariateNormal(MultivariateDistributionBase):
         *,
         component_names: t.Sequence[str] | None = None,
         dim_name: str = "component",
+        repair: RepairMode = "higham",
+        weights: npt.ArrayLike | None = None,
+        pattern: t.Sequence[tuple[int, int]] | None = None,
     ) -> None:
-        """Initialize a multivariate normal distribution."""
+        """Initialize with automatic Higham repair of invalid correlations.
+
+        If adjustment is needed, a UserWarning identifies the repair. The
+        covariance diagonal is preserved.
+        """
         self.mean, parameter_names = _validate_parameter_vector(mean, "mean")
         super().__init__(
             len(self.mean),
             component_names=parameter_names if component_names is None else component_names,
             dim_name=dim_name,
         )
-        self._chol = _validate_matrix(covariance, self.dimension, "covariance")
+        (
+            self._chol,
+            self._adjusted_correlation_matrix,
+            self._adjusted_covariance_matrix,
+            self.was_repaired,
+        ) = _prepare_elliptical_scale(
+            covariance,
+            self.dimension,
+            "covariance",
+            repair=repair,
+            weights=weights,
+            pattern=pattern,
+        )
+
+    @property
+    def adjusted_correlation_matrix(self) -> t.Any:
+        """The correlation matrix used by this distribution, as a copy."""
+        return self._adjusted_correlation_matrix.copy()
+
+    @property
+    def adjusted_covariance_matrix(self) -> t.Any:
+        """The covariance matrix used by this distribution, as a copy."""
+        return self._adjusted_covariance_matrix.copy()
 
     @property
     def _parameters(self) -> tuple[DistributionParameter, ...]:
@@ -518,6 +585,10 @@ class MultivariateStudentsT(MultivariateDistributionBase):
         scale: Symmetric positive-definite scale matrix :math:`\Sigma`.
         component_names: Optional names for the components.
         dim_name: Name of the component dimension.
+        repair: "higham" (default) repairs invalid correlations, warning when changed;
+            "none" requires a valid matrix.
+        weights: Optional positive vector of Higham row/column weights.
+        pattern: Optional index pairs of correlations to hold fixed.
     """
 
     def __init__(
@@ -528,8 +599,15 @@ class MultivariateStudentsT(MultivariateDistributionBase):
         *,
         component_names: t.Sequence[str] | None = None,
         dim_name: str = "component",
+        repair: RepairMode = "higham",
+        weights: npt.ArrayLike | None = None,
+        pattern: t.Sequence[tuple[int, int]] | None = None,
     ) -> None:
-        """Initialize a multivariate Student's t distribution."""
+        """Initialize with automatic Higham repair of invalid correlations.
+
+        If adjustment is needed, a UserWarning identifies the repair. The
+        scale-matrix diagonal is preserved.
+        """
         raw_nu = nu.values if isinstance(nu, StochasticScalar) else nu
         backend_nu = xp.asarray(to_backend(raw_nu))
         if bool(xp.any(~xp.isfinite(backend_nu))) or bool(xp.any(backend_nu <= 0)):
@@ -541,7 +619,29 @@ class MultivariateStudentsT(MultivariateDistributionBase):
             component_names=parameter_names if component_names is None else component_names,
             dim_name=dim_name,
         )
-        self._chol = _validate_matrix(scale, self.dimension, "scale")
+        (
+            self._chol,
+            self._adjusted_correlation_matrix,
+            self._adjusted_scale_matrix,
+            self.was_repaired,
+        ) = _prepare_elliptical_scale(
+            scale,
+            self.dimension,
+            "scale",
+            repair=repair,
+            weights=weights,
+            pattern=pattern,
+        )
+
+    @property
+    def adjusted_correlation_matrix(self) -> t.Any:
+        """The correlation matrix used by this distribution, as a copy."""
+        return self._adjusted_correlation_matrix.copy()
+
+    @property
+    def adjusted_scale_matrix(self) -> t.Any:
+        """The Student's t scale matrix used for simulation, as a copy."""
+        return self._adjusted_scale_matrix.copy()
 
     @property
     def _parameters(self) -> tuple[DistributionParameter, ...]:

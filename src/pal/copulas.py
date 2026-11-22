@@ -17,10 +17,11 @@ import scipy.stats
 from scipy.special import gamma
 
 from . import ProteusVariable, StochasticScalar
-from ._maths import asnumpy, special
-from ._maths import xp as np
 
 # Local imports
+from ._correlation_preparation import RepairMode, prepare_correlation_matrix
+from ._maths import asnumpy, special
+from ._maths import xp as np
 from .config import config
 from .couplings import couple_stochastic_results
 from .qmc import RandomizedQMCGenerator, _draw_active_scenarios, _draw_scenarios
@@ -225,33 +226,54 @@ class EllipticalCopula(Copula, ABC):
         matrix: npt.NDArray[np.floating] | list[list[float]],
         *args: t.Any,
         matrix_type: str = "linear",
+        repair: RepairMode = "higham",
+        weights: npt.ArrayLike | None = None,
+        pattern: t.Sequence[tuple[int, int]] | None = None,
         **kwargs: t.Any,
     ) -> None:
         """Initialize an elliptical copula.
 
         Args:
-            matrix: Correlation matrix or Cholesky decomposition.
-            matrix_type: Type of matrix - "linear" or "chol".
-            *args: Additional positional arguments.
-            **kwargs: Additional keyword arguments.
+            matrix: Correlation matrix or a factor when matrix_type="chol".
+            matrix_type: "linear" for correlations or "chol" for a factor.
+            repair: Higham repair by default; "none" rejects invalid inputs.
+            weights: Optional positive vector of Higham row/column weights.
+            pattern: Optional correlations to hold fixed during repair.
+            *args: Retained for compatibility with subclasses.
+            **kwargs: Retained for compatibility with subclasses.
         """
-        _matrix = np.asarray(matrix)
+        _matrix = np.asarray(matrix, dtype=float)
         if _matrix.ndim != 2 or _matrix.shape[0] != _matrix.shape[1]:
             raise ValueError("Matrix must be square")
         if matrix_type == "linear":
-            self.correlation_matrix = _matrix
-            # Check that the correlation matrix is positive definite
-            if float(np.linalg.eigvalsh(self.correlation_matrix).min()) <= 0:
-                raise ValueError("Correlation matrix is not positive definite")
-            try:
-                self._chol = np.linalg.cholesky(self.correlation_matrix)
-            except np.linalg.LinAlgError as e:
-                raise ValueError("Correlation matrix is not positive definite") from e
+            correlations = _matrix
         elif matrix_type == "chol":
-            self._chol = _matrix
+            correlations = _matrix @ _matrix.T
         else:
             raise ValueError("matrix_type must be 'linear' or 'chol'")
-        self._matrix = _matrix
+
+        adjusted, self.was_repaired = prepare_correlation_matrix(
+            correlations,
+            repair=repair,
+            weights=weights,
+            pattern=pattern,
+            name="Copula correlation matrix",
+        )
+        # Preserve the exact coefficients used by the factor independently
+        # of the existing mutable correlation_matrix attribute.
+        self._adjusted_correlation_matrix = adjusted.copy()
+        self.correlation_matrix = adjusted
+        if matrix_type == "chol" and not self.was_repaired:
+            # A supplied factor already represents the requested correlations.
+            self._chol = _matrix.copy()
+        else:
+            self._chol = np.linalg.cholesky(adjusted)
+        self._matrix = _matrix.copy()
+
+    @property
+    def adjusted_correlation_matrix(self) -> t.Any:
+        """The correlations actually used for simulation, as a copy."""
+        return self._adjusted_correlation_matrix.copy()
 
 
 class GaussianCopula(EllipticalCopula):
@@ -274,14 +296,23 @@ class GaussianCopula(EllipticalCopula):
         self,
         matrix: npt.NDArray[np.floating] | list[list[float]],
         matrix_type: str = "linear",
+        *,
+        repair: RepairMode = "higham",
+        weights: npt.ArrayLike | None = None,
+        pattern: t.Sequence[tuple[int, int]] | None = None,
     ) -> None:
-        """Initialize a Gaussian copula.
+        """Initialize a Gaussian copula with optional correlation repair.
 
-        Args:
-            matrix: Correlation matrix.
-            matrix_type: Type of matrix - "linear" or "chol".
+        Higham repair is automatic when required and raises a UserWarning.
+        Inspect adjusted_correlation_matrix to see the coefficients used.
         """
-        super().__init__(matrix, matrix_type=matrix_type)
+        super().__init__(
+            matrix,
+            matrix_type=matrix_type,
+            repair=repair,
+            weights=weights,
+            pattern=pattern,
+        )
 
     def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Transform normal samples to uniform using CDF."""
@@ -327,15 +358,22 @@ class StudentsTCopula(EllipticalCopula):
         matrix: npt.NDArray[np.float64] | list[list[float]],
         dof: float,
         matrix_type: str = "linear",
+        *,
+        repair: RepairMode = "higham",
+        weights: npt.ArrayLike | None = None,
+        pattern: t.Sequence[tuple[int, int]] | None = None,
     ) -> None:
-        """Initialize a Student's T copula.
+        """Initialize a Student's t copula with automatic Higham repair.
 
-        Args:
-            matrix: Correlation matrix.
-            dof: Degrees of freedom.
-            matrix_type: Type of matrix - "linear" or "chol".
+        Raises UserWarning if correlation coefficients require adjustment.
         """
-        super().__init__(matrix, matrix_type=matrix_type)
+        super().__init__(
+            matrix,
+            matrix_type=matrix_type,
+            repair=repair,
+            weights=weights,
+            pattern=pattern,
+        )
         if dof <= 0:
             raise ValueError("Degrees of Freedom must be positive")
         self.dof = dof
