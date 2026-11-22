@@ -137,9 +137,7 @@ def test_database_roundtrip_through_pandas_retains_joint_scenario_axis():
     )
     connection = sqlite3.connect(":memory:")
     try:
-        original.to_dataframe(layout="long").to_sql(
-            "annual_losses", connection, if_exists="replace", index=False
-        )
+        original.to_dataframe(layout="long").to_sql("annual_losses", connection, if_exists="replace", index=False)
         frame = pd.read_sql_query(
             "SELECT * FROM annual_losses WHERE Simulation >= ?",
             connection,
