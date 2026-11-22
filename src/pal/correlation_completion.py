@@ -90,7 +90,7 @@ def _complete_dense_cpu(source: np.ndarray) -> np.ndarray:
     correlation = initial / std[:, None] / std[None, :]
     # The projection seeks a strictly positive definite interior point.
     if np.linalg.eigvalsh(initial)[0] < 1e-8:
-        fixed_pairs = [(int(i), int(j)) for i, j in zip(fixed_rows, fixed_cols)]
+        fixed_pairs = [(int(i), int(j)) for i, j in zip(fixed_rows, fixed_cols, strict=False)]
         initial = asnumpy(near_corr(correlation, pattern=fixed_pairs))
         initial *= std[:, None] * std[None, :]
     base = initial.copy()

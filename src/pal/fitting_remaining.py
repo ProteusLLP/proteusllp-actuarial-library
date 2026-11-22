@@ -534,7 +534,7 @@ def _fit_categorical(
     if any(label not in positions for label in observed_labels):
         raise ValueError("observed category is not among the supplied labels")
     counts = np.zeros(len(labels), dtype=float)
-    for label, weight in zip(observed_labels, w):
+    for label, weight in zip(observed_labels, w, strict=False):
         counts[positions[label]] += weight
     probabilities = counts / counts.sum()
     ll = float(np.dot(counts[counts > 0], np.log(probabilities[counts > 0])))

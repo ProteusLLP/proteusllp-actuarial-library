@@ -1794,7 +1794,7 @@ def apply_copula(
 
     # Process one margin at a time instead of allocating (dimension, n_sims)
     # matrices of ranks and sort indices. The first variable is unchanged.
-    for var, sample in zip(variables_list[1:], copula_list[1:]):
+    for var, sample in zip(variables_list[1:], copula_list[1:], strict=False):
         sample_order = np.argsort(sample.values, kind="stable")
         ranks[sample_order] = rank_values
         variable_order = np.argsort(var.values, kind="stable")

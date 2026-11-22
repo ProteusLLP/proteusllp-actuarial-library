@@ -62,7 +62,7 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
     @property
     def standard_errors(self) -> dict[str, float]:
         """Approximate marginal standard errors in original parameter units."""
-        return dict(zip(self.parameter_names, np.sqrt(np.diag(self.covariance)).tolist()))
+        return dict(zip(self.parameter_names, np.sqrt(np.diag(self.covariance)).tolist(), strict=False))
 
     def confidence_intervals(self, level: float = 0.95) -> dict[str, tuple[float, float]]:
         """Marginal transformed Wald intervals (not predictive intervals)."""
@@ -100,7 +100,7 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
 
         valid = xp.ones(raw_draws.shape[0], dtype=bool)
         values_by_name: dict[str, t.Any] = {}
-        for i, (name, kind) in enumerate(zip(self.parameter_names, self._transform_kinds)):
+        for i, (name, kind) in enumerate(zip(self.parameter_names, self._transform_kinds, strict=False)):
             values = _coordinate_value(raw_draws[:, i], kind, float(self._origins[i]), float(self._scales[i]), xp)
             values_by_name[name] = values
             valid &= xp.isfinite(values)
@@ -277,7 +277,7 @@ def asymptotic_parameter_uncertainty(
         or (kind == "logit" and not 0 < float(params[name]) < 1)
         or (kind == "shiftlog" and float(params[name]) <= 1)
         or (kind == "lowerlog" and float(params[name]) <= -0.5)
-        for name, kind in zip(names, kinds)
+        for name, kind in zip(names, kinds, strict=False)
     ):
         raise ValueError("MLE is at a parameter boundary; Gaussian parameter uncertainty is invalid")
 
@@ -287,7 +287,7 @@ def asymptotic_parameter_uncertainty(
     scale_list: list[float] = []
     transformed_list: list[float] = []
     jacobian_list: list[float] = []
-    for name, kind in zip(names, kinds):
+    for name, kind in zip(names, kinds, strict=False):
         val = float(params[name])
         if kind == "log":
             origin_list.append(0.0)

@@ -653,7 +653,7 @@ class FreqSevSims(_ProteusStochasticVariable):
 
         # Preflight *every* output before writing the first destination.
         casting = kwargs.get("casting", "same_kind")
-        for value, destination in zip(results, destinations):
+        for value, destination in zip(results, destinations, strict=False):
             if getattr(value, "ndim", None) != 1 or len(value) != len(self.values):
                 raise ValueError("Event-wise ufunc result has incompatible event count")
             if destination is None:
@@ -667,7 +667,7 @@ class FreqSevSims(_ProteusStochasticVariable):
                 raise TypeError("out= cannot represent the event-wise result")
 
         outputs: list[t.Any] = []
-        for value, destination in zip(results, destinations):
+        for value, destination in zip(results, destinations, strict=False):
             if destination is None:
                 outputs.append(FreqSevSims(self.sim_index, value, self.n_sims))
                 continue
