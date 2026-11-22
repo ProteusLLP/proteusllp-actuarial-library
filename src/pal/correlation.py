@@ -9,7 +9,7 @@ import numpy.typing as npt
 
 from ._maths import xp
 
-__all__ = ["nearest_correlation"]
+__all__ = ["near_corr", "nearest_correlation", "is_psd"]
 
 Method = t.Literal["higham", "spectral"]
 
@@ -45,6 +45,7 @@ def nearest_correlation(
     minimum_eigenvalue: float = 0.0,
     tolerance: float = 1e-10,
     max_iterations: int = 200,
+    pattern: t.Sequence[tuple[int, int]] | None = None,
 ) -> t.Any:
     """Repair a matrix into a symmetric, positive semidefinite correlation matrix.
 
@@ -64,6 +65,8 @@ def nearest_correlation(
             positive value can make the result suitable for Cholesky methods.
         tolerance: Relative convergence tolerance for the Higham method.
         max_iterations: Maximum number of alternating projections.
+        pattern: Optional positions whose symmetric values must remain fixed.
+            Only supported by the Higham method.
 
     Returns:
         A unit-diagonal correlation matrix on the configured array backend.
@@ -91,13 +94,32 @@ def nearest_correlation(
         raise ValueError("max_iterations must be a positive integer.")
 
     source = (values + values.T) * 0.5
+    # The original diagonal has no effect on distance when it is fixed to 1.
+    indices = xp.arange(source.shape[0])
+    source[indices, indices] = 1.0
+
+    fixed_rows: list[int] = []
+    fixed_cols: list[int] = []
+    if pattern is not None:
+        if method == "spectral":
+            raise ValueError("Fixed pattern entries require method='higham'.")
+        for entry in pattern:
+            if len(entry) != 2 or not all(isinstance(index, int) for index in entry):
+                raise ValueError("Each pattern element must be a pair of integer indices.")
+            i, j = entry
+            if not (0 <= i < source.shape[0] and 0 <= j < source.shape[0]):
+                raise ValueError("pattern indices must be within the matrix.")
+            fixed_rows.append(i)
+            fixed_cols.append(j)
+        if fixed_rows:
+            rows = xp.asarray(fixed_rows, dtype=int)
+            cols = xp.asarray(fixed_cols, dtype=int)
+
     if source.shape[0] == 1:
         return xp.ones((1, 1), dtype=xp.float64)
-    indices = xp.arange(source.shape[0])
-    if bool(xp.all(xp.diag(source) == 1.0)):
-        smallest = float(xp.linalg.eigvalsh(source)[0].item())
-        if smallest >= minimum_eigenvalue:
-            return source.copy()
+    smallest = float(xp.linalg.eigvalsh(source)[0].item())
+    if smallest >= minimum_eigenvalue:
+        return source.copy()
 
     if method == "spectral":
         return _spectral_repair(source, minimum_eigenvalue)
@@ -112,6 +134,9 @@ def nearest_correlation(
         previous = result
         result = projected.copy()
         result[indices, indices] = 1.0
+        if fixed_rows:
+            result[rows, cols] = source[rows, cols]
+            result[cols, rows] = source[rows, cols]
         relative_change = float(
             (xp.linalg.norm(result - previous) / xp.maximum(1.0, xp.linalg.norm(result))).item()
         )
@@ -121,3 +146,54 @@ def nearest_correlation(
                 return (result + result.T) * 0.5
 
     raise RuntimeError("Nearest correlation matrix iteration did not converge; increase max_iterations.")
+
+
+def near_corr(
+    matrix: npt.ArrayLike,
+    pattern: list[tuple[int, int]] | None = None,
+    weights: npt.ArrayLike | None = None,
+) -> t.Any:
+    """Return the nearest correlation matrix, optionally fixing selected entries.
+
+    This preserves the Proteus Correlation Toolkit's public signature.
+    The input is symmetrised and its diagonal constrained to one. Entries
+    identified by pattern remain fixed, including their transposes.
+
+    Args:
+        matrix: Square matrix of correlation coefficients.
+        pattern: Zero-based index pairs of coefficients to hold fixed.
+        weights: Reserved toolkit parameter. The source toolkit accepted this
+            argument but did not apply it. Supplying it raises
+            NotImplementedError rather than silently ignoring the weights.
+
+    Returns:
+        Nearest correlation matrix on the active NumPy or CuPy backend.
+
+    Raises:
+        ValueError: Invalid matrix or pattern.
+        NotImplementedError: A non-None weights argument is supplied.
+        RuntimeError: The algorithm does not converge.
+    """
+    if weights is not None:
+        raise NotImplementedError(
+            "The toolkit's weights parameter was not implemented; weighted "
+            "nearest correlation repair is not supported."
+        )
+    return nearest_correlation(
+        matrix,
+        method="higham",
+        pattern=pattern,
+        minimum_eigenvalue=1e-8,
+        tolerance=1e-10,
+        max_iterations=10000,
+    )
+
+
+def is_psd(matrix: npt.ArrayLike) -> bool:
+    """Test whether a finite symmetric matrix is positive semidefinite."""
+    values = xp.asarray(matrix, dtype=float)
+    if values.ndim != 2 or values.shape[0] != values.shape[1]:
+        return False
+    if not bool(xp.all(xp.isfinite(values))) or not bool(xp.allclose(values, values.T)):
+        return False
+    return float(xp.linalg.eigvalsh(values)[0].item()) >= -1e-12
