@@ -45,7 +45,7 @@ class WeightedDistribution(DistributionBase):
     def __init__(
         self,
         distributions: t.Sequence[DistributionBase],
-        weights: t.Sequence[float],
+        weights: t.Sequence[float] | np.ndarray,
         *,
         model_indices: StochasticScalar | None = None,
     ) -> None:
@@ -120,7 +120,7 @@ class WeightedDistribution(DistributionBase):
             kwargs = {**fit_options, **options.get(family, {})}
             if "uncertainty_method" in kwargs:
                 raise TypeError("Specify uncertainty_method only once")
-            fit = family.fit(observations, uncertainty_method=uncertainty_method, **kwargs)
+            fit = getattr(family, "fit")(observations, uncertainty_method=uncertainty_method, **kwargs)
             if not fit.converged:
                 raise RuntimeError(f"{family.__name__} fit did not converge")
             fitted.append(fit)
