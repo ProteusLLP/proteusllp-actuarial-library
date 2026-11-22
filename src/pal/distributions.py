@@ -432,7 +432,14 @@ class HyperGeometric(DiscreteDistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[HyperGeometric]:
         """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights, population_size=population_size, n_draws=n_draws, uncertainty_method=uncertainty_method)
+        return fit_remaining(
+            cls,
+            observations,
+            weights=weights,
+            population_size=population_size,
+            n_draws=n_draws,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return conditional expected numeric excess above an attachment."""
@@ -664,7 +671,14 @@ class Burr(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Burr]:
         """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return the theoretical mean loss in excess of the attachment."""
@@ -763,7 +777,14 @@ class GeneralizedBetaPrime(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[GeneralizedBetaPrime]:
         """Fit positive severity observations by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Calculate the theoretical expected severity above the attachment."""
@@ -1212,7 +1233,14 @@ class LogLogistic(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[LogLogistic]:
         """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return the theoretical mean loss in excess of the attachment."""
@@ -1279,7 +1307,14 @@ class Normal(DistributionBase):
         threshold: float | None = None,
     ) -> FitResult[Normal]:
         """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold, uncertainty_method=uncertainty_method)
+        return fit_remaining(
+            cls,
+            observations,
+            weights=weights,
+            censored=censored,
+            threshold=threshold,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return conditional expected numeric excess above an attachment."""
@@ -1336,7 +1371,14 @@ class Logistic(DistributionBase):
         threshold: float | None = None,
     ) -> FitResult[Logistic]:
         """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold, uncertainty_method=uncertainty_method)
+        return fit_remaining(
+            cls,
+            observations,
+            weights=weights,
+            censored=censored,
+            threshold=threshold,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return conditional expected numeric excess above an attachment."""
@@ -1394,7 +1436,14 @@ class LogNormal(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[LogNormal]:
         """Fit this distribution by maximum likelihood, with truncation and censoring."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return the theoretical mean loss in excess of the attachment."""
@@ -1450,7 +1499,14 @@ class Gamma(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Gamma]:
         """Fit this distribution by maximum likelihood, with truncation and censoring."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return the theoretical mean loss in excess of the attachment."""
@@ -1546,7 +1602,14 @@ class NonCentralChiSquared(DistributionBase):
         threshold: float | None = None,
     ) -> FitResult[NonCentralChiSquared]:
         """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold, uncertainty_method=uncertainty_method)
+        return fit_remaining(
+            cls,
+            observations,
+            weights=weights,
+            censored=censored,
+            threshold=threshold,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return conditional expected numeric excess above an attachment."""
@@ -1634,7 +1697,14 @@ class InverseGamma(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseGamma]:
         """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return the theoretical mean loss in excess of the attachment."""
@@ -1695,7 +1765,14 @@ class Pareto(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Pareto]:
         """Fit this distribution by maximum likelihood, with truncation and censoring."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return the theoretical mean loss in excess of the attachment."""
@@ -1753,7 +1830,14 @@ class Paralogistic(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Paralogistic]:
         """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return the theoretical mean loss in excess of the attachment."""
@@ -1818,7 +1902,14 @@ class InverseBurr(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseBurr]:
         """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return the theoretical mean loss in excess of the attachment."""
@@ -1892,7 +1983,14 @@ class InverseParalogistic(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseParalogistic]:
         """Fit the distribution using right-censored, left-truncated observations."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Compute the mean residual loss above the attachment."""
@@ -1960,7 +2058,14 @@ class Weibull(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Weibull]:
         """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return the theoretical mean loss in excess of the attachment."""
@@ -2034,7 +2139,14 @@ class InverseWeibull(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseWeibull]:
         """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return the theoretical mean loss in excess of the attachment."""
@@ -2086,7 +2198,14 @@ class LogGamma(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[LogGamma]:
         """Estimate a log-gamma distribution by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return the expected loss in excess of the given threshold."""
@@ -2157,7 +2276,14 @@ class GEV(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[GEV]:
         """Fit parameters by maximum likelihood with truncation and censoring."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Calculate the theoretical mean residual loss above an attachment."""
@@ -2249,7 +2375,14 @@ class StudentsT(DistributionBase):
         threshold: float | None = None,
     ) -> FitResult[StudentsT]:
         """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold, uncertainty_method=uncertainty_method)
+        return fit_remaining(
+            cls,
+            observations,
+            weights=weights,
+            censored=censored,
+            threshold=threshold,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return conditional expected numeric excess above an attachment."""
@@ -2344,7 +2477,14 @@ class InverseGaussian(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseGaussian]:
         """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Return the theoretical mean loss in excess of the attachment."""
@@ -2484,7 +2624,14 @@ class GeneralizedInverseGaussian(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[GeneralizedInverseGaussian]:
         """Fit parameters by maximum likelihood with truncation and censoring."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Calculate the theoretical mean residual loss above an attachment."""
@@ -2602,7 +2749,14 @@ class Exponential(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Exponential]:
         """Fit the distribution using right-censored, left-truncated observations."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Compute the mean residual loss above the attachment."""
@@ -2846,7 +3000,14 @@ class InverseExponential(DistributionBase):
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseExponential]:
         """Fit the distribution using right-censored, left-truncated observations."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights, uncertainty_method=uncertainty_method)
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
         """Compute the mean residual loss above the attachment."""
