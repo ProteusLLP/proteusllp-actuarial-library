@@ -348,10 +348,12 @@ then pass the resulting engine to pandas. For example:
 <!--pytest-codeblocks:skip-->
 
 ```python
+import os
+
 from sqlalchemy import create_engine
 
-# Configure the URL and credentials for your own environment.
-engine = create_engine("postgresql+psycopg://user:password@host/database")
+# Supply your PostgreSQL connection URL through a secret-backed setting.
+engine = create_engine(os.environ["DATABASE_URL"])
 portfolio.to_dataframe(layout="long").to_sql(
     "annual_losses", engine, if_exists="append", index=False, chunksize=10_000
 )
