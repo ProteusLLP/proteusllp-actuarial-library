@@ -49,7 +49,8 @@ jobs:
         run: make static-analysis
 
   test:
-    runs-on: ubuntu-latest
+    # Python 3.9 is not provisioned on ubuntu-latest (Ubuntu 26.04).
+    runs-on: ${{ matrix.python-version == '3.9' && 'ubuntu-22.04' || 'ubuntu-latest' }}
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
