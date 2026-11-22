@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from pal._maths import asnumpy
 from pal.correlation import nearest_correlation
 
 
@@ -17,7 +18,7 @@ def test_equicorrelation_projection_has_known_answer(method: str) -> None:
 
     expected = np.full((3, 3), -0.5)
     np.fill_diagonal(expected, 1.0)
-    np.testing.assert_allclose(result, expected, rtol=0, atol=1e-8)
+    np.testing.assert_allclose(asnumpy(result), expected, rtol=0, atol=1e-8)
     np.testing.assert_array_equal(invalid, unchanged)
 
 
@@ -29,9 +30,9 @@ def test_repaired_matrix_is_a_correlation_matrix(method: str, eigenvalue_floor: 
          [0.8, -0.4, 1.0, -0.9], [0.6, 0.7, -0.9, 1.0]]
     )
     result = nearest_correlation(invalid, method=method, minimum_eigenvalue=eigenvalue_floor)
-    np.testing.assert_allclose(result, result.T, atol=1e-12)
-    np.testing.assert_allclose(np.diag(result), 1.0, atol=1e-12)
-    assert np.linalg.eigvalsh(result)[0] >= eigenvalue_floor - 1e-8
+    np.testing.assert_allclose(asnumpy(result), asnumpy(result.T), atol=1e-12)
+    np.testing.assert_allclose(np.diag(asnumpy(result)), 1.0, atol=1e-12)
+    assert np.linalg.eigvalsh(asnumpy(result))[0] >= eigenvalue_floor - 1e-8
 
 
 def test_higham_is_closer_than_spectral_approximation() -> None:
@@ -42,23 +43,23 @@ def test_higham_is_closer_than_spectral_approximation() -> None:
     )
     nearest = nearest_correlation(invalid)
     approximate = nearest_correlation(invalid, method="spectral")
-    assert np.linalg.norm(nearest - invalid) < np.linalg.norm(approximate - invalid) - 1e-4
+    assert np.linalg.norm(asnumpy(nearest) - invalid) < np.linalg.norm(asnumpy(approximate) - invalid) - 1e-4
 
 
 def test_valid_matrix_is_preserved_and_not_aliased() -> None:
     valid = np.array([[1.0, 0.35], [0.35, 1.0]])
     result = nearest_correlation(valid)
-    np.testing.assert_array_equal(result, valid)
+    np.testing.assert_array_equal(asnumpy(result), valid)
     assert result is not valid
 
 
 def test_nonsymmetric_input_uses_its_symmetric_part() -> None:
     input_matrix = np.array([[1.0, 0.9], [0.1, 1.0]])
-    np.testing.assert_allclose(nearest_correlation(input_matrix), [[1.0, 0.5], [0.5, 1.0]])
+    np.testing.assert_allclose(asnumpy(nearest_correlation(input_matrix)), [[1.0, 0.5], [0.5, 1.0]])
 
 
 def test_one_dimensional_matrix_is_unit_correlation() -> None:
-    np.testing.assert_array_equal(nearest_correlation([[-3.0]]), [[1.0]])
+    np.testing.assert_array_equal(asnumpy(nearest_correlation([[-3.0]])), [[1.0]])
 
 
 @pytest.mark.parametrize(
