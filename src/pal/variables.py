@@ -13,7 +13,7 @@ Key features:
 - Export functionality for analysis and reporting
 
 NOTE: CSV, Parquet and DataFrame round-trips support nested value hierarchies.
-      Legacy from_dict and from_series are still limited; see issue #22 for
+      Legacy from_dict and from_series are still limited; see issue #170 for
       further serialization work.
 
 The ProteusVariable is designed for actuarial applications such as:
@@ -55,7 +55,6 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import plotly.graph_objects as go  # type: ignore
-import plotly.io as pio  # type: ignore
 import scipy.stats
 from plotly.subplots import make_subplots  # type: ignore
 
@@ -68,8 +67,6 @@ from .couplings import ProteusStochasticVariable, couple_stochastic_results
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
 from .types import VectorLike
-
-pio.templates.default = "none"
 
 T = t.TypeVar("T")
 
@@ -181,10 +178,8 @@ class ProteusVariable(t.Generic[T]):
             TypeError: If values is not a mapping type.
         """
         self.dim_name: str = dim_name
-        # TODO: Clarify whether the values dict is intended to be mutable during the
-        # variable's lifetime, or if it should be treated as immutable after
-        # initialization. Consider using a frozen dict if immutability is desired.
-        # See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/20
+        # The mapping mutability contract is tracked in
+        # https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/20.
         self.values = values
         self.dimensions = [dim_name]
         self._dimension_set = set(self.dimensions)
@@ -720,8 +715,8 @@ class ProteusVariable(t.Generic[T]):
     def __getitem__(self, key: int | str | StochasticScalar | FreqSevSims) -> T | StochasticScalar | FreqSevSims:
         if isinstance(key, (StochasticScalar, FreqSevSims)):
             return self._stochastic_getitem(key)
-        # FIXME: This assumes that the ordering of the values never changes. At the
-        # moment, this is not true. The values are stored in mutable container!
+        # Positional access follows mutable dictionary insertion order; see
+        # https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/181.
         if isinstance(key, int):
             return list(self.values.values())[key]
         if isinstance(key, str):  # type: ignore[redundant-expr]
@@ -732,8 +727,10 @@ class ProteusVariable(t.Generic[T]):
         if isinstance(key, int):
             dict_key = list(self.values.keys())[key]
             self.values[dict_key] = value
-        if isinstance(key, str):  # type: ignore[redundant-expr]
+        elif isinstance(key, str):
             self.values[key] = value
+        else:
+            raise TypeError(f"Key must be an integer or string, got {type(key).__name__}.")
 
     def count(self, value: T) -> int:
         """Count occurrences of value in the container.
@@ -768,12 +765,8 @@ class ProteusVariable(t.Generic[T]):
         Returns:
             A new ProteusVariable with values at the specified simulation indices.
         """
-        # FIXME: this makes a bit of a mess of the interface. Would make sense to just
-        # make use of the __getitem__ method instead. Since ProteusVariable is
-        # SequenceLike, it should support indexing with integers and strings.
-        # For this to work, we need to be sure that the contents of values is indeed
-        # VectorLike. Remember that ProteusVariables may be nested and a ProteusVariable
-        # will not be VectorLike.
+        # The distinction between simulation and dimension indexing, including
+        # nested variables, is tracked in issue #182.
         return ProteusVariable(
             dim_name=self.dim_name,
             values={k: self._get_value_at_sim_helper(v, sim_no) for k, v in self.values.items()},
@@ -1109,8 +1102,8 @@ class ProteusVariable(t.Generic[T]):
         Returns:
             ProteusVariable with StochasticScalar values created from the data
 
-        TODO: Implement comprehensive codec system for proper serialization
-              See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
+        For type-preserving object persistence, see
+        https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/170.
         """
         # Type ignore: Classmethods can't preserve generic type parameters.
         # This always creates StochasticScalar values regardless of T.
@@ -1141,8 +1134,8 @@ class ProteusVariable(t.Generic[T]):
         Returns:
             ProteusVariable with scalar values from the Series
 
-        TODO: Implement comprehensive codec system for proper serialization
-              See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
+        For type-preserving object persistence, see
+        https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/170.
         """
         # Type ignore: Classmethods can't preserve generic type parameters.
         # The values type depends on the Series content, not the generic T.

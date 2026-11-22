@@ -335,13 +335,8 @@ class StochasticScalar(ProteusStochasticVariable):
         return result
 
     def __getitem__(self, index: ScipyNumeric | StochasticScalar) -> StochasticScalar:
-        # FIXME: Type signature inconsistent with SequenceLike protocol and runtime
-        # - SequenceLike expects __getitem__(int) -> T_co (should return float)
-        # - Runtime: int indexing returns scalar, StochasticScalar returns
-        #   StochasticScalar.
-        # - Current signature claims all indexing returns StochasticScalar (wrong)
-        # Need overloads to match runtime behavior and protocol expectations
-        # See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/24
+        # Integer indexing and stochastic indexing have different return types.
+        # Type overloads are tracked in issue #24.
         # handle an actual numeric index...
         if isinstance(index, ScipyNumeric):
             return self.values[int(index)]  # type: ignore[return-value]

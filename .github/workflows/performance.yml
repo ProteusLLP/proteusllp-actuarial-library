@@ -19,6 +19,9 @@ on:
       - "benchmarks/**"
       - ".github/workflows/performance.yml"
       - "src/pal/frequency_severity.py"
+      - "src/pal/couplings.py"
+      - "src/pal/copulas.py"
+      - "src/pal/distributions.py"
 
 permissions:
   contents: read

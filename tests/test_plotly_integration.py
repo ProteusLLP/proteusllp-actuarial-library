@@ -1,6 +1,8 @@
 """Regression tests for Plotly integration with PAL stochastic variables."""
 
 import json
+import subprocess
+import sys
 import typing as t
 
 import numpy as np
@@ -76,3 +78,14 @@ def test_show_cdf_serializes_stochastic_scalar(monkeypatch: pytest.MonkeyPatch) 
     _assert_typed_array(serialized["data"][0]["y"])
     np.testing.assert_array_equal(np.asarray(fig.data[0].x), [1, 2, 3, 4, 5])
     np.testing.assert_allclose(np.asarray(fig.data[0].y), [0.0, 0.2, 0.4, 0.6, 0.8])
+
+
+def test_import_does_not_change_plotly_default_template() -> None:
+    """Importing PAL should respect an application\'s existing Plotly template."""
+    code = (
+        "import plotly.io as pio\n"
+        "pio.templates.default = \'plotly_white\'\n"
+        "import pal\n"
+        "assert pio.templates.default == \'plotly_white\'\n"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True)

@@ -231,11 +231,8 @@ class VectorLike(VectorOperations, SupportsArray, t.Protocol[T_co]):
 NumericLike = t.Union[Numeric, NumericProtocol]
 
 
-# FIXME: VectorLike should be generic VectorLike[T] to enable proper typing
-# of math functions like sum(VectorLike[T]) -> T. This would allow:
-# - sum(StochasticScalar) -> float
-# - sum(ProteusVariable) -> StochasticScalar (when containing StochasticScalar)
-# Currently blocked by need to refactor all VectorLike usage sites.
+# Generic typing of VectorLike and reduction results is tracked in
+# https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/183.
 
 
 @t.runtime_checkable

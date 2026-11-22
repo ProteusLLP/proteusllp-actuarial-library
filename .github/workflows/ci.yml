@@ -85,7 +85,7 @@ jobs:
       # This checks syntax and import resolution without starting Flask servers
       # or other services that would complicate CI testing
       - name: Check examples compile
-        run: python -m compileall examples/ -f
+        run: python -m compileall src/pal/examples/ -f
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
@@ -122,7 +122,7 @@ jobs:
 
       - name: Verify static RQMC SVG figure export
         run: |
-          python -m examples.example_qmc_vs_mc --output "$RUNNER_TEMP/qmc-static" --replicates 2
+          python -m pal.examples.example_qmc_vs_mc --output "$RUNNER_TEMP/qmc-static" --replicates 2
           test -s "$RUNNER_TEMP/qmc-static/qmc_univariate_cdf.svg"
           test -s "$RUNNER_TEMP/qmc-static/qmc_copula_surface.svg"
           test -s "$RUNNER_TEMP/qmc-static/qmc_vs_mc_convergence.svg"

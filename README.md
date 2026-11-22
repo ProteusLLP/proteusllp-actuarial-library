@@ -82,7 +82,8 @@ pip install proteusllp-actuarial-library[gpu]
 
 - [Usage Guide](docs/usage.md) - Comprehensive examples and API documentation
 - [Development Guide](docs/development.md) - Setting up the development environment and running tests
-- [Examples](examples/) - Example scripts showing how to use the library
+- [Runnable Python examples](src/pal/examples/) - Importable as `pal.examples` modules
+- [Jupyter notebooks](examples/) - Interactive examples
 - [Distribution fitting and uncertainty](docs/tutorials/distribution_fitting.md) - Maximum likelihood, parameter uncertainty and AICc-weighted model averaging
 - [Correlation matrix tools](docs/source/api/correlation.rst) - Repair, completion, clustering and cliques
 - [Randomised quasi-Monte Carlo](docs/tutorials/randomized_qmc.md) - Multidimensional sampling and copula examples

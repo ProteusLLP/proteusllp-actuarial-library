@@ -66,7 +66,8 @@ if t.TYPE_CHECKING:
     from .multivariate_distributions import Wishart as Wishart
 
 TOLERANCE = 1e-10  # Tolerance for numerical comparisons
-# FIXME: Consider replaching with VectorLike from types.py
+# Review whether VectorLike can represent this alias without widening its
+# semantics: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/184.
 ReturnType = t.Union[int, float, StochasticScalar]
 
 
