@@ -138,9 +138,7 @@ def nearest_correlation(
         if fixed_rows:
             result[rows, cols] = source[rows, cols]
             result[cols, rows] = source[rows, cols]
-        relative_change = float(
-            (xp.linalg.norm(result - previous) / xp.maximum(1.0, xp.linalg.norm(result))).item()
-        )
+        relative_change = float((xp.linalg.norm(result - previous) / xp.maximum(1.0, xp.linalg.norm(result))).item())
         if relative_change <= tolerance:
             smallest = float(xp.linalg.eigvalsh(result)[0].item())
             if smallest >= minimum_eigenvalue - 10.0 * tolerance:
