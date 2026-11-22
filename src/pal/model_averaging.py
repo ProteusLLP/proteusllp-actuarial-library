@@ -63,8 +63,17 @@ class WeightedDistribution(DistributionBase):
             raise ValueError("Cannot mix discrete and continuous distributions")
         self.distributions = members
         self.weights = probabilities / probabilities.sum()
-        self.model_indices = model_indices
-        super().__init__()
+        # Flat stochastic parameters use PAL's standard scenario -> event
+        # expansion; nested distribution objects are only family templates.
+        self._component_parameter_names = tuple(tuple(d._params) for d in members)
+        parameters = {
+            f"component_{i}_{name}": value
+            for i, distribution in enumerate(members)
+            for name, value in distribution._params.items()
+        }
+        if model_indices is not None:
+            parameters["model_indices"] = model_indices
+        super().__init__(**parameters)
 
         if model_indices is not None:
             if model_indices.values.dtype.kind not in "iu":
@@ -81,6 +90,7 @@ class WeightedDistribution(DistributionBase):
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         per_family_options: t.Mapping[type[DistributionBase], t.Mapping[str, t.Any]] | None = None,
+        model_weights: t.Sequence[float] | t.Mapping[type[DistributionBase], float] | None = None,
         **fit_options: t.Any,
     ) -> ModelAveragingResult:
         """Fit candidates to identical data and average by finite AICc scores.
@@ -127,22 +137,52 @@ class WeightedDistribution(DistributionBase):
         differences = -0.5 * (scores - scores.min())
         likelihood_weights = np.exp(differences)
         likelihood_weights /= likelihood_weights.sum()
-        ensemble = cls([fit.distribution for fit in fitted], likelihood_weights)
+        if model_weights is None:
+            selected_weights = likelihood_weights
+        elif isinstance(model_weights, t.Mapping):
+            if set(model_weights) != set(candidates):
+                raise ValueError("model_weights mapping must contain exactly the fitted families")
+            selected_weights = np.array([model_weights[family] for family in candidates], dtype=float)
+        else:
+            selected_weights = np.asarray(model_weights, dtype=float)
+        ensemble = cls([fit.distribution for fit in fitted], selected_weights)
         return ModelAveragingResult(
             distribution=ensemble,
             fits=tuple(fitted),
-            weights=likelihood_weights,
+            weights=ensemble.weights.copy(),
         )
 
+    @property
+    def model_indices(self) -> StochasticScalar | None:
+        """Selected distribution index for each simulation, when sampled."""
+        return t.cast(StochasticScalar | None, self._params.get("model_indices"))
+
     def _sources(self, extra: t.Any = None) -> tuple[StochasticScalar, ...]:
-        sources: list[StochasticScalar] = []
-        if self.model_indices is not None:
-            sources.append(self.model_indices)
+        sources = [p for p in self._params.values() if isinstance(p, StochasticScalar)]
         if isinstance(extra, StochasticScalar):
             sources.append(extra)
-        for distribution in self.distributions:
-            sources.extend(p for p in distribution._params.values() if isinstance(p, StochasticScalar))
         return tuple(sources)
+
+    def _components(self) -> tuple[DistributionBase, ...]:
+        """Rebuild effective parameters from PAL's standard flat parameter store.
+
+        FrequencySeverityModel copies a distribution and expands its _params
+        to claim indices. Reading parameters here supports that generic
+        mechanism without any compound-model-specific code.
+        """
+        result: list[DistributionBase] = []
+        for i, distribution in enumerate(self.distributions):
+            parameters = {
+                name: self._params[f"component_{i}_{name}"]
+                for name in self._component_parameter_names[i]
+            }
+            if all(parameters[name] is distribution._params[name] for name in parameters):
+                result.append(distribution)
+            else:
+                effective = copy(distribution)
+                effective._params = parameters
+                result.append(effective)
+        return tuple(result)
 
     def _evaluate_selected(self, method: str, argument: t.Any) -> t.Any:
         """Evaluate the distribution selected on each aligned scenario path."""
@@ -152,7 +192,7 @@ class WeightedDistribution(DistributionBase):
         validate_stochastic_axes(sources, n_sims=self.model_indices.n_sims)
         selected = self.model_indices.values
         values = xp.zeros(self.model_indices.n_sims, dtype=float)
-        for i, distribution in enumerate(self.distributions):
+        for i, distribution in enumerate(self._components()):
             evaluated = to_backend(_raw(getattr(distribution, method)(argument)))
             if method == "cdf":
                 evaluated = xp.clip(evaluated, 0.0, 1.0)
@@ -168,7 +208,7 @@ class WeightedDistribution(DistributionBase):
         sources = self._sources(x)
         n_sims = validate_stochastic_axes(sources)
         result: t.Any = 0.0
-        for weight, component in zip(self.weights, self.distributions):
+        for weight, component in zip(self.weights, self._components()):
             if weight:
                 probability = xp.clip(to_backend(_raw(component.cdf(x))), 0.0, 1.0)
                 result = result + weight * probability
@@ -191,7 +231,8 @@ class WeightedDistribution(DistributionBase):
         # The mixture quantile lies between the smallest and largest component
         # quantiles at the same probability. No guess at a support bound needed.
         internal = xp.clip(probabilities, np.finfo(float).eps, 1 - np.finfo(float).eps)
-        brackets = [to_backend(_raw(d.invcdf(internal))) for d in self.distributions]
+        components = self._components()
+        brackets = [to_backend(_raw(d.invcdf(internal))) for d in components]
         left = brackets[0]
         right = brackets[0]
         for bracket in brackets[1:]:
@@ -217,13 +258,13 @@ class WeightedDistribution(DistributionBase):
                 right = xp.where(cumulative >= internal, middle, right)
             result = left + 0.5 * (right - left)
         if bool(xp.any(probabilities == 0)):
-            endpoints = [to_backend(_raw(d.invcdf(0.0))) for d in self.distributions]
+            endpoints = [to_backend(_raw(d.invcdf(0.0))) for d in components]
             bottom = endpoints[0]
             for endpoint in endpoints[1:]:
                 bottom = xp.minimum(bottom, endpoint)
             result = xp.where(probabilities == 0, bottom, result)
         if bool(xp.any(probabilities == 1)):
-            endpoints = [to_backend(_raw(d.invcdf(1.0))) for d in self.distributions]
+            endpoints = [to_backend(_raw(d.invcdf(1.0))) for d in components]
             top = endpoints[0]
             for endpoint in endpoints[1:]:
                 top = xp.maximum(top, endpoint)
@@ -249,36 +290,6 @@ class WeightedDistribution(DistributionBase):
         couple_stochastic_results((choices,), sources, n_sims=n_sims)
         return WeightedDistribution(self.distributions, self.weights, model_indices=choices)
 
-    def for_events(self, simulation_indices: t.Any) -> WeightedDistribution:
-        """Expand one scenario parameter vector and model identity per claim.
-
-        This is an internal view used by FrequencySeverityModel. Its event-
-        indexed temporaries are never coupled to the original scenario axis.
-        """
-        from ._maths import asnumpy
-        from ._value_arrays import host_values
-
-        indices = to_backend(simulation_indices)
-        members: list[DistributionBase] = []
-        for distribution in self.distributions:
-            member = copy(distribution)
-            member._params = {
-                name: (
-                    StochasticScalar(
-                        value.values[asnumpy(indices) if host_values(value.values) else indices]
-                    )
-                    if isinstance(value, StochasticScalar)
-                    else value
-                )
-                for name, value in distribution._params.items()
-            }
-            members.append(member)
-        selected = None
-        if self.model_indices is not None:
-            values = self.model_indices.values
-            selected = StochasticScalar(values[asnumpy(indices) if host_values(values) else indices])
-        return WeightedDistribution(members, self.weights, model_indices=selected)
-
     def generate(self, n_sims: int | None = None, rng: t.Any = None) -> StochasticScalar:
         """Draw one loss per scenario, retaining model/parameter coupling."""
         if n_sims is None:
@@ -291,7 +302,7 @@ class WeightedDistribution(DistributionBase):
         sources = self._sources()
         validate_stochastic_axes(sources, n_sims=n_sims)
         chosen = self.model_indices if self.model_indices is not None else _model_indices(self.weights, n_sims, rng)
-        generated = [distribution.generate(n_sims, rng) for distribution in self.distributions]
+        generated = [distribution.generate(n_sims, rng) for distribution in self._components()]
         values = generated[0].values
         for i in range(1, len(generated)):
             values = xp.where(chosen.values == i, generated[i].values, values)
