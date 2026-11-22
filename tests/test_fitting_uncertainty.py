@@ -19,12 +19,8 @@ def test_lognormal_information_and_coupled_predictive_simulation() -> None:
     assert uncertainty.parameter_names == ("mu", "sigma")
     assert uncertainty.covariance.shape == (2, 2)
     assert np.linalg.eigvalsh(uncertainty.covariance).min() > 0
-    assert uncertainty.covariance[0, 0] == pytest.approx(
-        fitted.parameters["sigma"] ** 2 / len(observations), rel=0.02
-    )
-    assert uncertainty.transformed_covariance[1, 1] == pytest.approx(
-        1.0 / (2 * len(observations)), rel=0.02
-    )
+    assert uncertainty.covariance[0, 0] == pytest.approx(fitted.parameters["sigma"] ** 2 / len(observations), rel=0.02)
+    assert uncertainty.transformed_covariance[1, 1] == pytest.approx(1.0 / (2 * len(observations)), rel=0.02)
     intervals = uncertainty.confidence_intervals()
     assert intervals["sigma"][0] > 0
     assert intervals["sigma"][0] < fitted.parameters["sigma"] < intervals["sigma"][1]
@@ -55,17 +51,13 @@ def test_gamma_joint_uncertainty_preserves_parameter_correlation() -> None:
     draws = np.column_stack((parameter_draws["alpha"].values, parameter_draws["theta"].values))
     assert np.min(draws) > 0
     observed_corr = np.corrcoef(draws.T)[0, 1]
-    target_corr = uncertainty.covariance[0, 1] / np.sqrt(
-        uncertainty.covariance[0, 0] * uncertainty.covariance[1, 1]
-    )
+    target_corr = uncertainty.covariance[0, 1] / np.sqrt(uncertainty.covariance[0, 0] * uncertainty.covariance[1, 1])
     assert observed_corr == pytest.approx(target_corr, abs=0.05)
 
 
 def test_censored_and_truncated_gpd_uses_full_likelihood_and_fixed_location() -> None:
     rng = np.random.default_rng(22)
-    ultimate = stats.genpareto.rvs(
-        c=0.25, loc=10.0, scale=6.0, size=1200, random_state=rng
-    )
+    ultimate = stats.genpareto.rvs(c=0.25, loc=10.0, scale=6.0, size=1200, random_state=rng)
     censored = ultimate >= 35
     observations = np.minimum(ultimate, 35)
     fit = GPD.fit(observations, threshold=10, censored=censored)
@@ -88,9 +80,7 @@ def test_known_scale_pareto_information_matches_analytic_value() -> None:
     uncertainty = fit.asymptotic_uncertainty(observations, censored=censored, weights=weights)
     n_events = weights[~censored].sum()
     assert uncertainty.transformed_covariance[0, 0] == pytest.approx(1 / n_events, rel=0.002)
-    assert uncertainty.covariance[0, 0] == pytest.approx(
-        fit.parameters["shape"] ** 2 / n_events, rel=0.002
-    )
+    assert uncertainty.covariance[0, 0] == pytest.approx(fit.parameters["shape"] ** 2 / n_events, rel=0.002)
     values = uncertainty.parameter_samples(256, rng=np.random.default_rng(98))
     assert values["scale"] == 10
     assert np.all(values["shape"].values > 0)
