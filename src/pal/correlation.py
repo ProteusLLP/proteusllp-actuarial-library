@@ -73,9 +73,10 @@ def nearest_correlation(
 ) -> t.Any:
     """Repair a matrix into a symmetric, positive semidefinite correlation matrix.
 
-    The Higham method minimises unweighted Frobenius distance to the input
-    subject to a unit diagonal and the eigenvalue lower bound, up to numerical
-    tolerance. It uses alternating projections with Dykstra's correction.
+    The Higham method minimises Frobenius distance to the input, or its
+    diagonally weighted version when weights are supplied, subject to a
+    unit diagonal and the eigenvalue lower bound, up to numerical tolerance.
+    It uses alternating projections with Dykstra's correction.
     The spectral method clips eigenvalues and normalises the diagonal; it is
     faster but is generally not the nearest correlation matrix.
 
@@ -91,9 +92,9 @@ def nearest_correlation(
         max_iterations: Maximum number of alternating projections.
         pattern: Optional positions whose symmetric values must remain fixed.
             Only supported by the Higham method.
-        weights: Optional symmetric matrix of positive entrywise importance weights.
-            Minimises the sum of weights times squared correlation changes.
-            Uses an ADMM solver, and cannot be combined with the spectral method.
+        weights: Positive row/column weights for Higham's weighted Frobenius
+            norm, supplied as a length-n vector, a diagonal matrix, or a
+            rank-one outer product. Cannot be combined with spectral repair.
 
     Returns:
         A unit-diagonal correlation matrix on the configured array backend.
@@ -201,8 +202,9 @@ def near_corr(
     Args:
         matrix: Square matrix of correlation coefficients.
         pattern: Zero-based index pairs of coefficients to hold fixed.
-        weights: Optional positive symmetric matrix of entrywise weights.
-            Weighted repair minimises the weighted sum of squared changes.
+        weights: Positive row/column weights for Higham's weighted norm.
+            Accepts an n-vector, a positive diagonal matrix, or an outer
+            product of row/column weights, not arbitrary entrywise weights.
 
     Returns:
         Nearest correlation matrix on the active NumPy or CuPy backend.
