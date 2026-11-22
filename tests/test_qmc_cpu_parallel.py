@@ -1,4 +1,5 @@
 """Exact CPU quantiles after threaded RQMC inverse-CDF evaluation."""
+
 from __future__ import annotations
 
 import numpy as np
