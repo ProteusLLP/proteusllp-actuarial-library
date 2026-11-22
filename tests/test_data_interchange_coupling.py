@@ -34,13 +34,11 @@ def test_joint_table_coupled_by_default(tmp_path, layout, format):
                 )
             },
         )
-        get_leaves = lambda x: (x["UK"]["Motor"], x["UK"]["Property"])
     else:
         original = ProteusVariable(
             "LoB",
             {"Motor": StochasticScalar([2.0, 6.0, 4.0]), "Property": StochasticScalar([10.0, 30.0, 20.0])},
         )
-        get_leaves = lambda x: (x["Motor"], x["Property"])
 
     if format == "dataframe":
         result = ProteusVariable.from_dataframe(original.to_dataframe(layout=layout))
@@ -53,7 +51,10 @@ def test_joint_table_coupled_by_default(tmp_path, layout, format):
         original.to_parquet(path, layout=layout)
         result = ProteusVariable.from_parquet(path)
 
-    motor, property_loss = get_leaves(result)
+    if layout == "multiindex":
+        motor, property_loss = result["UK"]["Motor"], result["UK"]["Property"]
+    else:
+        motor, property_loss = result["Motor"], result["Property"]
     assert motor.coupled_variable_group is property_loss.coupled_variable_group
     assert isinstance(motor.values, xp.ndarray)
     np.testing.assert_array_equal(asnumpy(motor.values), [2.0, 6.0, 4.0])
