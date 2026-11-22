@@ -43,60 +43,45 @@ an unconstrained Normal or a Poisson have analytical MLEs.
 
 ### Including parameter uncertainty
 
-For a Gamma distribution, both the shape and scale estimates are uncertain
-because they have been fitted from a finite sample. PAL can estimate their
-joint sampling uncertainty and use it when generating scenarios.
+The fitted Gamma shape and scale are estimated from the data, so they are
+uncertain. PAL can estimate their joint uncertainty using a large-sample
+approximation to the likelihood.
 
 <!--pytest-codeblocks:cont-->
 
 ```python
 from pal.fitting import UncertaintyMethod
 
-fit = Gamma.fit(losses, uncertainty_method=UncertaintyMethod.ASYMPTOTIC)
-assert fit.uncertainty is not None
+fit_with_uncertainty = Gamma.fit(
+    losses, uncertainty_method=UncertaintyMethod.ASYMPTOTIC
+)
 
-# The parameters are fitted together and sampled together.
-print(fit.uncertainty.standard_errors)
-severity = fit.uncertainty.sample_distribution(n_sims=10_000)
-future_losses = severity.generate(n_sims=10_000)
+uncertainty = fit_with_uncertainty.uncertainty
+assert uncertainty is not None
+print("Parameter standard errors:", uncertainty.standard_errors)
 
-assert future_losses.n_sims == 10_000
-assert severity._params["alpha"].coupled_variable_group is future_losses.coupled_variable_group
-assert severity._params["theta"].coupled_variable_group is future_losses.coupled_variable_group
+# Draw one correlated pair of Gamma parameters per simulation.
+severity = uncertainty.sample_distribution(n_sims=10_000)
+simulated_losses = severity.generate(n_sims=10_000)
+assert simulated_losses.n_sims == 10_000
 ```
 
-Each simulation has one correlated pair of Gamma parameters, and PAL
-retains that pair when simulating claims from the same scenario.
-The original fitted `fit.distribution` retains fixed MLE parameters.
-The same approach works with PAL's Monte Carlo, randomized quasi-Monte Carlo,
-and supported GPU simulations.
+PAL draws shape and scale **together**, retaining their estimated
+correlation. Both parameters are positive, and their stochastic values
+are **coupled** with the simulated losses. The same parameter pair can
+therefore be used consistently for all claims within a scenario when
+the severity distribution is used in a frequency-severity model.
 
-The covariance is a **large-sample local approximation**, not an exact
-confidence distribution, posterior, or calibrated predictive distribution.
-It accounts for sampling uncertainty conditional on the selected distribution
-family; it does not account for model misspecification, model selection, or
-uncertainty in the reporting threshold. Marginal Wald intervals should not
-be confused with predictive intervals for future losses.
+PAL respects each parameter's permitted range and checks additional
+joint constraints where necessary. The fitted point-estimate
+distribution remains available as `fit_with_uncertainty.distribution`.
+The default `Gamma.fit(losses)` uses fixed MLE parameters.
 
-All PAL distributions expose the `uncertainty_method` option in
-`.fit(...)`. Regular MLE families use the observed-information approximation
-with the fitted covariance, including censoring and integer frequency
-weights where supported by their fitter. The default
-`UncertaintyMethod.NONE` leaves existing point-estimate behaviour unchanged.
-
-Not every fitted parameter admits a regular Gaussian large-sample
-approximation. In particular, discrete integer estimators, unknown uniform
-endpoints, categorical simplex boundaries, free GPD locations, and an
-estimated Pareto lower endpoint require other methods. PAL raises a clear
-error instead of returning unjustified covariance estimates in these cases.
-Extremely small samples and extreme tail probabilities may also be poorly
-approximated by local normality.
-
-For an actuarial treatment of *predictive calibration* beyond this first
-approximation, see Jewson and Sweeting (2026),
+This is a **large-sample approximation** to parameter uncertainty,
+not an exact predictive distribution, and may be less reliable for
+small samples or extreme tail probabilities. For further research on
+predictive calibration, see Jewson and Sweeting (2026),
 [Including parameter uncertainty in loss distributions using calibrating priors](https://doi.org/10.1017/S1748499525100237).
-Their objective-prior and asymptotic predictive corrections are a distinct
-next step for PAL; they are not implemented by this covariance calculation.
 
 <!--pytest-codeblocks:cont-->
 
