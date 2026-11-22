@@ -52,7 +52,7 @@ def test_elementwise_ufunc_cannot_expand_simulation_axis_through_raw_array() -> 
     variable = StochasticScalar([1.0, 2.0])
     original_group = variable.coupled_variable_group
     original_values = asnumpy(variable.values).copy()
-    with pytest.raises(ValueError, match="incompatible n_sims"):
+    with pytest.raises(ValueError, match="broadcast"):
         np.add(variable, np.array([10.0, 20.0, 30.0]))
     assert variable.coupled_variable_group is original_group
     np.testing.assert_array_equal(asnumpy(variable.values), original_values)
