@@ -30,6 +30,8 @@ def test_elliptical_copulas_repair_by_default_and_warn(student_t: bool) -> None:
     exposed = copula.adjusted_correlation_matrix
     exposed[0, 1] = 0.0
     assert float(copula.adjusted_correlation_matrix[0, 1]) != 0.0
+    copula.correlation_matrix[0, 1] = 0.0
+    assert float(copula.adjusted_correlation_matrix[0, 1]) != 0.0
 
 
 @pytest.mark.parametrize("student_t", [False, True])
