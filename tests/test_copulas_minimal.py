@@ -18,7 +18,7 @@ def test_gaussian_copula_non_positive_definite():
     # Actually this is positive definite, let me create a truly bad one
     bad_matrix = [[1, 2], [2, 1]]  # This should fail Cholesky decomposition
     with pytest.raises(ValueError, match="positive definite"):
-        copulas.GaussianCopula(np.array(bad_matrix))
+        copulas.GaussianCopula(np.array(bad_matrix), repair="none")
 
 
 def test_gaussian_copula_non_square_matrix():
