@@ -59,6 +59,17 @@ names. The default layout is wide for one-dimensional stochastic variables,
 multi-level pandas headers for regular nested stochastic variables, and long
 format for frequency-severity data and heterogeneous values.
 
+**Imported coupling:** Stochastic variables loaded together from one DataFrame,
+CSV or Parquet file are coupled by default because their simulation IDs describe
+one joint set of scenarios. Coupling preserves existing row-wise scenario
+relationships under subsequent permutations; it does not introduce a correlation
+or specify a copula. Pass `couple=False` to `from_dataframe`, `from_csv` or
+`from_parquet` when importing independent marginal samples that should remain
+in separate groups. If you need to preserve the *original* grouping of a PAL
+model, use `pal.serialization.save/load`. See the
+[Saving and Sharing PAL Data tutorial](tutorials/data_io.md) for examples,
+including relational databases through pandas.
+
 ### Nested variables and multi-level headers
 
 A nested portfolio with dimensions `Region` and `LoB` exports to pandas
@@ -189,8 +200,10 @@ PAL snapshots through `save/load` follow the same device transfer boundary.
 
 Use `ProteusVariable.to_csv/to_parquet` for tabular exchange and
 `ProteusVariable.from_csv/from_parquet` to read it back. These are
-not complete model object snapshots: stochastic coupling and some Python
-types are not retained. For versioned PAL-to-PAL persistence, including
+not complete model object snapshots: original coupling-group boundaries and
+some Python types are not retained. On import, stochastic columns sharing a
+simulation axis form one coupling group by default (`couple=False` disables
+this). For versioned PAL-to-PAL persistence, including
 coupling groups, use `pal.serialization.save(variable, path)` and
 `pal.serialization.load(path)` instead.
 
