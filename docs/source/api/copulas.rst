@@ -6,6 +6,18 @@ The copulas module provides copula models for dependence between stochastic vari
 Elliptical copulas
 -----------------
 
+Gaussian and Student's t copulas require positive-definite correlation
+matrices. By default, PAL repairs invalid matrices with Higham's nearest
+correlation algorithm and emits a ``UserWarning`` when an adjustment is
+necessary. Valid matrices are used unchanged, without a warning. Inspect
+``adjusted_correlation_matrix`` to see the coefficients used in simulation;
+``was_repaired`` records whether repair was necessary.
+
+Pass ``repair="none"`` to reject invalid matrices, or ``weights`` (a positive
+vector of row/column weights) and ``pattern`` (fixed index pairs) to control
+the Higham repair. The ``matrix_type="chol"`` constructor also exposes the
+implied correlation matrix.
+
 .. autosummary::
    :toctree: copulas
    :nosignatures:
