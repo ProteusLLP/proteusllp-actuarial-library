@@ -2,7 +2,7 @@
 
 import pandas as pd
 import pytest
-from examples import example_property_exposure_rating as example
+from pal.examples import example_property_exposure_rating as example
 
 
 def test_property_exposure_example_runs_end_to_end(
