@@ -128,17 +128,15 @@ class WeightedDistribution(DistributionBase):
             fitted.append(fit)
 
         scores = np.array([f.aicc for f in fitted], dtype=float)
-        if not np.all(np.isfinite(scores)):
-            raise ValueError("All candidates need finite AICc; check sample size and integer frequency weights")
         if len({(f.n_observations, f.n_censored, f.threshold) for f in fitted}) != 1:
             raise ValueError("Candidate fits must use matching sample, censoring and truncation")
         # AICc is comparable only for models fitted to the same observations
         # using the same likelihood measure, not a mixture of counts and losses.
-        differences = -0.5 * (scores - scores.min())
-        likelihood_weights = np.exp(differences)
-        likelihood_weights /= likelihood_weights.sum()
         if model_weights is None:
-            selected_weights = likelihood_weights
+            if not np.all(np.isfinite(scores)):
+                raise ValueError("All candidates need finite AICc; check sample size and integer frequency weights")
+            differences = -0.5 * (scores - scores.min())
+            selected_weights = np.exp(differences)
         elif isinstance(model_weights, t.Mapping):
             if set(model_weights) != set(candidates):
                 raise ValueError("model_weights mapping must contain exactly the fitted families")
