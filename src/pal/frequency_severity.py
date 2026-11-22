@@ -247,7 +247,9 @@ class FrequencySeverityModel:
         if isinstance(rng, RandomizedQMCGenerator):
             values = self._qmc_severities(n_sims, counts.astype(np.int64), event_indices, total_events, rng)
             result = FreqSevSims(event_indices, values, n_sims)
-            couple_stochastic_results((result,), (n_events, *stochastic_params.values(), *weighted_sources), n_sims=n_sims)
+            couple_stochastic_results(
+                (result,), (n_events, *stochastic_params.values(), *weighted_sources), n_sims=n_sims
+            )
             return result
 
         severity_distribution = self.sev_dist
