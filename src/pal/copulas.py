@@ -17,11 +17,11 @@ import scipy.stats
 from scipy.special import gamma
 
 from . import ProteusVariable, StochasticScalar
-from ._maths import asnumpy, special
-from ._maths import xp as np
 
 # Local imports
 from ._correlation_preparation import RepairMode, prepare_correlation_matrix
+from ._maths import asnumpy, special
+from ._maths import xp as np
 from .config import config
 from .couplings import couple_stochastic_results
 from .qmc import RandomizedQMCGenerator, _draw_active_scenarios, _draw_scenarios
@@ -239,6 +239,8 @@ class EllipticalCopula(Copula, ABC):
             repair: Higham repair by default; "none" rejects invalid inputs.
             weights: Optional positive vector of Higham row/column weights.
             pattern: Optional correlations to hold fixed during repair.
+            *args: Retained for compatibility with subclasses.
+            **kwargs: Retained for compatibility with subclasses.
         """
         _matrix = np.asarray(matrix, dtype=float)
         if _matrix.ndim != 2 or _matrix.shape[0] != _matrix.shape[1]:
