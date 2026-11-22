@@ -1,3 +1,5 @@
+# ruff: noqa: D, I, N, E501
+# fmt: off
 """Numerical regression cases ported from Proteus Correlation Toolkit."""
 
 import numpy as np
