@@ -175,8 +175,7 @@ def near_corr(
     """
     if weights is not None:
         raise NotImplementedError(
-            "The toolkit's weights parameter was not implemented; weighted "
-            "nearest correlation repair is not supported."
+            "The toolkit's weights parameter was not implemented; weighted nearest correlation repair is not supported."
         )
     return nearest_correlation(
         matrix,
