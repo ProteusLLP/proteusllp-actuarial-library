@@ -25,10 +25,7 @@ def test_equicorrelation_projection_has_known_answer(method: str) -> None:
 @pytest.mark.parametrize("method", ["higham", "spectral"])
 @pytest.mark.parametrize("eigenvalue_floor", [0.0, 0.02])
 def test_repaired_matrix_is_a_correlation_matrix(method: str, eigenvalue_floor: float) -> None:
-    invalid = np.array(
-        [[1.0, 0.8, 0.8, 0.6], [0.8, 1.0, -0.4, 0.7],
-         [0.8, -0.4, 1.0, -0.9], [0.6, 0.7, -0.9, 1.0]]
-    )
+    invalid = np.array([[1.0, 0.8, 0.8, 0.6], [0.8, 1.0, -0.4, 0.7], [0.8, -0.4, 1.0, -0.9], [0.6, 0.7, -0.9, 1.0]])
     result = nearest_correlation(invalid, method=method, minimum_eigenvalue=eigenvalue_floor)
     np.testing.assert_allclose(asnumpy(result), asnumpy(result.T), atol=1e-12)
     np.testing.assert_allclose(np.diag(asnumpy(result)), 1.0, atol=1e-12)
@@ -37,10 +34,7 @@ def test_repaired_matrix_is_a_correlation_matrix(method: str, eigenvalue_floor: 
 
 def test_higham_is_closer_than_spectral_approximation() -> None:
     """Compare two algorithms on an asymmetric-sign indefinite example."""
-    invalid = np.array(
-        [[1.0, 0.8, 0.8, 0.6], [0.8, 1.0, -0.4, 0.7],
-         [0.8, -0.4, 1.0, -0.9], [0.6, 0.7, -0.9, 1.0]]
-    )
+    invalid = np.array([[1.0, 0.8, 0.8, 0.6], [0.8, 1.0, -0.4, 0.7], [0.8, -0.4, 1.0, -0.9], [0.6, 0.7, -0.9, 1.0]])
     nearest = nearest_correlation(invalid)
     approximate = nearest_correlation(invalid, method="spectral")
     assert np.linalg.norm(asnumpy(nearest) - invalid) < np.linalg.norm(asnumpy(approximate) - invalid) - 1e-4
