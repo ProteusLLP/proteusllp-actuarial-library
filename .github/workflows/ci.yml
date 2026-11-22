@@ -154,7 +154,7 @@ jobs:
           python-version: "3.13"
 
       - name: Install build tools
-        run: pip install build setuptools-scm
+        run: pip install build setuptools-scm twine
 
       - name: Build main package
         run: python -m build
@@ -171,6 +171,24 @@ jobs:
 
       - name: List built distributions
         run: ls -lh dist/
+
+      - name: Check distributions and installed wheel imports
+        run: |
+          python -m twine check dist/*
+          python -m venv "$RUNNER_TEMP/pal-wheel-smoke"
+          "$RUNNER_TEMP/pal-wheel-smoke/bin/python" -m pip install dist/proteusllp_actuarial_library-*.whl
+          "$RUNNER_TEMP/pal-wheel-smoke/bin/python" -m pip install --no-deps dist/proteus_actuarial_library-*.whl
+          "$RUNNER_TEMP/pal-wheel-smoke/bin/python" - <<'PY'
+          import pal
+          import proteus
+          from pal import api
+          from pal.correlation import nearest_correlation, complete_corr, cluster_corr
+          from pal.distributions import Gamma, WeightedDistribution
+          from pal.serialization import load, save
+
+          assert callable(api.recipes)
+          print("Primary and mirror wheels import successfully.")
+          PY
 
       - name: Verify version matches release tag
         if: github.event_name == 'release'
