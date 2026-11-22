@@ -49,9 +49,7 @@ def test_aicc_fitting_matches_information_criterion_weights() -> None:
 def test_fit_accepts_user_specified_model_weights() -> None:
     """Manually selected weights override AICc averaging, not MLE diagnostics."""
     sample = np.random.default_rng(66).gamma(3.0, 200.0, 500)
-    manual = WeightedDistribution.fit(
-        sample, [Gamma, LogNormal], model_weights={Gamma: 0.9, LogNormal: 0.1}
-    )
+    manual = WeightedDistribution.fit(sample, [Gamma, LogNormal], model_weights={Gamma: 0.9, LogNormal: 0.1})
     assert manual.model_weights[Gamma] == pytest.approx(0.9)
     assert manual.model_weights[LogNormal] == pytest.approx(0.1)
     assert manual.aicc[Gamma] == pytest.approx(Gamma.fit(sample).aicc)
@@ -67,9 +65,7 @@ def test_fit_accepts_user_specified_model_weights() -> None:
 def test_joint_parameter_uncertainty_and_persistent_model_choice() -> None:
     rng = np.random.default_rng(222)
     sample = rng.lognormal(2.0, 0.6, 600)
-    fit = WeightedDistribution.fit(
-        sample, [Gamma, LogNormal], uncertainty_method=UncertaintyMethod.ASYMPTOTIC
-    )
+    fit = WeightedDistribution.fit(sample, [Gamma, LogNormal], uncertainty_method=UncertaintyMethod.ASYMPTOTIC)
     assert all(candidate.uncertainty is not None for candidate in fit.fits)
     ensemble = fit.sample_distribution(2048, rng=np.random.default_rng(22))
     assert ensemble.model_indices is not None
@@ -136,9 +132,7 @@ def test_aicc_fit_accepts_right_censoring_and_preserves_likelihood_diagnostics()
     reported = ultimate[ultimate > threshold]
     censor = reported > 12000
     observations = np.minimum(reported, 12000)
-    fitted = WeightedDistribution.fit(
-        observations, [Gamma, LogNormal], threshold=threshold, censored=censor
-    )
+    fitted = WeightedDistribution.fit(observations, [Gamma, LogNormal], threshold=threshold, censored=censor)
     assert len(fitted.fits) == 2
     assert all(f.threshold == threshold for f in fitted.fits)
     assert all(f.n_censored == np.sum(censor) for f in fitted.fits)
@@ -215,19 +209,13 @@ def test_compound_generation_uses_standard_parameter_expansion() -> None:
 
     rng = np.random.default_rng(473)
     observations = rng.lognormal(2.0, 0.7, 400)
-    fit = WeightedDistribution.fit(
-        observations, [Gamma, LogNormal], uncertainty_method=UncertaintyMethod.ASYMPTOTIC
-    )
+    fit = WeightedDistribution.fit(observations, [Gamma, LogNormal], uncertainty_method=UncertaintyMethod.ASYMPTOTIC)
     scenario = fit.sample_distribution(256, rng=np.random.default_rng(474))
     event_indices = np.repeat(np.arange(256), 2)
     backend_indices = to_backend(event_indices)
     expanded = copy.copy(scenario)
     expanded._params = {
-        key: (
-            StochasticScalar(value.values[backend_indices])
-            if isinstance(value, StochasticScalar)
-            else value
-        )
+        key: (StochasticScalar(value.values[backend_indices]) if isinstance(value, StochasticScalar) else value)
         for key, value in scenario._params.items()
     }
     result = expanded.generate(512, rng=np.random.default_rng(475))
