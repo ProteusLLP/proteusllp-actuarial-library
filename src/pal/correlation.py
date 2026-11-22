@@ -92,9 +92,9 @@ def nearest_correlation(
         max_iterations: Maximum number of alternating projections.
         pattern: Optional positions whose symmetric values must remain fixed.
             Only supported by the Higham method.
-        weights: Positive row/column weights for Higham's weighted Frobenius
-            norm, supplied as a length-n vector, a diagonal matrix, or a
-            rank-one outer product. Cannot be combined with spectral repair.
+        weights: Strictly positive length-n vector for Higham's weighted
+            Frobenius norm. Each weight rescales the corresponding row and
+            column. Cannot be combined with spectral repair.
 
     Returns:
         A unit-diagonal correlation matrix on the configured array backend.
@@ -202,9 +202,8 @@ def near_corr(
     Args:
         matrix: Square matrix of correlation coefficients.
         pattern: Zero-based index pairs of coefficients to hold fixed.
-        weights: Positive row/column weights for Higham's weighted norm.
-            Accepts an n-vector, a positive diagonal matrix, or an outer
-            product of row/column weights, not arbitrary entrywise weights.
+        weights: Strictly positive length-n vector of row/column weights.
+            Applies Higham's diagonal rescaling, not elementwise weighting.
 
     Returns:
         Nearest correlation matrix on the active NumPy or CuPy backend.
