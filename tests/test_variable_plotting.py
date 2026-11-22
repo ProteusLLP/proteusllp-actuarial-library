@@ -1,5 +1,7 @@
 """Tests for Plotly figure helpers on stochastic variables."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import numpy as np
