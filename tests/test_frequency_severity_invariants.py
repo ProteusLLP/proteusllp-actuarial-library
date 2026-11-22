@@ -16,8 +16,7 @@ from tests._assertions import assert_allclose, assert_array_equal, host_values
 def _per_simulation_values(indices: np.ndarray, values: np.ndarray, n_sims: int) -> list[list[float]]:
     """Construct an independent, order-preserving event list for each simulation."""
     return [
-        [float(value) for idx, value in zip(indices, values, strict=False) if int(idx) == sim]
-        for sim in range(n_sims)
+        [float(value) for idx, value in zip(indices, values, strict=False) if int(idx) == sim] for sim in range(n_sims)
     ]
 
 

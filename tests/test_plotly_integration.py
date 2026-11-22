@@ -84,8 +84,8 @@ def test_import_does_not_change_plotly_default_template() -> None:
     """Importing PAL should respect an application's existing Plotly template."""
     code = (
         "import plotly.io as pio\n"
-        "pio.templates.default = \'plotly_white\'\n"
+        "pio.templates.default = 'plotly_white'\n"
         "import pal\n"
-        "assert pio.templates.default == \'plotly_white\'\n"
+        "assert pio.templates.default == 'plotly_white'\n"
     )
     subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True)  # noqa: S603
