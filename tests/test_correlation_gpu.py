@@ -34,8 +34,11 @@ def test_weighted_vector_repair_remains_on_gpu(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(xp, "asnumpy", reject_host_copy)
     repaired = nearest_correlation(
-        matrix, weights=weights, minimum_eigenvalue=1e-5,
-        tolerance=1e-10, max_iterations=10000,
+        matrix,
+        weights=weights,
+        minimum_eigenvalue=1e-5,
+        tolerance=1e-10,
+        max_iterations=10000,
     )
 
     assert isinstance(repaired, xp.ndarray)
