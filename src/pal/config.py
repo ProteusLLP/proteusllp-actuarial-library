@@ -6,7 +6,16 @@ and global library settings.
 
 from pal._maths import create_random_generator
 from pal.qmc import RandomizedQMCGenerator
-from pal.types import Config, SamplingMethod
+from pal.types import Config, SamplingMethod as SamplingMethod
+
+__all__ = [
+    "SamplingMethod",
+    "config",
+    "set_default_n_sims",
+    "set_random_seed",
+    "set_sampling_method",
+    "start_new_sampling_block",
+]
 
 config = Config()  # config is assumed to be a singleton
 
