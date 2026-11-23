@@ -36,3 +36,10 @@ _ = (
     ProteusVariable,
     StochasticScalar,
 )
+
+
+def _typecheck_sampling_method_literals() -> None:
+    """Keep literal strings accepted by the public configuration API."""
+    set_sampling_method("mc")
+    set_sampling_method("pseudo")
+    set_sampling_method("rqmc")
