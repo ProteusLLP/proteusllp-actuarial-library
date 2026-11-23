@@ -6,7 +6,8 @@ and global library settings.
 
 from pal._maths import create_random_generator
 from pal.qmc import RandomizedQMCGenerator
-from pal.types import Config, SamplingMethod as SamplingMethod
+from pal.types import Config
+from pal.types import SamplingMethod as SamplingMethod
 
 __all__ = [
     "SamplingMethod",
