@@ -45,9 +45,7 @@ def set_random_seed(seed: int) -> None:
         config.rng = create_random_generator(seed)
 
 
-def set_sampling_method(
-    method: SamplingMethod | Literal["mc", "pseudo", "rqmc"], *, dimensions: int = 32
-) -> None:
+def set_sampling_method(method: SamplingMethod | Literal["mc", "pseudo", "rqmc"], *, dimensions: int = 32) -> None:
     """Select Monte Carlo or randomized Sobol sampling.
 
     Use `SamplingMethod.MC` for pseudorandom Monte Carlo or
