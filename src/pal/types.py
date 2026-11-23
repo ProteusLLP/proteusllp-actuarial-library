@@ -55,10 +55,24 @@ T_co = t.TypeVar("T_co", covariant=True)
 
 
 class SamplingMethod(str, Enum):
-    """Sampling approaches supported by PAL."""
+    """Sampling methods for stochastic simulation.
+
+    MC uses independent pseudorandom draws. RQMC uses randomized, scrambled
+    Sobol sequences to improve coverage of the unit hypercube.
+    """
 
     MC = "pseudo"
+    """Pseudorandom Monte Carlo sampling (also selected by the string `"mc"`)."""
+
     RQMC = "rqmc"
+    """Randomized quasi-Monte Carlo sampling using scrambled Sobol sequences."""
+
+    @property
+    def description(self) -> str:
+        """A short explanation of the sampling method."""
+        if self is SamplingMethod.MC:
+            return "Pseudorandom Monte Carlo sampling"
+        return "Randomized quasi-Monte Carlo sampling using scrambled Sobol sequences"
 
 
 @dataclasses.dataclass
