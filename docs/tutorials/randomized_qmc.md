@@ -8,6 +8,19 @@ error without changing the model.
 
 ## One distribution
 
+PAL's sampling methods are `SamplingMethod.MC` (pseudorandom Monte Carlo)
+and `SamplingMethod.RQMC` (randomized quasi-Monte Carlo). Both enum members
+have descriptions available via their `description` property. For simpler
+configuration, `set_sampling_method` also accepts `"mc"` or `"pseudo"`
+for ordinary Monte Carlo and `"rqmc"` for RQMC:
+
+```python
+from pal.config import set_sampling_method
+
+set_sampling_method("rqmc")
+set_sampling_method("mc")  # Restore ordinary Monte Carlo
+```
+
 Start with a standard normal distribution, using the same number of draws
 under Monte Carlo and RQMC:
 
