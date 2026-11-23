@@ -40,7 +40,7 @@ format-check:
 
 .PHONY: typecheck
 typecheck:
-	pyright
+	python scripts/typecheck_documented_imports.py
 
 .PHONY: security
 security:
