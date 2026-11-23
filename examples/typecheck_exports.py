@@ -15,6 +15,7 @@ from pal import (
     set_default_n_sims,
     set_random_seed,
 )
+from pal.config import SamplingMethod, set_sampling_method, start_new_sampling_block
 from pal.contracts import XoL, XoLTower
 from pal.copulas import GaussianCopula
 from pal.distributions import Gamma
@@ -23,6 +24,9 @@ _ = (
     config,
     set_default_n_sims,
     set_random_seed,
+    SamplingMethod,
+    set_sampling_method,
+    start_new_sampling_block,
     XoL,
     XoLTower,
     GaussianCopula,
