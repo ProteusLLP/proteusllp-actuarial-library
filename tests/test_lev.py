@@ -115,8 +115,7 @@ def test_loggamma_lev(beta):
     model = LogGamma(alpha=2, beta=beta)
     limits = np.array([0, 1, 2, 10, 100])
     expected = [
-        d if d <= 1 else 1 + integrate.quad(lambda x: stats.gamma.sf(np.log(x), 2, scale=beta), 1, d)[0]
-        for d in limits
+        d if d <= 1 else 1 + integrate.quad(lambda x: stats.gamma.sf(np.log(x), 2, scale=beta), 1, d)[0] for d in limits
     ]
     np.testing.assert_allclose(model.lev(limits), expected, rtol=1e-10)
 
@@ -126,8 +125,7 @@ def test_mbbefd_lev(g, b):
     model = MBBEFD(g=g, b=b)
     limits = np.array([-1.0, 0, 0.1, 0.5, 1, 2])
     expected = [
-        d if d <= 0 else integrate.quad(lambda x: 1 - float(model.cdf(float(x))), 0, min(d, 1))[0]
-        for d in limits
+        d if d <= 0 else integrate.quad(lambda x: 1 - float(model.cdf(float(x))), 0, min(d, 1))[0] for d in limits
     ]
     np.testing.assert_allclose(model.lev(limits), expected, rtol=1e-9, atol=1e-12)
 

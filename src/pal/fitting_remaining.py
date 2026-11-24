@@ -13,7 +13,7 @@ import typing as t
 import numpy as np
 from scipy import integrate, optimize, special, stats
 
-from .fitting import UncertaintyMethod, _FitMethod, _with_uncertainty
+from .fitting import _minimize_multistart, _with_uncertainty, OptimizerMethod, UncertaintyMethod, _FitMethod
 
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
@@ -82,6 +82,8 @@ def _result(
     threshold: float = 0.0,
     method: str = _FitMethod.MLE.value,
     converged: bool = True,
+    optimizer: str | None = None,
+    optimizer_fallback: bool = False,
 ) -> FitResult[_T]:
     """Construct consistent log-likelihood and information criterion diagnostics."""
     from .fitting import FitResult
@@ -94,6 +96,8 @@ def _result(
         aicc = np.nan
     return FitResult(
         n_parameters=k,
+        optimizer=optimizer,
+        optimizer_fallback=optimizer_fallback,
         distribution=distribution,
         parameters=params,
         log_likelihood=float(ll),
@@ -189,6 +193,8 @@ def _fit_continuous(
 
     loc = float(options.pop("loc", 0.0)) if family is _distributions.Beta else 0.0
     scale = float(options.pop("scale", 1.0)) if family is _distributions.Beta else 1.0
+    optimizer = options.pop("optimizer", OptimizerMethod.L_BFGS_B)
+    optimizer_options = options.pop("optimizer_options", None)
     if options:
         raise TypeError(f"Unsupported fitting options for {family.__name__}: {sorted(options)}")
     if family is _distributions.Beta:
@@ -282,16 +288,9 @@ def _fit_continuous(
             ll = log_likelihood(params(raw))
         return -ll if np.isfinite(ll) else 1e100
 
-    fits = [
-        optimize.minimize(
-            objective,
-            np.asarray(start, dtype=float),
-            method="Nelder-Mead",
-            options={"maxiter": 4000, "xatol": 1e-8, "fatol": 1e-8},
-        )
-        for start in starts
-    ]
-    best = min(fits, key=lambda v: float(v.fun))
+    best = _minimize_multistart(
+        objective, (np.asarray(start, dtype=float) for start in starts), optimizer, optimizer_options, 4000
+    )
     if best.fun >= 1e100:
         raise RuntimeError(f"No finite {family.__name__} likelihood could be obtained")
     estimated = params(best.x)
@@ -304,6 +303,8 @@ def _fit_continuous(
         n_censored=int(np.count_nonzero(c)),
         threshold=0.0 if threshold is None else threshold,
         converged=bool(best.success),
+        optimizer=str(best.optimizer_used),
+        optimizer_fallback=bool(best.optimizer_fallback),
     )
 
 
@@ -420,6 +421,8 @@ def _fit_mbbefd(
     options: dict[str, t.Any],
 ) -> FitResult[_T]:
     """Fit MBBEFD including the point mass at the policy limit."""
+    optimizer = options.pop("optimizer", OptimizerMethod.L_BFGS_B)
+    optimizer_options = options.pop("optimizer_options", None)
     if options:
         raise TypeError(f"Unexpected MBBEFD fit options: {sorted(options)}")
     x, w = _input(observations, weights)
@@ -456,21 +459,23 @@ def _fit_mbbefd(
     atom_share = float(np.sum(w[atom]) / np.sum(w))
     initial_g = max(1.0 / atom_share, 1.01)
     starts = [[np.log(initial_g - 1), logb] for logb in (-2.0, -0.3, 0.3, 2.0)]
-    fits = [
-        optimize.minimize(
-            objective,
-            np.asarray(start, dtype=float),
-            method="Nelder-Mead",
-            options={"maxiter": 4000, "xatol": 1e-8, "fatol": 1e-8},
-        )
-        for start in starts
-    ]
-    best = min(fits, key=lambda r: float(r.fun))
+    best = _minimize_multistart(
+        objective, (np.asarray(start, dtype=float) for start in starts), optimizer, optimizer_options, 4000
+    )
     if best.fun >= 1e100:
         raise RuntimeError("No finite MBBEFD likelihood found")
     g, b = params(best.x)
     pars = {"g": g, "b": b}
-    return _result(cls(**pars), pars, likelihood(g, b), w, k=2, converged=bool(best.success))
+    return _result(
+        cls(**pars),
+        pars,
+        likelihood(g, b),
+        w,
+        k=2,
+        converged=bool(best.success),
+        optimizer=str(best.optimizer_used),
+        optimizer_fallback=bool(best.optimizer_fallback),
+    )
 
 
 def _fit_uniform(

@@ -82,6 +82,8 @@ class FitResult(t.Generic[_T]):
     uncertainty: AsymptoticParameterUncertainty[_T] | None = field(default=None, repr=False, compare=False)
     n_parameters: int = field(default=-1, kw_only=True)
     warnings: tuple[str, ...] = field(default=(), kw_only=True)
+    optimizer: str | None = field(default=None, kw_only=True)
+    optimizer_fallback: bool = field(default=False, kw_only=True)
 
     def __post_init__(self) -> None:
         """Preserve compatibility with callers constructing older FitResult objects."""
@@ -112,21 +114,59 @@ class FitResult(t.Generic[_T]):
         return asymptotic_parameter_uncertainty(self, observations, censored=censored, weights=weights)
 
 
-def _minimize_severity(
+def _minimize_multistart(
     objective: t.Callable[[np.ndarray], float],
-    start: np.ndarray,
+    starts: t.Iterable[np.ndarray],
     optimizer: OptimizerMethod | str,
     options: t.Mapping[str, t.Any] | None,
     maxiter: int,
 ) -> optimize.OptimizeResult:
-    """Run a configured optimizer without changing existing default tolerances."""
+    """Run all starts and safeguard gradient-based fits at support boundaries.
+
+    Finite differences use the unconstrained coordinates of each family.
+    A nonstationary or unsuccessful L-BFGS-B solution is polished with
+    Nelder-Mead; the better finite likelihood is retained. Analytical and
+    profile estimators are unaffected by the optimizer selection.
+    """
     method = OptimizerMethod(optimizer)
+    simplex_options = {"maxiter": maxiter, "xatol": 1e-7, "fatol": 1e-7}
     defaults: dict[str, t.Any] = (
-        {"maxiter": maxiter, "xatol": 1e-7, "fatol": 1e-7}
+        simplex_options
         if method is OptimizerMethod.NELDER_MEAD
-        else {"maxiter": maxiter, "ftol": 1e-12, "gtol": 1e-6}
+        else {"maxiter": maxiter, "ftol": 1e-13, "gtol": 1e-6, "maxls": 50}
     )
-    return optimize.minimize(objective, start, method=method.value, options={**defaults, **(options or {})})
+    settings = {**defaults, **(options or {})}
+
+    def safe_objective(raw: np.ndarray) -> float:
+        try:
+            value = objective(raw)
+        except (ArithmeticError, ValueError):
+            return 1e100
+        return float(value) if np.isfinite(value) else 1e100
+
+    candidates = [
+        optimize.minimize(
+            safe_objective,
+            start,
+            method=method.value,
+            jac="3-point" if method is OptimizerMethod.L_BFGS_B else None,
+            options=settings,
+        )
+        for start in starts
+    ]
+    best = min(candidates, key=lambda result: float(result.fun))
+    best["optimizer_used"] = method.value
+    best["optimizer_fallback"] = False
+    if method is OptimizerMethod.L_BFGS_B and best.fun < 1e100:
+        gradient = np.asarray(best.jac)
+        stationary = np.all(np.isfinite(gradient)) and np.max(np.abs(gradient)) <= max(1e-4, 1e-7 * abs(best.fun))
+        if not best.success or not stationary:
+            polished = optimize.minimize(safe_objective, best.x, method="Nelder-Mead", options=simplex_options)
+            if polished.fun <= best.fun:
+                best = polished
+                best["optimizer_used"] = OptimizerMethod.NELDER_MEAD.value
+            best["optimizer_fallback"] = True
+    return best
 
 
 def _boundary_warnings(parameters: dict[str, float], observations: np.ndarray, threshold: float) -> tuple[str, ...]:
@@ -317,7 +357,7 @@ def fit_distribution(
     censored: t.Sequence[bool] | np.ndarray | None = None,
     weights: t.Sequence[float] | np.ndarray | None = None,
     free_location: bool = False,
-    optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+    optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
     optimizer_options: t.Mapping[str, t.Any] | None = None,
     uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
 ) -> FitResult[_T]:
@@ -395,6 +435,8 @@ def fit_distribution(
     total = float(np.sum(w))
     mean = float(np.average(x, weights=w))
     variance = float(np.average((x - mean) ** 2, weights=w))
+    optimizer_used: str | None = None
+    optimizer_fallback = False
     if family is _distributions.Pareto:
         scale = threshold if threshold > 0 else float(x.min())
         denominator = float(np.sum(w * np.log(x / scale)))
@@ -444,15 +486,15 @@ def fit_distribution(
                 ll = _log_likelihood(family, transform(p), x, c, w, threshold)
             return -ll if np.isfinite(ll) else 1e100
 
-        results = [
-            _minimize_severity(objective, np.asarray(start, dtype=np.float64), optimizer, optimizer_options, 5000)
-            for start in starts
-        ]
-        best = min(results, key=lambda result: float(result.fun))
+        best = _minimize_multistart(
+            objective, (np.asarray(start, dtype=float) for start in starts), optimizer, optimizer_options, 5000
+        )
         if not np.isfinite(best.fun) or best.fun >= 1e100:
             raise RuntimeError(f"Unable to obtain a finite {family.__name__} fit")
         parameters = transform(best.x)
         converged = bool(best.success)
+        optimizer_used = str(best.optimizer_used)
+        optimizer_fallback = bool(best.optimizer_fallback)
     ll = _log_likelihood(family, parameters, x, c, w, threshold)
     if not np.isfinite(ll):
         raise RuntimeError(f"Fitted {family.__name__} has an invalid log-likelihood")
@@ -467,6 +509,8 @@ def fit_distribution(
     aicc = aic + 2.0 * k * (k + 1) / (total - k - 1) if is_frequency_weight and total > k + 1 else np.nan
     return FitResult(
         n_parameters=k,
+        optimizer=optimizer_used,
+        optimizer_fallback=optimizer_fallback,
         warnings=() if family is _distributions.Pareto else _boundary_warnings(parameters, x, threshold),
         distribution=model,
         parameters=parameters,
@@ -689,11 +733,9 @@ def _fit_other(
             val = loglik(make_params(raw))
         return -val if np.isfinite(val) else 1e100
 
-    results = [
-        _minimize_severity(objective, np.asarray(start, dtype=np.float64), optimizer, optimizer_options, 5000)
-        for start in starts
-    ]
-    best = min(results, key=lambda item: float(item.fun))
+    best = _minimize_multistart(
+        objective, (np.asarray(start, dtype=float) for start in starts), optimizer, optimizer_options, 5000
+    )
     if best.fun >= 1e100 or not np.isfinite(best.fun):
         raise RuntimeError(f"Unable to obtain finite {family.__name__} likelihood")
     pars = make_params(best.x)
@@ -710,6 +752,8 @@ def _fit_other(
     )
     return FitResult(
         n_parameters=n_params,
+        optimizer=str(best.optimizer_used),
+        optimizer_fallback=bool(best.optimizer_fallback),
         warnings=_boundary_warnings(pars, x, threshold),
         distribution=model,
         parameters=pars,
@@ -818,11 +862,9 @@ def _fit_gpd_free_location(
         [0.3, np.log(start_scale), np.log(distance)],
         [-0.2, np.log(start_scale), np.log(distance)],
     ]
-    results = [
-        _minimize_severity(objective, np.asarray(start, dtype=float), optimizer, optimizer_options, 5000)
-        for start in starts
-    ]
-    best = min(results, key=lambda item: float(item.fun))
+    best = _minimize_multistart(
+        objective, (np.asarray(start, dtype=float) for start in starts), optimizer, optimizer_options, 5000
+    )
     if best.fun >= 1e100 or not np.isfinite(best.fun):
         raise RuntimeError("Unable to obtain a finite three-parameter GPD fit")
     params = transform(best.x)
@@ -832,6 +874,8 @@ def _fit_gpd_free_location(
     aicc = aic + 24.0 / (n - 4) if np.all(w == np.floor(w)) and n > 4 else np.nan
     return FitResult(
         n_parameters=3,
+        optimizer=str(best.optimizer_used),
+        optimizer_fallback=bool(best.optimizer_fallback),
         distribution=distribution(**params),
         parameters=params,
         log_likelihood=ll,
@@ -947,11 +991,7 @@ def _fit_gb2(
             ll = likelihood(transform(v))
         return -ll if np.isfinite(ll) else 1e100
 
-    candidates = [
-        _minimize_severity(objective, np.log(start), optimizer, optimizer_options, 6000)
-        for start in starts
-    ]
-    best = min(candidates, key=lambda fit: float(fit.fun))
+    best = _minimize_multistart(objective, (np.log(start) for start in starts), optimizer, optimizer_options, 6000)
     if not np.isfinite(best.fun) or best.fun >= 1e100:
         raise RuntimeError("No finite generalised beta prime fit")
     pars = transform(best.x)
@@ -962,6 +1002,8 @@ def _fit_gb2(
     aicc = aic + 40 / (total_weight - 5) if frequency and total_weight > 5 else np.nan
     return FitResult(
         n_parameters=4,
+        optimizer=str(best.optimizer_used),
+        optimizer_fallback=bool(best.optimizer_fallback),
         warnings=_boundary_warnings(pars, x, threshold),
         distribution=distribution(**pars),
         parameters=pars,
