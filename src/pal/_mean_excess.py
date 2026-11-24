@@ -46,15 +46,13 @@ def _tail_fraction_pair(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Evaluate a tail continued fraction and its divided difference.
 
-    For the normal Mills ratio, 1/R(x) = x + C(x), with numerators n
-    and denominators x. For the upper incomplete gamma,
-    x**alpha * exp(-x) / Gamma(alpha,x) = x+1-alpha+C(x),
-    with numerators n*(alpha-n) and denominators x+2*n+1-alpha.
-
-    Backward recurrence propagates (C(x)-C(y))/(x-y) analytically,
-    including when x and y round to the same value. Doubling the depth
-    provides a convergence check; unresolved entries return NaN.
+    The denominator of each fraction is linear in its argument.
+    Backward recurrence propagates the divided difference analytically,
+    including when both arguments round to the same value. Doubling the
+    depth provides a convergence check; unresolved entries return NaN.
     """
+    # Normal Mills: 1/R(x) = x + C(x).
+    # Upper gamma: x**alpha * exp(-x) / Gamma(alpha,x) = x+1-alpha+C(x).
     if not x.size:
         return np.zeros_like(x), np.zeros_like(x), np.zeros_like(x)
     previous = None
@@ -324,9 +322,10 @@ def _beta_fraction_coefficients(
 def _beta_prime_tail_excess(x: np.ndarray, log_power: np.ndarray, a: float, p: float, q: float) -> np.ndarray:
     """Cancel beta normalisers, endpoint powers and attachment analytically.
 
-    B_z(q,p) = z**q * (1-z)**p / (q*D(q,p,z)), where D is a
-    continued fraction. A moment shifts q down and p up by 1/a.
-    The paired recurrence avoids subtracting nearly equal fractions.
+    The unregularized incomplete beta is the endpoint powers divided
+    by the shape parameter and the continued-fraction denominator.
+    The first moment shifts the two shape parameters in opposite
+    directions; the paired recurrence avoids subtracting close fractions.
     """
     z = special.expit(-log_power)
     shift = 1 / a
