@@ -14,7 +14,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = "src/pal"
-BASELINE = ROOT / "scripts/docstring_baseline.json"
 SECTION = re.compile(r"^([A-Za-z][A-Za-z ]*):\s*$")
 ENTRY = re.compile(r"^\s+(\*{0,2}[A-Za-z_]\w*)(?:\s*\([^)]*\))?\s*:\s*(.*)$")
 
@@ -180,7 +179,9 @@ class Audit(ast.NodeVisitor):
             doc = ast.get_docstring(node) or ""
             if not doc:
                 self.report("missing docstring")
-            for name in sorted(argument_names(node, is_method=is_method) - documented(doc, {"Args", "Arguments", "Parameters"})):
+            expected = argument_names(node, is_method=is_method)
+            present = documented(doc, {"Args", "Arguments", "Parameters"})
+            for name in sorted(expected - present):
                 self.report(f"missing argument {name}")
         self.generic_visit(node)
         self.scope.pop()
@@ -218,21 +219,18 @@ def audit_tree() -> set[str]:
 
 
 def main() -> int:
-    """Report missing documentation and reject additions to the debt inventory."""
+    """Report and reject every missing docstring, argument or attribute description."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--strict", action="store_true", help="Reject every undocumented definition or attribute")
     parser.add_argument("--inventory", action="store_true", help="Print the complete machine-readable defect inventory")
     args = parser.parse_args()
     issues = audit_tree()
     if args.inventory:
         print(json.dumps(sorted(issues), indent=2))
         return 0
-    baseline = set(json.loads(BASELINE.read_text(encoding="utf-8"))) if BASELINE.exists() else set()
-    remaining = issues if args.strict else issues - baseline
-    for issue in sorted(remaining):
+    for issue in sorted(issues):
         print(issue)
-    print(f"Docstrings: {len(issues)} outstanding defects; {len(remaining)} rejected by this check.")
-    return int(bool(remaining))
+    print(f"Docstrings: {len(issues)} outstanding defects.")
+    return int(bool(issues))
 
 
 if __name__ == "__main__":

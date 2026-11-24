@@ -23,7 +23,7 @@ help:
 
 # Static analysis targets
 .PHONY: lint
-lint:
+lint: docstrings
 	ruff check src/pal tests examples
 
 .PHONY: lint-fix
@@ -52,7 +52,7 @@ deadcode:
 	vulture src/pal
 
 .PHONY: static-analysis
-static-analysis: lint format-check typecheck security deadcode docstrings
+static-analysis: lint format-check typecheck security deadcode
 	@echo "All static analysis checks completed"
 
 .PHONY: docstrings

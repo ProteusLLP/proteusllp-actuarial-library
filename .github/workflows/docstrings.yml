@@ -67,8 +67,7 @@ jobs:
           PY
       - name: Audit argument and attribute documentation
         run: |
-          python scripts/check_docstrings.py --inventory
-          python scripts/check_docstrings.py
+          make docstrings
       - name: Install lint and test dependencies
         run: pip install ruff pytest
       - name: Test documentation auditor
