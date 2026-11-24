@@ -6,17 +6,23 @@ from scipy import integrate, stats
 
 from pal.distributions import (
     GEV,
+    MBBEFD,
     Beta,
     Exponential,
+    Gamma,
     GeneralizedInverseGaussian,
     InverseBurr,
     InverseGamma,
     InverseGaussian,
     InverseWeibull,
+    LogGamma,
     LogLogistic,
+    LogNormal,
     NonCentralChiSquared,
     Normal,
     Paralogistic,
+    Poisson,
+    StudentsT,
 )
 from pal.fitting import empirical_mean_excess
 
@@ -86,3 +92,55 @@ def test_inverse_tail_closed_forms():
     model = InverseBurr(power=2, shape=3, scale=1, loc=0)
     assert model.mean_excess(1e100) == pytest.approx(1e100, rel=1e-12)
     assert InverseGamma(alpha=3, theta=2).mean_excess(1e150) == pytest.approx(5e149, rel=1e-12)
+
+
+def test_shifted_gamma_and_large_shape_tail():
+    model = Gamma(alpha=2, theta=3, loc=20)
+    ds = np.array([10.0, 20.0, 26.0, 2420.0])
+    # For shape two, e(d) = theta*(z+2)/(z+1), z >= 0.
+    expected = np.array([16.0, 6.0, 4.0, 3 * 802 / 801])
+    np.testing.assert_allclose(model.mean_excess(ds), expected, rtol=1e-12)
+    # 70-digit conditional-density integral, not a ratio of underflowed CDFs.
+    assert Gamma(alpha=1e6, theta=1).mean_excess(100000001.0) == pytest.approx(
+        1.01010099958981759054, rel=1e-12
+    )
+
+
+def test_lognormal_small_variance_and_large_log_ratio():
+    # At exp(mu), the normal conditional moment has a closed form in erf.
+    expected = 7.9788456085286535588e-11
+    assert LogNormal(mu=0, sigma=1e-10).mean_excess(1.0) == pytest.approx(expected, rel=1e-11, abs=0)
+    assert LogNormal(mu=100, sigma=1).mean_excess(1e-300) == pytest.approx(np.exp(100.5), rel=1e-12)
+
+
+def test_inverse_gaussian_far_tail():
+    # 60-digit integral of the conditional density after exponential rescaling.
+    assert InverseGaussian(mu=3, lambda_=4).mean_excess(1e8) == pytest.approx(4.499999696250052, rel=1e-12)
+    assert InverseGaussian(mu=1, lambda_=1e6).mean_excess(3) == pytest.approx(
+        2.2499966250131307e-6, rel=1e-11, abs=0
+    )
+
+
+def test_loggamma_near_support_and_underflow():
+    assert LogGamma(alpha=2, beta=1e-9).mean_excess(2) == pytest.approx(
+        2.00000000488539e-9, rel=1e-11, abs=0
+    )
+    assert LogGamma(alpha=2, beta=0.1).mean_excess(1e100) == pytest.approx(1.1116470443852886e99, rel=1e-11)
+
+
+def test_gev_underflow_and_finite_endpoint():
+    assert GEV(shape=0.1, scale=1, loc=0).mean_excess(1e100) == pytest.approx(1e100 / 9, rel=1e-12)
+    d = np.nextafter(10.0, 0.0)
+    assert GEV(shape=-0.1, scale=1, loc=0).mean_excess(d) == pytest.approx((10 - d) / 1.1, rel=1e-12, abs=0)
+
+
+def test_count_and_student_t_underflow():
+    assert Poisson(mean=1).mean_excess(1000) == pytest.approx(1.000998999006989, rel=1e-12)
+    assert StudentsT(nu=5).mean_excess(1e100) == pytest.approx(2.5e99, rel=1e-12)
+
+
+def test_mbbefd_atom_and_beta_underflow_near_endpoint():
+    d = np.nextafter(1.0, 0.0)
+    assert MBBEFD(g=1e20, b=1).mean_excess(d) == pytest.approx(1 - d, rel=1e-12, abs=0)
+    assert MBBEFD(g=1e20, b=2).mean_excess(d) == pytest.approx(1 - d, rel=1e-12, abs=0)
+    assert Beta(alpha=1, beta=1000).mean_excess(d) == pytest.approx((1 - d) / 1001, rel=1e-12, abs=0)
