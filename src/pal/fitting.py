@@ -844,8 +844,10 @@ def _batch_mean_excess(
                 x = ds - p["loc"]
             moment = np.log(b) + special.betaln(pp + 1 / a, q - 1 / a) - special.betaln(pp, q)
             pos = x > 0
-            log_z = -np.logaddexp(0, a * (np.log(x[pos]) - np.log(b)))
+            log_power = a * (np.log(x[pos]) - np.log(b))
+            log_z = -np.logaddexp(0, log_power)
             z = np.exp(log_z)
+            complement = np.exp(-np.logaddexp(0, -log_power))
             # Use the hypergeometric ratio in the far tail, cancelling z**q.
             far = log_z < np.log(1e-6)
             lr = np.full(z.shape, np.nan)
@@ -854,10 +856,15 @@ def _batch_mean_excess(
             h1 = special.hyp2f1(qt, 1 - pp - 1 / a, qt + 1, z[far])
             lr[far] = -np.log1p(-1 / (a * q)) - np.log1p(-z[far]) / a + np.log(h1) - np.log(h0)
             central = ~far
-            lr[central] = (
-                moment + np.log(special.betainc(qt, pp + 1 / a, z[central]))
-                - np.log(special.betainc(q, pp, z[central])) - np.log(x[pos][central])
-            )
+            # Evaluate from whichever endpoint is better resolved.
+            zz, ww = z[central], complement[central]
+            numerator = np.where(zz < 0.5, special.betainc(qt, pp + 1 / a, zz),
+                                 special.betaincc(pp + 1 / a, qt, ww))
+            denominator = np.where(zz < 0.5, special.betainc(q, pp, zz),
+                                   special.betaincc(pp, q, ww))
+            if q == 1:
+                denominator = -np.expm1(-pp * np.logaddexp(0, -log_power[central]))
+            lr[central] = moment + np.log(numerator) - np.log(denominator) - np.log(x[pos][central])
             out[pos] = np.where(lr > 1e-8, x[pos] * np.expm1(lr), np.nan)
             out[~pos] = np.exp(moment) - x[~pos]
         elif family in (dist.InverseGamma, dist.InverseWeibull):
@@ -876,6 +883,35 @@ def _batch_mean_excess(
             lr[far] = -np.log1p(-k / a) + np.log(special.hyp1f1(a - k, a - k + 1, -z[far])) - np.log(special.hyp1f1(a, a + 1, -z[far]))
             out = np.where(lr > 1e-8, x * np.expm1(lr), np.nan)
             out = np.where(x <= 0, np.exp(log_mean) - x, out)
+        elif family is dist.InverseGaussian:
+            mu, lam = p["mu"], p["lambda_"]
+            x = ds[ds > 0]
+            root = np.sqrt(lam / x)
+            a = root * (x / mu - 1)
+            b = root * (x / mu + 1)
+            # The exponential tilt cancels the normal density exponent.
+            log_a = special.log_ndtr(-a)
+            log_b = np.log(0.5 * special.erfcx(b / np.sqrt(2))) - 0.5 * a**2
+            # A+B and A-B are the first moment / mu and survival.
+            log_sf = log_a + np.log(-np.expm1(log_b - log_a))
+            log_moment = np.log(mu) + np.logaddexp(log_a, log_b)
+            lr = log_moment - log_sf - np.log(x)
+            out[ds > 0] = np.where(lr > 1e-6, x * np.expm1(lr), np.nan)
+            out[ds <= 0] = mu - ds[ds <= 0]
+        elif family is dist.GEV:
+            xi, loc, scale = p["shape"], p["loc"], p["scale"]
+            if abs(xi) >= 1e-5:
+                z = (ds - loc) / scale
+                base = 1 + xi * z
+                inside = base > 0
+                y = np.exp(-np.log1p(xi * z[inside]) / xi)
+                log_ratio = (special.gammaln(1 - xi)
+                             + np.log(special.gammainc(1 - xi, y))
+                             - np.log(-np.expm1(-y)) - np.log(base[inside]))
+                excess = scale * base[inside] / xi * np.expm1(log_ratio)
+                out[inside] = np.where(abs(log_ratio) > 1e-7, excess, np.nan)
+                if xi > 0:
+                    out[~inside] = loc + scale * np.expm1(special.gammaln(1 - xi)) / xi - ds[~inside]
         elif family is dist.LogGamma:
             a, b = p["alpha"], p["beta"]
             z = np.log(np.maximum(ds, 1)) / b
@@ -1024,15 +1060,10 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         # Reuse the integrated tail at the preceding (higher) attachment.
         # Work with conditional survival ratios, not tiny unconditional areas.
         reuse = (
-            family is not _distributions.GeneralizedInverseGaussian
-            and previous_start is not None
+            previous_start is not None
             and 0 <= (previous_start - start) / local_scale <= 100
         )
-        if reuse and previous_start is not None:
-            interval = (previous_start - start) / local_scale
-            area, error = integrate.quad(conditional_survival, 0.0, interval, epsrel=1e-9, limit=300)
-            excess = local_scale * area + np.exp(previous_log_sf - log_start_sf) * previous_excess
-        elif family is _distributions.GeneralizedInverseGaussian:
+        if family is _distributions.GeneralizedInverseGaussian:
             # SciPy's GIG survival may suffer cancellation in the far tail.
             # Integrate the conditional density instead, avoiding noisy S(x).
             def scaled_excess_density(
@@ -1044,8 +1075,15 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
                 x = start + local_scale * u
                 return float(u * np.exp(float(frozen.logpdf(x)) - log_start_sf))
 
-            area, error = integrate.quad(scaled_excess_density, 0.0, limit, epsrel=1e-9, limit=300)
+            interval = (previous_start - start) / local_scale if reuse and previous_start is not None else limit
+            area, error = integrate.quad(scaled_excess_density, 0.0, interval, epsrel=1e-9, limit=300)
             excess = local_scale**2 * area
+            if reuse and previous_start is not None:
+                excess += np.exp(previous_log_sf - log_start_sf) * (previous_excess + previous_start - start)
+        elif reuse and previous_start is not None:
+            interval = (previous_start - start) / local_scale
+            area, error = integrate.quad(conditional_survival, 0.0, interval, epsrel=1e-9, limit=300)
+            excess = local_scale * area + np.exp(previous_log_sf - log_start_sf) * previous_excess
         else:
             area, error = integrate.quad(conditional_survival, 0.0, limit, epsrel=1e-9, limit=300)
             excess = local_scale * area
