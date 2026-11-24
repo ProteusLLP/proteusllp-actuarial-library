@@ -6,14 +6,14 @@ from scipy import integrate, stats
 
 from pal.distributions import (
     GEV,
+    GPD,
     MBBEFD,
-    Beta,
     Bernoulli,
+    Beta,
     Binomial,
     Burr,
     Exponential,
     Gamma,
-    GPD,
     GeneralizedBetaPrime,
     GeneralizedInverseGaussian,
     HyperGeometric,
@@ -23,8 +23,8 @@ from pal.distributions import (
     InverseGaussian,
     InverseParalogistic,
     InverseWeibull,
-    Logistic,
     LogGamma,
+    Logistic,
     LogLogistic,
     LogNormal,
     NegBinomial,
@@ -100,7 +100,7 @@ def test_continuous_lev_against_independent_integral(model, reference):
         (Binomial(n=7, p=0.4), stats.binom(7, 0.4)),
         (Bernoulli(p=0.4), stats.bernoulli(0.4)),
         (NegBinomial(n=3, p=0.4), stats.nbinom(3, 0.4)),
-        (HyperGeometric(ngood=7, nbad=12, n=5), stats.hypergeom(19, 7, 5)),
+        (HyperGeometric(ngood=7, nbad=12, n_draws=5), stats.hypergeom(19, 7, 5)),
     ],
 )
 def test_discrete_lev_noninteger_limits(model, reference):
