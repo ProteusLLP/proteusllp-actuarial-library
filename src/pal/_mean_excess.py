@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import typing as t
+from functools import lru_cache
 
 import numpy as np
 from scipy import integrate, special
@@ -13,6 +14,12 @@ from .stochastic_scalar import StochasticScalar
 
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
+
+
+@lru_cache(maxsize=2)
+def _laguerre_rule(order: int) -> tuple[np.ndarray, np.ndarray]:
+    """Cache the fixed quadrature rules used in conditional tail calculations."""
+    return special.roots_laguerre(order)
 
 
 def _pareto_excess(ds: np.ndarray, shape: float, scale: float) -> np.ndarray:
@@ -37,7 +44,7 @@ def _gamma_far_excess(alpha: float, z: np.ndarray) -> np.ndarray:
     Gauss-Laguerre quadrature is used only for z > 2*alpha and z > 500,
     where the residual integrand is smooth and close to one.
     """
-    nodes, weights = special.roots_laguerre(32)
+    nodes, weights = _laguerre_rule(32)
     rate = 1 - (alpha - 1) / z
     u = nodes / rate[:, None]
     ratio = u / z[:, None]
@@ -76,7 +83,8 @@ def _gamma_excess(ds: np.ndarray, alpha: float, theta: float, loc: float = 0.0) 
     excess = alpha * special.gammaincc(alpha + 1, z) / sf - z
     out = np.where((sf > 1e-280) & (excess > 1e-5 * np.maximum(1, z)), theta * excess, np.nan)
     far = z > max(500.0, 2 * alpha)
-    out[far] = theta * _gamma_far_excess(alpha, z[far])
+    if np.any(far):
+        out[far] = theta * _gamma_far_excess(alpha, z[far])
     out = np.where(x <= 0, alpha * theta - x, out)
     return _repair_tail(x, out, lambda d: _gamma_tail_excess(alpha, theta, d))
 
@@ -176,12 +184,71 @@ def _paralogistic_excess(ds: np.ndarray, shape: float, scale: float, loc: float)
     return _burr_excess(ds, shape, shape, scale, loc)
 
 
+def _beta_prime_tail_excess(
+    x: np.ndarray,
+    log_power: np.ndarray,
+    rate: np.ndarray,
+    a: float,
+    p: float,
+    q: float,
+) -> np.ndarray:
+    """Integrate in log-loss coordinates, cancelling the small tail density."""
+    nodes, weights = _laguerre_rule(64)
+    out = np.empty_like(x)
+    # Bound temporary memory for large threshold arrays.
+    for start in range(0, x.size, 4096):
+        stop = min(start + 4096, x.size)
+        lp = log_power[start:stop, None]
+        z = special.expit(-lp)
+
+        def integral(tilt: np.ndarray, excess: bool, lp: np.ndarray = lp, z: np.ndarray = z) -> np.ndarray:
+            u = nodes / tilt[:, None]
+            v = a * u
+            change = z * np.expm1(-v)
+            log_change = np.log1p(change)
+            # If 1+change is small, evaluate the two terms separately.
+            alternate = change < -0.5
+            log_change[alternate] = np.logaddexp(
+                np.broadcast_to(-np.logaddexp(0, -lp), v.shape)[alternate],
+                (-np.logaddexp(0, lp) - v)[alternate],
+            )
+            correction = -(p + q) * (log_change + z * v)
+            integrand = weights * np.exp(correction)
+            if excess:
+                integrand *= -np.expm1(-u)
+            return np.sum(integrand, axis=1) / tilt
+
+        r = rate[start:stop]
+        out[start:stop] = x[start:stop] * integral(r - 1, True) / integral(r, False)
+    return out
+
+
+def _beta_prime_tilt_mask(
+    log_power: np.ndarray, a: float, p: float, q: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Select smooth exponentially tilted tails for fixed-order quadrature."""
+    z = special.expit(-log_power)
+    w = special.expit(log_power)
+    rate = a * (q * w - p * z)
+    curvature = a**2 * (p + q) * w * z
+    return (rate > 2) & (curvature < 0.1 * (rate - 1)**2), rate
+
+
 def _beta_prime_excess(x: np.ndarray, a: float, b: float, p: float, q: float) -> np.ndarray:
     """Evaluate the shared GB2 and inverse-Burr truncated first moment."""
     out = np.full(x.shape, np.nan, dtype=float)
     log_mean = np.log(b) + special.betaln(p + 1 / a, q - 1 / a) - special.betaln(p, q)
     positive = x > 0
-    log_power = a * (np.log(x[positive]) - np.log(b))
+    xp = x[positive]
+    log_power = a * (np.log(xp) - np.log(b))
+    eligible, rate = _beta_prime_tilt_mask(log_power, a, p, q)
+    use_tilt = eligible & (max(p, q) >= 100 or a * q >= 100)
+    values = np.empty_like(xp)
+    if np.any(use_tilt):
+        values[use_tilt] = _beta_prime_tail_excess(xp[use_tilt], log_power[use_tilt], rate[use_tilt], a, p, q)
+    regular = ~use_tilt
+    x_regular = xp[regular]
+    log_power = log_power[regular]
     log_z = -np.logaddexp(0, log_power)
     z = np.exp(log_z)
     complement = np.exp(-np.logaddexp(0, -log_power))
@@ -207,8 +274,15 @@ def _beta_prime_excess(x: np.ndarray, a: float, b: float, p: float, q: float) ->
     )
     if q == 1:
         denominator = -np.expm1(-p * np.logaddexp(0, -log_power[central]))
-    log_ratio[central] = log_mean + np.log(numerator) - np.log(denominator) - np.log(x[positive][central])
-    out[positive] = np.where(log_ratio > 1e-8, _positive_log_excess(np.log(x[positive]), log_ratio), np.nan)
+    log_ratio[central] = log_mean + np.log(numerator) - np.log(denominator) - np.log(x_regular[central])
+    values[regular] = np.where(log_ratio > 1e-8, _positive_log_excess(np.log(x_regular), log_ratio), np.nan)
+    # A nonfinite ratio may be intermediate underflow rather than infinite mean.
+    repair = ~np.isfinite(values) & eligible & regular
+    if np.any(repair):
+        lp = a * (np.log(xp[repair]) - np.log(b))
+        values[repair] = _beta_prime_tail_excess(xp[repair], lp, rate[repair], a, p, q)
+    values[~np.isfinite(values)] = np.nan
+    out[positive] = values
     out[~positive] = np.exp(log_mean) - x[~positive]
     return out
 
@@ -318,13 +392,13 @@ def _inverse_gaussian_excess(ds: np.ndarray, mu: float, lambda_: float) -> np.nd
     values = np.where((lr > 1e-5) & (log_a - log_b > 1e-5), _positive_log_excess(np.log(x), lr), np.nan)
     # The normal-tail difference becomes ill-conditioned for large x.
     # Evaluate the conditional density after removing its exponential tilt.
-    width = 2 * mu**2 / lam
-    far = x > max(2 * mu, 10 * width)
+    rate = lam / (2 * mu**2) * ((x - mu) / x) * (1 + mu / x)
+    far = (x > mu) & (rate * x > 10)
     if np.any(far):
-        nodes, weights = special.roots_laguerre(32)
-        u = width * nodes
+        nodes, weights = _laguerre_rule(32)
+        u = nodes / rate[far, None]
         ratio = u / x[far, None]
-        correction = -1.5 * np.log1p(ratio) + lam / (2 * x[far, None]) * ratio / (1 + ratio)
+        correction = -1.5 * np.log1p(ratio) - lam / (2 * x[far, None]) * ratio**2 / (1 + ratio)
         density = weights * np.exp(correction)
         values[far] = np.sum(density * u, axis=1) / np.sum(density, axis=1)
     out[ds > 0] = values
@@ -336,9 +410,8 @@ def _gev_small_tail(shape: float, y: np.ndarray) -> np.ndarray:
     """Evaluate the normalized survival integral as a convergent small-y series."""
     # Integral from 0 to y of (1-exp(-t))*t**(-shape-1), divided by
     # y**(1-shape). Cancel the factor y before forming the survival ratio.
-    series = (
-        1 / (1 - shape)
-        + y * (-1 / (2 * (2 - shape)) + y * (1 / (6 * (3 - shape)) + y * (-1 / (24 * (4 - shape)))))
+    series = 1 / (1 - shape) + y * (
+        -1 / (2 * (2 - shape)) + y * (1 / (6 * (3 - shape)) + y * (-1 / (24 * (4 - shape))))
     )
     sf_factor = np.ones_like(y)
     nonzero = y > 0
@@ -377,10 +450,7 @@ def _gev_excess(ds: np.ndarray, shape: float, loc: float, scale: float) -> np.nd
         central = inside & ~small
         yc = y[central]
         log_ratio = (
-            special.gammaln(1 - xi)
-            + np.log(special.gammainc(1 - xi, yc))
-            - np.log(-np.expm1(-yc))
-            - log_base[central]
+            special.gammaln(1 - xi) + np.log(special.gammainc(1 - xi, yc)) - np.log(-np.expm1(-yc)) - log_base[central]
         )
         excess = scale * base[central] / xi * np.expm1(log_ratio)
         out[central] = np.where(abs(log_ratio) > 1e-7, excess, np.nan)
@@ -396,7 +466,7 @@ def _gig_excess(ds: np.ndarray, p: float, chi: float, psi: float, loc: float) ->
     width = 2 / psi
     far = x > max(2 * np.sqrt(chi / psi), 10 * width * max(1, abs(p - 1)))
     if np.any(far):
-        nodes, weights = special.roots_laguerre(32)
+        nodes, weights = _laguerre_rule(32)
         u = width * nodes
         ratio = u / x[far, None]
         correction = (p - 1) * np.log1p(ratio) + chi / (2 * x[far, None]) * ratio / (1 + ratio)
@@ -414,7 +484,7 @@ def _loggamma_tail_excess(alpha: float, beta: float, d: float) -> float:
     slope = (alpha - 1) / z
     if slope < rate / 2:
         width = 1 / (rate - slope)
-        nodes, weights = special.roots_laguerre(32)
+        nodes, weights = _laguerre_rule(32)
         u = nodes * width
         correction = np.exp((alpha - 1) * (np.log1p(u / z) - u / z))
         numerator = width * np.sum(weights * correction * (-np.expm1(-beta * u)))
