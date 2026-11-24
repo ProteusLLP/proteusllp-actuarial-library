@@ -37,7 +37,7 @@ from ._severity_probability import _burr_terms, _inverse_weibull_terms
 from ._value_arrays import stochastic_array
 from .config import config
 from .couplings import couple_stochastic_results, validate_stochastic_axes
-from .fitting import UncertaintyMethod, fit_distribution, mean_excess
+from .fitting import OptimizerMethod, UncertaintyMethod, fit_distribution, mean_excess
 from .fitting_remaining import fit_remaining, mean_excess_remaining
 from .qmc import (
     _inverse_transform_uniforms,
@@ -543,6 +543,8 @@ class Bernoulli(Binomial):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         n: int | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Bernoulli]:
@@ -603,6 +605,8 @@ class GPD(DistributionBase):
             weights=weights,
             free_location=free_location,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -682,6 +686,8 @@ class Burr(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -694,6 +700,8 @@ class Burr(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -802,6 +810,8 @@ class GeneralizedBetaPrime(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -814,6 +824,8 @@ class GeneralizedBetaPrime(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1264,6 +1276,8 @@ class LogLogistic(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -1276,6 +1290,8 @@ class LogLogistic(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1488,6 +1504,8 @@ class LogNormal(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -1500,6 +1518,8 @@ class LogNormal(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1551,6 +1571,8 @@ class Gamma(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -1563,6 +1585,8 @@ class Gamma(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1749,6 +1773,8 @@ class InverseGamma(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -1761,6 +1787,8 @@ class InverseGamma(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1817,6 +1845,8 @@ class Pareto(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -1829,6 +1859,8 @@ class Pareto(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1882,6 +1914,8 @@ class Paralogistic(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -1894,6 +1928,8 @@ class Paralogistic(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1976,6 +2012,8 @@ class InverseBurr(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -1988,6 +2026,8 @@ class InverseBurr(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2080,6 +2120,8 @@ class InverseParalogistic(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2092,6 +2134,8 @@ class InverseParalogistic(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2173,6 +2217,8 @@ class Weibull(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2185,6 +2231,8 @@ class Weibull(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2254,6 +2302,8 @@ class InverseWeibull(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2266,6 +2316,8 @@ class InverseWeibull(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2336,6 +2388,8 @@ class LogGamma(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2348,6 +2402,8 @@ class LogGamma(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2414,6 +2470,8 @@ class GEV(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2426,6 +2484,8 @@ class GEV(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2615,6 +2675,8 @@ class InverseGaussian(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2627,6 +2689,8 @@ class InverseGaussian(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2762,6 +2826,8 @@ class GeneralizedInverseGaussian(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2774,6 +2840,8 @@ class GeneralizedInverseGaussian(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2896,6 +2964,8 @@ class Exponential(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2908,6 +2978,8 @@ class Exponential(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -3147,6 +3219,8 @@ class InverseExponential(DistributionBase):
         observations: t.Sequence[float] | np.ndarray,
         *,
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -3159,6 +3233,8 @@ class InverseExponential(DistributionBase):
             censored=censored,
             weights=weights,
             uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:

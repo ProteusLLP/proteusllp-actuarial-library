@@ -13,7 +13,7 @@ from enum import Enum
 import numpy as np
 from scipy import optimize, special, stats
 
-from ._severity_probability import _StableSeverityReference, _burr_terms, _inverse_weibull_terms
+from ._severity_probability import _burr_terms, _inverse_weibull_terms, _StableSeverityReference
 
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
@@ -39,6 +39,13 @@ class UncertaintyMethod(str, Enum):
 
     NONE = "none"
     ASYMPTOTIC = "asymptotic"
+
+
+class OptimizerMethod(str, Enum):
+    """Numerical optimizer for severity maximum-likelihood estimation."""
+
+    NELDER_MEAD = "Nelder-Mead"
+    L_BFGS_B = "L-BFGS-B"
 
 
 class _FitMethod(str, Enum):
@@ -74,11 +81,17 @@ class FitResult(t.Generic[_T]):
     method: str = _FitMethod.MLE.value
     uncertainty: AsymptoticParameterUncertainty[_T] | None = field(default=None, repr=False, compare=False)
     n_parameters: int = field(default=-1, kw_only=True)
+    warnings: tuple[str, ...] = field(default=(), kw_only=True)
 
     def __post_init__(self) -> None:
         """Preserve compatibility with callers constructing older FitResult objects."""
         if self.n_parameters == -1:
             object.__setattr__(self, "n_parameters", round((self.aic + 2 * self.log_likelihood) / 2))
+
+    @property
+    def at_boundary(self) -> bool:
+        """Whether numerical diagnostics indicate a possible limiting fit."""
+        return bool(self.warnings)
 
     def asymptotic_uncertainty(
         self,
@@ -97,6 +110,45 @@ class FitResult(t.Generic[_T]):
         from .fitting_uncertainty import asymptotic_parameter_uncertainty
 
         return asymptotic_parameter_uncertainty(self, observations, censored=censored, weights=weights)
+
+
+def _minimize_severity(
+    objective: t.Callable[[np.ndarray], float],
+    start: np.ndarray,
+    optimizer: OptimizerMethod | str,
+    options: t.Mapping[str, t.Any] | None,
+    maxiter: int,
+) -> optimize.OptimizeResult:
+    """Run a configured optimizer without changing existing default tolerances."""
+    method = OptimizerMethod(optimizer)
+    defaults: dict[str, t.Any] = (
+        {"maxiter": maxiter, "xatol": 1e-7, "fatol": 1e-7}
+        if method is OptimizerMethod.NELDER_MEAD
+        else {"maxiter": maxiter, "ftol": 1e-12, "gtol": 1e-6}
+    )
+    return optimize.minimize(objective, start, method=method.value, options={**defaults, **(options or {})})
+
+
+def _boundary_warnings(
+    parameters: dict[str, float], observations: np.ndarray, threshold: float
+) -> tuple[str, ...]:
+    """Flag extreme transformed estimates relative to the observed loss scale.
+
+    These are diagnostics, not proof that a finite maximum fails to exist.
+    An optimizer can report convergence even on a nearly flat limiting ridge.
+    """
+    scale = max(float(np.median(np.abs(observations))), abs(threshold), np.finfo(float).tiny)
+    messages = []
+    positive_shapes = {"alpha", "beta", "shape", "power", "p", "q", "a", "nu"}
+    scales = {"scale", "theta", "b", "lambda_"}
+    for name, value in parameters.items():
+        if not np.isfinite(value):
+            messages.append(f"Non-finite parameter: {name}")
+        elif name in scales and value > 0 and abs(np.log(value) - np.log(scale)) > 30:
+            messages.append(f"{name} is extreme relative to the observation scale; likelihood may be on a ridge")
+        elif name in positive_shapes and value > 0 and abs(np.log(value)) > 30:
+            messages.append(f"{name} is extreme; likelihood may be on a limiting boundary")
+    return tuple(messages)
 
 
 def _with_uncertainty(
@@ -267,6 +319,8 @@ def fit_distribution(
     censored: t.Sequence[bool] | np.ndarray | None = None,
     weights: t.Sequence[float] | np.ndarray | None = None,
     free_location: bool = False,
+    optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+    optimizer_options: t.Mapping[str, t.Any] | None = None,
     uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
 ) -> FitResult[_T]:
     """Fit a supported PAL distribution by maximum likelihood.
@@ -282,6 +336,8 @@ def fit_distribution(
             repeated observations for information criteria.
         free_location: Fit the three-parameter GPD when True. Only supported
             for GPD; the location defaults to the reporting threshold.
+        optimizer: Numerical method for non-analytical fits.
+        optimizer_options: Options passed to the selected SciPy optimizer.
         uncertainty_method: Optional joint parameter uncertainty method; defaults to None.
 
     Returns:
@@ -305,6 +361,8 @@ def fit_distribution(
             censored=censored,
             weights=weights,
             free_location=free_location,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
         )
         return _with_uncertainty(
             fitted,
@@ -329,13 +387,13 @@ def fit_distribution(
         raise ValueError("The GPD location is not identifiable from a left-truncated sample")
     x, c, w = _prepare(observations, threshold, censored, weights, allow_any_real=family is _distributions.GEV)
     if free_location:
-        return _fit_gpd_free_location(distribution, x, c, w, threshold)
+        return _fit_gpd_free_location(distribution, x, c, w, threshold, optimizer, optimizer_options)
     if family is _distributions.Exponential:
         return _fit_exponential(distribution, x, c, w, threshold)
     if family is _distributions.GeneralizedBetaPrime:
-        return _fit_gb2(distribution, x, c, w, threshold)
+        return _fit_gb2(distribution, x, c, w, threshold, optimizer, optimizer_options)
     if family in _other_families():
-        return _fit_other(distribution, x, c, w, threshold)
+        return _fit_other(distribution, x, c, w, threshold, optimizer, optimizer_options)
     total = float(np.sum(w))
     mean = float(np.average(x, weights=w))
     variance = float(np.average((x - mean) ** 2, weights=w))
@@ -389,12 +447,7 @@ def fit_distribution(
             return -ll if np.isfinite(ll) else 1e100
 
         results = [
-            optimize.minimize(
-                objective,
-                np.asarray(start, dtype=np.float64),
-                method="Nelder-Mead",
-                options={"maxiter": 5000, "xatol": 1e-7, "fatol": 1e-7},
-            )
+            _minimize_severity(objective, np.asarray(start, dtype=np.float64), optimizer, optimizer_options, 5000)
             for start in starts
         ]
         best = min(results, key=lambda result: float(result.fun))
@@ -416,6 +469,7 @@ def fit_distribution(
     aicc = aic + 2.0 * k * (k + 1) / (total - k - 1) if is_frequency_weight and total > k + 1 else np.nan
     return FitResult(
         n_parameters=k,
+        warnings=() if family is _distributions.Pareto else _boundary_warnings(parameters, x, threshold),
         distribution=model,
         parameters=parameters,
         log_likelihood=ll,
@@ -526,6 +580,8 @@ def _fit_other(
     censored: np.ndarray,
     weights: np.ndarray,
     threshold: float,
+    optimizer: OptimizerMethod | str,
+    optimizer_options: t.Mapping[str, t.Any] | None,
 ) -> FitResult[_T]:
     """Fit additional two- and three-parameter severity distributions."""
     from . import distributions as _distributions
@@ -636,12 +692,7 @@ def _fit_other(
         return -val if np.isfinite(val) else 1e100
 
     results = [
-        optimize.minimize(
-            objective,
-            np.asarray(start, dtype=np.float64),
-            method="Nelder-Mead",
-            options={"maxiter": 5000, "xatol": 1e-7, "fatol": 1e-7},
-        )
+        _minimize_severity(objective, np.asarray(start, dtype=np.float64), optimizer, optimizer_options, 5000)
         for start in starts
     ]
     best = min(results, key=lambda item: float(item.fun))
@@ -661,6 +712,7 @@ def _fit_other(
     )
     return FitResult(
         n_parameters=n_params,
+        warnings=_boundary_warnings(pars, x, threshold),
         distribution=model,
         parameters=pars,
         log_likelihood=ll,
@@ -737,6 +789,8 @@ def _fit_gpd_free_location(
     c: np.ndarray,
     w: np.ndarray,
     threshold: float,
+    optimizer: OptimizerMethod | str,
+    optimizer_options: t.Mapping[str, t.Any] | None,
 ) -> FitResult[_T]:
     """Estimate GPD shape, scale and location subject to support constraints."""
     smallest = float(np.min(x))
@@ -767,12 +821,7 @@ def _fit_gpd_free_location(
         [-0.2, np.log(start_scale), np.log(distance)],
     ]
     results = [
-        optimize.minimize(
-            objective,
-            np.asarray(start, dtype=float),
-            method="Nelder-Mead",
-            options={"maxiter": 5000, "xatol": 1e-7, "fatol": 1e-7},
-        )
+        _minimize_severity(objective, np.asarray(start, dtype=float), optimizer, optimizer_options, 5000)
         for start in starts
     ]
     best = min(results, key=lambda item: float(item.fun))
@@ -869,6 +918,8 @@ def _fit_gb2(
     censored: np.ndarray,
     weights: np.ndarray,
     threshold: float,
+    optimizer: OptimizerMethod | str,
+    optimizer_options: t.Mapping[str, t.Any] | None,
 ) -> FitResult[_T]:
     """Fit the four-parameter GB2 distribution in log-parameter coordinates."""
     base_scale = float(np.median(x))
@@ -899,12 +950,7 @@ def _fit_gb2(
         return -ll if np.isfinite(ll) else 1e100
 
     candidates = [
-        optimize.minimize(
-            objective,
-            np.log(start),
-            method="Nelder-Mead",
-            options={"maxiter": 6000, "xatol": 1e-7, "fatol": 1e-7},
-        )
+        _minimize_severity(objective, np.log(start), optimizer, optimizer_options, 6000)
         for start in starts
     ]
     best = min(candidates, key=lambda fit: float(fit.fun))
@@ -918,6 +964,7 @@ def _fit_gb2(
     aicc = aic + 40 / (total_weight - 5) if frequency and total_weight > 5 else np.nan
     return FitResult(
         n_parameters=4,
+        warnings=_boundary_warnings(pars, x, threshold),
         distribution=distribution(**pars),
         parameters=pars,
         log_likelihood=ll,
