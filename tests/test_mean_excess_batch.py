@@ -249,18 +249,18 @@ def test_extreme_analytical_paths_do_not_integrate(monkeypatch, model, threshold
 
 
 @pytest.mark.parametrize(
-    ("model", "rv"),
+    ("model", "rv", "tail_index"),
     [
-        (LogLogistic(shape=1.05, scale=3, loc=7), stats.fisk(1.05, scale=3, loc=7)),
-        (Paralogistic(shape=1.2, scale=2, loc=7), stats.burr12(1.2, 1.2, scale=2, loc=7)),
-        (Burr(power=0.5, shape=4, scale=2, loc=7), stats.burr12(0.5, 4, scale=2, loc=7)),
-        (InverseBurr(power=2, shape=0.2, scale=3, loc=7), stats.burr(2, 0.2, scale=3, loc=7)),
-        (InverseParalogistic(shape=1.05, scale=2, loc=7), stats.burr(1.05, 1.05, scale=2, loc=7)),
-        (InverseGamma(alpha=1.05, theta=3, loc=7), stats.invgamma(1.05, scale=3, loc=7)),
-        (InverseWeibull(shape=1.05, scale=3, loc=7), stats.invweibull(1.05, scale=3, loc=7)),
+        (LogLogistic(shape=1.05, scale=3, loc=7), stats.fisk(1.05, scale=3, loc=7), 1.05),
+        (Paralogistic(shape=1.2, scale=2, loc=7), stats.burr12(1.2, 1.2, scale=2, loc=7), 1.44),
+        (Burr(power=0.5, shape=4, scale=2, loc=7), stats.burr12(0.5, 4, scale=2, loc=7), 2),
+        (InverseBurr(power=2, shape=0.2, scale=3, loc=7), stats.burr(2, 0.2, scale=3, loc=7), 2),
+        (InverseParalogistic(shape=1.05, scale=2, loc=7), stats.burr(1.05, 1.05, scale=2, loc=7), 1.05),
+        (InverseGamma(alpha=1.05, theta=3, loc=7), stats.invgamma(1.05, scale=3, loc=7), 1.05),
+        (InverseWeibull(shape=1.05, scale=3, loc=7), stats.invweibull(1.05, scale=3, loc=7), 1.05),
     ],
 )
-def test_shifted_heavy_tail_closed_forms_and_fallback(monkeypatch, model, rv):
+def test_shifted_heavy_tail_closed_forms_and_fallback(monkeypatch, model, rv, tail_index):
     """Compare analytical and forced fallback paths with independent log-space integration."""
     thresholds = np.array([[1e9 + 7, 7, 0, 3.5e6 + 7], [8, 8, 5e6 + 7, 10]])
     expected = []
@@ -269,17 +269,19 @@ def test_shifted_heavy_tail_closed_forms_and_fallback(monkeypatch, model, rv):
             expected.append(rv.mean() - d)
             continue
         x = d - 7
-        log_sf = rv.logsf(d)
+        log_pdf = rv.logpdf(d)
 
-        def integrand(u, x=x, log_sf=log_sf):
-            # The reference uses SciPy only over its representable range.
-            # All selected tail indices exceed one by at least 0.05.
-            if u > 650:
-                return 0.0
-            return np.exp(u + rv.logsf(7 + x * np.exp(u)) - log_sf)
+        def density(u, x=x, log_pdf=log_pdf):
+            return np.exp(u + rv.logpdf(7 + x * np.exp(u)) - log_pdf)
 
-        area = integrate.quad(integrand, 0, 650, epsabs=0, epsrel=1e-10)[0]
-        expected.append(x * area)
+        # Independent density moments, with the asymptotic Pareto continuation
+        # at exp(100) times the attachment. The omitted higher-order terms
+        # are negligible for these parameterisations, including power 0.5.
+        tail = density(100)
+        mass = integrate.quad(density, 0, 100, epsabs=0, epsrel=1e-10)[0] + tail / tail_index
+        excess = integrate.quad(lambda u: np.expm1(u) * density(u), 0, 100, epsabs=0, epsrel=1e-10)[0]
+        excess += tail * (np.exp(100) / (tail_index - 1) - 1 / tail_index)
+        expected.append(x * excess / mass)
     expected = np.asarray(expected).reshape(thresholds.shape)
     np.testing.assert_allclose(model.mean_excess(thresholds), expected, rtol=1e-8, atol=0)
     monkeypatch.setattr(_mean_excess, "_closed_form", lambda family, pars, ds: np.full(ds.shape, np.nan))
