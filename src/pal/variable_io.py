@@ -35,17 +35,31 @@ _COLUMNS = [_VERSION, _PATH, _KIND, _DTYPE, _N_SIMS, _GROUP, _SIM, _EVENT, _VALU
 
 
 def _array(values: t.Any) -> np.ndarray:
-    """Copy values to a host array for disk serialization."""
+    """Copy values to a host array for disk serialization.
+
+    Args:
+        values: Values to encode or decode in their stored order.
+    """
     return np.asarray(asnumpy(values))
 
 
 def _dtype(values: np.ndarray) -> str:
+    """Determine the stored data type of the values.
+
+    Args:
+        values: Values to encode or decode in their stored order.
+    """
     if values.dtype.kind not in "biufUSM":
         raise TypeError(f"Cannot serialize values with dtype {values.dtype!s}")
     return values.dtype.str
 
 
 def _encode(value: t.Any) -> str:
+    """Encode a value for serialization.
+
+    Args:
+        value: Value to encode, decode or evaluate.
+    """
     if isinstance(value, np.datetime64):
         value = str(value)
     elif isinstance(value, np.generic):
@@ -58,6 +72,18 @@ def _encode(value: t.Any) -> str:
 def _row(
     path: str, kind: str, dtype: str, n_sims: int, group: int, simulation: int, event: int, value: str
 ) -> tuple[str, str, str, str, int, int, int, int, str]:
+    """Construct the serialized record for a variable entry.
+
+    Args:
+        dtype: Data type of the stored values.
+        event: Event index within the simulation.
+        group: Identifier grouping records belonging to one leaf.
+        kind: Type identifier describing the stored PAL leaf.
+        n_sims: Number of simulations represented by the data.
+        path: Ordered dimension keys identifying the variable leaf.
+        simulation: Simulation index represented by the record.
+        value: Value to encode, decode or evaluate.
+    """
     return (_SCHEMA, path, kind, dtype, n_sims, group, simulation, event, value)
 
 
@@ -67,11 +93,20 @@ def to_dataframe(variable: ProteusVariable[t.Any]) -> pd.DataFrame:
     The returned DataFrame can be saved as CSV or Parquet without an external
     metadata file. Events are numbered in their original order; a row with
     Event=-1 and an empty value represents a simulation with no claims.
+
+    Args:
+        variable: PAL variable to convert or serialize.
     """
     rows: list[tuple[str, str, str, str, int, int, int, int, str]] = []
     group_ids: dict[int, int] = {}
 
     def visit(value: t.Any, path: list[tuple[str, str]]) -> None:
+        """Traverse the variable hierarchy and serialize its leaves.
+
+        Args:
+            path: Ordered dimension keys identifying the variable leaf.
+            value: Value to encode, decode or evaluate.
+        """
         if isinstance(value, ProteusVariable):
             if not value.values:
                 raise ValueError("Empty ProteusVariable dimensions cannot be serialized")
@@ -125,6 +160,11 @@ def to_dataframe(variable: ProteusVariable[t.Any]) -> pd.DataFrame:
 
 
 def _parse_path(value: t.Any) -> tuple[tuple[str, str], ...]:
+    """Decode the stored dimension path.
+
+    Args:
+        value: Value to encode, decode or evaluate.
+    """
     try:
         path = json.loads(value)
     except (TypeError, ValueError) as exc:
@@ -142,6 +182,12 @@ def _parse_path(value: t.Any) -> tuple[tuple[str, str], ...]:
 
 
 def _decode(values: t.Iterable[t.Any], dtype: str) -> np.ndarray:
+    """Decode a stored value into its original representation.
+
+    Args:
+        dtype: Data type of the stored values.
+        values: Values to encode or decode in their stored order.
+    """
     try:
         parsed = [json.loads(value) for value in values]
         result = np.asarray(parsed, dtype=np.dtype(dtype))
@@ -153,6 +199,12 @@ def _decode(values: t.Iterable[t.Any], dtype: str) -> np.ndarray:
 
 
 def _unique(frame: pd.DataFrame, column: str) -> t.Any:
+    """Return unique values in their original order.
+
+    Args:
+        column: Column containing the stored data.
+        frame: Data frame containing the serialized variable records.
+    """
     values = frame[column].unique()
     if len(values) != 1:
         raise ValueError(f"PAL leaf has inconsistent {column}")
@@ -160,6 +212,11 @@ def _unique(frame: pd.DataFrame, column: str) -> t.Any:
 
 
 def _restore_leaf(frame: pd.DataFrame) -> t.Any:
+    """Reconstruct a leaf from its stored simulation records.
+
+    Args:
+        frame: Data frame containing the serialized variable records.
+    """
     kind = _unique(frame, _KIND)
     dtype = str(_unique(frame, _DTYPE))
     n_sims = int(_unique(frame, _N_SIMS))
@@ -211,6 +268,11 @@ def _restore_leaf(frame: pd.DataFrame) -> t.Any:
 
 
 def _from_pal_frame(frame: pd.DataFrame) -> ProteusVariable[t.Any]:
+    """Reconstruct a PAL variable from its serialized data frame.
+
+    Args:
+        frame: Data frame containing the serialized variable records.
+    """
     if frame.empty or not set(_COLUMNS).issubset(frame.columns):
         raise ValueError("Missing PAL serialization columns")
     if not (frame[_VERSION] == _SCHEMA).all():
@@ -235,6 +297,12 @@ def _from_pal_frame(frame: pd.DataFrame) -> ProteusVariable[t.Any]:
         raise ValueError("A PAL variable must have at least one leaf")
 
     def build(items: list[tuple[tuple[tuple[str, str], ...], t.Any]], level: int) -> ProteusVariable[t.Any]:
+        """Reconstruct the nested variable at the current hierarchy level.
+
+        Args:
+            items: Ordered dimension entries to process.
+            level: Current depth in the nested variable hierarchy.
+        """
         dimensions = {path[level][0] for path, _ in items if len(path) > level}
         if len(dimensions) != 1 or any(len(path) <= level for path, _ in items):
             raise ValueError("Inconsistent PAL variable dimension structure")
@@ -267,6 +335,12 @@ def from_dataframe(
     For ordinary tables, provide the dimension and value column names. Supply
     simulation_column=None to import deterministic values. Simulation IDs may
     start at any integer, but all dimension labels must use the same IDs.
+
+    Args:
+        dim_name: Name of the dimension indexing the restored entries.
+        frame: Data frame containing the serialized variable records.
+        simulation_column: Name of the column containing simulation indices.
+        values_column: Name of the column containing variable values.
     """
     if _VERSION in frame.columns:
         return _from_pal_frame(frame)

@@ -29,6 +29,12 @@ def save(
 
     Parquet snapshots are preferred for large models. For unnamed streams use
     format='csv' or format='parquet'; the caller keeps ownership of the stream.
+
+    Args:
+        format: Serialization format of the variable.
+        path: File path or storage URL of the serialized variable.
+        storage_options: Options passed to the storage filesystem.
+        variable: PAL variable to convert or serialize.
     """
     extension = file_extension(path, format)
     with open_file(path, "wb", storage_options=storage_options) as output:
@@ -44,7 +50,13 @@ def load(
     storage_options: StorageOptions = None,
     format: str | None = None,
 ) -> ProteusVariable[t.Any]:
-    """Restore a versioned PAL snapshot from a local or remote filesystem."""
+    """Restore a versioned PAL snapshot from a local or remote filesystem.
+
+    Args:
+        format: Serialization format of the variable.
+        path: File path or storage URL of the serialized variable.
+        storage_options: Options passed to the storage filesystem.
+    """
     extension = file_extension(path, format)
     with open_file(path, "rb", storage_options=storage_options) as input_file:
         if extension == ".parquet":

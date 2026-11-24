@@ -31,6 +31,11 @@ def open_file(
     Remote locations use fsspec, for example s3://bucket/key.parquet or
     az://container/key.parquet. A file-like object stays open after use;
     the caller owns its lifecycle. Storage options apply to paths only.
+
+    Args:
+        location: Local path or remote storage URL.
+        mode: File access mode.
+        storage_options: Options passed to the storage filesystem.
     """
     if isinstance(location, (str, os.PathLike)):
         with fsspec.open(os.fspath(location), mode=mode, **dict(storage_options or {})) as stream:
@@ -44,7 +49,12 @@ def open_file(
 
 
 def file_extension(location: StorageLocation, format: str | None = None) -> str:
-    """Identify CSV/Parquet snapshots from the suffix or an optional format."""
+    """Identify CSV/Parquet snapshots from the suffix or an optional format.
+
+    Args:
+        format: Serialization format of the variable.
+        location: Local path or remote storage URL.
+    """
     if format is not None:
         extension = "." + format.lower().lstrip(".")
     else:
