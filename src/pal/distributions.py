@@ -31,6 +31,7 @@ from scipy.stats import geninvgauss
 
 # Local imports
 from ._compat import override
+from ._gig import _gig_log_probabilities
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
 from ._value_arrays import stochastic_array
 from .config import config
@@ -2678,44 +2679,57 @@ class GeneralizedInverseGaussian(DistributionBase):
     def _wrap_result(
         self,
         result: t.Any,
-        argument: DistributionParameter,
-    ) -> ReturnType:
-        """Preserve stochastic coupling when SciPy returns an array."""
+        argument: DistributionParameter | np.ndarray,
+    ) -> ReturnType | np.ndarray:
+        """Preserve array shape and stochastic coupling."""
         candidates = (argument, *self._params.values())
         stochastic_inputs = [value for value in candidates if isinstance(value, StochasticScalar)]
         if not stochastic_inputs:
-            return float(result)
+            return scalar_or_array(result)
 
         wrapped = StochasticScalar(result)
         couple_stochastic_results((wrapped,), stochastic_inputs)
         return wrapped
 
-    @override
-    def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
-        p, scipy_shape, scipy_scale, loc = self._scipy_params()
-        values = x.values if isinstance(x, StochasticScalar) else x
-        result = geninvgauss.cdf(
-            values,
-            p,
-            scipy_shape,
-            loc=loc,
-            scale=scipy_scale,
-        )
-        return self._wrap_result(result, x)
+    @t.overload
+    def cdf(self, x: DistributionParameter) -> ReturnType: ...
+
+    @t.overload
+    def cdf(self, x: np.ndarray) -> np.ndarray | StochasticScalar: ...
 
     @override
-    def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+    def cdf(self, x: DistributionParameter | np.ndarray) -> ReturnType | np.ndarray:
+        """Compute cumulative probabilities, reusing intervals for fixed parameters."""
         p, scipy_shape, scipy_scale, loc = self._scipy_params()
-        values = u.values if isinstance(u, StochasticScalar) else u
-        result = geninvgauss.ppf(
-            values,
-            p,
-            scipy_shape,
-            loc=loc,
-            scale=scipy_scale,
+        validate_stochastic_axes(
+            value for value in (x, *self._params.values()) if isinstance(value, StochasticScalar)
         )
+        values = x.values if isinstance(x, StochasticScalar) else x
+        if all(np.ndim(parameter) == 0 for parameter in (p, scipy_shape, scipy_scale, loc)):
+            standardized = (np.asarray(values, dtype=float) - loc) / scipy_scale
+            logcdf, _ = _gig_log_probabilities(standardized, float(p), float(scipy_shape))
+            result = np.exp(logcdf)
+        else:
+            # With stochastic parameters each scenario can have a different
+            # density, so the interval integrals cannot generally be reused.
+            result = geninvgauss.cdf(values, p, scipy_shape, loc=loc, scale=scipy_scale)
+        return self._wrap_result(result, x)
+
+    @t.overload
+    def invcdf(self, u: DistributionParameter) -> ReturnType: ...
+
+    @t.overload
+    def invcdf(self, u: np.ndarray) -> np.ndarray | StochasticScalar: ...
+
+    @override
+    def invcdf(self, u: DistributionParameter | np.ndarray) -> ReturnType | np.ndarray:
+        """Compute inverse cumulative probabilities."""
+        p, scipy_shape, scipy_scale, loc = self._scipy_params()
+        validate_stochastic_axes(
+            value for value in (u, *self._params.values()) if isinstance(value, StochasticScalar)
+        )
+        values = u.values if isinstance(u, StochasticScalar) else u
+        result = geninvgauss.ppf(values, p, scipy_shape, loc=loc, scale=scipy_scale)
         return self._wrap_result(result, u)
 
     @override
