@@ -220,3 +220,18 @@ def test_large_lev_batch_is_monotone_and_matches_scalar(model):
     np.testing.assert_allclose(values[indices], reference, rtol=5e-10, atol=1e-12)
     shuffled = limits[indices[::-1]].reshape(3, 4)
     np.testing.assert_allclose(model.lev(shuffled), reference[::-1].reshape(3, 4), rtol=5e-10, atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("g", "b", "limit", "expected"),
+    [
+        (1e200, 1e200, 0.5, 1.5e-200),
+        (2, 1e-200, 1.0, 0.998494850021680094),
+        (1e200, 1e-200, 0.5, 0.00217147240951625914),
+        (1e200, 1e-300, 1.0, 1 / 3),
+        (3, 1.0000000001, 0.5, 0.346573590276565296),
+        (1.0000000001, 1e300, 0.5, 0.499999999950144765),
+    ],
+)
+def test_mbbefd_lev_extreme_scale(g, b, limit, expected):
+    assert MBBEFD(g=g, b=b).lev(limit) == pytest.approx(expected, rel=5e-10, abs=0)

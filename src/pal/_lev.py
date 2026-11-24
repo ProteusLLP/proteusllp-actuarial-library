@@ -105,6 +105,7 @@ def _count_lev(family: type[DistributionBase], p: dict[str, float], d: np.ndarra
 
 
 def _mbbefd_lev(g: float, b: float, d: np.ndarray) -> np.ndarray:
+    """Integrate MBBEFD survival without overflowing the exposure-curve factors."""
     x = np.clip(d, 0, 1)
     if g == 1 or b == 0:
         return np.minimum(d, 1)
@@ -113,17 +114,35 @@ def _mbbefd_lev(g: float, b: float, d: np.ndarray) -> np.ndarray:
     else:
         log_b = np.log(b)
         log_gb = np.log(g) + log_b
-        coefficient = (g - 1 / b) / (1 - 1 / b) if b > 1 else np.expm1(log_gb) / np.expm1(log_b)
-        q = coefficient * np.expm1(x * log_b)
-        factor = np.ones_like(q)
-        regular = (q != 0) & (q > -0.5)
-        factor[regular] = np.log1p(q[regular]) / q[regular]
-        near = q <= -0.5
-        if np.any(near):
-            h = np.exp((1 - x[near]) * log_b) * (-np.expm1(x[near] * log_b)) / (-np.expm1(log_b))
-            log_ratio = x[near] * log_b + np.log1p((g - 1) * h)
-            factor[near] = log_ratio / q[near]
-        value = np.expm1(x * log_b) / log_b * factor
+        log_abs_b = float(_log_expm1_positive(np.array([log_b]))[0]) if b > 1 else np.log(-np.expm1(log_b))
+        v = x * log_b
+        log_abs_increment = _log_expm1_positive(v) if b > 1 else np.log(-np.expm1(v))
+        if log_gb == 0:
+            value = np.exp(log_abs_increment - np.log(abs(log_b)))
+        else:
+            log_abs_gb = (
+                float(_log_expm1_positive(np.array([log_gb]))[0])
+                if log_gb > 0
+                else np.log(-np.expm1(log_gb))
+            )
+            log_coefficient = log_abs_gb - log_abs_b
+            log_q = log_coefficient + log_abs_increment
+            if log_gb > 0:
+                log_numerator = np.log(np.logaddexp(0.0, log_q))
+                small = log_q < -18
+            else:
+                # For q near -1, use the sum of two positive terms in 1+q.
+                q = np.exp(np.minimum(log_q, 0.0))
+                log_ratio = np.logaddexp(
+                    v, np.log(g - 1) + log_b - log_abs_b + log_abs_increment
+                )
+                log_numerator = np.log(-np.where(q < 0.5, np.log1p(-q), log_ratio))
+                small = log_q < -18
+            value = np.exp(log_numerator - log_coefficient - np.log(abs(log_b)))
+            sign = 1 if log_gb > 0 else -1
+            value[small] = np.exp(log_abs_increment[small] - np.log(abs(log_b))) * (
+                1 - sign * np.exp(log_q[small]) / 2
+            )
     return np.where(d <= 0, d, value)
 
 
