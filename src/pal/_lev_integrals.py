@@ -11,6 +11,11 @@ from scipy import integrate, special
 
 @lru_cache(maxsize=2)
 def _rule(order: int) -> tuple[np.ndarray, np.ndarray]:
+    """Cache Legendre quadrature nodes and logarithmic weights.
+    
+    Args:
+        order: Number of quadrature nodes.
+    """
     nodes, weights = special.roots_legendre(order)
     return nodes, np.log(weights)
 
@@ -18,6 +23,14 @@ def _rule(order: int) -> tuple[np.ndarray, np.ndarray]:
 def _estimate(
     log_integrand: t.Callable[[np.ndarray], np.ndarray], a: np.ndarray, b: np.ndarray, order: int
 ) -> np.ndarray:
+    """Estimate interval integrals using a specified quadrature order.
+    
+    Args:
+        log_integrand: Vectorised logarithm of the nonnegative integrand.
+        a: Lower endpoints of log-coordinate intervals.
+        b: Upper endpoints of log-coordinate intervals.
+        order: Number of Legendre quadrature nodes.
+    """
     nodes, log_weights = _rule(order)
     half = (b - a) / 2
     points = a[:, None] + half[:, None] * (1 + nodes)

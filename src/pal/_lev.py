@@ -60,6 +60,13 @@ def _scaled_power_integral(log_scale: float, exponent: float, t_: np.ndarray) ->
 
 
 def _pareto_lev(d: np.ndarray, shape: float, scale: float) -> np.ndarray:
+    """Calculate the capped expectation for a Type I Pareto loss.
+    
+    Args:
+        d: Policy limits in loss units.
+        shape: Positive Pareto tail index.
+        scale: Minimum loss of the Pareto distribution.
+    """
     x = np.maximum(d, scale)
     log_ratio = np.log(x) - np.log(scale)
     near = x <= 2 * scale
@@ -68,6 +75,13 @@ def _pareto_lev(d: np.ndarray, shape: float, scale: float) -> np.ndarray:
 
 
 def _gpd_lev(d: np.ndarray, shape: float, scale: float) -> np.ndarray:
+    """Calculate the capped expectation of an unshifted GPD.
+    
+    Args:
+        d: Policy limits relative to the location.
+        shape: GPD tail shape, including zero and negative values.
+        scale: Positive GPD scale.
+    """
     x = np.maximum(d, 0)
     if shape < 0:
         x = np.minimum(x, -scale / shape)
@@ -88,6 +102,13 @@ def _gpd_lev(d: np.ndarray, shape: float, scale: float) -> np.ndarray:
 
 
 def _count_lev(family: type[DistributionBase], p: dict[str, float], d: np.ndarray) -> np.ndarray:
+    """Calculate capped count moments using shifted count probabilities.
+    
+    Args:
+        family: Discrete PAL distribution class.
+        p: Natural distribution parameter values.
+        d: Count limits, which need not be integers.
+    """
     k = np.floor(d)
     if family is dist.Poisson:
         mean = p["mean"]
@@ -161,6 +182,13 @@ def _mbbefd_lev(g: float, b: float, d: np.ndarray) -> np.ndarray:
 
 
 def _remaining_lev(family: type[DistributionBase], p: dict[str, float], d: np.ndarray) -> np.ndarray | None:
+    """Dispatch capped moments for non-severity families.
+    
+    Args:
+        family: PAL distribution class.
+        p: Natural distribution parameter values.
+        d: Policy limits in loss units.
+    """
     if family in (dist.Poisson, dist.Binomial, dist.Bernoulli, dist.NegBinomial, dist.HyperGeometric):
         return _count_lev(family, p, d)
     if family is dist.Uniform:
@@ -243,6 +271,13 @@ def _burr_family_lev(family: type[DistributionBase], p: dict[str, float], x: np.
 
 
 def _severity_lev(family: type[DistributionBase], p: dict[str, float], d: np.ndarray) -> np.ndarray:
+    """Evaluate vectorised analytical capped severity moments.
+    
+    Args:
+        family: PAL severity distribution class.
+        p: Natural distribution parameter values.
+        d: Policy limits in original loss units.
+    """
     loc = p.get("loc", 0.0)
     x = np.maximum(d - loc, 0)
     if family is dist.Pareto:

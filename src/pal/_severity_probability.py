@@ -138,6 +138,11 @@ class _StableSeverityReference:
         self._terms = terms
 
     def __getattr__(self, name: str) -> t.Any:
+        """Delegate non-probability attributes to the wrapped reference.
+        
+        Args:
+            name: Attribute name to retrieve.
+        """
         return getattr(self._frozen, name)
 
     def logpdf(self, x: t.Any) -> t.Any:

@@ -35,21 +35,40 @@ def _supported_families() -> tuple[type[DistributionBase], ...]:
 
 
 class UncertaintyMethod(str, Enum):
-    """Optional frequentist parameter uncertainty attached to a fit result."""
+    """Optional frequentist parameter uncertainty attached to a fit result.
+
+    Attributes:
+        NONE: Retain fitted point estimates only.
+        ASYMPTOTIC: Estimate joint parameter covariance using the fitted likelihood.
+    """
 
     NONE = "none"
     ASYMPTOTIC = "asymptotic"
 
 
 class OptimizerMethod(str, Enum):
-    """Numerical optimizer for severity maximum-likelihood estimation."""
+    """Numerical optimizer for severity maximum-likelihood estimation.
+
+    Attributes:
+        NELDER_MEAD: Derivative-free simplex optimisation.
+        L_BFGS_B: Limited-memory quasi-Newton optimisation with bound support.
+    """
 
     NELDER_MEAD = "Nelder-Mead"
     L_BFGS_B = "L-BFGS-B"
 
 
 class _FitMethod(str, Enum):
-    """Stable estimator labels; FitResult exposes their string values."""
+    """Stable estimator labels; FitResult exposes their string values.
+
+    Attributes:
+        MLE: Numerical maximum likelihood.
+        ANALYTIC: Closed-form maximum likelihood.
+        PROFILE: Profile maximum likelihood over a reduced parameter space.
+        INTEGER: Maximum likelihood over discrete parameter candidates.
+        ENDPOINT: Maximum likelihood from sample support endpoints.
+        MULTINOMIAL: Maximum likelihood from observed category frequencies.
+    """
 
     MLE = "mle"
     ANALYTIC = "analytic_mle"
@@ -67,6 +86,23 @@ class FitResult(t.Generic[_T]):
     observation contributes its conditional survival probability. AICc uses
     the total frequency weight when weights are non-negative integers;
     otherwise it is NaN because a frequency-sample interpretation is absent.
+
+    Attributes:
+        distribution: Distribution instantiated at the fitted parameters.
+        parameters: Estimated natural parameters, including any fixed support values.
+        log_likelihood: Maximised weighted conditional log-likelihood.
+        aic: Akaike information criterion.
+        aicc: Small-sample corrected AIC, or NaN when unavailable.
+        converged: Whether the selected estimator reported convergence.
+        n_observations: Number of positive-weight observation rows used.
+        n_censored: Number of right-censored observation rows used.
+        threshold: Left-truncation threshold used in the likelihood.
+        method: Identifier for the estimation method.
+        uncertainty: Optional joint asymptotic parameter uncertainty.
+        n_parameters: Number of independently estimated parameters.
+        warnings: Diagnostics for potentially limiting or extreme estimates.
+        optimizer: Numerical optimiser that produced the result, if applicable.
+        optimizer_fallback: Whether L-BFGS-B required a simplex fallback.
     """
 
     distribution: _T
@@ -352,6 +388,13 @@ def _log_likelihood(
     w: np.ndarray,
     threshold: float,
 ) -> float:
+
+    Args:
+        observations: Observed losses before weight filtering.
+        threshold: Left-truncation threshold.
+        censored: Indicators of right-censoring.
+        weights: Nonnegative observation weights.
+        allow_any_real: Allow signed observations for families with real-valued support.
     """Return a conditional right-censored, left-truncated log-likelihood.
 
     Args:

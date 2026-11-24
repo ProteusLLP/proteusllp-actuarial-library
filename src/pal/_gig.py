@@ -26,7 +26,14 @@ def _weighted_remainder(coefficient: float, delta: float) -> float:
 
 
 class _LogDensity:
-    """Unnormalised log-coordinate density, scaled to one at its mode."""
+    """Unnormalised log-coordinate density, scaled to one at its mode.
+
+    Attributes:
+        mode: Mode in log-loss coordinates.
+        log_half: Logarithm of half the standardized GIG shape.
+        a0: Positive exponential coefficient evaluated at the mode.
+        b0: Negative-direction exponential coefficient evaluated at the mode.
+    """
 
     def __init__(self, p: float, b: float) -> None:
         """Initialize the numerical evaluator.
