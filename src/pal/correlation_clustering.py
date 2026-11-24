@@ -17,7 +17,13 @@ from ._maths import asnumpy, xp
 
 
 class ClusteringResult(NamedTuple):
-    """Reordered correlation matrix, SciPy linkage, and variable permutation."""
+    """Reordered correlation matrix, SciPy linkage, and variable permutation.
+
+    Attributes:
+        linkage_matrix: Hierarchical clustering linkage matrix describing the successive merges.
+        reorder_indices: Permutation of the original variable indices into dendrogram leaf order.
+        reordered_matrix: Correlation matrix with its rows and columns reordered together.
+    """
 
     reordered_matrix: t.Any
     linkage_matrix: np.ndarray
@@ -25,7 +31,11 @@ class ClusteringResult(NamedTuple):
 
 
 def _check(matrix: t.Any) -> t.Any:
-    """Symmetrise a complete correlation matrix and reset its diagonal."""
+    """Symmetrise a complete correlation matrix and reset its diagonal.
+
+    Args:
+        matrix: Matrix to validate, complete or use in the correlation calculation.
+    """
     values = xp.asarray(matrix, dtype=float)
     if values.ndim != 2 or values.shape[0] != values.shape[1] or values.shape[0] < 2:
         raise ValueError("Correlation matrix must be square and at least 2x2.")
@@ -41,7 +51,12 @@ def _check(matrix: t.Any) -> t.Any:
 
 
 def _distance(matrix: np.ndarray, metric: str) -> np.ndarray:
-    """Return condensed symmetric dissimilarity matrix."""
+    """Return condensed symmetric dissimilarity matrix.
+
+    Args:
+        matrix: Matrix to validate, complete or use in the correlation calculation.
+        metric: Distance metric used to compare correlation profiles.
+    """
     if metric == "correlation":
         values = 1.0 - np.abs(matrix)
     elif metric == "euclidean":
@@ -58,7 +73,14 @@ def _distance(matrix: np.ndarray, metric: str) -> np.ndarray:
 
 
 def _tree(matrix: t.Any, method: str, metric: str, optimal_ordering: bool) -> np.ndarray:
-    """Calculate linkage on host using SciPy."""
+    """Calculate linkage on host using SciPy.
+
+    Args:
+        matrix: Matrix to validate, complete or use in the correlation calculation.
+        method: Algorithm selected for the correlation or clustering calculation.
+        metric: Distance metric used to compare correlation profiles.
+        optimal_ordering: Whether to minimise adjacent leaf distances in the dendrogram.
+    """
     if method not in ("ward", "complete", "average", "single"):
         raise ValueError("method must be 'ward', 'complete', 'average', or 'single'.")
     distance = _distance(asnumpy(matrix), metric)
@@ -82,6 +104,14 @@ def cluster_corr(
     Preserves the Proteus Correlation Toolkit call signature. The linkage
     calculation and metadata use CPU SciPy; the reordered matrix remains on
     PAL's active NumPy/CuPy backend.
+
+    Args:
+        correlation_matrix: Correlation matrix with one row and column per variable.
+        correlation_threshold: Correlation threshold used when cutting the clustering tree.
+        distance_threshold: Maximum linkage distance at which clusters are joined.
+        method: Algorithm selected for the correlation or clustering calculation.
+        metric: Distance metric used to compare correlation profiles.
+        optimal_ordering: Whether to minimise adjacent leaf distances in the dendrogram.
     """
     matrix = _check(correlation_matrix)
     if distance_threshold is not None and not np.isfinite(distance_threshold):
@@ -109,7 +139,14 @@ def analyze_threshold_ranges(
     method: str = "ward",
     num_samples: int = 20,
 ) -> dict[str, t.Any]:
-    """Summarise the range of linkage distances and suggested cluster cuts."""
+    """Summarise the range of linkage distances and suggested cluster cuts.
+
+    Args:
+        correlation_matrix: Correlation matrix with one row and column per variable.
+        method: Algorithm selected for the correlation or clustering calculation.
+        metric: Distance metric used to compare correlation profiles.
+        num_samples: Number of threshold levels to examine.
+    """
     if num_samples < 1:
         raise ValueError("num_samples must be positive.")
     hierarchy = _tree(_check(correlation_matrix), method, metric, False)
@@ -133,7 +170,12 @@ def analyze_threshold_ranges(
 
 
 def extract_clusters(linkage_matrix: t.Any, n_clusters: int) -> tuple[list[int], dict[int, list[int]]]:
-    """Extract labels and variable indices for a requested number of clusters."""
+    """Extract labels and variable indices for a requested number of clusters.
+
+    Args:
+        linkage_matrix: Hierarchical clustering linkage matrix.
+        n_clusters: Requested number of clusters.
+    """
     labels = [int(x) for x in fcluster(asnumpy(linkage_matrix), n_clusters, criterion="maxclust")]
     groups: dict[int, list[int]] = {}
     for index, label in enumerate(labels):
@@ -145,7 +187,12 @@ def compute_cluster_statistics(
     correlation_matrix: t.Any,
     cluster_assignments: list[int],
 ) -> dict[int, dict[str, t.Any]]:
-    """Summarise within-cluster and between-cluster absolute correlations."""
+    """Summarise within-cluster and between-cluster absolute correlations.
+
+    Args:
+        cluster_assignments: Cluster label associated with each variable.
+        correlation_matrix: Correlation matrix with one row and column per variable.
+    """
     matrix = asnumpy(correlation_matrix)
     if len(cluster_assignments) != len(matrix):
         raise ValueError("cluster_assignments must match matrix dimension.")

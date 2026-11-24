@@ -17,7 +17,12 @@ from ._maths import xp
 
 
 def _row_weights(weights: t.Any, size: int) -> t.Any:
-    """Validate and normalise a positive vector of row/column weights."""
+    """Validate and normalise a positive vector of row/column weights.
+
+    Args:
+        size: Number of rows and columns in the correlation matrix.
+        weights: Weights applied to the correlation repair objective.
+    """
     vector = xp.asarray(weights, dtype=xp.float64)
     if vector.ndim != 1 or vector.shape != (size,):
         raise ValueError("weights must be a one-dimensional vector of length n.")
@@ -48,6 +53,14 @@ def weighted_nearest_correlation(
     Fixed correlations in pattern are preserved symmetrically, and
     minimum_eigenvalue imposes C >= minimum_eigenvalue * I. Dykstra's
     correction yields convergence towards the weighted Frobenius minimiser.
+
+    Args:
+        matrix: Matrix to validate, complete or use in the correlation calculation.
+        max_iterations: Maximum number of iterations of the repair algorithm.
+        minimum_eigenvalue: Minimum permissible eigenvalue of the repaired correlation matrix.
+        pattern: Optional pattern of fixed, missing or weighted matrix entries.
+        tolerance: Numerical tolerance used to assess convergence.
+        weights: Weights applied to the correlation repair objective.
     """
     source = xp.asarray(matrix, dtype=xp.float64)
     n = source.shape[0]
