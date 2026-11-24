@@ -785,15 +785,30 @@ def mean_excess_remaining(
                 lam = pars["mean"]
                 sf = stats.poisson.sf(k, lam)
                 moment = lam * stats.poisson.sf(k - 1, lam)
+                upper = np.inf if lam > 0 else 0.0
+
+                def ratio_fn(j: float) -> float:
+                    return lam / (j + 1)
+
             elif family in (_distributions.Binomial, _distributions.Bernoulli):
                 n = 1 if family is _distributions.Bernoulli else int(pars["n"])
                 p = pars["p"]
                 sf = stats.binom.sf(k, n, p)
                 moment = n * p * stats.binom.sf(k - 1, n - 1, p) if n > 0 else np.zeros_like(d)
+                upper = float(n) if p > 0 else 0.0
+
+                def ratio_fn(j: float) -> float:
+                    return (n - j) / (j + 1) * p / (1 - p) if j < n and p < 1 else 0.0
+
             elif family is _distributions.NegBinomial:
                 n, p = pars["n"], pars["p"]
                 sf = stats.nbinom.sf(k, n, p)
                 moment = n * (1 - p) / p * stats.nbinom.sf(k - 1, n + 1, p)
+                upper = np.inf if p < 1 else 0.0
+
+                def ratio_fn(j: float) -> float:
+                    return (j + n) / (j + 1) * (1 - p)
+
             else:
                 good, bad, draws = int(pars["ngood"]), int(pars["nbad"]), int(pars["n"])
                 population = good + bad
@@ -803,29 +818,13 @@ def mean_excess_remaining(
                     if good > 0 and draws > 0
                     else np.zeros_like(d)
                 )
-            out = np.where(sf > 0, moment / sf - d, np.nan)
-            # Only recover tails with nonzero mathematical probability.
-            if family is _distributions.Poisson:
-                upper = np.inf if lam > 0 else 0.0
-
-                def ratio_fn(j: float) -> float:
-                    return lam / (j + 1)
-            elif family in (_distributions.Binomial, _distributions.Bernoulli):
-                upper = float(n) if p > 0 else 0.0
-
-                def ratio_fn(j: float) -> float:
-                    return (n - j) / (j + 1) * p / (1 - p) if j < n and p < 1 else 0.0
-            elif family is _distributions.NegBinomial:
-                upper = np.inf if p < 1 else 0.0
-
-                def ratio_fn(j: float) -> float:
-                    return (j + n) / (j + 1) * (1 - p)
-            else:
                 upper = float(min(good, draws))
 
                 def ratio_fn(j: float) -> float:
                     return (good - j) * (draws - j) / ((j + 1) * (bad - draws + j + 1)) if j < upper else 0.0
 
+            out = np.where(sf > 0, moment / sf - d, np.nan)
+            # Only recover tails with nonzero mathematical probability.
             unresolved = (d < upper) & ((sf < 1e-280) | (out < 1e-6 * np.maximum(1, np.abs(d))))
             for i in np.flatnonzero(unresolved & (k >= 0)):
                 out[i] = _count_tail_excess(float(k[i]), float(d[i]), ratio_fn)
