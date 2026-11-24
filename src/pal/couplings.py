@@ -231,25 +231,25 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
         return super().__le__(other)  # type: ignore[return-value]
 
     def __eq__(self, other: t.Any) -> Self:  # type: ignore[override]
-        """Equality comparison returning instance of same type."""
+        """Equality comparison returning instance of same type.
+
+        Args:
+            other: Other operand of the comparison.
+        """
         return super().__eq__(other)  # type: ignore[return-value]
 
     def __ne__(self, other: t.Any) -> Self:  # type: ignore[override]
-        """Not equal comparison returning instance of same type."""
+        """Not equal comparison returning instance of same type.
+
+        Args:
+            other: Other operand of the comparison.
+        """
         return super().__ne__(other)  # type: ignore[return-value]
 
     # Override NDArrayOperatorsMixin arithmetic operators with proper return
     # type annotations for direct arithmetic operations and ufuncs.
     def __add__(self, other: t.Any) -> Self:
         """Add operation returning instance of same type.
-
-        Args:
-            other: Other operand of the arithmetic or comparison operation.
-        """
-
-        Args:
-            other: Other operand of the arithmetic or comparison operation.
-        """
 
         Args:
             other: Other operand of the arithmetic or comparison operation.
