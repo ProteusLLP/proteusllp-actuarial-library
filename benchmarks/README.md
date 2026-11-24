@@ -77,3 +77,18 @@ with runtime and dependency versions. Python tracing does not capture all
 NumPy/Arrow native allocations, so do not treat the figures as total peak RSS.
 The benchmark validates round-trip numeric values and is not a performance
 regression gate.
+
+## Mean excess diagnostics
+
+<!--pytest-codeblocks:skip-->
+
+```bash
+python -m benchmarks.benchmark_mean_excess --sizes 1000,10000 --repeat 3
+```
+
+The CPU benchmark reports warmed median wall times for the public distribution
+mean-excess methods and empirical mean excess on 100,000 observations. It includes
+ordinary and stressed parameterisations. At up to 1,000 thresholds it compares
+batch evaluation with repeated scalar calls (or repeated filtering for empirical
+losses), checking numerical agreement. This is a same-version comparison, not a
+comparison with a previous PAL release. Results are descriptive, not timing gates.
