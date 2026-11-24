@@ -31,84 +31,92 @@ def _exponential_excess(ds: np.ndarray, scale: float, loc: float) -> np.ndarray:
     return np.maximum(loc - ds, 0) + scale
 
 
+def _gamma_far_excess(alpha: float, z: np.ndarray) -> np.ndarray:
+    """Integrate the conditional gamma density after removing its exponential tilt.
+
+    Gauss-Laguerre quadrature is used only for z > 2*alpha and z > 500,
+    where the residual integrand is smooth and close to one.
+    """
+    nodes, weights = special.roots_laguerre(32)
+    rate = 1 - (alpha - 1) / z
+    u = nodes / rate[:, None]
+    ratio = u / z[:, None]
+    density = weights * np.exp((alpha - 1) * (np.log1p(ratio) - ratio))
+    return np.sum(density * u, axis=1) / np.sum(density, axis=1)
+
+
 def _gamma_tail_excess(alpha: float, theta: float, d: float) -> float:
-    """Gamma mean residual life, avoiding loss of tail survival precision."""
-    if d <= 0.0:
-        return alpha * theta - d
-    if alpha == 1.0:
-        return theta
+    """Integrate conditional gamma survival when the moment ratio is ill-conditioned."""
     z = d / theta
-    if not np.isfinite(z):
-        raise ArithmeticError("Gamma tail attachment exceeds numeric range")
-    if z > max(1e6, 100.0 * alpha):
-        # Leading terms of the upper incomplete Gamma expansion. At this
-        # threshold the omitted terms are negligible for practical shapes.
-        return float(theta * (1.0 + (alpha - 1.0) / z))
     log_survival = float(_gamma_logsf(alpha, z))
     log_next_survival = float(_gamma_logsf(alpha + 1.0, z))
     excess = alpha * np.exp(log_next_survival - log_survival) - z
-    if np.isfinite(excess) and excess > 1e-7 * max(1.0, z):
+    if np.isfinite(excess) and excess > 1e-5 * max(1.0, z):
         return float(theta * excess)
-    # When subtracting the attachment loses precision, integrate conditional
-    # survival in dimensionless tail-width units instead.
     integral, error = integrate.quad(
         lambda u: np.exp(float(_gamma_logsf(alpha, z + u)) - log_survival),
         0.0,
         np.inf,
+        epsabs=1e-11,
         epsrel=1e-10,
         limit=300,
     )
-    if not np.isfinite(integral) or not np.isfinite(error) or error > 1e-7:
+    if not np.isfinite(integral) or integral <= 0 or error > 1e-7 * integral:
         raise ArithmeticError("Gamma conditional survival integration did not converge")
     return float(theta * integral)
 
 
-def _gamma_excess(ds: np.ndarray, alpha: float, theta: float) -> np.ndarray:
-    """Evaluate the incomplete-gamma moment ratio."""
-    a = alpha
-    z = np.maximum(ds, 0) / theta
-    if a == 1:
-        return theta - np.minimum(ds, 0)
-    sf = special.gammaincc(a, z)
-    excess = a * special.gammaincc(a + 1, z) / sf - z
-    out = np.where(excess > 1e-6 * np.maximum(1, z), theta * excess, np.nan)
-    out = np.where(ds <= 0, a * theta - ds, out)
-    out = np.where(z > max(1e6, 100 * a), theta * (1 + (a - 1) / z), out)
-    return _repair_tail(ds, out, lambda d: _gamma_tail_excess(alpha, theta, d))
+def _gamma_excess(ds: np.ndarray, alpha: float, theta: float, loc: float = 0.0) -> np.ndarray:
+    """Evaluate shifted Gamma residual life using the incomplete-gamma moment ratio."""
+    x = ds - loc
+    if alpha == 1:
+        return theta - np.minimum(x, 0)
+    z = np.maximum(x, 0) / theta
+    sf = special.gammaincc(alpha, z)
+    excess = alpha * special.gammaincc(alpha + 1, z) / sf - z
+    out = np.where((sf > 1e-280) & (excess > 1e-5 * np.maximum(1, z)), theta * excess, np.nan)
+    far = z > max(500.0, 2 * alpha)
+    out[far] = theta * _gamma_far_excess(alpha, z[far])
+    out = np.where(x <= 0, alpha * theta - x, out)
+    return _repair_tail(x, out, lambda d: _gamma_tail_excess(alpha, theta, d))
+
+
+def _positive_log_excess(log_x: np.ndarray, log_ratio: np.ndarray) -> np.ndarray:
+    """Compute x*expm1(log_ratio) without intermediate overflow."""
+    return np.exp(log_x + log_ratio + np.log(-np.expm1(-log_ratio)))
 
 
 def _lognormal_tail_excess(mu: float, sigma: float, d: float) -> float:
-    """Conditional first-moment formula with erfcx for upper-tail accuracy."""
-    if d <= 0.0:
-        return float(np.exp(mu + 0.5 * sigma**2) - d)
+    """Integrate a conditional normal density when two moments nearly cancel."""
     z = (np.log(d) - mu) / sigma
-    if z >= sigma:
-        numerator = special.erfcx((z - sigma) / np.sqrt(2.0))
-        denominator = special.erfcx(z / np.sqrt(2.0))
-        if denominator > 0.0 and np.isfinite(numerator):
-            relative_excess = (numerator - denominator) / denominator
-            if relative_excess > 1e-8:
-                return float(d * relative_excess)
-    log_ratio = mu + 0.5 * sigma**2 - np.log(d)
-    log_ratio += special.log_ndtr(sigma - z) - special.log_ndtr(-z)
-    if np.isfinite(log_ratio) and log_ratio > 1e-10:
-        return float(d * np.expm1(log_ratio))
-    if z > 1e7:
-        # Extreme normal-tail asymptotic, avoiding subtraction of close values.
-        return float(d * sigma / z)
-    raise ArithmeticError("LogNormal mean excess lost numerical precision")
+    width = 1 / max(1.0, z)
+
+    def density(t: float) -> float:
+        u = width * t
+        return float(np.exp(-z * u - 0.5 * u**2))
+
+    def excess_density(t: float) -> float:
+        # expm1 resolves arbitrarily small conditional excesses.
+        return float(np.expm1(sigma * width * t) * density(t))
+
+    denominator, den_error = integrate.quad(density, 0, np.inf, epsabs=0, epsrel=1e-10)
+    numerator, num_error = integrate.quad(excess_density, 0, np.inf, epsabs=0, epsrel=1e-10)
+    if denominator <= 0 or numerator <= 0 or den_error > 1e-7 * denominator or num_error > 1e-7 * numerator:
+        raise ArithmeticError("LogNormal conditional moment integration did not converge")
+    return float(d * (numerator / denominator))
 
 
 def _lognormal_excess(ds: np.ndarray, mu: float, sigma: float) -> np.ndarray:
-    """Evaluate the normal-tail moment ratio."""
-    z = (np.log(ds) - mu) / sigma
-    log_ratio = mu + 0.5 * sigma**2 - np.log(ds)
-    log_ratio += special.log_ndtr(sigma - z) - special.log_ndtr(-z)
-    relative = np.expm1(log_ratio)
+    """Evaluate the normal-tail moment ratio with a cancellation-safe fallback."""
+    log_x = np.log(ds)
+    z = (log_x - mu) / sigma
+    log_ratio = sigma * (0.5 * sigma - z) + special.log_ndtr(sigma - z) - special.log_ndtr(-z)
     hi = z >= sigma
     den = special.erfcx(z[hi] / np.sqrt(2.0))
-    relative[hi] = (special.erfcx((z[hi] - sigma) / np.sqrt(2.0)) - den) / den
-    out = np.where(relative > 1e-8, ds * relative, np.nan)
+    relative = (special.erfcx((z[hi] - sigma) / np.sqrt(2.0)) - den) / den
+    log_ratio[hi] = np.log1p(relative)
+    out = _positive_log_excess(log_x, log_ratio)
+    out = np.where((log_ratio > 1e-5) | (z < -8), out, np.nan)
     out = np.where(ds <= 0, np.exp(mu + 0.5 * sigma**2) - ds, out)
     return _repair_tail(ds, out, lambda d: _lognormal_tail_excess(mu, sigma, d))
 
@@ -198,7 +206,7 @@ def _beta_prime_excess(x: np.ndarray, a: float, b: float, p: float, q: float) ->
     if q == 1:
         denominator = -np.expm1(-p * np.logaddexp(0, -log_power[central]))
     log_ratio[central] = log_mean + np.log(numerator) - np.log(denominator) - np.log(x[positive][central])
-    out[positive] = np.where(log_ratio > 1e-8, x[positive] * np.expm1(log_ratio), np.nan)
+    out[positive] = np.where(log_ratio > 1e-8, _positive_log_excess(np.log(x[positive]), log_ratio), np.nan)
     out[~positive] = np.exp(log_mean) - x[~positive]
     return out
 
@@ -275,7 +283,7 @@ def _inverse_generalized_gamma_excess(x: np.ndarray, a: float, b: float, power: 
         + np.log(special.hyp1f1(a - k, a - k + 1, -z[far]))
         - np.log(special.hyp1f1(a, a + 1, -z[far]))
     )
-    out = np.where(lr > 1e-8, x * np.expm1(lr), np.nan)
+    out = np.where(lr > 1e-8, _positive_log_excess(np.log(x), lr), np.nan)
     out = np.where(x <= 0, np.exp(log_mean) - x, out)
     return out
 
@@ -317,13 +325,26 @@ def _gev_excess(ds: np.ndarray, shape: float, loc: float, scale: float) -> np.nd
     if abs(xi) >= 1e-5:
         z = (ds - loc) / scale
         base = 1 + xi * z
+        if xi < 0:
+            base = (-xi / scale) * ((loc - scale / xi) - ds)
         inside = base > 0
-        y = np.exp(-np.log1p(xi * z[inside]) / xi)
-        log_ratio = (
+        log_y = -np.log(base[inside]) / xi
+        y = np.exp(log_y)
+        log_ratio = np.empty(y.shape)
+        small = y < 1e-4
+        # Cancel powers of y before evaluating the lower incomplete gamma.
+        ys = y[small]
+        correction = special.hyp1f1(1 - xi, 2 - xi, -ys)
+        survival_factor = np.ones_like(ys)
+        nonzero = ys > 0
+        survival_factor[nonzero] = -np.expm1(-ys[nonzero]) / ys[nonzero]
+        log_ratio[small] = -np.log1p(-xi) + np.log(correction) - np.log(survival_factor)
+        yc = y[~small]
+        log_ratio[~small] = (
             special.gammaln(1 - xi)
-            + np.log(special.gammainc(1 - xi, y))
-            - np.log(-np.expm1(-y))
-            - np.log(base[inside])
+            + np.log(special.gammainc(1 - xi, yc))
+            - np.log(-np.expm1(-yc))
+            - np.log(base[inside][~small])
         )
         excess = scale * base[inside] / xi * np.expm1(log_ratio)
         out[inside] = np.where(abs(log_ratio) > 1e-7, excess, np.nan)
@@ -333,24 +354,42 @@ def _gev_excess(ds: np.ndarray, shape: float, loc: float, scale: float) -> np.nd
 
 
 def _loggamma_tail_excess(alpha: float, beta: float, d: float) -> float:
-    """Evaluate the log-gamma moment in log space after survival underflow."""
-    log_cutoff = np.log(max(d, 1.0))
-    log_num = -alpha * np.log1p(-beta) + float(_gamma_logsf(alpha, log_cutoff * (1.0 - beta) / beta))
-    log_den = float(_gamma_logsf(alpha, log_cutoff / beta))
-    return float(np.exp(log_num - log_den)) - d
+    """Integrate a gamma excess moment without subtracting the attachment."""
+    z = np.log(d) / beta
+    # Integrate in units of the tilted exponential tail. The numerator
+    # includes 1-exp(-beta*u), so it stays bounded even for beta near one.
+    rate = 1 - beta
+    slope = (alpha - 1) / z
+    if slope < rate / 2:
+        width = 1 / (rate - slope)
+        nodes, weights = special.roots_laguerre(32)
+        u = nodes * width
+        correction = np.exp((alpha - 1) * (np.log1p(u / z) - u / z))
+        numerator = width * np.sum(weights * correction * (-np.expm1(-beta * u)))
+        width_den = 1 / (1 - slope)
+        v = nodes * width_den
+        denominator = width_den * np.sum(weights * np.exp((alpha - 1) * (np.log1p(v / z) - v / z)))
+        return float(d * (numerator / denominator))
+    log_num = -alpha * np.log1p(-beta) + float(_gamma_logsf(alpha, z * rate))
+    log_den = float(_gamma_logsf(alpha, z))
+    log_ratio = log_num - log_den - np.log(d)
+    if log_ratio <= 0:
+        raise ArithmeticError("LogGamma conditional moment lost numerical precision")
+    return float(np.exp(np.log(d) + log_ratio + np.log(-np.expm1(-log_ratio))))
 
 
 def _loggamma_excess(ds: np.ndarray, alpha: float, beta: float) -> np.ndarray:
-    """Evaluate the log-gamma moment ratio."""
-    a, b = alpha, beta
-    z = np.log(np.maximum(ds, 1)) / b
-    lr = (
-        -a * np.log1p(-b)
-        + np.log(special.gammaincc(a, z * (1 - b)))
-        - np.log(special.gammaincc(a, z))
-        - np.log(np.maximum(ds, 1))
-    )
-    out = np.where(lr > 1e-8, np.maximum(ds, 1) * np.expm1(lr) + np.maximum(1 - ds, 0), np.nan)
+    """Evaluate the log-gamma moment ratio with stable endpoint and tail handling."""
+    x = np.maximum(ds, 1)
+    if alpha == 1:
+        return x * (beta / (1 - beta)) + np.maximum(1 - ds, 0)
+    log_x = np.log(x)
+    z = log_x / beta
+    log_ratio = -alpha * np.log1p(-beta) + np.log(special.gammaincc(alpha, z * (1 - beta)))
+    log_ratio -= np.log(special.gammaincc(alpha, z)) + log_x
+    out = np.where(log_ratio > 1e-5, _positive_log_excess(log_x, log_ratio), np.nan)
+    out += np.maximum(1 - ds, 0)
+    out = np.where(ds <= 1, np.expm1(-alpha * np.log1p(-beta)) + 1 - ds, out)
     return _repair_tail(ds, out, lambda d: _loggamma_tail_excess(alpha, beta, d))
 
 
@@ -380,7 +419,7 @@ def _closed_form(family: type[DistributionBase], pars: dict[str, float], ds: np.
         return np.full(ds.shape, np.nan, dtype=float)
     with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
         out = formula(ds, **pars)
-    return np.where((out > 0) & np.isfinite(out), out, np.nan)
+    return np.where(out > 0, out, np.nan)
 
 
 def severity_mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -525,6 +564,6 @@ def _integrate_unresolved(
 
 def _repair_tail(ds: np.ndarray, out: np.ndarray, fallback: t.Callable[[float], float]) -> np.ndarray:
     """Evaluate only unresolved entries with a more robust scalar expression."""
-    for i in np.flatnonzero(~np.isfinite(out) | (out <= 0)):
+    for i in np.flatnonzero(np.isnan(out) | (out <= 0)):
         out[i] = fallback(float(ds[i]))
     return out
