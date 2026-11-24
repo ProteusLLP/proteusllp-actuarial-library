@@ -2701,9 +2701,7 @@ class GeneralizedInverseGaussian(DistributionBase):
     def cdf(self, x: DistributionParameter | np.ndarray) -> ReturnType | np.ndarray:
         """Compute cumulative probabilities, reusing intervals for fixed parameters."""
         p, scipy_shape, scipy_scale, loc = self._scipy_params()
-        validate_stochastic_axes(
-            value for value in (x, *self._params.values()) if isinstance(value, StochasticScalar)
-        )
+        validate_stochastic_axes(value for value in (x, *self._params.values()) if isinstance(value, StochasticScalar))
         values = x.values if isinstance(x, StochasticScalar) else x
         if all(np.ndim(parameter) == 0 for parameter in (p, scipy_shape, scipy_scale, loc)):
             standardized = (np.asarray(values, dtype=float) - loc) / scipy_scale
@@ -2725,9 +2723,7 @@ class GeneralizedInverseGaussian(DistributionBase):
     def invcdf(self, u: DistributionParameter | np.ndarray) -> ReturnType | np.ndarray:
         """Compute inverse cumulative probabilities."""
         p, scipy_shape, scipy_scale, loc = self._scipy_params()
-        validate_stochastic_axes(
-            value for value in (u, *self._params.values()) if isinstance(value, StochasticScalar)
-        )
+        validate_stochastic_axes(value for value in (u, *self._params.values()) if isinstance(value, StochasticScalar))
         values = u.values if isinstance(u, StochasticScalar) else u
         result = geninvgauss.ppf(values, p, scipy_shape, loc=loc, scale=scipy_scale)
         return self._wrap_result(result, u)
