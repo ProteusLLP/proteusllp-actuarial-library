@@ -27,7 +27,15 @@ _T = t.TypeVar("_T", bound="DistributionBase")
 
 
 def _coordinate_value(raw: t.Any, kind: str, origin: float, scale: float, module: t.Any) -> t.Any:
-    """Transform one unconstrained coordinate back to its model parameter."""
+    """Transform one unconstrained coordinate back to its model parameter.
+
+    Args:
+        kind: Coordinate transformation used for the parameter.
+        module: Numerical array namespace used for evaluating the transformation.
+        origin: Origin of the transformed parameter coordinate.
+        raw: Parameter vector in unconstrained fitting coordinates.
+        scale: Positive scaling factor for the transformed parameter.
+    """
     if kind == "log":
         return module.exp(raw)
     if kind == "logit":
@@ -46,6 +54,12 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
     Covariance and standard errors use the original fitted coordinates.
     Parameter draws use continuous unconstrained coordinates, including
     log-positive and logit-probability transformations where appropriate.
+
+    Attributes:
+        covariance: Estimated covariance of the fitted natural parameters.
+        fit: Original maximum-likelihood fit.
+        parameter_names: Ordered names of the jointly estimated parameters.
+        transformed_covariance: Estimated covariance in unconstrained parameter coordinates.
     """
 
     fit: FitResult[_T]
@@ -65,7 +79,11 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
         return dict(zip(self.parameter_names, np.sqrt(np.diag(self.covariance)).tolist(), strict=False))
 
     def confidence_intervals(self, level: float = 0.95) -> dict[str, tuple[float, float]]:
-        """Marginal transformed Wald intervals (not predictive intervals)."""
+        """Marginal transformed Wald intervals (not predictive intervals).
+
+        Args:
+            level: Requested confidence level.
+        """
         if not np.isfinite(level) or not 0 < level < 1:
             raise ValueError("level must lie strictly between zero and one")
         z = float(stats.norm.ppf((1.0 + level) / 2.0))
@@ -95,6 +113,9 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
         Marginal bounds are enforced by bijections; additionally check finite
         machine-precision results and the parameter-dependent likelihood
         support for GPD/GEV. Invalid rows must be replaced as whole vectors.
+
+        Args:
+            raw_draws: Joint parameter samples in transformed coordinates.
         """
         from . import distributions as d
 
@@ -132,6 +153,10 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
 
         Infeasible rows are resampled as *entire joint vectors*. Independent
         clipping or per-parameter rejection would destroy estimated dependence.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
         """
         if n_sims is None:
             n_sims = config.n_sims
@@ -146,6 +171,11 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
         center = to_backend(self._transformed_estimates)
 
         def draw_joint(count: int) -> t.Any:
+            """Draw jointly distributed parameters in transformed coordinates.
+
+            Args:
+                count: Number of joint parameter vectors to draw.
+            """
             normals = xp.stack(
                 [to_backend(_sample_rng(rng, "normal", count, 0.0, 1.0)) for _ in range(dimension)],
                 axis=1,
@@ -191,12 +221,22 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
         return parameters
 
     def sample_distribution(self, n_sims: int | None = None, rng: t.Any = None) -> _T:
-        """Create the fitted PAL family with correlated stochastic parameters."""
+        """Create the fitted PAL family with correlated stochastic parameters.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+        """
         return type(self.fit.distribution)(**self.parameter_samples(n_sims, rng))
 
 
 def _observed_hessian(objective: t.Callable[[np.ndarray], float], center: np.ndarray) -> np.ndarray:
-    """Centered finite-difference Hessian in transformed coordinates."""
+    """Centered finite-difference Hessian in transformed coordinates.
+
+    Args:
+        center: Fitted parameter vector in transformed coordinates.
+        objective: Negative log-likelihood function evaluated in transformed coordinates.
+    """
     size = len(center)
     steps = 5e-4 * (1.0 + np.abs(center))
     value = float(objective(center))
@@ -238,6 +278,13 @@ def asymptotic_parameter_uncertainty(
     Returns an error for unsupported nonregular estimators and for a singular
     or indefinite information matrix. Numerical fitting is always on CPU;
     subsequent PAL parameter draws use the configured simulation backend.
+
+    Args:
+        censored: Right-censoring indicators aligned with observed values.
+        fit: Fitted distribution and its likelihood diagnostics.
+        observations: Observations used to obtain the fitted likelihood.
+        threshold_specified: Whether a left-truncation threshold was supplied.
+        weights: Observation weights used in the original fitted likelihood.
     """
     from . import distributions as d
     from .fitting import _other_families, _supported_families
@@ -327,6 +374,11 @@ def asymptotic_parameter_uncertainty(
         raise ValueError("Observations, censoring and weights must match the original fit")
 
     def objective(raw: np.ndarray) -> float:
+        """Evaluate the negative log-likelihood at the trial parameter vector.
+
+        Args:
+            raw: Parameter vector in unconstrained fitting coordinates.
+        """
         trial = dict(params)
         for i, name in enumerate(names):
             trial[name] = float(_coordinate_value(raw[i], kinds[i], origins[i], scales[i], np))

@@ -24,7 +24,13 @@ from .fitting_remaining import _continuous_families, _discrete_families
 
 
 def _parameter_names(family: type[t.Any], parameters: dict[str, t.Any], threshold: float) -> tuple[str, ...]:
-    """Choose identifiable continuous parameters, excluding known constants."""
+    """Choose identifiable continuous parameters, excluding known constants.
+
+    Args:
+        family: PAL distribution class selecting the likelihood parameterisation.
+        parameters: Distribution parameter names or values used for the transformation.
+        threshold: Left-truncation threshold used in the conditional likelihood.
+    """
     from . import distributions as d
 
     if family is d.Uniform:
@@ -65,6 +71,12 @@ def _parameter_names(family: type[t.Any], parameters: dict[str, t.Any], threshol
 
 
 def _transform_types(family: type[t.Any], names: tuple[str, ...]) -> tuple[str, ...]:
+    """Resolve the parameter transformation types for the distribution family.
+
+    Args:
+        family: PAL distribution class selecting the likelihood parameterisation.
+        names: Ordered names of the parameters to transform.
+    """
     from . import distributions as d
 
     real = {"mu"} if family in (d.Normal, d.Logistic, d.LogNormal, d.StudentsT) else set()
@@ -92,7 +104,13 @@ def _transform_types(family: type[t.Any], names: tuple[str, ...]) -> tuple[str, 
 
 
 def _mbbefd_log_likelihood(pars: dict[str, float], x: np.ndarray, w: np.ndarray) -> float:
-    """Exact mixed density/atom likelihood, including limiting cases."""
+    """Exact mixed density/atom likelihood, including limiting cases.
+
+    Args:
+        pars: Distribution parameters in natural coordinates.
+        w: Observation weights aligned with the sample.
+        x: Observed losses at which the log-likelihood is evaluated.
+    """
     g, b = pars["g"], pars["b"]
     if g <= 1 or b <= 0 or np.any((x <= 0) | (x > 1)):
         return -np.inf
@@ -122,7 +140,17 @@ def _loglik(
     threshold: float,
     threshold_specified: bool,
 ) -> float:
-    """Re-evaluate the same conditional likelihood used for the fitted MLE."""
+    """Re-evaluate the same conditional likelihood used for the fitted MLE.
+
+    Args:
+        c: Right-censoring flags aligned with the observations.
+        family: PAL distribution class selecting the likelihood parameterisation.
+        params: Natural distribution parameters at which to evaluate the likelihood.
+        threshold: Left-truncation threshold used in the conditional likelihood.
+        threshold_specified: Whether a left-truncation threshold was supplied.
+        w: Observation weights aligned with the sample.
+        x: Observed losses at which the log-likelihood is evaluated.
+    """
     from . import distributions as d
 
     if family in _supported_families():

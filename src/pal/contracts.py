@@ -25,6 +25,10 @@ class ContractResults:
 
     This class stores the results of applying a reinsurance contract to a set of
     claims.
+
+    Attributes:
+        recoveries: Simulated recoveries under the contract.
+        reinstatement_premium: Simulated additional reinstatement premium payable under the contract.
     """
 
     def __init__(
@@ -44,7 +48,21 @@ class ContractResults:
 
 
 class XoL:
-    """Represents an excess of loss reinsurance contract."""
+    """Represents an excess of loss reinsurance contract.
+
+    Attributes:
+        aggregate_deductible: Aggregate deductible applied across recoveries within each simulation.
+        aggregate_limit: Maximum aggregate recovery permitted in each simulation.
+        excess: Per-occurrence attachment of the reinsurance layer.
+        franchise: Minimum occurrence loss required for the franchise cover to respond.
+        limit: Per-occurrence recovery limit.
+        name: Name identifying the reinsurance contract.
+        num_reinstatements: Number of reinstatements permitted by the layer terms.
+        premium: Premium payable for the reinsurance layer.
+        reinstatement_premium_cost: Cost of reinstating cover, as a proportion of the original premium.
+        reverse_franchise: Maximum occurrence loss qualifying for the reverse franchise cover.
+        summary: Calculated summary statistics for the contract after application.
+    """
 
     def __init__(
         self,
@@ -225,7 +243,18 @@ class XoL:
 
 
 class XoLTower:
-    """Represents a tower of excess of loss reinsurance contracts."""
+    """Represents a tower of excess of loss reinsurance contracts.
+
+    Attributes:
+        aggregate_deductible: Aggregate deductible applied across recoveries within each simulation. Values can differ by layer.
+        aggregate_limit: Maximum aggregate recovery permitted in each simulation. Values can differ by layer.
+        excess: Per-occurrence attachment of the reinsurance layer. Values can differ by layer.
+        franchise: Minimum occurrence loss required for the franchise cover to respond. Values can differ by layer.
+        layers: Ordered collection of excess-of-loss layers in the tower.
+        limit: Per-occurrence recovery limit. Values can differ by layer.
+        n_layers: Number of layers in the tower.
+        reverse_franchise: Maximum occurrence loss qualifying for the reverse franchise cover. Values can differ by layer.
+    """
 
     def __init__(
         self,

@@ -95,7 +95,12 @@ def _get_sims_of_events(
 
 
 class FrequencySeverityModel:
-    """Constructs and simulates from Frequency-Severity, or Compound distributions."""
+    """Constructs and simulates from Frequency-Severity, or Compound distributions.
+
+    Attributes:
+        freq_dist: Distribution generating the claim or event counts.
+        sev_dist: Distribution generating individual claim or event severities.
+    """
 
     def __init__(
         self,
@@ -119,6 +124,12 @@ class FrequencySeverityModel:
         Event-list rows are not independent QMC paths. Instead, generate each
         claim position across simulation paths to retain the intended
         within-simulation joint severity distribution.
+
+        Args:
+            counts: Number of events in each simulation.
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+            total_events: Total number of individual events across simulations.
         """
         offsets = xp.cumsum(counts) - counts
         max_count = int(xp.max(counts))
@@ -153,6 +164,13 @@ class FrequencySeverityModel:
         k-th QMC severity coordinate for path i. Reconstructing just these
         observed pairs preserves exactly the same scrambled Sobol design as
         drawing an entire coordinate for every claim ordinal.
+
+        Args:
+            counts: Number of events in each simulation.
+            event_indices: Simulation indices identifying the events to generate.
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+            total_events: Total number of individual events across simulations.
         """
         # The inverse Gaussian currently has no inverse-CDF implementation.
         # Keep its established two-coordinate sampling construction.
@@ -199,6 +217,8 @@ class FrequencySeverityModel:
             default value from the config.
         - rng (RandomGenerator, optional): Random number generator. Uses
             config.rng if None.
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
 
         Returns:
             Object containing the generated simulations.
@@ -308,6 +328,11 @@ class FreqSevSims(_ProteusStochasticVariable):
     >>> fs2 = FreqSevSims(sim_index, values, n_sims)
     >>> fs1 + fs2  # doctest: +ELLIPSIS
     FreqSevSims(...)
+
+    Attributes:
+        n_sims: Number of simulations represented by the object.
+        sim_index: Simulation index associated with each individual event.
+        values: Stored values in simulation or dimension order.
     """
 
     n_sims: int
@@ -351,6 +376,7 @@ class FreqSevSims(_ProteusStochasticVariable):
             )
 
     def __str__(self):
+        """Return a readable representation of the object."""
         return "Simulation Index\n" + str(self.sim_index) + "\n Values\n" + str(self.values)
 
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
@@ -366,7 +392,11 @@ class FreqSevSims(_ProteusStochasticVariable):
         self.sim_index = reverse_ordering[self.sim_index]
 
     def __getitem__(self, sim_index: int) -> StochasticScalar:
-        """Returns the values of the simulation with the given simulation index."""
+        """Returns the values of the simulation with the given simulation index.
+
+        Args:
+            sim_index: Simulation index associated with each event.
+        """
         # get the positions of the given simulation index
         if isinstance(sim_index, int):  # type: ignore[unecessary-check]
             indices = asnumpy(self.sim_index) if host_values(self.values) else self.sim_index
@@ -519,7 +549,11 @@ class FreqSevSims(_ProteusStochasticVariable):
         return result
 
     def apply(self, func: ArrayTransform) -> FreqSevSims:
-        """Applies a function to the values of the FreqSevSims object."""
+        """Applies a function to the values of the FreqSevSims object.
+
+        Args:
+            func: Array function to dispatch.
+        """
         result = FreqSevSims(self.sim_index, func(self.values), self.n_sims)
         couple_stochastic_results((result,), (self,))
         return result
@@ -553,7 +587,11 @@ class FreqSevSims(_ProteusStochasticVariable):
             return x
 
     def _validate_event_layout(self, *operands: t.Any) -> None:
-        """Reject event-wise operations on different scenario/event assignments."""
+        """Reject event-wise operations on different scenario/event assignments.
+
+        Args:
+            *operands: Operands to combine after aligning event or simulation values.
+        """
         for other in operands:
             if not isinstance(other, FreqSevSims) or other is self:
                 continue
@@ -563,7 +601,14 @@ class FreqSevSims(_ProteusStochasticVariable):
                 raise ValueError("Event simulation indices must match for event-wise operations")
 
     def __array_ufunc__(self, ufunc: np.ufunc, method: str, *inputs: t.Any, **kwargs: t.Any) -> t.Any:
-        """Apply event-wise ufuncs with atomic output and simulation-axis coupling."""
+        """Apply event-wise ufuncs with atomic output and simulation-axis coupling.
+
+        Args:
+            *inputs: Input operands supplied to the NumPy universal function.
+            **kwargs: Keyword arguments supplied by the caller or NumPy dispatch.
+            method: Method of the universal function to invoke.
+            ufunc: NumPy universal function to apply.
+        """
         if method == "at":
             raise NotImplementedError("In-place ufunc.at is unsupported on frequency-severity results")
         if method not in ("__call__", "reduce", "reduceat", "accumulate", "outer"):
@@ -690,7 +735,14 @@ class FreqSevSims(_ProteusStochasticVariable):
         return tuple(outputs) if len(outputs) > 1 else outputs[0]
 
     def __array_function__(self, func: Callable[..., t.Any], _: t.Any, args: t.Any, kwargs: t.Any) -> t.Any:
-        """Dispatch supported array functions without mixing claim and scenario axes."""
+        """Dispatch supported array functions without mixing claim and scenario axes.
+
+        Args:
+            _: Types participating in NumPy dispatch; unused by PAL's implementation.
+            args: Positional arguments supplied by the caller or NumPy dispatch.
+            func: Array function to dispatch.
+            kwargs: Keyword arguments supplied by the caller or NumPy dispatch.
+        """
         supported = (np.where, np.sum, np.array_equal, np.minimum, np.maximum, np.mean, np.round)
         if func not in supported:
             raise NotImplementedError(f"Function {func.__name__} not supported")
@@ -738,6 +790,11 @@ class FreqSevSims(_ProteusStochasticVariable):
         )
 
         def prepare(value: t.Any) -> t.Any:
+            """Prepare operands for NumPy dispatch while preserving their simulation alignment.
+
+            Args:
+                value: Value to convert, compare or assign.
+            """
             if isinstance(value, (FreqSevSims, StochasticScalar)):
                 return self._extract_array_for_ufunc(value, host)
             return asnumpy(value) if host and isinstance(value, xp.ndarray) else value if host else to_backend(value)
@@ -777,6 +834,7 @@ class FreqSevSims(_ProteusStochasticVariable):
         return new_freq_sev
 
     def __repr__(self):
+        """Return a developer-facing representation of the object."""
         return f"{type(self).__name__}({self.values!r})"
 
     def _is_compatible(self, other: ProteusCompatibleTypes) -> bool:
@@ -799,6 +857,9 @@ class FreqSevSims(_ProteusStochasticVariable):
 
         The events belonging to each source simulation are copied as a unit.
         Within-simulation event order is preserved, including for unsorted inputs.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
         """
         if n_sims < 1 or self.n_sims < 1:
             raise ValueError("n_sims must be positive for frequency-severity resampling")
