@@ -779,7 +779,10 @@ def _positive_log_survival(
         power = p["power"] if family is dist.InverseBurr else p["shape"]
         log_u = power * (np.log(p["scale"]) - log_x)
         if log_u < -36:
-            return float(np.log(p["shape"]) + log_u)
+            log_hazard = np.log(p["shape"]) + log_u
+            if log_hazard < -36:
+                return float(log_hazard)
+            return float(np.log(-np.expm1(-np.exp(log_hazard)))) if log_hazard < 709 else 0.0
         return float(np.log(-np.expm1(-p["shape"] * np.logaddexp(0, log_u))))
     if family is dist.InverseGamma:
         return _log_lower_gamma(p["alpha"], np.log(p["theta"]) - log_x)
@@ -861,7 +864,9 @@ def _integrate_log_interval(
 
     if limit == 0:
         return 0.0
-    # Resolve the local tail before integrating a potentially wide gap.
+    # Integrate the local interval first, then longer logarithmic gaps.
+    # An infinite-interval transform is appropriate for heavy tails;
+    # a huge finite interval can otherwise miss a narrow boundary layer.
     split = min(1.0, limit)
     area, error = integrate.quad(integrand, 0.0, split, epsabs=0, epsrel=1e-10, limit=300)
     if split < limit:
@@ -918,7 +923,7 @@ def _integrate_unresolved(
             with np.errstate(over="ignore", under="ignore", invalid="ignore"):
                 local_scale = float(np.exp(log_start_sf - log_start_pdf))
         if not np.isfinite(local_scale) or local_scale <= 0:
-            local_scale = max(abs(start) * 0.1, 1.0)
+            local_scale = max(abs(start - pars.get("loc", 0.0)) * 0.1, 1.0)
         remaining = upper - start
         limit = remaining / local_scale if np.isfinite(remaining) else np.inf
 
