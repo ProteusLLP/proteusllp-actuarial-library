@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from scipy import integrate, stats
 
+from pal import _mean_excess
 from pal.distributions import (
     GEV,
     MBBEFD,
@@ -219,4 +220,27 @@ def test_gev_near_gumbel_transition(shape, threshold, expected):
 def test_lognormal_narrow_shifted_coordinates(mu, threshold, expected):
     # Fixed binary64 attachments; rounding exp(mu) would change this reference.
     model = LogNormal(mu=mu, sigma=1e-10)
+    assert model.mean_excess(threshold) == pytest.approx(expected, rel=1e-11, abs=0)
+
+
+@pytest.mark.parametrize(
+    ("model", "threshold", "expected"),
+    [
+        (Gamma(alpha=1e6, theta=1), 100000001.0, 1.01010099958981759054),
+        (LogGamma(alpha=2, beta=1e-9), 2.0, 2.00000000488539e-9),
+        (LogNormal(mu=0, sigma=1e-10), 1.0, 7.9788456085286535588e-11),
+        (InverseGaussian(mu=3, lambda_=4), 1e8, 4.499999696250052),
+        (GeneralizedBetaPrime(a=0.1, b=1, p=10, q=1000), 2.0, 0.03972305541742264),
+        (InverseBurr(power=100, shape=1000, scale=1, loc=0), 2.0, 0.020202020202020202),
+        (NonCentralChiSquared(df=4, nonc=0), 2000.0, 2 * 1002 / 1001),
+    ],
+)
+def test_extreme_analytical_paths_do_not_integrate(monkeypatch, model, threshold, expected):
+    """Continued fractions and moment series must resolve these tails directly."""
+
+    def unexpected_quadrature(*args, **kwargs):
+        pytest.fail("Unexpected numerical quadrature")
+
+    monkeypatch.setattr(integrate, "quad", unexpected_quadrature)
+    monkeypatch.setattr(_mean_excess, "_laguerre_rule", unexpected_quadrature)
     assert model.mean_excess(threshold) == pytest.approx(expected, rel=1e-11, abs=0)
