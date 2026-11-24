@@ -224,14 +224,17 @@ def _beta_prime_tail_excess(
 
 
 def _beta_prime_tilt_mask(
-    log_power: np.ndarray, a: float, p: float, q: float,
+    log_power: np.ndarray,
+    a: float,
+    p: float,
+    q: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Select smooth exponentially tilted tails for fixed-order quadrature."""
     z = special.expit(-log_power)
     w = special.expit(log_power)
     rate = a * (q * w - p * z)
     curvature = a**2 * (p + q) * w * z
-    return (rate > 2) & (curvature < 0.1 * (rate - 1)**2), rate
+    return (rate > 2) & (curvature < 0.1 * (rate - 1) ** 2), rate
 
 
 def _beta_prime_excess(x: np.ndarray, a: float, b: float, p: float, q: float) -> np.ndarray:
