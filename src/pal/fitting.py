@@ -880,23 +880,27 @@ def _batch_mean_excess(
             # P(a,z) = z**a / Gamma(a+1) * 1F1(a;a+1;-z).
             # Cancel powers analytically for small z (even if z underflows).
             far = (x > 0) & (z < 1e-4)
-            lr[far] = -np.log1p(-k / a) + np.log(special.hyp1f1(a - k, a - k + 1, -z[far])) - np.log(special.hyp1f1(a, a + 1, -z[far]))
+            lr[far] = (
+                -np.log1p(-k / a)
+                + np.log(special.hyp1f1(a - k, a - k + 1, -z[far]))
+                - np.log(special.hyp1f1(a, a + 1, -z[far]))
+            )
             out = np.where(lr > 1e-8, x * np.expm1(lr), np.nan)
             out = np.where(x <= 0, np.exp(log_mean) - x, out)
         elif family is dist.InverseGaussian:
             mu, lam = p["mu"], p["lambda_"]
             x = ds[ds > 0]
             root = np.sqrt(lam / x)
-            a = root * (x / mu - 1)
-            b = root * (x / mu + 1)
+            normal_a = root * (x / mu - 1)
+            normal_b = root * (x / mu + 1)
             # The exponential tilt cancels the normal density exponent.
-            log_a = special.log_ndtr(-a)
-            log_b = np.log(0.5 * special.erfcx(b / np.sqrt(2))) - 0.5 * a**2
+            log_a = special.log_ndtr(-normal_a)
+            log_b = np.log(0.5 * special.erfcx(normal_b / np.sqrt(2))) - 0.5 * normal_a**2
             # A+B and A-B are the first moment / mu and survival.
             log_sf = log_a + np.log(-np.expm1(log_b - log_a))
             log_moment = np.log(mu) + np.logaddexp(log_a, log_b)
             lr = log_moment - log_sf - np.log(x)
-            out[ds > 0] = np.where(lr > 1e-6, x * np.expm1(lr), np.nan)
+            out[ds > 0] = np.where((lr > 1e-6) & (log_a - log_b > 1e-6), x * np.expm1(lr), np.nan)
             out[ds <= 0] = mu - ds[ds <= 0]
         elif family is dist.GEV:
             xi, loc, scale = p["shape"], p["loc"], p["scale"]
@@ -915,7 +919,12 @@ def _batch_mean_excess(
         elif family is dist.LogGamma:
             a, b = p["alpha"], p["beta"]
             z = np.log(np.maximum(ds, 1)) / b
-            lr = -a * np.log1p(-b) + np.log(special.gammaincc(a, z * (1 - b))) - np.log(special.gammaincc(a, z)) - np.log(np.maximum(ds, 1))
+            lr = (
+                -a * np.log1p(-b)
+                + np.log(special.gammaincc(a, z * (1 - b)))
+                - np.log(special.gammaincc(a, z))
+                - np.log(np.maximum(ds, 1))
+            )
             out = np.where(lr > 1e-8, np.maximum(ds, 1) * np.expm1(lr) + np.maximum(1 - ds, 0), np.nan)
     return np.where((out > 0) & np.isfinite(out), out, np.nan)
 
