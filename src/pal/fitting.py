@@ -771,7 +771,9 @@ def empirical_mean_excess(
 
 
 def _batch_mean_excess(
-    family: type[DistributionBase], pars: dict[str, float], ds: np.ndarray,
+    family: type[DistributionBase],
+    pars: dict[str, float],
+    ds: np.ndarray,
 ) -> np.ndarray:
     """Fast vectorised expressions; NaN entries use the scalar safeguards."""
     from . import distributions as dist
@@ -858,10 +860,8 @@ def _batch_mean_excess(
             central = ~far
             # Evaluate from whichever endpoint is better resolved.
             zz, ww = z[central], complement[central]
-            numerator = np.where(zz < 0.5, special.betainc(qt, pp + 1 / a, zz),
-                                 special.betaincc(pp + 1 / a, qt, ww))
-            denominator = np.where(zz < 0.5, special.betainc(q, pp, zz),
-                                   special.betaincc(pp, q, ww))
+            numerator = np.where(zz < 0.5, special.betainc(qt, pp + 1 / a, zz), special.betaincc(pp + 1 / a, qt, ww))
+            denominator = np.where(zz < 0.5, special.betainc(q, pp, zz), special.betaincc(pp, q, ww))
             if q == 1:
                 denominator = -np.expm1(-pp * np.logaddexp(0, -log_power[central]))
             lr[central] = moment + np.log(numerator) - np.log(denominator) - np.log(x[pos][central])
@@ -909,9 +909,12 @@ def _batch_mean_excess(
                 base = 1 + xi * z
                 inside = base > 0
                 y = np.exp(-np.log1p(xi * z[inside]) / xi)
-                log_ratio = (special.gammaln(1 - xi)
-                             + np.log(special.gammainc(1 - xi, y))
-                             - np.log(-np.expm1(-y)) - np.log(base[inside]))
+                log_ratio = (
+                    special.gammaln(1 - xi)
+                    + np.log(special.gammainc(1 - xi, y))
+                    - np.log(-np.expm1(-y))
+                    - np.log(base[inside])
+                )
                 excess = scale * base[inside] / xi * np.expm1(log_ratio)
                 out[inside] = np.where(abs(log_ratio) > 1e-7, excess, np.nan)
                 if xi > 0:
@@ -1068,10 +1071,7 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
 
         # Reuse the integrated tail at the preceding (higher) attachment.
         # Work with conditional survival ratios, not tiny unconditional areas.
-        reuse = (
-            previous_start is not None
-            and 0 <= (previous_start - start) / local_scale <= 100
-        )
+        reuse = previous_start is not None and 0 <= (previous_start - start) / local_scale <= 100
         if family is _distributions.GeneralizedInverseGaussian:
             # SciPy's GIG survival may suffer cancellation in the far tail.
             # Integrate the conditional density instead, avoiding noisy S(x).
