@@ -25,6 +25,7 @@ on:
       - "src/pal/_mean_excess.py"
       - "src/pal/fitting.py"
       - "src/pal/fitting_remaining.py"
+      - "src/pal/_severity_probability.py"
 
 permissions:
   contents: read
@@ -78,6 +79,30 @@ jobs:
             ${{ runner.temp }}/pal-cpu.*
             ${{ runner.temp }}/pal-memory-cpu.*
             ${{ runner.temp }}/pal-mean-excess*.json
+          retention-days: 30
+
+  fitting:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install PAL
+        run: pip install -e .
+      - name: Compare fitting optimizers
+        env:
+          OPENBLAS_NUM_THREADS: "1"
+          OMP_NUM_THREADS: "1"
+        run: |
+          python -m benchmarks.benchmark_fitting --size 10000 \
+            --output "$RUNNER_TEMP/pal-fitting.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pal-fitting-optimizers
+          path: ${{ runner.temp }}/pal-fitting.json
           retention-days: 30
 
   variable-io:

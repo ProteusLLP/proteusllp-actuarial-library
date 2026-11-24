@@ -106,3 +106,17 @@ The sweep covers GB2, Beta, Gamma, inverse Gaussian, GEV and LogNormal,
 including difficult shapes and thresholds; it does not require mpmath at PAL
 runtime. The performance workflow also runs the sweep. The GIG timing reports
 batched values only because repeated adaptive scalar integration is costly.
+
+## Fitting optimizers
+
+```bash
+python -m benchmarks.benchmark_fitting --size 10000 --output fitting.json
+```
+
+Compare the default safeguarded L-BFGS-B with Nelder-Mead on identical
+quantile-spaced samples, including a common 10,000-loss sample, known-family
+samples, weighted truncated and censored tail samples, and bounded-support
+cases. The report records log-likelihood differences, parameters, convergence,
+boundary warnings, actual optimizer, fallback use and elapsed time. Use
+`--case Gamma` to select a subset. Timings are descriptive; a worse likelihood
+or unsuccessful fit is a numerical investigation target, not a speedup.
