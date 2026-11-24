@@ -76,7 +76,7 @@ def run(sizes: list[int], repeat: int, scalar_limit: int) -> dict:
             if not np.all(np.isfinite(batch_values) & (batch_values > 0)):
                 raise ArithmeticError(f"{name} produced unresolved or nonpositive mean excess")
             row = {"case": name, "thresholds": size, "batch_ms": measure(batched, repeat)}
-            if size <= scalar_limit:
+            if size <= scalar_limit and name != "gig":
                 def scalar():
                     return np.asarray([model.mean_excess(float(d)) for d in ds])
 
