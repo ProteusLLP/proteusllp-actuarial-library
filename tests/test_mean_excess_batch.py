@@ -101,9 +101,7 @@ def test_shifted_gamma_and_large_shape_tail():
     expected = np.array([16.0, 6.0, 4.0, 3 * 802 / 801])
     np.testing.assert_allclose(model.mean_excess(ds), expected, rtol=1e-12)
     # 70-digit conditional-density integral, not a ratio of underflowed CDFs.
-    assert Gamma(alpha=1e6, theta=1).mean_excess(100000001.0) == pytest.approx(
-        1.01010099958981759054, rel=1e-12
-    )
+    assert Gamma(alpha=1e6, theta=1).mean_excess(100000001.0) == pytest.approx(1.01010099958981759054, rel=1e-12)
 
 
 def test_lognormal_small_variance_and_large_log_ratio():
@@ -116,15 +114,11 @@ def test_lognormal_small_variance_and_large_log_ratio():
 def test_inverse_gaussian_far_tail():
     # 60-digit integral of the conditional density after exponential rescaling.
     assert InverseGaussian(mu=3, lambda_=4).mean_excess(1e8) == pytest.approx(4.499999696250052, rel=1e-12)
-    assert InverseGaussian(mu=1, lambda_=1e6).mean_excess(3) == pytest.approx(
-        2.2499966250131307e-6, rel=1e-11, abs=0
-    )
+    assert InverseGaussian(mu=1, lambda_=1e6).mean_excess(3) == pytest.approx(2.2499966250131307e-6, rel=1e-11, abs=0)
 
 
 def test_loggamma_near_support_and_underflow():
-    assert LogGamma(alpha=2, beta=1e-9).mean_excess(2) == pytest.approx(
-        2.00000000488539e-9, rel=1e-11, abs=0
-    )
+    assert LogGamma(alpha=2, beta=1e-9).mean_excess(2) == pytest.approx(2.00000000488539e-9, rel=1e-11, abs=0)
     assert LogGamma(alpha=2, beta=0.1).mean_excess(1e100) == pytest.approx(1.1116470443852886e99, rel=1e-11)
 
 
@@ -144,3 +138,8 @@ def test_mbbefd_atom_and_beta_underflow_near_endpoint():
     assert MBBEFD(g=1e20, b=1).mean_excess(d) == pytest.approx(1 - d, rel=1e-12, abs=0)
     assert MBBEFD(g=1e20, b=2).mean_excess(d) == pytest.approx(1 - d, rel=1e-12, abs=0)
     assert Beta(alpha=1, beta=1000).mean_excess(d) == pytest.approx((1 - d) / 1001, rel=1e-12, abs=0)
+
+
+def test_gumbel_and_central_chisquare_underflow():
+    assert GEV(shape=0, scale=3).mean_excess(1e5) == pytest.approx(3.0, rel=1e-12)
+    assert NonCentralChiSquared(df=2, nonc=0).mean_excess(2000) == pytest.approx(2.0, rel=1e-12)
