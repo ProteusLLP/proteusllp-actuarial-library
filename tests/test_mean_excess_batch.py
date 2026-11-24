@@ -9,6 +9,7 @@ from pal.distributions import (
     GEV,
     MBBEFD,
     Beta,
+    Burr,
     Exponential,
     Gamma,
     GeneralizedBetaPrime,
@@ -16,6 +17,7 @@ from pal.distributions import (
     InverseBurr,
     InverseGamma,
     InverseGaussian,
+    InverseParalogistic,
     InverseWeibull,
     LogGamma,
     LogLogistic,
@@ -244,3 +246,82 @@ def test_extreme_analytical_paths_do_not_integrate(monkeypatch, model, threshold
     monkeypatch.setattr(integrate, "quad", unexpected_quadrature)
     monkeypatch.setattr(_mean_excess, "_laguerre_rule", unexpected_quadrature)
     assert model.mean_excess(threshold) == pytest.approx(expected, rel=1e-11, abs=0)
+
+
+@pytest.mark.parametrize(
+    ("model", "rv"),
+    [
+        (LogLogistic(shape=1.05, scale=3, loc=7), stats.fisk(1.05, scale=3, loc=7)),
+        (Paralogistic(shape=1.2, scale=2, loc=7), stats.burr12(1.2, 1.2, scale=2, loc=7)),
+        (Burr(power=0.5, shape=4, scale=2, loc=7), stats.burr12(0.5, 4, scale=2, loc=7)),
+        (InverseBurr(power=2, shape=0.2, scale=3, loc=7), stats.burr(2, 0.2, scale=3, loc=7)),
+        (InverseParalogistic(shape=1.05, scale=2, loc=7), stats.burr(1.05, 1.05, scale=2, loc=7)),
+        (InverseGamma(alpha=1.05, theta=3, loc=7), stats.invgamma(1.05, scale=3, loc=7)),
+        (InverseWeibull(shape=1.05, scale=3, loc=7), stats.invweibull(1.05, scale=3, loc=7)),
+    ],
+)
+def test_shifted_heavy_tail_closed_forms_and_fallback(monkeypatch, model, rv):
+    """Compare analytical and forced fallback paths with independent log-space integration."""
+    thresholds = np.array([[1e9 + 7, 7, 0, 3.5e6 + 7], [8, 8, 5e6 + 7, 10]])
+    expected = []
+    for d in thresholds.ravel():
+        if d <= 7:
+            expected.append(rv.mean() - d)
+            continue
+        x = d - 7
+        log_sf = rv.logsf(d)
+
+        def integrand(u, x=x, log_sf=log_sf):
+            # The reference uses SciPy only over its representable range.
+            # All selected tail indices exceed one by at least 0.05.
+            if u > 650:
+                return 0.0
+            return np.exp(u + rv.logsf(7 + x * np.exp(u)) - log_sf)
+
+        area = integrate.quad(integrand, 0, 650, epsabs=0, epsrel=1e-10)[0]
+        expected.append(x * area)
+    expected = np.asarray(expected).reshape(thresholds.shape)
+    np.testing.assert_allclose(model.mean_excess(thresholds), expected, rtol=1e-8, atol=0)
+    monkeypatch.setattr(_mean_excess, "_closed_form", lambda family, pars, ds: np.full(ds.shape, np.nan))
+    np.testing.assert_allclose(model.mean_excess(thresholds), expected, rtol=1e-8, atol=0)
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        Burr(power=0.5, shape=2, scale=1, loc=7),
+        LogLogistic(shape=1, scale=1, loc=7),
+        Paralogistic(shape=1, scale=1, loc=7),
+        InverseBurr(power=1, shape=3, scale=1, loc=7),
+        InverseParalogistic(shape=1, scale=1, loc=7),
+        InverseGamma(alpha=1, theta=1, loc=7),
+        InverseWeibull(shape=1, scale=1, loc=7),
+    ],
+)
+def test_mean_excess_infinite_mean_boundaries(model):
+    thresholds = np.array([[-1, 0, 7, 1e9], [np.nan, np.inf, -np.inf, 7]])
+    expected = np.array([[np.inf] * 4, [np.nan, np.nan, np.nan, np.inf]])
+    np.testing.assert_array_equal(model.mean_excess(thresholds), expected)
+
+
+def test_fallback_exponential_wide_gap(monkeypatch):
+    monkeypatch.setattr(_mean_excess, "_closed_form", lambda family, pars, ds: np.full(ds.shape, np.nan))
+    model = Exponential(scale=48000, loc=100)
+    points = np.array([3e7, 1000, 3e7, 100, 0, np.nan, np.inf, -np.inf])
+    expected = np.array([48000, 48000, 48000, 48000, 48100, np.nan, np.nan, np.nan])
+    np.testing.assert_allclose(model.mean_excess(points), expected, rtol=1e-9)
+
+
+def test_fallback_survival_probability_underflow(monkeypatch):
+    monkeypatch.setattr(_mean_excess, "_closed_form", lambda family, pars, ds: np.full(ds.shape, np.nan))
+    model = InverseWeibull(shape=3, scale=1, loc=0)
+    points = np.array([1e150, 1e140, 1e150, np.nan])
+    np.testing.assert_allclose(model.mean_excess(points), points / 2, rtol=1e-10)
+
+
+def test_fallback_finite_upper_endpoint():
+    model = GEV(shape=-0.1, scale=1, loc=0)
+    points = np.array([9, 10, 11, np.nan, np.inf, -np.inf])
+    result = model.mean_excess(points)
+    assert result[0] > 0
+    assert np.all(np.isnan(result[1:]))
