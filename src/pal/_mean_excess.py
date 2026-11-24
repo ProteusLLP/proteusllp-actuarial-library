@@ -320,38 +320,76 @@ def _inverse_gaussian_excess(ds: np.ndarray, mu: float, lambda_: float) -> np.nd
     return out
 
 
+def _gev_small_tail(shape: float, y: np.ndarray) -> np.ndarray:
+    """Evaluate the normalized survival integral as a convergent small-y series."""
+    # Integral from 0 to y of (1-exp(-t))*t**(-shape-1), divided by
+    # y**(1-shape). Cancel the factor y before forming the survival ratio.
+    series = (
+        1 / (1 - shape)
+        + y * (-1 / (2 * (2 - shape)) + y * (1 / (6 * (3 - shape)) + y * (-1 / (24 * (4 - shape)))))
+    )
+    sf_factor = np.ones_like(y)
+    nonzero = y > 0
+    sf_factor[nonzero] = -np.expm1(-y[nonzero]) / y[nonzero]
+    return series / sf_factor
+
+
 def _gev_excess(ds: np.ndarray, shape: float, loc: float, scale: float) -> np.ndarray:
-    """Evaluate the GEV truncated gamma moment away from the Gumbel limit."""
+    """Evaluate GEV residual life, including the Gumbel and endpoint limits."""
     xi = shape
     out = np.full(ds.shape, np.nan, dtype=float)
-    if abs(xi) >= 1e-5:
-        z = (ds - loc) / scale
-        base = 1 + xi * z
-        if xi < 0:
-            base = (-xi / scale) * ((loc - scale / xi) - ds)
-        inside = base > 0
-        log_y = -np.log(base[inside]) / xi
-        y = np.exp(log_y)
-        log_ratio = np.empty(y.shape)
+    z = (ds - loc) / scale
+    if xi == 0:
+        y = np.exp(-z)
         small = y < 1e-4
-        # Cancel powers of y before evaluating the lower incomplete gamma.
-        ys = y[small]
-        correction = special.hyp1f1(1 - xi, 2 - xi, -ys)
-        survival_factor = np.ones_like(ys)
-        nonzero = ys > 0
-        survival_factor[nonzero] = -np.expm1(-ys[nonzero]) / ys[nonzero]
-        log_ratio[small] = -np.log1p(-xi) + np.log(correction) - np.log(survival_factor)
-        yc = y[~small]
-        log_ratio[~small] = (
+        out[small] = scale * _gev_small_tail(0, y[small])
+        central = ~small & np.isfinite(y)
+        yc = y[central]
+        out[central] = scale * (np.euler_gamma + np.log(yc) + special.exp1(yc)) / (-np.expm1(-yc))
+        out[np.isposinf(y)] = scale * np.euler_gamma + loc - ds[np.isposinf(y)]
+        return out
+
+    base = 1 + xi * z
+    log_base = np.log1p(xi * z)
+    if xi < 0:
+        near_endpoint = base < 0.5
+        base[near_endpoint] = (-xi / scale) * ((loc - scale / xi) - ds[near_endpoint])
+        log_base[near_endpoint] = np.log(base[near_endpoint])
+    inside = base > 0
+    y = np.exp(-log_base / xi)
+    small = inside & (y < 1e-4)
+    out[small] = scale * base[small] * _gev_small_tail(xi, y[small])
+    # The central formula subtracts close quantities for xi near zero.
+    # Retain conditional integration for this narrow parameter region.
+    if abs(xi) >= 1e-5:
+        central = inside & ~small
+        yc = y[central]
+        log_ratio = (
             special.gammaln(1 - xi)
             + np.log(special.gammainc(1 - xi, yc))
             - np.log(-np.expm1(-yc))
-            - np.log(base[inside][~small])
+            - log_base[central]
         )
-        excess = scale * base[inside] / xi * np.expm1(log_ratio)
-        out[inside] = np.where(abs(log_ratio) > 1e-7, excess, np.nan)
-        if xi > 0:
-            out[~inside] = loc + scale * np.expm1(special.gammaln(1 - xi)) / xi - ds[~inside]
+        excess = scale * base[central] / xi * np.expm1(log_ratio)
+        out[central] = np.where(abs(log_ratio) > 1e-7, excess, np.nan)
+    if xi > 0:
+        out[~inside] = loc + scale * np.expm1(special.gammaln(1 - xi)) / xi - ds[~inside]
+    return out
+
+
+def _gig_excess(ds: np.ndarray, p: float, chi: float, psi: float, loc: float) -> np.ndarray:
+    """Evaluate the deep GIG tail using a scaled conditional density integral."""
+    x = ds - loc
+    out = np.full(ds.shape, np.nan)
+    width = 2 / psi
+    far = x > max(2 * np.sqrt(chi / psi), 10 * width * max(1, abs(p - 1)))
+    if np.any(far):
+        nodes, weights = special.roots_laguerre(32)
+        u = width * nodes
+        ratio = u / x[far, None]
+        correction = (p - 1) * np.log1p(ratio) + chi / (2 * x[far, None]) * ratio / (1 + ratio)
+        density = weights * np.exp(correction)
+        out[far] = np.sum(density * u, axis=1) / np.sum(density, axis=1)
     return out
 
 
@@ -414,6 +452,7 @@ def _closed_form(family: type[DistributionBase], pars: dict[str, float], ds: np.
         dist.InverseWeibull: _inverse_weibull_excess,
         dist.InverseGaussian: _inverse_gaussian_excess,
         dist.GEV: _gev_excess,
+        dist.GeneralizedInverseGaussian: _gig_excess,
         dist.LogGamma: _loggamma_excess,
     }
     formula = formulas.get(family)
