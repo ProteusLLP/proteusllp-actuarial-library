@@ -27,7 +27,7 @@ from pal.fitting import empirical_mean_excess
         (Exponential(scale=3, loc=2), stats.expon(scale=3, loc=2)),
         (LogLogistic(shape=2.5, scale=3), stats.fisk(2.5, scale=3)),
         (Paralogistic(shape=2.5, scale=3), stats.burr12(2.5, 2.5, scale=3)),
-        (InverseBurr(power=2.5, shape=3, scale=2), stats.burr(2.5, 3, scale=2)),
+        (InverseBurr(power=2.5, shape=3, scale=2, loc=0), stats.burr(2.5, 3, scale=2)),
         (InverseGamma(alpha=3, theta=2), stats.invgamma(3, scale=2)),
         (InverseWeibull(shape=2.5, scale=3), stats.invweibull(2.5, scale=3)),
         (InverseGaussian(mu=3, lambda_=4), stats.invgauss(0.75, scale=4)),
@@ -41,10 +41,9 @@ from pal.fitting import empirical_mean_excess
 def test_batched_matches_independent_quadrature(model, rv):
     ds = np.array([[6.0, -1.0, 3.0], [3.0, 0.5, 1.0]])
     upper = rv.support()[1]
-    expected = np.array([
-        integrate.quad(rv.sf, d, upper, epsabs=1e-10)[0] / rv.sf(d)
-        for d in ds.ravel()
-    ]).reshape(ds.shape)
+    expected = np.array([integrate.quad(rv.sf, d, upper, epsabs=1e-10)[0] / rv.sf(d) for d in ds.ravel()]).reshape(
+        ds.shape
+    )
     np.testing.assert_allclose(model.mean_excess(ds), expected, rtol=2e-6, atol=1e-8)
     np.testing.assert_allclose(
         model.mean_excess(ds),
@@ -74,7 +73,8 @@ def test_empirical_large_location_small_spacings():
 def test_normal_deep_tail_and_beta_endpoint():
     np.testing.assert_allclose(
         Normal(mu=0, sigma=1).mean_excess(np.array([1e4, 1e8])),
-        [1e-4 * (1 - 2e-8), 1e-8], rtol=1e-12,
+        [1e-4 * (1 - 2e-8), 1e-8],
+        rtol=1e-12,
     )
     d = np.nextafter(1.0, 0.0)
     assert Beta(alpha=1, beta=3).mean_excess(d) == pytest.approx((1 - d) / 4, rel=1e-12, abs=0)
@@ -83,6 +83,6 @@ def test_normal_deep_tail_and_beta_endpoint():
 
 def test_inverse_tail_closed_forms():
     # Inverse Burr with power=2 is regularly varying with tail index 2.
-    model = InverseBurr(power=2, shape=3, scale=1)
+    model = InverseBurr(power=2, shape=3, scale=1, loc=0)
     assert model.mean_excess(1e100) == pytest.approx(1e100, rel=1e-12)
     assert InverseGamma(alpha=3, theta=2).mean_excess(1e150) == pytest.approx(5e149, rel=1e-12)
