@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import typing as t
+from decimal import Decimal, localcontext
 from functools import lru_cache
 
 import numpy as np
@@ -94,9 +95,55 @@ def _positive_log_excess(log_x: np.ndarray, log_ratio: np.ndarray) -> np.ndarray
     return np.exp(log_x + log_ratio + np.log(-np.expm1(-log_ratio)))
 
 
-def _lognormal_tail_excess(mu: float, sigma: float, d: float) -> float:
+@lru_cache(maxsize=64)
+def _lognormal_center(mu: float) -> tuple[float, float]:
+    """Return a rounded median and the correction to its logarithm."""
+    center = float(np.exp(mu))
+    # One compensated constant per log-location, not per threshold.
+    with localcontext() as context:
+        context.prec = 50
+        correction = float(Decimal.from_float(center).ln() - Decimal.from_float(mu))
+    return center, correction
+
+
+def _lognormal_coordinate(ds: np.ndarray, mu: float, sigma: float) -> np.ndarray:
+    """Resolve log(d)-mu accurately when the distribution is very concentrated."""
+    z = (np.log(ds) - mu) / sigma
+    if sigma < 1e-4 and -700 < mu < 700:
+        center, correction = _lognormal_center(mu)
+        near = (ds >= 0.5 * center) & (ds <= 1.5 * center)
+        z[near] = (np.log1p((ds[near] - center) / center) + correction) / sigma
+    return z
+
+
+@lru_cache(maxsize=1)
+def _legendre_rule() -> tuple[np.ndarray, np.ndarray]:
+    """Cache nodes for the narrow lognormal conditional integrals."""
+    return special.roots_legendre(64)
+
+
+def _lognormal_narrow_excess(ds: np.ndarray, z: np.ndarray, sigma: float) -> np.ndarray:
+    """Integrate conditional excesses without subtracting almost equal moments."""
+    nodes, weights = _legendre_rule()
+    out = np.empty_like(ds)
+    for start in range(0, ds.size, 4096):
+        stop = min(start + 4096, ds.size)
+        zz = z[start:stop]
+        width = 1 / np.maximum(1, zz)
+        zw = zz * width
+        # Truncate where the Gaussian log-density has fallen by 40 or more.
+        end = np.where(zz >= 0, 80 / (np.sqrt(zw**2 + 80 * width**2) + zw), 12 - zz)
+        u = (nodes + 1) * (width * end / 2)[:, None]
+        tilt = sigma * u
+        log_density = -zz[:, None] * u - 0.5 * u**2 - np.maximum(-zz, 0)[:, None] ** 2 / 2
+        denominator = np.sum(weights * np.exp(log_density), axis=1)
+        numerator = np.sum(weights * np.exp(log_density + tilt) * (-np.expm1(-tilt)), axis=1)
+        out[start:stop] = ds[start:stop] * (numerator / denominator)
+    return out
+
+
+def _lognormal_tail_excess(sigma: float, d: float, z: float) -> float:
     """Integrate a conditional normal density when two moments nearly cancel."""
-    z = (np.log(d) - mu) / sigma
     width = 1 / max(1.0, z)
 
     def density(t: float) -> float:
@@ -119,7 +166,7 @@ def _lognormal_tail_excess(mu: float, sigma: float, d: float) -> float:
 def _lognormal_excess(ds: np.ndarray, mu: float, sigma: float) -> np.ndarray:
     """Evaluate the normal-tail moment ratio with a cancellation-safe fallback."""
     log_x = np.log(ds)
-    z = (log_x - mu) / sigma
+    z = _lognormal_coordinate(ds, mu, sigma)
     log_ratio = sigma * (0.5 * sigma - z) + special.log_ndtr(sigma - z) - special.log_ndtr(-z)
     hi = z >= sigma
     den = special.erfcx(z[hi] / np.sqrt(2.0))
@@ -127,8 +174,13 @@ def _lognormal_excess(ds: np.ndarray, mu: float, sigma: float) -> np.ndarray:
     log_ratio[hi] = np.log1p(relative)
     out = _positive_log_excess(log_x, log_ratio)
     out = np.where((log_ratio > 1e-5) | (z < -8), out, np.nan)
+    if sigma < 1e-4:
+        narrow = (ds > 0) & (z >= -12) & np.isfinite(z)
+        out[narrow] = _lognormal_narrow_excess(ds[narrow], z[narrow], sigma)
     out = np.where(ds <= 0, np.exp(mu + 0.5 * sigma**2) - ds, out)
-    return _repair_tail(ds, out, lambda d: _lognormal_tail_excess(mu, sigma, d))
+    for i in np.flatnonzero(np.isnan(out) | (out <= 0)):
+        out[i] = _lognormal_tail_excess(sigma, float(ds[i]), float(z[i]))
+    return out
 
 
 def _weibull_excess(ds: np.ndarray, shape: float, scale: float, loc: float) -> np.ndarray:
