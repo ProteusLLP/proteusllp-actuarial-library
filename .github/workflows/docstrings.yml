@@ -1,0 +1,22 @@
+name: Docstring coverage
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  docstrings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Audit argument and attribute documentation
+        run: |
+          python scripts/check_docstrings.py --inventory
+          python scripts/check_docstrings.py

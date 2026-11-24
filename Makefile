@@ -52,8 +52,12 @@ deadcode:
 	vulture src/pal
 
 .PHONY: static-analysis
-static-analysis: lint format-check typecheck security deadcode
+static-analysis: lint format-check typecheck security deadcode docstrings
 	@echo "All static analysis checks completed"
+
+.PHONY: docstrings
+docstrings:
+	python scripts/check_docstrings.py
 
 # Test targets
 .PHONY: test
