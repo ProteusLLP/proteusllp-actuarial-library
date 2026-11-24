@@ -458,7 +458,7 @@ def _frozen_distribution(family: type[DistributionBase], params: dict[str, float
     if family is _distributions.LogNormal:
         return stats.lognorm(s=p["sigma"], scale=np.exp(p["mu"]))
     if family is _distributions.Gamma:
-        return stats.gamma(a=p["alpha"], scale=p["theta"])
+        return stats.gamma(a=p["alpha"], scale=p["theta"], loc=p.get("loc", 0.0))
     if family is _distributions.Weibull:
         return stats.weibull_min(c=p["shape"], scale=p["scale"], loc=p["loc"])
     if family is _distributions.Burr:
@@ -668,7 +668,13 @@ def empirical_mean_excess(
     # loop; divide each spacing by n first to protect the cumulative sum.
     areas = np.empty(x.size, dtype=float)
     areas[-1] = 0.0
-    areas[:-1] = np.cumsum((np.diff(x) * (counts / x.size))[::-1])[::-1]
+    fractions = counts / x.size
+    with np.errstate(over="ignore"):
+        spacing = np.diff(x)
+        weighted = spacing * fractions
+        overflow = np.isinf(spacing)
+        weighted[overflow] = x[1:][overflow] * fractions[overflow] - x[:-1][overflow] * fractions[overflow]
+        areas[:-1] = np.cumsum(weighted[::-1])[::-1]
     result[valid] = x[i] - ds[valid] + areas[i] / ((x.size - i) / x.size)
     return float(result) if result.ndim == 0 else result
 
