@@ -552,16 +552,21 @@ def _normal_tail_difference(
     if np.any(far):
         ca, cb, difference = _tail_fraction_pair(a[far], b[far])
         out[far] = (
-            -0.5 * a[far] ** 2 - 0.5 * np.log(2 * np.pi) + np.log(gap[far])
-            + np.log1p(difference) - np.log(a[far] + ca) - np.log(b[far] + cb)
+            -0.5 * a[far] ** 2
+            - 0.5 * np.log(2 * np.pi)
+            + np.log(gap[far])
+            + np.log1p(difference)
+            - np.log(a[far] + ca)
+            - np.log(b[far] + cb)
         )
-    near = repair & (a < 4) & (a > -1) & (gap < 1e-5) & (gap > 0)
+    near = repair & (a < 4) & (a > -1) & (gap < 1e-4) & (gap > 0)
     if np.any(near):
-        mid = a[near] + gap[near] / 2
-        mills = np.sqrt(np.pi / 2) * special.erfcx(mid / np.sqrt(2))
+        points = a[near, None] + gap[near, None] * np.array([0.0, 0.5, 1.0])
+        mills = np.sqrt(np.pi / 2) * special.erfcx(points / np.sqrt(2))
+        derivative = 1 - points * mills
+        average = (derivative[:, 0] + 4 * derivative[:, 1] + derivative[:, 2]) / 6
         out[near] = (
-            -0.5 * a[near] ** 2 - 0.5 * np.log(2 * np.pi) + np.log(gap[near])
-            + np.log1p(-mid * mills)
+            -0.5 * a[near] ** 2 - 0.5 * np.log(2 * np.pi) + np.log(gap[near]) + np.log(average)
         )
     return out
 
@@ -798,6 +803,14 @@ def severity_mean_excess(distribution: DistributionBase, threshold: float | np.n
     return float(result) if result.ndim == 0 else result
 
 
+def _gamma_logsf_coordinate(alpha: float, log_z: np.ndarray) -> np.ndarray:
+    """Gamma log survival including a positive argument below float underflow."""
+    out = np.asarray(_gamma_logsf(alpha, np.exp(log_z)))
+    small = log_z < -36
+    out[small] = np.log(-np.expm1(_log_gamma_lower_probability(alpha, log_z[small])))
+    return out
+
+
 def _positive_log_survival_array(
     family: type[DistributionBase], p: dict[str, float], log_x: np.ndarray
 ) -> np.ndarray | None:
@@ -826,11 +839,7 @@ def _positive_log_survival_array(
     if family is dist.LogNormal:
         return special.log_ndtr((p["mu"] - log_x) / p["sigma"])
     if family is dist.Gamma:
-        log_z = log_x - np.log(p["theta"])
-        out = np.asarray(_gamma_logsf(p["alpha"], np.exp(log_z)))
-        small = log_z < -36
-        out[small] = np.log(-np.expm1(_log_gamma_lower_probability(p["alpha"], log_z[small])))
-        return out
+        return _gamma_logsf_coordinate(p["alpha"], log_x - np.log(p["theta"]))
     if family is dist.Weibull:
         return -np.exp(p["shape"] * (log_x - np.log(p["scale"])))
     if family is dist.Exponential:

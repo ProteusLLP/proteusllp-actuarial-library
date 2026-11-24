@@ -11,7 +11,13 @@ from scipy import special, stats
 from . import distributions as dist
 from ._gig import _gig_log_moments
 from ._lev_integrals import _adaptive_intervals, _positive_survival_integrals
-from ._mean_excess import _gev_small_tail, _lognormal_coordinate, _normal_tail_difference, _positive_log_survival_array
+from ._mean_excess import (
+    _gamma_logsf_coordinate,
+    _gev_small_tail,
+    _lognormal_coordinate,
+    _normal_tail_difference,
+    _positive_log_survival_array,
+)
 from ._severity_probability import (
     _inverse_gaussian_log_tails,
     _log_beta_probability,
@@ -257,7 +263,7 @@ def _severity_lev(family: type[DistributionBase], p: dict[str, float], d: np.nda
         z = np.exp(log_z)
         if a > k:
             logmean = np.log(scale) + special.gammaln(a - k) - special.gammaln(a)
-            value = np.exp(logmean + np.log(special.gammaincc(a - k, z)))
+            value = np.exp(logmean + _gamma_logsf_coordinate(a - k, log_z))
             value += np.exp(np.log(x) + _log_gamma_lower_probability(a, log_z))
         elif a == k:
             e1 = np.where(log_z < -36, -np.euler_gamma - log_z, special.exp1(z))
@@ -296,9 +302,7 @@ def _severity_lev(family: type[DistributionBase], p: dict[str, float], d: np.nda
     return np.where(d <= loc, d, loc + value)
 
 
-def _positive_fallback(
-    family: type[DistributionBase], p: dict[str, float], d: np.ndarray
-) -> np.ndarray:
+def _positive_fallback(family: type[DistributionBase], p: dict[str, float], d: np.ndarray) -> np.ndarray:
     """Recover unresolved positive severities by a sorted forward sweep."""
     loc = p.get("loc", 0.0)
     x = np.maximum(d - loc, 0)
@@ -362,7 +366,11 @@ def _gev_lev(p: dict[str, float], d: np.ndarray) -> np.ndarray:
         return out
 
     # The finite-mean case can use the same tail integral as mean excess.
-    mean = loc + scale * _gev_mean(xi)
+    log_gamma = special.gammaln(1 - xi)
+    if xi < -1e-5 and log_gamma > 40:
+        mean = loc - np.exp(np.log(scale) + log_gamma - np.log(-xi))
+    else:
+        mean = loc + scale * _gev_mean(xi)
     lower = loc - scale / xi if xi > 0 else -np.inf
     upper = loc - scale / xi if xi < 0 else np.inf
     inside = (d > lower) & (d < upper)
@@ -376,19 +384,27 @@ def _gev_lev(p: dict[str, float], d: np.ndarray) -> np.ndarray:
     log_y = -log_base / xi
     y = np.exp(log_y)
     values = d[inside].copy()
-    tail = y < 1e-4
+    tail = (y < 1e-4) & (xi < 0.9)
     log_area = np.log(scale) + (1 - xi) * log_y[tail] + np.log(_gev_small_tail(xi, y[tail]))
     # The series in _gev_small_tail is conditional; restore S/y.
     sf_factor = np.where(y[tail] > 0, -np.expm1(-y[tail]) / y[tail], 1.0)
     values[tail] = mean - np.exp(log_area) * sf_factor
     central = (~tail) & (y < 40)
-    if abs(xi) >= 1e-5:
+    if xi <= -1e-5:
+        # The lower-tail moment can be substantial even for very small CDF
+        # when the left tail is heavy (large negative shape).
+        rest = ~tail
+        values[rest] = d[inside][rest] - np.exp(
+            np.log(scale) + special.gammaln(-xi) + _gamma_logsf_coordinate(-xi, log_y[rest])
+        )
+    elif xi >= 1e-5:
         yc = y[central]
         log_f = -yc
-        log_moment_ratio = special.gammaln(1 - xi) + np.log(special.gammaincc(1 - xi, yc)) - log_f
-        values[central] = (
-            loc + scale * (zi[central] * (-np.expm1(log_f)) + np.exp(log_f) * np.expm1(log_moment_ratio) / xi)
-        )
+        log_moment_ratio = special.gammaln(1 - xi) + _gamma_logsf_coordinate(1 - xi, log_y[central]) - log_f
+        log_s = _log_survival_from_log_hazard(log_y[central], np)
+        capped = np.sign(zi[central]) * np.exp(np.log(np.abs(zi[central])) + np.log(scale) + log_s)
+        lower_moment = scale * np.exp(log_f) * np.expm1(log_moment_ratio) / xi
+        values[central] = loc + capped + lower_moment
     else:
         # At shapes extremely close to zero, the incomplete-gamma difference
         # is ill-conditioned. Integrate CDF from a point with negligible mass.
