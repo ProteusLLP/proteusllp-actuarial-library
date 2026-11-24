@@ -171,7 +171,9 @@ def _severity_lev(family: type[DistributionBase], p: dict[str, float], d: np.nda
         if shape > a:
             # Integral of survival after the logistic change of variable.
             value = np.exp(
-                np.log(scale / power) + special.betaln(a, shape - a) + np.log(special.betainc(a, shape - a, special.expit(z)))
+                np.log(scale / power)
+                + special.betaln(a, shape - a)
+                + np.log(special.betainc(a, shape - a, special.expit(z)))
             )
         else:
             value = x * special.hyp2f1(a, shape, a + 1, -np.exp(z))
@@ -283,7 +285,9 @@ def _gev_lev(p: dict[str, float], d: np.ndarray) -> np.ndarray:
             out[i] = rv.mean() - np.exp(rv.logsf(threshold)) * excess
         else:
             # Integrate the lower tail directly, in units of scale.
-            area, _ = integrate.quad(lambda u, threshold=threshold: rv.cdf(threshold - scale * u), 0, np.inf, epsabs=0, epsrel=1e-10)
+            area, _ = integrate.quad(
+                lambda u, threshold=threshold: rv.cdf(threshold - scale * u), 0, np.inf, epsabs=0, epsrel=1e-10
+            )
             out[i] = threshold - scale * area
     return out
 

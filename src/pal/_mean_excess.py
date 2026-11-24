@@ -10,6 +10,7 @@ import numpy as np
 from scipy import integrate, special
 
 from . import distributions as dist
+from ._gig import _gig_log_probabilities
 from .fitting import _frozen_distribution, _gamma_logsf, _gb2_log_regularized_beta, _other_families, _supported_families
 from .stochastic_scalar import StochasticScalar
 
@@ -613,13 +614,24 @@ def _gev_excess(ds: np.ndarray, shape: float, loc: float, scale: float) -> np.nd
 
 
 def _gig_excess(ds: np.ndarray, p: float, chi: float, psi: float, loc: float) -> np.ndarray:
-    """Evaluate the deep GIG tail using a scaled conditional density integral."""
+    """Use shared GIG truncated moments, retaining scaled deep-tail evaluation."""
     x = ds - loc
     if p == -0.5:
         return _inverse_gaussian_excess(x, np.sqrt(chi / psi), chi)
     out = np.full(ds.shape, np.nan)
+    scale = np.sqrt(chi) / np.sqrt(psi)
+    b = np.sqrt(chi) * np.sqrt(psi)
+    log_mean = np.log(scale) + np.log(special.kve(p + 1, b)) - np.log(special.kve(p, b))
+    out[x <= 0] = np.exp(log_mean) - x[x <= 0]
     width = 2 / psi
-    far = x > max(2 * np.sqrt(chi / psi), 10 * width * max(1, abs(p - 1)))
+    far = x > max(2 * scale, 10 * width * max(1, abs(p - 1)))
+    central = (x > 0) & ~far
+    if np.any(central):
+        xc = x[central]
+        _, log_sf = _gig_log_probabilities(xc / scale, p, b)
+        _, log_moment_sf = _gig_log_probabilities(xc / scale, p + 1, b)
+        log_ratio = log_mean + log_moment_sf - log_sf - np.log(xc)
+        out[central] = np.where(log_ratio > 1e-6, _positive_log_excess(np.log(xc), log_ratio), np.nan)
     if np.any(far):
         nodes, weights = _laguerre_rule(32)
         u = width * nodes
