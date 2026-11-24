@@ -150,7 +150,7 @@ def _minimize_multistart(
             start,
             method=method.value,
             jac="3-point" if method is OptimizerMethod.L_BFGS_B else None,
-            options=settings,
+            options=t.cast(t.Any, settings),
         )
         for start in starts
     ]
@@ -161,7 +161,7 @@ def _minimize_multistart(
         gradient = np.asarray(best.jac)
         stationary = np.all(np.isfinite(gradient)) and np.max(np.abs(gradient)) <= max(1e-4, 1e-7 * abs(best.fun))
         if not best.success or not stationary:
-            polished = optimize.minimize(safe_objective, best.x, method="Nelder-Mead", options=simplex_options)
+            polished = optimize.minimize(safe_objective, best.x, method="Nelder-Mead", options=t.cast(t.Any, simplex_options))
             if polished.fun <= best.fun:
                 best = polished
                 best["optimizer_used"] = OptimizerMethod.NELDER_MEAD.value

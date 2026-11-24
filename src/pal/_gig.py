@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
-from scipy import integrate
+from scipy import integrate, special
 
 
 def _weighted_remainder(coefficient: float, delta: float) -> float:
@@ -121,3 +121,15 @@ def _gig_log_probabilities(x: np.ndarray, p: float, b: float) -> tuple[np.ndarra
     logcdf[valid] = c[inverse]
     logsf[valid] = s[inverse]
     return logcdf, logsf
+
+
+def _gig_log_moments(
+    x: np.ndarray, p: float, chi: float, psi: float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Return lower/upper probability and lower/upper first moment in log units."""
+    b = np.sqrt(chi) * np.sqrt(psi)
+    scale = np.sqrt(chi) / np.sqrt(psi)
+    lower, upper = _gig_log_probabilities(x / scale, p, b)
+    moment_lower, moment_upper = _gig_log_probabilities(x / scale, p + 1, b)
+    log_mean = np.log(scale) + np.log(special.kve(p + 1, b)) - np.log(special.kve(p, b))
+    return lower, upper, log_mean + moment_lower, log_mean + moment_upper

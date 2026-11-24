@@ -10,7 +10,13 @@ import numpy as np
 from scipy import integrate, special
 
 from . import distributions as dist
-from ._gig import _gig_log_probabilities
+from ._gig import _gig_log_moments
+from ._severity_probability import (
+    _inverse_gaussian_log_tails,
+    _log_beta_probability,
+    _log_softplus,
+    _log_survival_from_log_hazard,
+)
 from .fitting import _frozen_distribution, _gamma_logsf, _gb2_log_regularized_beta, _other_families, _supported_families
 from .stochastic_scalar import StochasticScalar
 
@@ -538,12 +544,7 @@ def _inverse_gaussian_excess(ds: np.ndarray, mu: float, lambda_: float) -> np.nd
     lam = lambda_
     out = np.full(ds.shape, np.nan, dtype=float)
     x = ds[ds > 0]
-    root = np.sqrt(lam / x)
-    normal_a = root * (x / mu - 1)
-    normal_b = root * (x / mu + 1)
-    # The exponential tilt cancels the normal density exponent.
-    log_a = special.log_ndtr(-normal_a)
-    log_b = np.log(0.5 * special.erfcx(normal_b / np.sqrt(2))) - 0.5 * normal_a**2
+    normal_a, normal_b, root, log_a, log_b = _inverse_gaussian_log_tails(x, mu, lam)
     # A+B and A-B are the first moment / mu and survival.
     log_sf = log_a + np.log(-np.expm1(log_b - log_a))
     log_moment = np.log(mu) + np.logaddexp(log_a, log_b)
@@ -628,9 +629,8 @@ def _gig_excess(ds: np.ndarray, p: float, chi: float, psi: float, loc: float) ->
     central = (x > 0) & ~far
     if np.any(central):
         xc = x[central]
-        _, log_sf = _gig_log_probabilities(xc / scale, p, b)
-        _, log_moment_sf = _gig_log_probabilities(xc / scale, p + 1, b)
-        log_ratio = log_mean + log_moment_sf - log_sf - np.log(xc)
+        _, log_sf, _, log_moment_sf = _gig_log_moments(xc, p, chi, psi)
+        log_ratio = log_moment_sf - log_sf - np.log(xc)
         out[central] = np.where(log_ratio > 1e-6, _positive_log_excess(np.log(xc), log_ratio), np.nan)
     if np.any(far):
         nodes, weights = _laguerre_rule(32)
@@ -771,64 +771,59 @@ def severity_mean_excess(distribution: DistributionBase, threshold: float | np.n
     return float(result) if result.ndim == 0 else result
 
 
-def _log_lower_gamma(alpha: float, log_z: float) -> float:
-    """Evaluate the inverse-gamma survival even below probability underflow."""
-    if log_z > 709:
-        return 0.0
-    z = np.exp(log_z)
-    probability = special.gammainc(alpha, z)
-    if probability > 0:
-        return float(np.log(probability))
-    correction = special.hyp1f1(alpha, alpha + 1, -z)
-    return float(alpha * log_z - special.gammaln(alpha + 1) + np.log(correction))
-
-
-def _positive_log_survival(family: type[DistributionBase], pars: dict[str, float], log_x: float) -> float | None:
-    """Tail probabilities in log-loss coordinates, relative to location."""
-    p = pars
+def _positive_log_survival_array(
+    family: type[DistributionBase], p: dict[str, float], log_x: np.ndarray
+) -> np.ndarray | None:
+    """Vectorized log survival in positive coordinates relative to location."""
     if family is dist.Pareto:
-        return min(0.0, -p["shape"] * (log_x - np.log(p["scale"])))
+        return np.minimum(0.0, -p["shape"] * (log_x - np.log(p["scale"])))
     if family in (dist.Burr, dist.LogLogistic, dist.Paralogistic):
         power = p["power"] if family is dist.Burr else p["shape"]
         shape = 1.0 if family is dist.LogLogistic else p["shape"]
-        return float(-shape * np.logaddexp(0, power * (log_x - np.log(p["scale"]))))
+        return -np.exp(np.log(shape) + _log_softplus(power * (log_x - np.log(p["scale"])), np))
     if family in (dist.InverseBurr, dist.InverseParalogistic):
         power = p["power"] if family is dist.InverseBurr else p["shape"]
         log_u = power * (np.log(p["scale"]) - log_x)
-        if log_u < -36:
-            log_hazard = np.log(p["shape"]) + log_u
-            if log_hazard < -36:
-                return float(log_hazard)
-            return float(np.log(-np.expm1(-np.exp(log_hazard)))) if log_hazard < 709 else 0.0
-        return float(np.log(-np.expm1(-p["shape"] * np.logaddexp(0, log_u))))
+        return _log_survival_from_log_hazard(np.log(p["shape"]) + _log_softplus(log_u, np), np)
     if family is dist.InverseGamma:
-        return _log_lower_gamma(p["alpha"], np.log(p["theta"]) - log_x)
-    if family is dist.InverseWeibull:
-        log_z = p["shape"] * (np.log(p["scale"]) - log_x)
-        if log_z < -36:
-            return float(log_z)
-        if log_z > 709:
-            return 0.0
-        return float(np.log(-np.expm1(-np.exp(log_z))))
+        log_z = np.log(p["theta"]) - log_x
+        z = np.exp(log_z)
+        alpha = p["alpha"]
+        probability = special.gammainc(alpha, z)
+        out = np.asarray(np.log(probability))
+        missing = (probability == 0) & np.isfinite(log_z)
+        if np.any(missing):
+            zz = z[missing]
+            out[missing] = (
+                alpha * log_z[missing] - special.gammaln(alpha + 1)
+                + np.log(special.hyp1f1(alpha, alpha + 1, -zz))
+            )
+        return out
+    if family in (dist.InverseWeibull, dist.InverseExponential):
+        log_z = p.get("shape", 1.0) * (np.log(p["scale"]) - log_x)
+        return _log_survival_from_log_hazard(log_z, np)
     if family is dist.GeneralizedBetaPrime:
-        log_z = -np.logaddexp(0, p["a"] * (log_x - np.log(p["b"])))
-        return float(_gb2_log_regularized_beta(p["q"], p["p"], np.asarray(log_z)))
+        power = p["a"] * (log_x - np.log(p["b"]))
+        return _log_beta_probability(p["q"], p["p"], -np.logaddexp(0, power), -np.logaddexp(0, -power))
     if family is dist.LogGamma:
-        return float(_gamma_logsf(p["alpha"], max(0.0, log_x) / p["beta"]))
+        return np.asarray(_gamma_logsf(p["alpha"], np.maximum(0.0, log_x) / p["beta"]))
     if family is dist.LogNormal:
-        return float(special.log_ndtr((p["mu"] - log_x) / p["sigma"]))
+        return special.log_ndtr((p["mu"] - log_x) / p["sigma"])
     if family is dist.Gamma:
-        log_z = log_x - np.log(p["theta"])
-        return float(_gamma_logsf(p["alpha"], np.exp(log_z))) if log_z < 709 else -np.inf
+        return np.asarray(_gamma_logsf(p["alpha"], np.exp(log_x - np.log(p["theta"]))))
     if family is dist.Weibull:
-        log_z = p["shape"] * (log_x - np.log(p["scale"]))
-        return float(-np.exp(log_z)) if log_z < 709 else -np.inf
+        return -np.exp(p["shape"] * (log_x - np.log(p["scale"])))
     if family is dist.Exponential:
-        log_z = log_x - np.log(p["scale"])
-        return float(-np.exp(log_z)) if log_z < 709 else -np.inf
+        return -np.exp(log_x - np.log(p["scale"]))
     if family is dist.GPD and p["shape"] > 0:
-        return float(-np.logaddexp(0, log_x + np.log(p["shape"]) - np.log(p["scale"])) / p["shape"])
+        return -np.logaddexp(0, log_x + np.log(p["shape"]) - np.log(p["scale"])) / p["shape"]
     return None
+
+
+def _positive_log_survival(family: type[DistributionBase], pars: dict[str, float], log_x: float) -> float | None:
+    """Scalar adapter for the shared log-survival kernels."""
+    value = _positive_log_survival_array(family, pars, np.asarray(log_x))
+    return None if value is None else float(value)
 
 
 def _log_survival(family: type[DistributionBase], pars: dict[str, float], frozen: t.Any, x: float) -> float:
@@ -952,7 +947,7 @@ def _integrate_unresolved(
         # Reuse the integrated tail at the preceding (higher) attachment.
         # Work with conditional survival ratios, not tiny unconditional areas.
         reuse = previous_start is not None and 0 <= (previous_start - start) / local_scale <= 100
-        if family is dist.GeneralizedInverseGaussian:
+        if family is dist.GeneralizedInverseGaussian and frozen is not None:
             # SciPy's GIG survival may suffer cancellation in the far tail.
             # Integrate the conditional density instead, avoiding noisy S(x).
             def scaled_excess_density(

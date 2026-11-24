@@ -5,6 +5,7 @@ from __future__ import annotations
 import typing as t
 
 import numpy as np
+from scipy import special
 
 
 def _log_softplus(x: t.Any, module: t.Any) -> t.Any:
@@ -128,3 +129,44 @@ class _StableSeverityReference:
     def cdf(self, x: t.Any) -> t.Any:
         """Return the cumulative probability."""
         return np.exp(self.logcdf(x))
+
+
+def _log_beta_probability(alpha: float, beta: float, log_x: np.ndarray, log_complement: np.ndarray) -> np.ndarray:
+    """Evaluate a lower beta probability from both endpoint coordinates.
+
+    The complementary coordinate is essential when the direct argument rounds
+    to one. Small probabilities below float underflow retain their logarithms.
+    """
+    if beta == 1:
+        return alpha * log_x
+    if alpha == 1:
+        log_hazard = np.log(beta) + np.where(log_x < -36, log_x, np.log(-log_complement))
+        return np.asarray(_log_survival_from_log_hazard(log_hazard, np))
+    x, complement = np.exp(log_x), np.exp(log_complement)
+    probability = np.where(
+        log_x < -np.log(2),
+        special.betainc(alpha, beta, x),
+        special.betaincc(beta, alpha, complement),
+    )
+    result = np.asarray(np.log(probability))
+    missing = (probability <= 0) & np.isfinite(log_x)
+    if np.any(missing):
+        z = x[missing]
+        correction = special.hyp2f1(alpha, 1 - beta, alpha + 1, z)
+        result[missing] = (
+            alpha * log_x[missing] - np.log(alpha) - special.betaln(alpha, beta) + np.log(correction)
+        )
+    return result
+
+
+def _inverse_gaussian_log_tails(x: np.ndarray, mu: float, lam: float) -> tuple[np.ndarray, ...]:
+    """Normal log probabilities shared by the inverse-Gaussian moment formulas."""
+    root = np.sqrt(lam) / np.sqrt(x)
+    scaled = np.sqrt(lam) * np.sqrt(x) / mu
+    a, b = scaled - root, scaled + root
+    # Near the mean, form the difference from the original loss instead.
+    near = (x >= 0.5 * mu) & (x <= 2 * mu)
+    a[near] = root[near] * ((x[near] - mu) / mu)
+    log_a = special.log_ndtr(-a)
+    log_b = np.log(0.5 * special.erfcx(b / np.sqrt(2))) - 0.5 * a**2
+    return a, b, root, log_a, log_b
