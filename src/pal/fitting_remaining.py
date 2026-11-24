@@ -825,6 +825,7 @@ def mean_excess_remaining(
 
                 def ratio_fn(j: float) -> float:
                     return (good - j) * (draws - j) / ((j + 1) * (bad - draws + j + 1)) if j < upper else 0.0
+
             unresolved = (d < upper) & ((sf < 1e-280) | (out < 1e-6 * np.maximum(1, np.abs(d))))
             for i in np.flatnonzero(unresolved & (k >= 0)):
                 out[i] = _count_tail_excess(float(k[i]), float(d[i]), ratio_fn)
