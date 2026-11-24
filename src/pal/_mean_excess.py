@@ -690,7 +690,7 @@ def _closed_form(family: type[DistributionBase], pars: dict[str, float], ds: np.
         return np.full(ds.shape, np.nan, dtype=float)
     with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
         out = formula(ds, **pars)
-    return np.where(out > 0, out, np.nan)
+    return np.where(np.isfinite(out) & (out > 0), out, np.nan)
 
 
 def severity_mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -747,13 +747,135 @@ def severity_mean_excess(distribution: DistributionBase, threshold: float | np.n
     # Work only on distinct, valid thresholds, preserving input order on return.
     levels, inverse = np.unique(inputs[valid], return_inverse=True)
     values = _closed_form(family, pars, levels)
-    _integrate_unresolved(family, frozen, lower, upper, levels, values)
+    _integrate_unresolved(family, pars, frozen, lower, upper, levels, values)
     result[valid] = values[inverse]
     return float(result) if result.ndim == 0 else result
 
 
+def _log_lower_gamma(alpha: float, log_z: float) -> float:
+    """Evaluate the inverse-gamma survival even below probability underflow."""
+    if log_z > 709:
+        return 0.0
+    z = np.exp(log_z)
+    probability = special.gammainc(alpha, z)
+    if probability > 0:
+        return float(np.log(probability))
+    correction = special.hyp1f1(alpha, alpha + 1, -z)
+    return float(alpha * log_z - special.gammaln(alpha + 1) + np.log(correction))
+
+
+def _positive_log_survival(
+    family: type[DistributionBase], pars: dict[str, float], log_x: float
+) -> float | None:
+    """Tail probabilities in log-loss coordinates, relative to location."""
+    p = pars
+    if family is dist.Pareto:
+        return min(0.0, -p["shape"] * (log_x - np.log(p["scale"])))
+    if family in (dist.Burr, dist.LogLogistic, dist.Paralogistic):
+        power = p["power"] if family is dist.Burr else p["shape"]
+        shape = 1.0 if family is dist.LogLogistic else p["shape"]
+        return float(-shape * np.logaddexp(0, power * (log_x - np.log(p["scale"]))))
+    if family in (dist.InverseBurr, dist.InverseParalogistic):
+        power = p["power"] if family is dist.InverseBurr else p["shape"]
+        log_u = power * (np.log(p["scale"]) - log_x)
+        if log_u < -36:
+            return float(np.log(p["shape"]) + log_u)
+        return float(np.log(-np.expm1(-p["shape"] * np.logaddexp(0, log_u))))
+    if family is dist.InverseGamma:
+        return _log_lower_gamma(p["alpha"], np.log(p["theta"]) - log_x)
+    if family is dist.InverseWeibull:
+        log_z = p["shape"] * (np.log(p["scale"]) - log_x)
+        if log_z < -36:
+            return float(log_z)
+        if log_z > 709:
+            return 0.0
+        return float(np.log(-np.expm1(-np.exp(log_z))))
+    if family is dist.GeneralizedBetaPrime:
+        log_z = -np.logaddexp(0, p["a"] * (log_x - np.log(p["b"])))
+        return float(_gb2_log_regularized_beta(p["q"], p["p"], np.asarray(log_z)))
+    if family is dist.LogGamma:
+        return float(_gamma_logsf(p["alpha"], max(0.0, log_x) / p["beta"]))
+    if family is dist.LogNormal:
+        return float(special.log_ndtr((p["mu"] - log_x) / p["sigma"]))
+    if family is dist.Gamma:
+        log_z = log_x - np.log(p["theta"])
+        return float(_gamma_logsf(p["alpha"], np.exp(log_z))) if log_z < 709 else -np.inf
+    if family is dist.Weibull:
+        log_z = p["shape"] * (log_x - np.log(p["scale"]))
+        return float(-np.exp(log_z)) if log_z < 709 else -np.inf
+    if family is dist.Exponential:
+        log_z = log_x - np.log(p["scale"])
+        return float(-np.exp(log_z)) if log_z < 709 else -np.inf
+    if family is dist.GPD and p["shape"] > 0:
+        return float(-np.logaddexp(0, log_x + np.log(p["shape"]) - np.log(p["scale"])) / p["shape"])
+    return None
+
+
+def _log_survival(family: type[DistributionBase], pars: dict[str, float], frozen: t.Any, x: float) -> float:
+    """Prefer cancellation-free family formulas to generic survival calculations."""
+    shifted = x - pars.get("loc", 0.0)
+    if shifted > 0:
+        value = _positive_log_survival(family, pars, float(np.log(shifted)))
+        if value is not None:
+            return value
+    if family in (dist.GeneralizedBetaPrime, dist.LogGamma):
+        return 0.0
+    return float(frozen.logsf(x))
+
+
+def _integrate_log_interval(
+    family: type[DistributionBase],
+    pars: dict[str, float],
+    frozen: t.Any,
+    start: float,
+    stop: float,
+    width: float,
+    log_start_sf: float,
+) -> float:
+    """Integrate conditional survival in log-increment coordinates.
+
+    Scaling the increment handles concentrated distributions. Its logarithm
+    converts polynomial tails to exponentially decaying integrands.
+    """
+    location = pars.get("loc", 0.0)
+    shifted = start - location
+    log_width = float(np.log(width))
+    log_start = float(np.log(shifted)) if shifted > 0 else -np.inf
+    limit = float(np.logaddexp(0, np.log(stop - start) - log_width)) if np.isfinite(stop) else np.inf
+
+    def integrand(u: float) -> float:
+        if u == 0:
+            return 1.0
+        log_increment = log_width + u + np.log(-np.expm1(-u))
+        if shifted >= 0:
+            log_x = float(np.logaddexp(log_start, log_increment))
+            log_sf = _positive_log_survival(family, pars, log_x)
+        else:
+            log_sf = None
+        if log_sf is None:
+            if log_increment > 709:
+                return 0.0
+            x = start + float(np.exp(log_increment))
+            log_sf = _log_survival(family, pars, frozen, x)
+        return float(np.exp(u + log_sf - log_start_sf))
+
+    if limit == 0:
+        return 0.0
+    # Resolve the local tail before integrating a potentially wide gap.
+    split = min(1.0, limit)
+    area, error = integrate.quad(integrand, 0.0, split, epsabs=0, epsrel=1e-10, limit=300)
+    if split < limit:
+        rest, rest_error = integrate.quad(integrand, split, limit, epsabs=0, epsrel=1e-10, limit=300)
+        area += rest
+        error += rest_error
+    if not np.isfinite(area) or area < 0 or not np.isfinite(error) or error > 1e-7 * area:
+        raise ArithmeticError(f"Mean excess integration did not converge for {family.__name__} at {start}")
+    return width * area
+
+
 def _integrate_unresolved(
     family: type[DistributionBase],
+    pars: dict[str, float],
     frozen: t.Any,
     lower: float,
     upper: float,
@@ -764,22 +886,32 @@ def _integrate_unresolved(
     previous_start: float | None = None
     previous_excess = 0.0
     previous_log_sf = 0.0
-    for index in np.flatnonzero(np.isnan(values))[::-1]:
+    unresolved = np.flatnonzero(~np.isfinite(values))
+    if unresolved.size == 0:
+        return
+    for index in range(min(levels.size - 1, int(unresolved[-1]) + 1), int(unresolved[0]) - 1, -1):
         d = float(levels[index])
-        if frozen is None:
-            raise ArithmeticError(f"No resolved mean excess formula for {family.__name__} at {d}")
+        if np.isfinite(values[index]):
+            # A stable analytical value is also an exact recursion anchor.
+            if d >= lower:
+                log_sf = _log_survival(family, pars, frozen, d)
+                if np.isfinite(log_sf):
+                    previous_start, previous_excess, previous_log_sf = d, float(values[index]), log_sf
+            continue
         # Scale by the local inverse hazard. Integrating in units of tail
         # width prevents quadrature missing a narrow tail at a high threshold.
         start = max(float(d), float(lower))
-        log_start_sf = float(frozen.logsf(start))
+        log_start_sf = _log_survival(family, pars, frozen, start)
         if not np.isfinite(log_start_sf):
-            raise ArithmeticError(f"{family.__name__} tail survival is numerically unresolved at {d}")
-        log_start_pdf = float(frozen.logpdf(start))
-        tail_probability = float(frozen.sf(start))
+            # Do not let one unresolved probability invalidate other attachments.
+            values[index] = np.nan
+            continue
+        log_start_pdf = float(frozen.logpdf(start)) if frozen is not None else np.nan
+        tail_probability = float(np.exp(log_start_sf))
         # The conditional median gives a representative tail width even if
         # the density at the attachment is vanishingly small.
         local_scale = np.nan
-        if tail_probability > 0:
+        if frozen is not None and tail_probability > 0:
             median = float(frozen.isf(tail_probability * 0.5))
             local_scale = median - start
         if not np.isfinite(local_scale) or local_scale <= 0:
@@ -789,15 +921,6 @@ def _integrate_unresolved(
             local_scale = max(abs(start) * 0.1, 1.0)
         remaining = upper - start
         limit = remaining / local_scale if np.isfinite(remaining) else np.inf
-
-        def conditional_survival(
-            u: float,
-            start: float = start,
-            local_scale: float = local_scale,
-            log_start_sf: float = log_start_sf,
-        ) -> float:
-            x = start + local_scale * u
-            return float(np.exp(float(frozen.logsf(x)) - log_start_sf))
 
         # Reuse the integrated tail at the preceding (higher) attachment.
         # Work with conditional survival ratios, not tiny unconditional areas.
@@ -819,17 +942,15 @@ def _integrate_unresolved(
             excess = local_scale**2 * area
             if reuse and previous_start is not None:
                 excess += np.exp(previous_log_sf - log_start_sf) * (previous_excess + previous_start - start)
-        elif reuse and previous_start is not None:
-            interval = (previous_start - start) / local_scale
-            area, error = integrate.quad(conditional_survival, 0.0, interval, epsrel=1e-9, limit=300)
-            excess = local_scale * area + np.exp(previous_log_sf - log_start_sf) * previous_excess
+            if not np.isfinite(area) or area < 0 or not np.isfinite(error) or error > 1e-7 * area:
+                raise ArithmeticError(f"Mean excess integration did not converge for {family.__name__} at {d}")
         else:
-            area, error = integrate.quad(conditional_survival, 0.0, limit, epsrel=1e-9, limit=300)
-            excess = local_scale * area
+            stop = previous_start if reuse and previous_start is not None else upper
+            excess = _integrate_log_interval(family, pars, frozen, start, stop, local_scale, log_start_sf)
+            if reuse and previous_start is not None:
+                excess += np.exp(previous_log_sf - log_start_sf) * previous_excess
 
-        if not np.isfinite(area) or area < 0 or not np.isfinite(error) or error > 1e-7 * max(1.0, abs(area)):
-            raise ArithmeticError(f"Mean excess integration did not converge for {family.__name__} at {d}")
-        values[index] = (start - d) + float(np.exp(log_start_sf - float(frozen.logsf(d)))) * excess
+        values[index] = (start - d) + excess
         previous_start, previous_excess, previous_log_sf = start, float(excess), log_start_sf
 
 
