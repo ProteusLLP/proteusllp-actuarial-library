@@ -771,9 +771,7 @@ def _log_lower_gamma(alpha: float, log_z: float) -> float:
     return float(alpha * log_z - special.gammaln(alpha + 1) + np.log(correction))
 
 
-def _positive_log_survival(
-    family: type[DistributionBase], pars: dict[str, float], log_x: float
-) -> float | None:
+def _positive_log_survival(family: type[DistributionBase], pars: dict[str, float], log_x: float) -> float | None:
     """Tail probabilities in log-loss coordinates, relative to location."""
     p = pars
     if family is dist.Pareto:
@@ -915,6 +913,9 @@ def _integrate_unresolved(
         # Scale by the local inverse hazard. Integrating in units of tail
         # width prevents quadrature missing a narrow tail at a high threshold.
         start = max(float(d), float(lower))
+        if previous_start == start:
+            values[index] = start - d + previous_excess
+            continue
         log_start_sf = _log_survival(family, pars, frozen, start)
         if not np.isfinite(log_start_sf):
             # Do not let one unresolved probability invalidate other attachments.

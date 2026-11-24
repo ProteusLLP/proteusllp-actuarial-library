@@ -130,6 +130,18 @@ class DistributionBase:
             value for value in (argument, *self._params.values()) if isinstance(value, StochasticScalar)
         )
 
+    def lev(self, limit: float | np.ndarray) -> float | np.ndarray:
+        """Return the limited expected value of the numeric loss.
+
+        This is the expected value of the minimum of the loss and the
+        supplied limit, without a lower clamp at zero. Scalar parameters
+        are required. Array limits retain their shape and order. Evaluation
+        is deterministic on the CPU, including when simulation uses a GPU.
+        """
+        from ._lev import limited_expected_value
+
+        return limited_expected_value(self, limit)
+
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the cumulative distribution function at x.
 
@@ -704,7 +716,6 @@ class Burr(DistributionBase):
         """
         super().__init__(power=power, shape=shape, scale=scale, loc=loc)
 
-    @override
     def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
         def evaluate(x, power, shape, scale, loc):
             result = _burr_terms(x, power, shape, scale, loc, module=xp)[index]
@@ -712,6 +723,7 @@ class Burr(DistributionBase):
 
         return _special_call(evaluate, x, *self._params.values())
 
+    @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the cumulative probability."""
         return self._probability_terms(x, 2, logarithmic=False)
@@ -1284,7 +1296,6 @@ class LogLogistic(DistributionBase):
         """
         super().__init__(shape=shape, scale=scale, loc=loc)
 
-    @override
     def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
         def evaluate(x, shape, scale, loc):
             result = _burr_terms(x, shape, 1.0, scale, loc, module=xp)[index]
@@ -1292,6 +1303,7 @@ class LogLogistic(DistributionBase):
 
         return _special_call(evaluate, x, *self._params.values())
 
+    @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the cumulative probability."""
         return self._probability_terms(x, 2, logarithmic=False)
@@ -1902,7 +1914,6 @@ class Paralogistic(DistributionBase):
         """
         super().__init__(shape=shape, scale=scale, loc=loc)
 
-    @override
     def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
         def evaluate(x, shape, scale, loc):
             result = _burr_terms(x, shape, shape, scale, loc, module=xp)[index]
@@ -1910,6 +1921,7 @@ class Paralogistic(DistributionBase):
 
         return _special_call(evaluate, x, *self._params.values())
 
+    @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the cumulative probability."""
         return self._probability_terms(x, 2, logarithmic=False)
@@ -2002,7 +2014,6 @@ class InverseBurr(DistributionBase):
         self._scale = scale
         self._loc = loc
 
-    @override
     def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
         def evaluate(x, power, shape, scale, loc):
             result = _burr_terms(x, power, shape, scale, loc, inverse=True, module=xp)[index]
@@ -2010,6 +2021,7 @@ class InverseBurr(DistributionBase):
 
         return _special_call(evaluate, x, *self._params.values())
 
+    @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the cumulative probability."""
         return self._probability_terms(x, 2, logarithmic=False)
@@ -2100,7 +2112,6 @@ class InverseParalogistic(DistributionBase):
         """
         super().__init__(shape=shape, scale=scale, loc=loc)
 
-    @override
     def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
         def evaluate(x, shape, scale, loc):
             result = _burr_terms(x, shape, shape, scale, loc, inverse=True, module=xp)[index]
@@ -2108,6 +2119,7 @@ class InverseParalogistic(DistributionBase):
 
         return _special_call(evaluate, x, *self._params.values())
 
+    @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the cumulative probability."""
         return self._probability_terms(x, 2, logarithmic=False)
@@ -2272,7 +2284,6 @@ class InverseWeibull(DistributionBase):
         self._scale = scale
         self._loc = loc
 
-    @override
     def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
         def evaluate(x, shape, scale, loc):
             result = _inverse_weibull_terms(x, shape, scale, loc, module=xp)[index]
@@ -2280,6 +2291,7 @@ class InverseWeibull(DistributionBase):
 
         return _special_call(evaluate, x, *self._params.values())
 
+    @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the cumulative probability."""
         return self._probability_terms(x, 2, logarithmic=False)
@@ -3161,7 +3173,6 @@ class InverseExponential(DistributionBase):
         """
         super().__init__(scale=scale, loc=loc)
 
-    @override
     def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
         def evaluate(x, scale, loc):
             result = _inverse_weibull_terms(x, 1.0, scale, loc, module=xp)[index]
@@ -3169,6 +3180,7 @@ class InverseExponential(DistributionBase):
 
         return _special_call(evaluate, x, *self._params.values())
 
+    @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the cumulative probability."""
         return self._probability_terms(x, 2, logarithmic=False)
@@ -3248,6 +3260,10 @@ class DistributionGeneratorBase:
             distribution: The distribution to wrap.
         """
         self.this_distribution = distribution
+
+    def lev(self, limit: float | np.ndarray) -> float | np.ndarray:
+        """Delegate limited expected value to the wrapped distribution."""
+        return self.this_distribution.lev(limit)
 
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Delegate to wrapped distribution."""
