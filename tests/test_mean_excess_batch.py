@@ -125,7 +125,7 @@ def test_loggamma_near_support_and_underflow():
 def test_gev_underflow_and_finite_endpoint():
     assert GEV(shape=0.1, scale=1, loc=0).mean_excess(1e100) == pytest.approx(1e100 / 9, rel=1e-12)
     d = np.nextafter(10.0, 0.0)
-    assert GEV(shape=-0.1, scale=1, loc=0).mean_excess(d) == pytest.approx((10 - d) / 1.1, rel=1e-12, abs=0)
+    assert GEV(shape=-0.1, scale=1, loc=0).mean_excess(d) == pytest.approx(0.1 * (10 - d) / 1.1, rel=1e-12, abs=0)
 
 
 def test_count_and_student_t_underflow():
