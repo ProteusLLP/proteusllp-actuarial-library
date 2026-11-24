@@ -143,3 +143,8 @@ def test_mbbefd_atom_and_beta_underflow_near_endpoint():
 def test_gumbel_and_central_chisquare_underflow():
     assert GEV(shape=0, scale=3).mean_excess(1e5) == pytest.approx(3.0, rel=1e-12)
     assert NonCentralChiSquared(df=2, nonc=0).mean_excess(2000) == pytest.approx(2.0, rel=1e-12)
+
+
+def test_noncentral_chisquare_underflow():
+    # 60-digit independent Bessel-density moment ratio.
+    assert NonCentralChiSquared(df=4, nonc=3).mean_excess(2000) == pytest.approx(2.0810388910582227, rel=1e-11)
