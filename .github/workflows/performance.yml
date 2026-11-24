@@ -22,6 +22,9 @@ on:
       - "src/pal/couplings.py"
       - "src/pal/copulas.py"
       - "src/pal/distributions.py"
+      - "src/pal/_mean_excess.py"
+      - "src/pal/fitting.py"
+      - "src/pal/fitting_remaining.py"
 
 permissions:
   contents: read
@@ -37,6 +40,11 @@ jobs:
           python-version: "3.13"
       - name: Install PAL
         run: pip install -e .
+      - name: Benchmark mean excess
+        run: |
+          python -m benchmarks.benchmark_mean_excess \
+            --output "$RUNNER_TEMP/pal-mean-excess.json"
+          cat "$RUNNER_TEMP/pal-mean-excess.json" >> "$GITHUB_STEP_SUMMARY"
       - name: Benchmark CPU
         env:
           BENCH_SIZES: ${{ inputs.sizes || '10000,100000' }}
@@ -65,6 +73,7 @@ jobs:
           path: |
             ${{ runner.temp }}/pal-cpu.*
             ${{ runner.temp }}/pal-memory-cpu.*
+            ${{ runner.temp }}/pal-mean-excess.json
           retention-days: 30
 
   variable-io:
