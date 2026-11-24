@@ -739,6 +739,151 @@ def _fit_other(
     )
 
 
+def empirical_mean_excess(
+    observations: t.Sequence[float] | np.ndarray,
+    threshold: float | np.ndarray,
+) -> float | np.ndarray:
+    """Empirical mean excess for uncensored observations, with strict exceedances.
+
+    Sort once and accumulate tail excesses using positive adjacent spacings.
+    Evaluation takes O(n log n + m log n) time and O(n + m) storage for n
+    observations and m thresholds. No exceedances (or nonfinite thresholds)
+    produce NaN. Threshold order and shape are preserved.
+    """
+    x = np.asarray(observations, dtype=float)
+    if x.ndim != 1 or not x.size or not np.all(np.isfinite(x)):
+        raise ValueError("observations must be a nonempty finite one-dimensional array")
+    x = np.sort(x)
+    ds = np.asarray(threshold, dtype=float)
+    result = np.full(ds.shape, np.nan, dtype=float)
+    indices = np.searchsorted(x, ds, side="right")
+    valid = np.isfinite(ds) & (indices < x.size)
+    i = indices[valid]
+    # A sum of positive spacings avoids cancellation of sum(x) - n*d.
+    counts = np.arange(x.size - 1, 0, -1, dtype=float)
+    # Recurrence in mean units would avoid overflow but requires a Python
+    # loop; divide each spacing by n first to protect the cumulative sum.
+    areas = np.empty(x.size, dtype=float)
+    areas[-1] = 0.0
+    areas[:-1] = np.cumsum((np.diff(x) * (counts / x.size))[::-1])[::-1]
+    result[valid] = x[i] - ds[valid] + areas[i] / ((x.size - i) / x.size)
+    return float(result) if result.ndim == 0 else result
+
+
+def _batch_mean_excess(
+    family: type[DistributionBase], pars: dict[str, float], ds: np.ndarray,
+) -> np.ndarray:
+    """Fast vectorised expressions; NaN entries use the scalar safeguards."""
+    from . import distributions as dist
+
+    p = pars
+    out = np.full(ds.shape, np.nan, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
+        if family is dist.Pareto:
+            out = np.maximum(p["scale"] - ds, 0) + np.maximum(ds, p["scale"]) / (p["shape"] - 1)
+        elif family is dist.GPD:
+            base = np.maximum(ds, p["loc"])
+            out = base - ds + (p["scale"] + p["shape"] * (base - p["loc"])) / (1 - p["shape"])
+        elif family is dist.Exponential:
+            out = np.maximum(p["loc"] - ds, 0) + p["scale"]
+        elif family is dist.Gamma:
+            a, theta = p["alpha"], p["theta"]
+            z = np.maximum(ds, 0) / theta
+            if a == 1:
+                return theta - np.minimum(ds, 0)
+            sf = special.gammaincc(a, z)
+            excess = a * special.gammaincc(a + 1, z) / sf - z
+            out = np.where(excess > 1e-6 * np.maximum(1, z), theta * excess, np.nan)
+            out = np.where(ds <= 0, a * theta - ds, out)
+            out = np.where(z > max(1e6, 100 * a), theta * (1 + (a - 1) / z), out)
+        elif family is dist.LogNormal:
+            mu, sigma = p["mu"], p["sigma"]
+            z = (np.log(ds) - mu) / sigma
+            log_ratio = mu + 0.5 * sigma**2 - np.log(ds)
+            log_ratio += special.log_ndtr(sigma - z) - special.log_ndtr(-z)
+            relative = np.expm1(log_ratio)
+            hi = z >= sigma
+            den = special.erfcx(z[hi] / np.sqrt(2.0))
+            relative[hi] = (special.erfcx((z[hi] - sigma) / np.sqrt(2.0)) - den) / den
+            out = np.where(relative > 1e-8, ds * relative, np.nan)
+            out = np.where(ds <= 0, np.exp(mu + 0.5 * sigma**2) - ds, out)
+        elif family is dist.Weibull:
+            shape, scale, loc = p["shape"], p["scale"], p["loc"]
+            a = 1 / shape
+            if shape == 1:
+                return scale + np.maximum(loc - ds, 0)
+            z = np.power(np.maximum(ds - loc, 0) / scale, shape)
+            log_value = np.log(scale) + special.gammaln(1 + a) + np.log(special.gammaincc(a, z)) + z
+            out = np.exp(log_value)
+            far = z > 1e7
+            out[far] = np.exp(np.log(scale / shape) + (a - 1) * np.log(z[far]) + np.log1p((a - 1) / z[far]))
+            out = np.where(ds <= loc, loc + scale * np.exp(special.gammaln(1 + a)) - ds, out)
+        elif family in (dist.Burr, dist.LogLogistic, dist.Paralogistic):
+            power = p["power"] if family is dist.Burr else p["shape"]
+            shape = 1.0 if family is dist.LogLogistic else p["shape"]
+            scale, loc = p["scale"], p["loc"]
+            x = ds - loc
+            if power == 1:
+                return np.maximum(-x, 0) + (scale + np.maximum(x, 0)) / (shape - 1)
+            a, b = shape - 1 / power, 1 / power
+            log_w = -np.logaddexp(0, power * (np.log(x) - np.log(scale)))
+            w = np.exp(log_w)
+            log_value = np.log(scale / power) + special.betaln(a, b) + np.log(special.betainc(a, b, w)) - shape * log_w
+            far = (w < 1e-12) & (abs(b - 1) * w < 1e-12)
+            log_value[far] = np.log(scale / power) - np.log(a) - b * log_w[far]
+            out = np.exp(log_value)
+            mean = scale * np.exp(special.betaln(a, b + 1) + np.log(shape))
+            out = np.where(x <= 0, mean - x, out)
+        elif family in (dist.GeneralizedBetaPrime, dist.InverseBurr, dist.InverseParalogistic):
+            if family is dist.GeneralizedBetaPrime:
+                a, b, pp, q = (p[name] for name in ("a", "b", "p", "q"))
+                x = ds
+            else:
+                a = p["power"] if family is dist.InverseBurr else p["shape"]
+                b, pp, q = p["scale"], p["shape"], 1.0
+                x = ds - p["loc"]
+            moment = np.log(b) + special.betaln(pp + 1 / a, q - 1 / a) - special.betaln(pp, q)
+            pos = x > 0
+            log_z = -np.logaddexp(0, a * (np.log(x[pos]) - np.log(b)))
+            z = np.exp(log_z)
+            # Use the hypergeometric ratio in the far tail, cancelling z**q.
+            far = log_z < np.log(1e-6)
+            lr = np.full(z.shape, np.nan)
+            h0 = special.hyp2f1(q, 1 - pp, q + 1, z[far])
+            qt = q - 1 / a
+            h1 = special.hyp2f1(qt, 1 - pp - 1 / a, qt + 1, z[far])
+            lr[far] = -np.log1p(-1 / (a * q)) - np.log1p(-z[far]) / a + np.log(h1) - np.log(h0)
+            central = ~far
+            lr[central] = (
+                moment + np.log(special.betainc(qt, pp + 1 / a, z[central]))
+                - np.log(special.betainc(q, pp, z[central])) - np.log(x[pos][central])
+            )
+            out[pos] = np.where(lr > 1e-8, x[pos] * np.expm1(lr), np.nan)
+            out[~pos] = np.exp(moment) - x[~pos]
+        elif family in (dist.InverseGamma, dist.InverseWeibull):
+            x = ds - p["loc"]
+            if family is dist.InverseGamma:
+                a, b, power = p["alpha"], p["theta"], 1.0
+            else:
+                a, b, power = 1.0, p["scale"], p["shape"]
+            k = 1 / power
+            z = np.power(b / x, power)
+            log_mean = np.log(b) + special.gammaln(a - k) - special.gammaln(a)
+            lr = log_mean + np.log(special.gammainc(a - k, z)) - np.log(special.gammainc(a, z)) - np.log(x)
+            # P(a,z) = z**a / Gamma(a+1) * 1F1(a;a+1;-z).
+            # Cancel powers analytically for small z (even if z underflows).
+            far = (x > 0) & (z < 1e-4)
+            lr[far] = -np.log1p(-k / a) + np.log(special.hyp1f1(a - k, a - k + 1, -z[far])) - np.log(special.hyp1f1(a, a + 1, -z[far]))
+            out = np.where(lr > 1e-8, x * np.expm1(lr), np.nan)
+            out = np.where(x <= 0, np.exp(log_mean) - x, out)
+        elif family is dist.LogGamma:
+            a, b = p["alpha"], p["beta"]
+            z = np.log(np.maximum(ds, 1)) / b
+            lr = -a * np.log1p(-b) + np.log(special.gammaincc(a, z * (1 - b))) - np.log(special.gammaincc(a, z)) - np.log(np.maximum(ds, 1))
+            out = np.where(lr > 1e-8, np.maximum(ds, 1) * np.expm1(lr) + np.maximum(1 - ds, 0), np.nan)
+    return np.where((out > 0) & np.isfinite(out), out, np.nan)
+
+
 def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -> float | np.ndarray:
     """Calculate E[X - d | X > d] at the supplied thresholds.
 
@@ -751,9 +896,9 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         and thresholds beyond a finite upper endpoint return NaN.
 
     Notes:
-        Analytical expressions are used for Pareto, GPD, Gamma, LogNormal,
-        Weibull and Burr. Other severity families use a conditional survival
-        integral. This function uses the CPU, without sampling.
+        Vectorised analytical expressions are used where available. Other
+        severity families use a conditional survival integral with reuse
+        across nearby decreasing thresholds. This function uses the CPU, without sampling.
     """
     from . import distributions as _distributions
 
@@ -794,45 +939,53 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         lower, upper = 0.0, np.inf
     else:
         lower, upper = (1.0, np.inf) if frozen is None else frozen.support()
-    for index, d in np.ndenumerate(inputs):
-        if not np.isfinite(d):
-            continue
-        if d >= upper:
-            continue
-        if inf_mean:
-            result[index] = np.inf
+    valid = np.isfinite(inputs) & (inputs < upper)
+    if inf_mean:
+        result[valid] = np.inf
+        return float(result) if result.ndim == 0 else result
+    # Work only on distinct, valid thresholds, preserving input order on return.
+    levels, inverse = np.unique(inputs[valid], return_inverse=True)
+    values = _batch_mean_excess(family, pars, levels)
+    previous_start: float | None = None
+    previous_excess = 0.0
+    previous_log_sf = 0.0
+    for index in range(levels.size - 1, -1, -1):
+        d = float(levels[index])
+        if not np.isnan(values[index]):
             continue
         if family is _distributions.GeneralizedBetaPrime:
-            result[index] = _gb2_mean_excess(pars, float(d))
+            values[index] = _gb2_mean_excess(pars, float(d))
             continue
         if family is _distributions.LogGamma:
             alpha, beta = pars["alpha"], pars["beta"]
             log_cutoff = max(np.log(max(float(d), 1.0)), 0.0)
             log_num = -alpha * np.log1p(-beta) + float(_gamma_logsf(alpha, log_cutoff * (1.0 - beta) / beta))
             log_den = float(_gamma_logsf(alpha, log_cutoff / beta))
-            result[index] = float(np.exp(log_num - log_den)) - d
+            values[index] = float(np.exp(log_num - log_den)) - d
             continue
         if family is _distributions.Pareto:
             alpha, xm = pars["shape"], pars["scale"]
-            result[index] = max(xm - d, 0.0) + max(d, xm) / (alpha - 1.0)
+            values[index] = max(xm - d, 0.0) + max(d, xm) / (alpha - 1.0)
             continue
         if family is _distributions.GPD:
             xi, sigma, loc = pars["shape"], pars["scale"], pars["loc"]
             base = max(float(d), loc)
-            result[index] = (base - d) + (sigma + xi * (base - loc)) / (1.0 - xi)
+            values[index] = (base - d) + (sigma + xi * (base - loc)) / (1.0 - xi)
             continue
 
         if family is _distributions.Gamma:
-            result[index] = _gamma_mean_excess(pars["alpha"], pars["theta"], float(d))
+            values[index] = _gamma_mean_excess(pars["alpha"], pars["theta"], float(d))
             continue
         if family is _distributions.LogNormal:
-            result[index] = _lognormal_mean_excess(pars["mu"], pars["sigma"], float(d))
+            values[index] = _lognormal_mean_excess(pars["mu"], pars["sigma"], float(d))
             continue
         if family is _distributions.Weibull:
-            result[index] = _weibull_mean_excess(pars["shape"], pars["scale"], pars["loc"], float(d))
+            values[index] = _weibull_mean_excess(pars["shape"], pars["scale"], pars["loc"], float(d))
             continue
-        if family is _distributions.Burr:
-            result[index] = _burr_mean_excess(pars["power"], pars["shape"], pars["scale"], pars["loc"], float(d))
+        if family in (_distributions.Burr, _distributions.LogLogistic, _distributions.Paralogistic):
+            power = pars["power"] if family is _distributions.Burr else pars["shape"]
+            shape = 1.0 if family is _distributions.LogLogistic else pars["shape"]
+            values[index] = _burr_mean_excess(power, shape, pars["scale"], pars["loc"], d)
             continue
 
         if frozen is None:
@@ -868,7 +1021,18 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
             x = start + local_scale * u
             return float(np.exp(float(frozen.logsf(x)) - log_start_sf))
 
-        if family is _distributions.GeneralizedInverseGaussian:
+        # Reuse the integrated tail at the preceding (higher) attachment.
+        # Work with conditional survival ratios, not tiny unconditional areas.
+        reuse = (
+            family is not _distributions.GeneralizedInverseGaussian
+            and previous_start is not None
+            and 0 <= (previous_start - start) / local_scale <= 100
+        )
+        if reuse and previous_start is not None:
+            interval = (previous_start - start) / local_scale
+            area, error = integrate.quad(conditional_survival, 0.0, interval, epsrel=1e-9, limit=300)
+            excess = local_scale * area + np.exp(previous_log_sf - log_start_sf) * previous_excess
+        elif family is _distributions.GeneralizedInverseGaussian:
             # SciPy's GIG survival may suffer cancellation in the far tail.
             # Integrate the conditional density instead, avoiding noisy S(x).
             def scaled_excess_density(
@@ -888,7 +1052,9 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
 
         if not np.isfinite(area) or area < 0 or not np.isfinite(error) or error > 1e-7 * max(1.0, abs(area)):
             raise ArithmeticError(f"Mean excess integration did not converge for {family.__name__} at {d}")
-        result[index] = (start - d) + float(np.exp(log_start_sf - float(frozen.logsf(d)))) * excess
+        values[index] = (start - d) + float(np.exp(log_start_sf - float(frozen.logsf(d)))) * excess
+        previous_start, previous_excess, previous_log_sf = start, float(excess), log_start_sf
+    result[valid] = values[inverse]
     return float(result) if result.ndim == 0 else result
 
 
