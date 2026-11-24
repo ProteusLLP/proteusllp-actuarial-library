@@ -565,9 +565,7 @@ def _normal_tail_difference(
         mills = np.sqrt(np.pi / 2) * special.erfcx(points / np.sqrt(2))
         derivative = 1 - points * mills
         average = (derivative[:, 0] + 4 * derivative[:, 1] + derivative[:, 2]) / 6
-        out[near] = (
-            -0.5 * a[near] ** 2 - 0.5 * np.log(2 * np.pi) + np.log(gap[near]) + np.log(average)
-        )
+        out[near] = -0.5 * a[near] ** 2 - 0.5 * np.log(2 * np.pi) + np.log(gap[near]) + np.log(average)
     return out
 
 
@@ -853,9 +851,7 @@ def _positive_log_survival_array(
     if family is dist.GPD and p["shape"] > 0:
         log_ratio = log_x - np.log(p["scale"])
         log_product = np.log(p["shape"]) + log_ratio
-        return np.where(
-            log_product < -36, -np.exp(log_ratio), -np.logaddexp(0, log_product) / p["shape"]
-        )
+        return np.where(log_product < -36, -np.exp(log_ratio), -np.logaddexp(0, log_product) / p["shape"])
     return None
 
 

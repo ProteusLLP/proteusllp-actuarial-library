@@ -133,9 +133,7 @@ def _mbbefd_lev(g: float, b: float, d: np.ndarray) -> np.ndarray:
             else:
                 # For q near -1, use the sum of two positive terms in 1+q.
                 q = np.exp(np.minimum(log_q, 0.0))
-                log_ratio = np.logaddexp(
-                    v, np.log(g - 1) + log_b - log_abs_b + log_abs_increment
-                )
+                log_ratio = np.logaddexp(v, np.log(g - 1) + log_b - log_abs_b + log_abs_increment)
                 log_numerator = np.log(-np.where(q < 0.5, np.log1p(-q), log_ratio))
                 small = log_q < -18
             value = np.exp(log_numerator - log_coefficient - np.log(abs(log_b)))
@@ -216,8 +214,7 @@ def _burr_family_lev(family: type[DistributionBase], p: dict[str, float], x: np.
         low = log_u < -np.log(2)
         h = special.hyp2f1(alpha + shift, 1 - beta + shift, alpha + shift + 1, np.exp(log_u[low]))
         log_moment = (
-            np.log(b) + (alpha + shift) * log_u[low] - np.log(alpha + shift)
-            - special.betaln(alpha, beta) + np.log(h)
+            np.log(b) + (alpha + shift) * log_u[low] - np.log(alpha + shift) - special.betaln(alpha, beta) + np.log(h)
         )
         value[low] = np.exp(log_moment) + np.exp(log_x[low] + log_sf[low])
     return np.where(x == 0, 0.0, value)
@@ -249,9 +246,7 @@ def _severity_lev(family: type[DistributionBase], p: dict[str, float], d: np.nda
         left = shifted <= 0
         # The normal exponential tilt cancels analytically, including when
         # the unconditional mean is outside the floating-point range.
-        log_moment[left] = (
-            log_x[left] - z[left] ** 2 / 2 + np.log(0.5 * special.erfcx(-shifted[left] / np.sqrt(2)))
-        )
+        log_moment[left] = log_x[left] - z[left] ** 2 / 2 + np.log(0.5 * special.erfcx(-shifted[left] / np.sqrt(2)))
         log_moment[~left] = mu + sigma**2 / 2 + special.log_ndtr(shifted[~left])
         value = np.exp(log_moment) + np.exp(log_x + special.log_ndtr(-z))
     elif family is dist.Weibull:
@@ -301,7 +296,8 @@ def _severity_lev(family: type[DistributionBase], p: dict[str, float], d: np.nda
             moment = np.exp(alpha * np.log(z) - special.gammaln(alpha + 1))
         else:
             moment = np.exp(
-                alpha * np.log(z) - special.gammaln(alpha + 1)
+                alpha * np.log(z)
+                - special.gammaln(alpha + 1)
                 + np.log(special.hyp1f1(alpha, alpha + 1, (beta - 1) * z))
             )
         return np.where(d <= 1, d, moment + x * special.gammaincc(alpha, z))

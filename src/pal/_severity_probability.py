@@ -153,9 +153,7 @@ def _log_beta_probability(alpha: float, beta: float, log_x: np.ndarray, log_comp
     if np.any(missing):
         z = x[missing]
         correction = special.hyp2f1(alpha, 1 - beta, alpha + 1, z)
-        result[missing] = (
-            alpha * log_x[missing] - np.log(alpha) - special.betaln(alpha, beta) + np.log(correction)
-        )
+        result[missing] = alpha * log_x[missing] - np.log(alpha) - special.betaln(alpha, beta) + np.log(correction)
     return result
 
 
@@ -187,8 +185,5 @@ def _log_gamma_lower_probability(a: float, log_z: np.ndarray) -> np.ndarray:
     out[small] = a * log_z[small] - _log_gamma1p(a)
     missing = np.isneginf(out) & np.isfinite(log_z) & ~small
     if np.any(missing):
-        out[missing] = (
-            a * log_z[missing] - _log_gamma1p(a)
-            + np.log(special.hyp1f1(a, a + 1, -z[missing]))
-        )
+        out[missing] = a * log_z[missing] - _log_gamma1p(a) + np.log(special.hyp1f1(a, a + 1, -z[missing]))
     return np.minimum(out, 0.0)
