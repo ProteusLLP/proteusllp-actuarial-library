@@ -580,90 +580,105 @@ def mean_excess_remaining(
     ds = np.asarray(threshold, dtype=float)
     result = np.full(ds.shape, np.nan, dtype=float)
 
-    for index, d in np.ndenumerate(ds):
-        if not np.isfinite(d):
-            continue
+    valid = np.isfinite(ds)
+    d = ds[valid]
+    out = np.full(d.shape, np.nan, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
         if family is _distributions.MBBEFD:
+            # Preserve the existing mixed-distribution endpoint semantics.
             model = t.cast(t.Any, distribution)
-            if d >= 1:
-                continue
             expected = float(model.mean())
-            if d < 0:
-                result[index] = expected - d
-            else:
-                survival = 1.0 - float(model.cdf(d))
-                if survival > 0:
-                    result[index] = expected * (1.0 - float(model.exposure_curve(d))) / survival
-            continue
-        if family is _distributions.Uniform:
+            for i, attachment in enumerate(d):
+                if attachment < 0:
+                    out[i] = expected - attachment
+                elif attachment < 1:
+                    survival = 1 - float(model.cdf(attachment))
+                    if survival > 0:
+                        out[i] = expected * (1 - float(model.exposure_curve(attachment))) / survival
+        elif family is _distributions.Uniform:
             a, b = pars["a"], pars["b"]
-            if d < a:
-                result[index] = 0.5 * (a + b) - d
-            elif d < b:
-                result[index] = 0.5 * (b - d)
-            continue
-        if family is _distributions.Beta:
+            out = np.where(d < a, 0.5 * (a - d) + 0.5 * (b - d),
+                           np.where(d < b, 0.5 * (b - d), np.nan))
+        elif family is _distributions.Beta:
             a, b, scale, loc = pars["alpha"], pars["beta"], pars["scale"], pars["loc"]
             u = (d - loc) / scale
-            if u < 0:
-                result[index] = loc + scale * a / (a + b) - d
-            elif u < 1:
-                sf = stats.beta.sf(u, a, b)
-                moment = a / (a + b) * stats.beta.sf(u, a + 1, b)
-                result[index] = scale * moment / sf + loc - d if sf > 0 else np.nan
-            continue
-        if family is _distributions.Normal:
+            w = (loc + scale - d) / scale
+            pos = (u >= 0) & (w > 0)
+            # Use the complementary variable Y=1-X. E[X-u|X>u]
+            # equals w minus the conditional lower-tail mean of Y.
+            sf = special.betainc(b, a, w[pos])
+            ratio = b / (a + b) * special.betainc(b + 1, a, w[pos]) / sf / w[pos]
+            excess = w[pos] * (1 - ratio)
+            # B_w(b,a) = w**b/b * 2F1(b,1-a;b+1;w).
+            # The ratio cancels the tiny w**b and normalizing factors.
+            bad = (~np.isfinite(excess)) | (excess <= 1e-7 * w[pos])
+            wb = w[pos][bad]
+            h0 = special.hyp2f1(b, 1 - a, b + 1, wb)
+            h1 = special.hyp2f1(b + 1, 1 - a, b + 2, wb)
+            excess[bad] = wb * (1 - b / (b + 1) * h1 / h0)
+            out[pos] = scale * excess
+            out[u < 0] = loc - d[u < 0] + scale * a / (a + b)
+        elif family is _distributions.Normal:
             mu, sigma = pars["mu"], pars["sigma"]
             z = (d - mu) / sigma
-            result[index] = mu - d + sigma * np.exp(stats.norm.logpdf(z) - stats.norm.logsf(z))
-            continue
-        if family is _distributions.Logistic:
+            low = z < 0
+            out[low] = sigma * (np.exp(stats.norm.logpdf(z[low]) - special.log_ndtr(-z[low])) - z[low])
+            central = (z >= 0) & (z < 30)
+            out[central] = sigma * (np.sqrt(2 / np.pi) / special.erfcx(z[central] / np.sqrt(2)) - z[central])
+            # Inverse Mills ratio minus z: asymptotic expansion in 1/z.
+            far = z >= 30
+            inv = 1 / z[far]
+            q = inv**2
+            out[far] = sigma * inv * (1 + q * (-2 + q * (10 + q * (-74 + q * (706 - 8162 * q)))))
+        elif family is _distributions.Logistic:
             mu, sigma = pars["mu"], pars["sigma"]
             z = (d - mu) / sigma
-            result[index] = sigma if z > 35 else sigma * np.logaddexp(0, -z) / special.expit(-z)
-            continue
-        if family is _distributions.StudentsT:
+            out = np.where(z > 35, sigma, sigma * np.logaddexp(0, -z) / special.expit(-z))
+        elif family is _distributions.StudentsT:
             nu, mu, sigma = pars["nu"], pars["mu"], pars["sigma"]
             if nu <= 1:
-                result[index] = np.inf
+                out.fill(np.inf)
             else:
                 z = (d - mu) / sigma
                 residual = np.exp(stats.t.logpdf(z, nu) - stats.t.logsf(z, nu))
-                result[index] = mu - d + sigma * (nu + z * z) / (nu - 1) * residual
-            continue
-        if family is _distributions.NonCentralChiSquared:
+                out = sigma * ((nu + z * z) / (nu - 1) * residual - z)
+        elif family is _distributions.NonCentralChiSquared:
             df, nonc = pars["df"], pars["nonc"]
             rv = stats.ncx2(df, nonc)
-            if d < 0:
-                result[index] = df + nonc - d
-            elif rv.sf(d) > 0:
-                area, _ = integrate.quad(rv.sf, d, np.inf, epsrel=1e-8)
-                result[index] = area / rv.sf(d)
-            continue
-        # Counts: first truncated moment divided by survival.
-        k = int(np.floor(d))
-        if family is _distributions.Poisson:
-            lam = pars["mean"]
-            sf = stats.poisson.sf(k, lam)
-            moment = lam * stats.poisson.sf(k - 1, lam)
-        elif family in (_distributions.Binomial, _distributions.Bernoulli):
-            n = 1 if family is _distributions.Bernoulli else int(pars["n"])
-            p = pars["p"]
-            sf = stats.binom.sf(k, n, p)
-            moment = n * p * stats.binom.sf(k - 1, n - 1, p)
-        elif family is _distributions.NegBinomial:
-            n, p = pars["n"], pars["p"]
-            sf = stats.nbinom.sf(k, n, p)
-            moment = n * (1 - p) / p * stats.nbinom.sf(k - 1, n + 1, p)
+            # Poisson mixture: x f_df,nc = df f_df+2,nc + nc f_df+4,nc.
+            sf = rv.sf(d)
+            moment = df * stats.ncx2.sf(d, df + 2, nonc) + nonc * stats.ncx2.sf(d, df + 4, nonc)
+            out = moment / sf - d
+            out[d < 0] = df + nonc - d[d < 0]
+            bad = (d >= 0) & (sf > 0) & ((out <= 1e-7 * np.maximum(d, 1)) | ~np.isfinite(out))
+            for i in np.flatnonzero(bad):
+                area, _ = integrate.quad(rv.sf, d[i], np.inf, epsrel=1e-8)
+                out[i] = area / sf[i]
         else:
-            good, bad, draws = int(pars["ngood"]), int(pars["nbad"]), int(pars["n"])
-            population = good + bad
-            sf = stats.hypergeom.sf(k, population, good, draws)
-            moment = (
-                draws * good / population * stats.hypergeom.sf(k - 1, population - 1, good - 1, draws - 1)
-                if good > 0 and draws > 0
-                else 0.0
-            )
-        if sf > 0:
-            result[index] = moment / sf - d
+            # Counts: truncated first moment divided by strict survival.
+            k = np.floor(d)
+            if family is _distributions.Poisson:
+                lam = pars["mean"]
+                sf = stats.poisson.sf(k, lam)
+                moment = lam * stats.poisson.sf(k - 1, lam)
+            elif family in (_distributions.Binomial, _distributions.Bernoulli):
+                n = 1 if family is _distributions.Bernoulli else int(pars["n"])
+                p = pars["p"]
+                sf = stats.binom.sf(k, n, p)
+                moment = n * p * stats.binom.sf(k - 1, n - 1, p) if n > 0 else np.zeros_like(d)
+            elif family is _distributions.NegBinomial:
+                n, p = pars["n"], pars["p"]
+                sf = stats.nbinom.sf(k, n, p)
+                moment = n * (1 - p) / p * stats.nbinom.sf(k - 1, n + 1, p)
+            else:
+                good, bad, draws = int(pars["ngood"]), int(pars["nbad"]), int(pars["n"])
+                population = good + bad
+                sf = stats.hypergeom.sf(k, population, good, draws)
+                moment = (
+                    draws * good / population * stats.hypergeom.sf(k - 1, population - 1, good - 1, draws - 1)
+                    if good > 0 and draws > 0
+                    else np.zeros_like(d)
+                )
+            out = np.where(sf > 0, moment / sf - d, np.nan)
+    result[valid] = out
     return float(result) if result.ndim == 0 else result
