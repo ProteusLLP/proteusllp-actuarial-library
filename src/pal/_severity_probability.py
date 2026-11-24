@@ -138,16 +138,16 @@ def _log_beta_probability(alpha: float, beta: float, log_x: np.ndarray, log_comp
     to one. Small probabilities below float underflow retain their logarithms.
     """
     if beta == 1:
-        return alpha * log_x
+        log_hazard = np.log(alpha) + np.where(log_complement < -36, log_complement, np.log(-log_x))
+        return -np.exp(log_hazard)
     if alpha == 1:
         log_hazard = np.log(beta) + np.where(log_x < -36, log_x, np.log(-log_complement))
         return np.asarray(_log_survival_from_log_hazard(log_hazard, np))
     x, complement = np.exp(log_x), np.exp(log_complement)
-    probability = np.where(
-        log_x < -np.log(2),
-        special.betainc(alpha, beta, x),
-        special.betaincc(beta, alpha, complement),
-    )
+    left = log_x < -np.log(2)
+    probability = np.empty_like(log_x)
+    probability[left] = special.betainc(alpha, beta, x[left])
+    probability[~left] = special.betaincc(beta, alpha, complement[~left])
     result = np.asarray(np.log(probability))
     missing = (probability <= 0) & np.isfinite(log_x)
     if np.any(missing):
@@ -170,3 +170,25 @@ def _inverse_gaussian_log_tails(x: np.ndarray, mu: float, lam: float) -> tuple[n
     log_a = special.log_ndtr(-a)
     log_b = np.log(0.5 * special.erfcx(b / np.sqrt(2))) - 0.5 * a**2
     return a, b, root, log_a, log_b
+
+
+def _log_gamma1p(a: float) -> float:
+    """Resolve the normalizing constant even for shapes below machine epsilon."""
+    if a < 1e-5:
+        return float(a * (-np.euler_gamma + a * (np.pi**2 / 12 - a * special.zeta(3) / 3)))
+    return float(special.gammaln(1 + a))
+
+
+def _log_gamma_lower_probability(a: float, log_z: np.ndarray) -> np.ndarray:
+    """Log regularized lower incomplete gamma from an unrounded log argument."""
+    z = np.exp(log_z)
+    out = np.asarray(np.log(special.gammainc(a, z)))
+    small = log_z < -36
+    out[small] = a * log_z[small] - _log_gamma1p(a)
+    missing = np.isneginf(out) & np.isfinite(log_z) & ~small
+    if np.any(missing):
+        out[missing] = (
+            a * log_z[missing] - _log_gamma1p(a)
+            + np.log(special.hyp1f1(a, a + 1, -z[missing]))
+        )
+    return np.minimum(out, 0.0)

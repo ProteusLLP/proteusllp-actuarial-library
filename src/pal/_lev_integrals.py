@@ -94,9 +94,11 @@ def _positive_survival_integrals(
     def log_integrand(t_: np.ndarray) -> np.ndarray:
         return t_ + log_survival(t_)
 
-    lower = min(float(log_limits[0]), log_scale) - 40
-    starts = np.r_[lower, log_limits[:-1]]
-    values = _adaptive_intervals(log_integrand, starts, log_limits)
+    lower = max(-800.0, min(float(log_limits[0]), log_scale) - 40)
+    # Split exactly at the characteristic scale if it falls inside the grid.
+    grid = np.unique(np.r_[log_limits, log_scale]) if lower < log_scale < log_limits[-1] else log_limits
+    starts = np.r_[lower, grid[:-1]]
+    values = _adaptive_intervals(log_integrand, starts, grid)
     # The omitted interval has mass at most exp(lower), independently of
     # the severity family. Extend only when this is material to the anchor.
     for _ in range(40):
@@ -107,4 +109,4 @@ def _positive_survival_integrals(
         lower = new_lower
     else:
         raise ArithmeticError("Unable to bound the lower limited expected value integral")
-    return np.cumsum(values)
+    return np.cumsum(values)[np.searchsorted(grid, log_limits)]

@@ -14,6 +14,7 @@ from ._gig import _gig_log_moments
 from ._severity_probability import (
     _inverse_gaussian_log_tails,
     _log_beta_probability,
+    _log_gamma_lower_probability,
     _log_softplus,
     _log_survival_from_log_hazard,
 )
@@ -539,6 +540,32 @@ def _inverse_gaussian_fraction(
     return (mu * ((ca + cb) / gap) - x * difference) / (1 + difference)
 
 
+def _normal_tail_difference(
+    a: np.ndarray, b: np.ndarray, gap: np.ndarray, log_a: np.ndarray, log_b: np.ndarray
+) -> np.ndarray:
+    """Resolve two exponentially tilted normal probabilities without cancellation."""
+    out = log_a + np.log(-np.expm1(np.minimum(log_b - log_a, 0)))
+    # The ordinary expression is adequate unless the logarithms are close
+    # or both tails are too far out for their difference to be represented.
+    repair = (log_a - log_b < 1e-5) | ~np.isfinite(out)
+    far = repair & (a >= 4) & np.isfinite(a) & np.isfinite(b) & (gap > 0)
+    if np.any(far):
+        ca, cb, difference = _tail_fraction_pair(a[far], b[far])
+        out[far] = (
+            -0.5 * a[far] ** 2 - 0.5 * np.log(2 * np.pi) + np.log(gap[far])
+            + np.log1p(difference) - np.log(a[far] + ca) - np.log(b[far] + cb)
+        )
+    near = repair & (a < 4) & (a > -1) & (gap < 1e-5) & (gap > 0)
+    if np.any(near):
+        mid = a[near] + gap[near] / 2
+        mills = np.sqrt(np.pi / 2) * special.erfcx(mid / np.sqrt(2))
+        out[near] = (
+            -0.5 * a[near] ** 2 - 0.5 * np.log(2 * np.pi) + np.log(gap[near])
+            + np.log1p(-mid * mills)
+        )
+    return out
+
+
 def _inverse_gaussian_excess(ds: np.ndarray, mu: float, lambda_: float) -> np.ndarray:
     """Evaluate inverse Gaussian residual life via normal tail moments."""
     lam = lambda_
@@ -546,7 +573,7 @@ def _inverse_gaussian_excess(ds: np.ndarray, mu: float, lambda_: float) -> np.nd
     x = ds[ds > 0]
     normal_a, normal_b, root, log_a, log_b = _inverse_gaussian_log_tails(x, mu, lam)
     # A+B and A-B are the first moment / mu and survival.
-    log_sf = log_a + np.log(-np.expm1(log_b - log_a))
+    log_sf = _normal_tail_difference(normal_a, normal_b, 2 * root, log_a, log_b)
     log_moment = np.log(mu) + np.logaddexp(log_a, log_b)
     lr = log_moment - log_sf - np.log(x)
     values = np.where((lr > 1e-5) & (log_a - log_b > 1e-5), _positive_log_excess(np.log(x), lr), np.nan)
@@ -787,18 +814,7 @@ def _positive_log_survival_array(
         return _log_survival_from_log_hazard(np.log(p["shape"]) + _log_softplus(log_u, np), np)
     if family is dist.InverseGamma:
         log_z = np.log(p["theta"]) - log_x
-        z = np.exp(log_z)
-        alpha = p["alpha"]
-        probability = special.gammainc(alpha, z)
-        out = np.asarray(np.log(probability))
-        missing = (probability == 0) & np.isfinite(log_z)
-        if np.any(missing):
-            zz = z[missing]
-            out[missing] = (
-                alpha * log_z[missing] - special.gammaln(alpha + 1)
-                + np.log(special.hyp1f1(alpha, alpha + 1, -zz))
-            )
-        return out
+        return _log_gamma_lower_probability(p["alpha"], log_z)
     if family in (dist.InverseWeibull, dist.InverseExponential):
         log_z = p.get("shape", 1.0) * (np.log(p["scale"]) - log_x)
         return _log_survival_from_log_hazard(log_z, np)
@@ -810,13 +826,27 @@ def _positive_log_survival_array(
     if family is dist.LogNormal:
         return special.log_ndtr((p["mu"] - log_x) / p["sigma"])
     if family is dist.Gamma:
-        return np.asarray(_gamma_logsf(p["alpha"], np.exp(log_x - np.log(p["theta"]))))
+        log_z = log_x - np.log(p["theta"])
+        out = np.asarray(_gamma_logsf(p["alpha"], np.exp(log_z)))
+        small = log_z < -36
+        out[small] = np.log(-np.expm1(_log_gamma_lower_probability(p["alpha"], log_z[small])))
+        return out
     if family is dist.Weibull:
         return -np.exp(p["shape"] * (log_x - np.log(p["scale"])))
     if family is dist.Exponential:
         return -np.exp(log_x - np.log(p["scale"]))
+    if family is dist.InverseGaussian:
+        x = np.exp(log_x.ravel())
+        a, b, root, log_a, log_b = _inverse_gaussian_log_tails(x, p["mu"], p["lambda_"])
+        value = _normal_tail_difference(a, b, 2 * root, log_a, log_b)
+        value[x == 0] = 0
+        return value.reshape(log_x.shape)
     if family is dist.GPD and p["shape"] > 0:
-        return -np.logaddexp(0, log_x + np.log(p["shape"]) - np.log(p["scale"])) / p["shape"]
+        log_ratio = log_x - np.log(p["scale"])
+        log_product = np.log(p["shape"]) + log_ratio
+        return np.where(
+            log_product < -36, -np.exp(log_ratio), -np.logaddexp(0, log_product) / p["shape"]
+        )
     return None
 
 

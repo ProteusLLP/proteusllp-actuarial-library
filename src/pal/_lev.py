@@ -11,8 +11,13 @@ from scipy import special, stats
 from . import distributions as dist
 from ._gig import _gig_log_moments
 from ._lev_integrals import _adaptive_intervals, _positive_survival_integrals
-from ._mean_excess import _gev_small_tail, _lognormal_coordinate, _positive_log_survival_array
-from ._severity_probability import _inverse_gaussian_log_tails, _log_beta_probability, _log_survival_from_log_hazard
+from ._mean_excess import _gev_small_tail, _lognormal_coordinate, _normal_tail_difference, _positive_log_survival_array
+from ._severity_probability import (
+    _inverse_gaussian_log_tails,
+    _log_beta_probability,
+    _log_gamma_lower_probability,
+    _log_survival_from_log_hazard,
+)
 from .fitting import _frozen_distribution, _other_families, _supported_families
 from .stochastic_scalar import StochasticScalar
 
@@ -51,15 +56,19 @@ def _gpd_lev(d: np.ndarray, shape: float, scale: float) -> np.ndarray:
     if shape < 0:
         x = np.minimum(x, -scale / shape)
     if shape == 0:
-        return scale * (-np.expm1(-x / scale))
+        ratio = x / scale
+        return np.where(ratio < 1e-8, x * (1 - ratio / 2), scale * (-np.expm1(-ratio)))
     log_ratio = np.log(x) - np.log(scale)
     if shape > 0:
         log_base = np.logaddexp(0, np.log(shape) + log_ratio)
     else:
         log_base = np.log1p(np.maximum(-1, shape * (x / scale)))
     t_ = log_base / shape
+    small = np.log(abs(shape)) + log_ratio < -36
+    t_[small] = np.exp(log_ratio[small])
     # At a finite endpoint the integral is scale/(1-shape).
-    return _scaled_power_integral(np.log(scale), shape - 1, t_)
+    value = _scaled_power_integral(np.log(scale), shape - 1, t_)
+    return np.where(t_ < 1e-8, x * (1 - t_ / 2), value)
 
 
 def _count_lev(family: type[DistributionBase], p: dict[str, float], d: np.ndarray) -> np.ndarray:
@@ -197,12 +206,15 @@ def _severity_lev(family: type[DistributionBase], p: dict[str, float], d: np.nda
     if family is dist.GPD:
         value = _gpd_lev(x, p["shape"], p["scale"])
     elif family is dist.Exponential:
-        value = -p["scale"] * np.expm1(-x / p["scale"])
+        value = _gpd_lev(x, 0.0, p["scale"])
     elif family is dist.Gamma:
         a, theta = p["alpha"], p["theta"]
-        z = x / theta
-        value = np.exp(np.log(a) + np.log(theta) + np.log(special.gammainc(a + 1, z)))
-        value += np.exp(np.log(x) + np.log(special.gammaincc(a, z)))
+        log_z = np.log(x) - np.log(theta)
+        log_sf = _positive_log_survival_array(family, p, np.log(x))
+        if log_sf is None:
+            raise RuntimeError("Missing gamma survival kernel")
+        value = np.exp(np.log(a) + np.log(theta) + _log_gamma_lower_probability(a + 1, log_z))
+        value += np.exp(np.log(x) + log_sf)
     elif family is dist.LogNormal:
         mu, sigma = p["mu"], p["sigma"]
         z = _lognormal_coordinate(x, mu, sigma)
@@ -219,8 +231,10 @@ def _severity_lev(family: type[DistributionBase], p: dict[str, float], d: np.nda
         value = np.exp(log_moment) + np.exp(log_x + special.log_ndtr(-z))
     elif family is dist.Weibull:
         a, scale = 1 / p["shape"], p["scale"]
-        z = np.power(x / scale, p["shape"])
-        value = np.exp(np.log(scale) + special.gammaln(1 + a) + np.log(special.gammainc(a, z)))
+        log_z = p["shape"] * (np.log(x) - np.log(scale))
+        value = np.exp(np.log(scale) + special.gammaln(1 + a) + _log_gamma_lower_probability(a, log_z))
+        if a > 1e7:
+            value[:] = np.nan
     elif family is dist.GeneralizedInverseGaussian:
         _, logsf, log_moment, _ = _gig_log_moments(x, p["p"], p["chi"], p["psi"])
         value = np.exp(log_moment) + np.exp(np.log(x) + logsf)
@@ -244,7 +258,7 @@ def _severity_lev(family: type[DistributionBase], p: dict[str, float], d: np.nda
         if a > k:
             logmean = np.log(scale) + special.gammaln(a - k) - special.gammaln(a)
             value = np.exp(logmean + np.log(special.gammaincc(a - k, z)))
-            value += np.exp(np.log(x) + np.log(special.gammainc(a, z)))
+            value += np.exp(np.log(x) + _log_gamma_lower_probability(a, log_z))
         elif a == k:
             e1 = np.where(log_z < -36, -np.euler_gamma - log_z, special.exp1(z))
             log_sf = _positive_log_survival_array(family, p, np.log(x))
@@ -271,14 +285,12 @@ def _severity_lev(family: type[DistributionBase], p: dict[str, float], d: np.nda
         value = np.zeros_like(x)
         pos = x > 0
         xp = x[pos]
-        a, _, _, log_a, log_b = _inverse_gaussian_log_tails(xp, mu, lam)
+        a, b, root, log_a, log_b = _inverse_gaussian_log_tails(xp, mu, lam)
         log_lower_a = special.log_ndtr(a)
-        log_moment = np.log(mu) + log_lower_a + np.log(-np.expm1(np.minimum(log_b - log_lower_a, 0)))
-        log_sf = log_a + np.log(-np.expm1(np.minimum(log_b - log_a, 0)))
+        gap = 2 * np.sqrt(lam) * np.sqrt(xp) / mu
+        log_moment = np.log(mu) + _normal_tail_difference(-a, b, gap, log_lower_a, log_b)
+        log_sf = _normal_tail_difference(a, b, 2 * root, log_a, log_b)
         value[pos] = np.exp(log_moment) + np.exp(np.log(xp) + log_sf)
-        # A near-zero lower moment must not silently discard material mass.
-        uncertain = (log_lower_a - log_b < 1e-7) & (log_lower_a > -35)
-        value[np.flatnonzero(pos)[uncertain]] = np.nan
     else:
         return np.full_like(d, np.nan)
     return np.where(d <= loc, d, loc + value)
@@ -304,6 +316,17 @@ def _positive_fallback(
 
     scale = p.get("scale", p.get("b", p.get("theta", p.get("mu", 1.0))))
     log_scale = p["mu"] if family is dist.LogNormal else np.log(scale)
+    if family in (dist.Burr, dist.LogLogistic, dist.Paralogistic, dist.InverseBurr, dist.InverseParalogistic):
+        power = p.get("power", p["shape"])
+        shape = 1.0 if family is dist.LogLogistic else p["shape"]
+        log_h = float(_log_expm1_positive(np.array([np.log(2) / shape]))[0])
+        direction = -1 if family in (dist.InverseBurr, dist.InverseParalogistic) else 1
+        log_scale += direction * log_h / power
+    elif family is dist.GeneralizedBetaPrime:
+        u = special.betaincinv(p["p"], p["q"], 0.5)
+        w = special.betaincinv(p["q"], p["p"], 0.5)
+        if u > 0 and w > 0:
+            log_scale += (np.log(u) - np.log(w)) / p["a"]
     out[positive] = loc + _positive_survival_integrals(log_survival, np.log(x[positive]), float(log_scale))
     return out
 
@@ -335,7 +358,7 @@ def _gev_lev(p: dict[str, float], d: np.ndarray) -> np.ndarray:
             return _log_survival_from_log_hazard(log_y, np)
 
         pos = x > 0
-        out[pos] = lower + _positive_survival_integrals(log_survival, np.log(x[pos]), np.log(scale / xi))
+        out[pos] = lower + _positive_survival_integrals(log_survival, np.log(x[pos]), np.log(scale) - np.log(xi))
         return out
 
     # The finite-mean case can use the same tail integral as mean excess.

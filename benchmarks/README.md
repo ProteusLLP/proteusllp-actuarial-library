@@ -109,6 +109,8 @@ batched values only because repeated adaptive scalar integration is costly.
 
 ## Fitting optimizers
 
+<!--pytest-codeblocks:skip-->
+
 ```bash
 python -m benchmarks.benchmark_fitting --size 10000 --output fitting.json
 ```
