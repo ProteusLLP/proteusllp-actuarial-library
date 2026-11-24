@@ -97,7 +97,9 @@ def _lognormal_tail_excess(mu: float, sigma: float, d: float) -> float:
 
     def excess_density(t: float) -> float:
         # expm1 resolves arbitrarily small conditional excesses.
-        return float(np.expm1(sigma * width * t) * density(t))
+        u = width * t
+        tilt = sigma * u
+        return float(np.exp(-z * u - 0.5 * u**2 + tilt) * (-np.expm1(-tilt)))
 
     denominator, den_error = integrate.quad(density, 0, np.inf, epsabs=0, epsrel=1e-10)
     numerator, num_error = integrate.quad(excess_density, 0, np.inf, epsabs=0, epsrel=1e-10)
@@ -389,7 +391,7 @@ def _loggamma_excess(ds: np.ndarray, alpha: float, beta: float) -> np.ndarray:
     log_ratio -= np.log(special.gammaincc(alpha, z)) + log_x
     out = np.where(log_ratio > 1e-5, _positive_log_excess(log_x, log_ratio), np.nan)
     out += np.maximum(1 - ds, 0)
-    out = np.where(ds <= 1, np.expm1(-alpha * np.log1p(-beta)) + 1 - ds, out)
+    out = np.where(ds <= 1, np.expm1(-alpha * np.log1p(-beta)) + (1 - ds), out)
     return _repair_tail(ds, out, lambda d: _loggamma_tail_excess(alpha, beta, d))
 
 
