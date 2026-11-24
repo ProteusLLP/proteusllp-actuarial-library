@@ -129,9 +129,7 @@ def _minimize_severity(
     return optimize.minimize(objective, start, method=method.value, options={**defaults, **(options or {})})
 
 
-def _boundary_warnings(
-    parameters: dict[str, float], observations: np.ndarray, threshold: float
-) -> tuple[str, ...]:
+def _boundary_warnings(parameters: dict[str, float], observations: np.ndarray, threshold: float) -> tuple[str, ...]:
     """Flag extreme transformed estimates relative to the observed loss scale.
 
     These are diagnostics, not proof that a finite maximum fails to exist.
