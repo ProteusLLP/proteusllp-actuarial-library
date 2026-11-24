@@ -93,6 +93,7 @@ def _result(
     else:
         aicc = np.nan
     return FitResult(
+        n_parameters=k,
         distribution=distribution,
         parameters=params,
         log_likelihood=float(ll),

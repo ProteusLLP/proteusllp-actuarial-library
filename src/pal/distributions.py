@@ -33,6 +33,7 @@ from scipy.stats import geninvgauss
 from ._compat import override
 from ._gig import _gig_log_probabilities
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
+from ._severity_probability import _burr_terms, _inverse_weibull_terms
 from ._value_arrays import stochastic_array
 from .config import config
 from .couplings import couple_stochastic_results, validate_stochastic_axes
@@ -704,18 +705,32 @@ class Burr(DistributionBase):
         super().__init__(power=power, shape=shape, scale=scale, loc=loc)
 
     @override
-    def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
-
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
         def evaluate(x, power, shape, scale, loc):
-            x, power, shape, scale, loc = (xp.asarray(v) for v in (x, power, shape, scale, loc))
-            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-                z = xp.maximum((x - loc) / scale, 0.0)
-                log_term = xp.logaddexp(0.0, power * xp.log(z))
-                result = -xp.expm1(-shape * log_term)
-                return xp.where((power > 0) & (shape > 0) & (scale > 0), result, xp.nan)
+            result = _burr_terms(x, power, shape, scale, loc, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
 
         return _special_call(evaluate, x, *self._params.values())
+
+    def cdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the cumulative probability."""
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly."""
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one."""
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density."""
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly."""
+        return self._probability_terms(x, 0, logarithmic=True)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
@@ -1270,11 +1285,32 @@ class LogLogistic(DistributionBase):
         super().__init__(shape=shape, scale=scale, loc=loc)
 
     @override
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
+        def evaluate(x, shape, scale, loc):
+            result = _burr_terms(x, shape, 1.0, scale, loc, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
+
+        return _special_call(evaluate, x, *self._params.values())
+
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        shape, scale, loc = self._params.values()
-        y = ((x - loc) / scale) ** shape
-        result = y / (1 + y)
-        return result
+        """Compute the cumulative probability."""
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly."""
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one."""
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density."""
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly."""
+        return self._probability_terms(x, 0, logarithmic=True)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
@@ -1867,10 +1903,32 @@ class Paralogistic(DistributionBase):
         super().__init__(shape=shape, scale=scale, loc=loc)
 
     @override
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
+        def evaluate(x, shape, scale, loc):
+            result = _burr_terms(x, shape, shape, scale, loc, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
+
+        return _special_call(evaluate, x, *self._params.values())
+
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        shape, scale, loc = self._params.values()
-        y = 1 / (1 + ((x - loc) / scale) ** shape)
-        return 1 - y**shape
+        """Compute the cumulative probability."""
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly."""
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one."""
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density."""
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly."""
+        return self._probability_terms(x, 0, logarithmic=True)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
@@ -1945,9 +2003,32 @@ class InverseBurr(DistributionBase):
         self._loc = loc
 
     @override
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
+        def evaluate(x, power, shape, scale, loc):
+            result = _burr_terms(x, power, shape, scale, loc, inverse=True, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
+
+        return _special_call(evaluate, x, *self._params.values())
+
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        y = ((x - self._loc) / self._scale) ** self._power
-        return (y / (1 + y)) ** self._shape
+        """Compute the cumulative probability."""
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly."""
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one."""
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density."""
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly."""
+        return self._probability_terms(x, 0, logarithmic=True)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
@@ -2020,14 +2101,32 @@ class InverseParalogistic(DistributionBase):
         super().__init__(shape=shape, scale=scale, loc=loc)
 
     @override
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
+        def evaluate(x, shape, scale, loc):
+            result = _burr_terms(x, shape, shape, scale, loc, inverse=True, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
+
+        return _special_call(evaluate, x, *self._params.values())
+
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        # Unpack parameters with explicit type annotations
-        params = tuple(self._params.values())
-        shape_val = params[0]
-        scale_val = params[1]
-        loc_val = params[2]
-        y = ((x - loc_val) / scale_val) ** shape_val
-        return (y / (1 + y)) ** shape_val
+        """Compute the cumulative probability."""
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly."""
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one."""
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density."""
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly."""
+        return self._probability_terms(x, 0, logarithmic=True)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
@@ -2174,9 +2273,32 @@ class InverseWeibull(DistributionBase):
         self._loc = loc
 
     @override
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
+        def evaluate(x, shape, scale, loc):
+            result = _inverse_weibull_terms(x, shape, scale, loc, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
+
+        return _special_call(evaluate, x, *self._params.values())
+
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        y = np.float_power((x - self._loc) / self._scale, -self._shape)
-        return np.exp(-y)  # type: ignore[no-any-return]
+        """Compute the cumulative probability."""
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly."""
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one."""
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density."""
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly."""
+        return self._probability_terms(x, 0, logarithmic=True)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
@@ -3040,10 +3162,32 @@ class InverseExponential(DistributionBase):
         super().__init__(scale=scale, loc=loc)
 
     @override
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
+        def evaluate(x, scale, loc):
+            result = _inverse_weibull_terms(x, 1.0, scale, loc, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
+
+        return _special_call(evaluate, x, *self._params.values())
+
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        scale, loc = self._params.values()
-        y = scale * np.float_power((x - loc), -1)
-        return np.exp(-y)  # type: ignore[return-value]
+        """Compute the cumulative probability."""
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly."""
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one."""
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density."""
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly."""
+        return self._probability_terms(x, 0, logarithmic=True)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:

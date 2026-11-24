@@ -13,6 +13,8 @@ from enum import Enum
 import numpy as np
 from scipy import optimize, special, stats
 
+from ._severity_probability import _StableSeverityReference, _burr_terms, _inverse_weibull_terms
+
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
     from .fitting_uncertainty import AsymptoticParameterUncertainty
@@ -71,6 +73,12 @@ class FitResult(t.Generic[_T]):
     threshold: float
     method: str = _FitMethod.MLE.value
     uncertainty: AsymptoticParameterUncertainty[_T] | None = field(default=None, repr=False, compare=False)
+    n_parameters: int = field(default=-1, kw_only=True)
+
+    def __post_init__(self) -> None:
+        """Preserve compatibility with callers constructing older FitResult objects."""
+        if self.n_parameters == -1:
+            object.__setattr__(self, "n_parameters", round((self.aic + 2 * self.log_likelihood) / 2))
 
     def asymptotic_uncertainty(
         self,
@@ -407,6 +415,7 @@ def fit_distribution(
     is_frequency_weight = bool(np.all(w == np.floor(w)))
     aicc = aic + 2.0 * k * (k + 1) / (total - k - 1) if is_frequency_weight and total > k + 1 else np.nan
     return FitResult(
+        n_parameters=k,
         distribution=model,
         parameters=parameters,
         log_likelihood=ll,
@@ -462,25 +471,46 @@ def _frozen_distribution(family: type[DistributionBase], params: dict[str, float
     if family is _distributions.Weibull:
         return stats.weibull_min(c=p["shape"], scale=p["scale"], loc=p["loc"])
     if family is _distributions.Burr:
-        return stats.burr12(c=p["power"], d=p["shape"], scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.burr12(c=p["power"], d=p["shape"], scale=p["scale"], loc=p["loc"]),
+            lambda x: _burr_terms(x, p["power"], p["shape"], p["scale"], p["loc"]),
+        )
     if family is _distributions.LogLogistic:
-        return stats.fisk(c=p["shape"], scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.fisk(c=p["shape"], scale=p["scale"], loc=p["loc"]),
+            lambda x: _burr_terms(x, p["shape"], 1.0, p["scale"], p["loc"]),
+        )
     if family is _distributions.InverseGaussian:
         return stats.invgauss(mu=p["mu"] / p["lambda_"], scale=p["lambda_"])
     if family is _distributions.Paralogistic:
-        return stats.burr12(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.burr12(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"]),
+            lambda x: _burr_terms(x, p["shape"], p["shape"], p["scale"], p["loc"]),
+        )
     if family is _distributions.InverseBurr:
-        return stats.burr(c=p["power"], d=p["shape"], scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.burr(c=p["power"], d=p["shape"], scale=p["scale"], loc=p["loc"]),
+            lambda x: _burr_terms(x, p["power"], p["shape"], p["scale"], p["loc"], inverse=True),
+        )
     if family is _distributions.InverseGamma:
         return stats.invgamma(a=p["alpha"], scale=p["theta"], loc=p["loc"])
     if family is _distributions.InverseWeibull:
-        return stats.invweibull(c=p["shape"], scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.invweibull(c=p["shape"], scale=p["scale"], loc=p["loc"]),
+            lambda x: _inverse_weibull_terms(x, p["shape"], p["scale"], p["loc"]),
+        )
     if family is _distributions.Exponential:
         return stats.expon(scale=p["scale"], loc=p["loc"])
     if family is _distributions.InverseExponential:
-        return stats.invweibull(c=1.0, scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.invweibull(c=1.0, scale=p["scale"], loc=p["loc"]),
+            lambda x: _inverse_weibull_terms(x, 1.0, p["scale"], p["loc"]),
+        )
     if family is _distributions.InverseParalogistic:
-        return stats.burr(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.burr(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"]),
+            lambda x: _burr_terms(x, p["shape"], p["shape"], p["scale"], p["loc"], inverse=True),
+        )
     if family is _distributions.GeneralizedInverseGaussian:
         return stats.geninvgauss(
             p=p["p"], b=np.sqrt(p["chi"] * p["psi"]), scale=np.sqrt(p["chi"] / p["psi"]), loc=p["loc"]
@@ -630,6 +660,7 @@ def _fit_other(
         else np.nan
     )
     return FitResult(
+        n_parameters=n_params,
         distribution=model,
         parameters=pars,
         log_likelihood=ll,
@@ -753,6 +784,7 @@ def _fit_gpd_free_location(
     aic = 6.0 - 2.0 * ll
     aicc = aic + 24.0 / (n - 4) if np.all(w == np.floor(w)) and n > 4 else np.nan
     return FitResult(
+        n_parameters=3,
         distribution=distribution(**params),
         parameters=params,
         log_likelihood=ll,
@@ -785,6 +817,7 @@ def _fit_exponential(
     freq = bool(np.all(weights == np.floor(weights)))
     aicc = aic + 4 / (sample_size - 2) if freq and sample_size > 2 else np.nan
     return FitResult(
+        n_parameters=1,
         distribution=distribution(**params),
         parameters=params,
         log_likelihood=ll,
@@ -884,6 +917,7 @@ def _fit_gb2(
     frequency = bool(np.all(weights == np.floor(weights)))
     aicc = aic + 40 / (total_weight - 5) if frequency and total_weight > 5 else np.nan
     return FitResult(
+        n_parameters=4,
         distribution=distribution(**pars),
         parameters=pars,
         log_likelihood=ll,
