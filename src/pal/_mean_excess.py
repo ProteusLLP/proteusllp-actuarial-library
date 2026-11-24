@@ -17,7 +17,7 @@ if t.TYPE_CHECKING:
     from .distributions import DistributionBase
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=1)
 def _laguerre_rule(order: int) -> tuple[np.ndarray, np.ndarray]:
     """Cache the fixed quadrature rules used in conditional tail calculations."""
     return special.roots_laguerre(order)
@@ -58,6 +58,7 @@ def _tail_fraction_pair(
     if not x.size:
         return np.zeros_like(x), np.zeros_like(x), np.zeros_like(x)
     previous = None
+    converged = np.zeros(x.shape, dtype=bool)
     for depth in (8, 16, 32, 64, 128, 256, 512, 1024):
         cx = np.zeros_like(x)
         cy = np.zeros_like(y)
@@ -291,57 +292,74 @@ def _paralogistic_excess(ds: np.ndarray, shape: float, scale: float, loc: float)
     return _burr_excess(ds, shape, shape, scale, loc)
 
 
-def _beta_prime_tail_excess(
-    x: np.ndarray,
-    log_power: np.ndarray,
-    rate: np.ndarray,
-    a: float,
-    p: float,
+def _beta_fraction_coefficients(
+    j: int,
     q: float,
-) -> np.ndarray:
-    """Integrate in log-loss coordinates, cancelling the small tail density."""
-    nodes, weights = _laguerre_rule(64)
-    out = np.empty_like(x)
-    # Bound temporary memory for large threshold arrays.
-    for start in range(0, x.size, 4096):
-        stop = min(start + 4096, x.size)
-        lp = log_power[start:stop, None]
-        z = special.expit(-lp)
-
-        def integral(tilt: np.ndarray, excess: bool, lp: np.ndarray = lp, z: np.ndarray = z) -> np.ndarray:
-            u = nodes / tilt[:, None]
-            v = a * u
-            change = z * np.expm1(-v)
-            log_change = np.log1p(change)
-            # If 1+change is small, evaluate the two terms separately.
-            alternate = change < -0.5
-            log_change[alternate] = np.logaddexp(
-                np.broadcast_to(-np.logaddexp(0, -lp), v.shape)[alternate],
-                (-np.logaddexp(0, lp) - v)[alternate],
-            )
-            correction = -(p + q) * (log_change + z * v)
-            integrand = weights * np.exp(correction)
-            if excess:
-                integrand *= -np.expm1(-u)
-            return np.sum(integrand, axis=1) / tilt
-
-        r = rate[start:stop]
-        out[start:stop] = x[start:stop] * integral(r - 1, True) / integral(r, False)
-    return out
-
-
-def _beta_prime_tilt_mask(
-    log_power: np.ndarray,
-    a: float,
     p: float,
-    q: float,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Select smooth exponentially tilted tails for fixed-order quadrature."""
+    shift: float,
+    z: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return paired incomplete-beta fraction coefficients and divided difference."""
+    total = q + p
+    shifted_q = q - shift
+    if j == 0:
+        return -total * z / (q + 1), -total * z / (shifted_q + 1), total * z / (q + 1) / (shifted_q + 1)
+    m = (j + 1) // 2
+    if j % 2:
+        h, i = q + 2 * m - 1, q + 2 * m
+        numerator = m * (p - m) * z
+        shifted = m * (p + shift - m) * z
+        delta = -m * z
+    else:
+        h, i = q + 2 * m, q + 2 * m + 1
+        numerator = -(q + m) * (total + m) * z
+        shifted = -(shifted_q + m) * (total + m) * z
+        delta = -(total + m) * z
+    c = numerator / h / i
+    d = shifted / (h - shift) / (i - shift)
+    difference = delta / h / i - d * (1 / h + (h - shift) / h / i)
+    return c, d, difference
+
+
+def _beta_prime_tail_excess(x: np.ndarray, log_power: np.ndarray, a: float, p: float, q: float) -> np.ndarray:
+    """Cancel beta normalisers, endpoint powers and attachment analytically.
+
+    B_z(q,p) = z**q * (1-z)**p / (q*D(q,p,z)), where D is a
+    continued fraction. A moment shifts q down and p up by 1/a.
+    The paired recurrence avoids subtracting nearly equal fractions.
+    """
+    z = special.expit(-log_power)
+    shift = 1 / a
+    previous = None
+    converged = np.zeros(x.shape, dtype=bool)
+    for depth in (8, 16, 32, 64, 128, 256, 512, 1024):
+        original = np.ones_like(x)
+        shifted = np.ones_like(x)
+        difference = np.zeros_like(x)
+        for j in range(depth, -1, -1):
+            c, d, delta = _beta_fraction_coefficients(j, q, p, shift, z)
+            difference = (delta - (d / shifted) * difference) / original
+            original = 1 + c / original
+            shifted = 1 + d / shifted
+        current = (original, shifted, difference)
+        if previous is not None:
+            converged = np.ones(x.shape, dtype=bool)
+            for value, old in zip(current, previous, strict=True):
+                converged &= np.abs(value - old) <= 4e-15 * np.maximum(np.abs(value), 1e-300)
+            if np.all(converged):
+                break
+        previous = current
+    relative = shift * (difference + original / (q - shift)) / shifted
+    return np.where(converged & (relative > 0), x * relative, np.nan)
+
+
+def _beta_prime_fraction_mask(log_power: np.ndarray, a: float, p: float, q: float) -> np.ndarray:
+    """Select upper tails with a well-conditioned incomplete-beta fraction."""
     z = special.expit(-log_power)
     w = special.expit(log_power)
     rate = a * (q * w - p * z)
     curvature = a**2 * (p + q) * w * z
-    return (rate > 2) & (curvature < 0.1 * (rate - 1) ** 2), rate
+    return (rate > 2) & (curvature < 0.1 * (rate - 1) ** 2)
 
 
 def _beta_prime_excess(x: np.ndarray, a: float, b: float, p: float, q: float) -> np.ndarray:
@@ -351,12 +369,12 @@ def _beta_prime_excess(x: np.ndarray, a: float, b: float, p: float, q: float) ->
     positive = x > 0
     xp = x[positive]
     log_power = a * (np.log(xp) - np.log(b))
-    eligible, rate = _beta_prime_tilt_mask(log_power, a, p, q)
-    use_tilt = eligible & (max(p, q) >= 100 or a * q >= 100)
-    values = np.empty_like(xp)
-    if np.any(use_tilt):
-        values[use_tilt] = _beta_prime_tail_excess(xp[use_tilt], log_power[use_tilt], rate[use_tilt], a, p, q)
-    regular = ~use_tilt
+    eligible = _beta_prime_fraction_mask(log_power, a, p, q)
+    use_fraction = eligible & (max(p, q) >= 100 or a * q >= 100)
+    values = np.full_like(xp, np.nan)
+    if np.any(use_fraction):
+        values[use_fraction] = _beta_prime_tail_excess(xp[use_fraction], log_power[use_fraction], a, p, q)
+    regular = ~use_fraction | ~np.isfinite(values)
     x_regular = xp[regular]
     log_power = log_power[regular]
     log_z = -np.logaddexp(0, log_power)
@@ -390,7 +408,7 @@ def _beta_prime_excess(x: np.ndarray, a: float, b: float, p: float, q: float) ->
     repair = ~np.isfinite(values) & eligible & regular
     if np.any(repair):
         lp = a * (np.log(xp[repair]) - np.log(b))
-        values[repair] = _beta_prime_tail_excess(xp[repair], lp, rate[repair], a, p, q)
+        values[repair] = _beta_prime_tail_excess(xp[repair], lp, a, p, q)
     values[~np.isfinite(values)] = np.nan
     out[positive] = values
     out[~positive] = np.exp(log_mean) - x[~positive]
@@ -614,7 +632,7 @@ def _loggamma_tail_excess(alpha: float, beta: float, d: float) -> float:
     y = rate * z
     if y > max(1.0, alpha + 1):
         _, correction, difference = _tail_fraction_pair(np.array([z]), np.array([y]), alpha)
-        value = d * np.log(d) * (1 + difference[0]) / (y + 1 - alpha + correction[0])
+        value = d * (np.log(d) * (1 + difference[0]) / (y + 1 - alpha + correction[0]))
         if np.isfinite(value) and value > 0:
             return float(value)
     log_num = -alpha * np.log1p(-beta) + float(_gamma_logsf(alpha, z * rate))
