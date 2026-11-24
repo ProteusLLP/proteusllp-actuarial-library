@@ -157,11 +157,7 @@ def _mbbefd_lev(g: float, b: float, d: np.ndarray) -> np.ndarray:
         if log_gb == 0:
             value = np.exp(log_abs_increment - np.log(abs(log_b)))
         else:
-            log_abs_gb = (
-                float(_log_expm1_positive(np.array([log_gb]))[0])
-                if log_gb > 0
-                else np.log(-np.expm1(log_gb))
-            )
+            log_abs_gb = float(_log_expm1_positive(np.array([log_gb]))[0]) if log_gb > 0 else np.log(-np.expm1(log_gb))
             log_coefficient = log_abs_gb - log_abs_b
             log_q = log_coefficient + log_abs_increment
             if log_gb > 0:
@@ -175,9 +171,7 @@ def _mbbefd_lev(g: float, b: float, d: np.ndarray) -> np.ndarray:
                 small = log_q < -18
             value = np.exp(log_numerator - log_coefficient - np.log(abs(log_b)))
             sign = 1 if log_gb > 0 else -1
-            value[small] = np.exp(log_abs_increment[small] - np.log(abs(log_b))) * (
-                1 - sign * np.exp(log_q[small]) / 2
-            )
+            value[small] = np.exp(log_abs_increment[small] - np.log(abs(log_b))) * (1 - sign * np.exp(log_q[small]) / 2)
     return np.where(d <= 0, d, value)
 
 

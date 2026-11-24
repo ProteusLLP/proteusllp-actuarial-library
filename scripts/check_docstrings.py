@@ -103,8 +103,10 @@ def public_attributes(node: ast.ClassDef) -> set[str]:
             names.update(target.id for target in member.targets if isinstance(target, ast.Name))
         elif isinstance(member, ast.FunctionDef) and member.name == "__init__":
             for sub in ast.walk(member):
-                targets = sub.targets if isinstance(sub, ast.Assign) else (
-                    [sub.target] if isinstance(sub, ast.AnnAssign) else []
+                targets = (
+                    sub.targets
+                    if isinstance(sub, ast.Assign)
+                    else ([sub.target] if isinstance(sub, ast.AnnAssign) else [])
                 )
                 for target in targets:
                     if (

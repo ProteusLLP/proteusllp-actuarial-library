@@ -926,6 +926,7 @@ class Burr(DistributionBase):
             logarithmic: Whether to return the logarithm rather than the probability or density.
             x: Value at which to evaluate the probability or density.
         """
+
         def evaluate(x, power, shape, scale, loc):
             """Evaluate the distribution formula using the resolved parameter values.
 
@@ -1679,6 +1680,7 @@ class LogLogistic(DistributionBase):
             logarithmic: Whether to return the logarithm rather than the probability or density.
             x: Value at which to evaluate the probability or density.
         """
+
         def evaluate(x, shape, scale, loc):
             """Evaluate the distribution formula using the resolved parameter values.
 
@@ -2548,6 +2550,7 @@ class Paralogistic(DistributionBase):
             logarithmic: Whether to return the logarithm rather than the probability or density.
             x: Value at which to evaluate the probability or density.
         """
+
         def evaluate(x, shape, scale, loc):
             """Evaluate the distribution formula using the resolved parameter values.
 
@@ -2706,6 +2709,7 @@ class InverseBurr(DistributionBase):
             logarithmic: Whether to return the logarithm rather than the probability or density.
             x: Value at which to evaluate the probability or density.
         """
+
         def evaluate(x, power, shape, scale, loc):
             """Evaluate the distribution formula using the resolved parameter values.
 
@@ -2862,6 +2866,7 @@ class InverseParalogistic(DistributionBase):
             logarithmic: Whether to return the logarithm rather than the probability or density.
             x: Value at which to evaluate the probability or density.
         """
+
         def evaluate(x, shape, scale, loc):
             """Evaluate the distribution formula using the resolved parameter values.
 
@@ -3134,6 +3139,7 @@ class InverseWeibull(DistributionBase):
             logarithmic: Whether to return the logarithm rather than the probability or density.
             x: Value at which to evaluate the probability or density.
         """
+
         def evaluate(x, shape, scale, loc):
             """Evaluate the distribution formula using the resolved parameter values.
 
@@ -4340,6 +4346,7 @@ class InverseExponential(DistributionBase):
             logarithmic: Whether to return the logarithm rather than the probability or density.
             x: Value at which to evaluate the probability or density.
         """
+
         def evaluate(x, scale, loc):
             """Evaluate the distribution formula using the resolved parameter values.
 

@@ -838,12 +838,10 @@ class ProteusVariable(t.Generic[T]):
         return result
 
     @t.overload
-    def __getitem__(self, key: int | str) -> T:
-        ...
+    def __getitem__(self, key: int | str) -> T: ...
 
     @t.overload
-    def __getitem__(self, key: StochasticScalar | FreqSevSims) -> StochasticScalar | FreqSevSims:
-        ...
+    def __getitem__(self, key: StochasticScalar | FreqSevSims) -> StochasticScalar | FreqSevSims: ...
 
     def __getitem__(self, key: int | str | StochasticScalar | FreqSevSims) -> T | StochasticScalar | FreqSevSims:
         """Retrieve the selected entry or entries.

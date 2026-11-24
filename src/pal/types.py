@@ -119,6 +119,7 @@ class ArithmeticProtocol(t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __radd__(self, other: t.Any) -> Self:
         """Add this object to the left operand.
 
@@ -126,6 +127,7 @@ class ArithmeticProtocol(t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __sub__(self, other: t.Any) -> Self:
         """Subtract the other operand from this object.
 
@@ -133,6 +135,7 @@ class ArithmeticProtocol(t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __rsub__(self, other: t.Any) -> Self:
         """Subtract this object from the left operand.
 
@@ -140,6 +143,7 @@ class ArithmeticProtocol(t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __mul__(self, other: t.Any) -> Self:
         """Multiply this object by the other operand.
 
@@ -147,6 +151,7 @@ class ArithmeticProtocol(t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __rmul__(self, other: t.Any) -> Self:
         """Multiply the left operand by this object.
 
@@ -154,6 +159,7 @@ class ArithmeticProtocol(t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __truediv__(self, other: t.Any) -> Self:
         """Divide this object by the other operand.
 
@@ -161,6 +167,7 @@ class ArithmeticProtocol(t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __rtruediv__(self, other: t.Any) -> Self:
         """Divide the left operand by this object.
 
@@ -168,6 +175,7 @@ class ArithmeticProtocol(t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __pow__(self, other: t.Any) -> Self:
         """Raise this object to the other operand's power.
 
@@ -175,6 +183,7 @@ class ArithmeticProtocol(t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __rpow__(self, other: t.Any) -> Self:
         """Raise the left operand to this object's power.
 
@@ -182,6 +191,7 @@ class ArithmeticProtocol(t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __neg__(self) -> t.Any:
         """Return the additive inverse."""
         ...
@@ -202,6 +212,7 @@ class NumericProtocol(ArithmeticProtocol, t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __le__(self, other: t.Any) -> bool:
         """Compare whether this object is less than or equal to the other operand.
 
@@ -209,6 +220,7 @@ class NumericProtocol(ArithmeticProtocol, t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __gt__(self, other: t.Any) -> bool:
         """Compare whether this object is greater than the other operand.
 
@@ -216,6 +228,7 @@ class NumericProtocol(ArithmeticProtocol, t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __ge__(self, other: t.Any) -> bool:
         """Compare whether this object is greater than or equal to the other operand.
 
@@ -232,6 +245,7 @@ class NumericProtocol(ArithmeticProtocol, t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __ne__(self, other: t.Any) -> bool:
         """Compare the operands for inequality.
 
@@ -340,6 +354,7 @@ class VectorOperations(ArithmeticProtocol, t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __le__(self, other: t.Any) -> Self:
         """Compare whether this object is less than or equal to the other operand.
 
@@ -347,6 +362,7 @@ class VectorOperations(ArithmeticProtocol, t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __gt__(self, other: t.Any) -> Self:
         """Compare whether this object is greater than the other operand.
 
@@ -354,6 +370,7 @@ class VectorOperations(ArithmeticProtocol, t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __ge__(self, other: t.Any) -> Self:
         """Compare whether this object is greater than or equal to the other operand.
 
@@ -372,6 +389,7 @@ class VectorOperations(ArithmeticProtocol, t.Protocol):
             other: Other operand of the arithmetic or comparison operation.
         """
         ...
+
     def __ne__(self, other: t.Any) -> Self:  # type: ignore[override]
         """Compare the operands for inequality.
 
@@ -422,6 +440,7 @@ class SequenceLike(t.Protocol[T_value]):
     def __len__(self) -> int:
         """Return the number of entries."""
         ...
+
     def __getitem__(self, index: int) -> T_value:
         """Retrieve the selected entry or entries.
 
@@ -429,9 +448,11 @@ class SequenceLike(t.Protocol[T_value]):
             index: Index or slice selecting entries.
         """
         ...
+
     def __iter__(self) -> t.Iterator[T_value]:
         """Iterate over the entries in their stored order."""
         ...
+
     def __contains__(self, value: object) -> bool:
         """Test whether the object is a member of the collection.
 
@@ -439,9 +460,11 @@ class SequenceLike(t.Protocol[T_value]):
             value: Value to convert, compare or assign.
         """
         ...
+
     def __reversed__(self) -> t.Iterator[T_value]:
         """Iterate over the entries in reverse order."""
         ...
+
     def count(self, value: T_value) -> int:
         """Count occurrences of the supplied value.
 
@@ -449,6 +472,7 @@ class SequenceLike(t.Protocol[T_value]):
             value: Value to convert, compare or assign.
         """
         ...
+
     def index(self, value: T_value, start: int = 0, stop: int | None = None) -> int:
         """Find the first matching value within the specified index range.
 
