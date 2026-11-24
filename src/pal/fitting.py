@@ -108,6 +108,11 @@ class FitResult(t.Generic[_T]):
         for fitting. The default point-estimate distribution is unchanged.
         The resulting object can create a PAL distribution whose parameters
         vary together by simulation path.
+
+        Args:
+            observations: Observed values used in the likelihood or empirical estimate.
+            censored: Indicators that observations are right-censored at their recorded values.
+            weights: Nonnegative observation weights; zero-weight observations are excluded.
         """
         from .fitting_uncertainty import asymptotic_parameter_uncertainty
 
@@ -127,6 +132,13 @@ def _minimize_multistart(
     A nonstationary or unsuccessful L-BFGS-B solution is polished with
     Nelder-Mead; the better finite likelihood is retained. Analytical and
     profile estimators are unaffected by the optimizer selection.
+
+    Args:
+        objective: Function returning the negative log-likelihood to minimise.
+        starts: Initial trial parameter vectors in unconstrained optimisation coordinates.
+        optimizer: Numerical optimiser used for non-analytical fitting.
+        options: Method-specific fitting or optimiser options.
+        maxiter: Maximum number of iterations per optimisation attempt.
     """
     method = OptimizerMethod(optimizer)
     simplex_options = {"maxiter": maxiter, "xatol": 1e-7, "fatol": 1e-7}
@@ -138,6 +150,11 @@ def _minimize_multistart(
     settings = {**defaults, **(options or {})}
 
     def safe_objective(raw: np.ndarray) -> float:
+        """Evaluate the objective with a finite penalty for invalid trial parameters.
+
+        Args:
+            raw: Trial parameters in unconstrained optimisation coordinates.
+        """
         try:
             value = objective(raw)
         except (ArithmeticError, ValueError):
@@ -176,6 +193,11 @@ def _boundary_warnings(parameters: dict[str, float], observations: np.ndarray, t
 
     These are diagnostics, not proof that a finite maximum fails to exist.
     An optimizer can report convergence even on a nearly flat limiting ridge.
+
+    Args:
+        parameters: Distribution parameters in their natural coordinates.
+        observations: Observed values used in the likelihood or empirical estimate.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
     """
     scale = max(float(np.median(np.abs(observations))), abs(threshold), np.finfo(float).tiny)
     messages = []
@@ -200,7 +222,16 @@ def _with_uncertainty(
     weights: t.Sequence[float] | np.ndarray | None = None,
     threshold_specified: bool = False,
 ) -> FitResult[_T]:
-    """Attach optional uncertainty without changing the MLE fitting result."""
+    """Attach optional uncertainty without changing the MLE fitting result.
+
+    Args:
+        fitted: Previously fitted distribution and its likelihood diagnostics.
+        observations: Observed values used in the likelihood or empirical estimate.
+        uncertainty_method: Method for estimating joint parameter uncertainty; none retains point estimates.
+        censored: Indicators that observations are right-censored at their recorded values.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        threshold_specified: Whether a reporting threshold was supplied to the fit.
+    """
     method = UncertaintyMethod(uncertainty_method)
     if method is UncertaintyMethod.NONE:
         return fitted
@@ -222,6 +253,10 @@ def _gamma_log_survival_underflow(shape: float, z: float) -> float:
     The upper incomplete-gamma continued fraction converges in this regime.
     The computation stays on the CPU because fitting is deterministic and
     does not depend on PAL's simulation backend.
+
+    Args:
+        shape: Gamma shape parameter.
+        z: Unit-scale threshold beyond the ordinary survival underflow point.
     """
     if not np.isfinite(z) or z <= shape + 1.0:
         raise ArithmeticError("Gamma survival continuation requires z > shape + 1")
@@ -252,7 +287,12 @@ def _gamma_log_survival_underflow(shape: float, z: float) -> float:
 
 
 def _gamma_logsf(shape: float, z: float | np.ndarray) -> float | np.ndarray:
-    """Stable log survival of a unit-scale Gamma, including underflowed tails."""
+    """Stable log survival of a unit-scale Gamma, including underflowed tails.
+
+    Args:
+        shape: Gamma shape parameter.
+        z: Unit-scale gamma evaluation points.
+    """
     values = np.asarray(z, dtype=np.float64)
     with np.errstate(divide="ignore", invalid="ignore", under="ignore"):
         result = np.asarray(np.log(special.gammaincc(shape, values)))
@@ -312,7 +352,16 @@ def _log_likelihood(
     w: np.ndarray,
     threshold: float,
 ) -> float:
-    """Return a conditional right-censored, left-truncated log-likelihood."""
+    """Return a conditional right-censored, left-truncated log-likelihood.
+
+    Args:
+        family: PAL distribution class selecting the mathematical parameterisation.
+        parameters: Distribution parameters in their natural coordinates.
+        x: Loss values at which to evaluate the calculation.
+        c: Right-censoring indicators aligned with the observations.
+        w: Observation weights aligned with the observations.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+    """
     from . import distributions as _distributions
 
     if family is _distributions.Pareto:
@@ -454,6 +503,11 @@ def fit_distribution(
             starts = [[mu0, np.log(max(sigma0, 0.01))]]
 
             def transform(p: np.ndarray) -> dict[str, float]:
+                """Convert trial optimisation coordinates to distribution parameters.
+
+                Args:
+                    p: Distribution parameter values in their natural coordinates.
+                """
                 return {"mu": float(p[0]), "sigma": float(np.exp(p[1]))}
         elif family is _distributions.Gamma:
             alpha0 = max(min(mean * mean / max(variance, np.finfo(float).tiny), 1e4), 0.05)
@@ -464,6 +518,11 @@ def fit_distribution(
             ]
 
             def transform(p: np.ndarray) -> dict[str, float]:
+                """Convert trial optimisation coordinates to distribution parameters.
+
+                Args:
+                    p: Distribution parameter values in their natural coordinates.
+                """
                 return {"alpha": float(np.exp(p[0])), "theta": float(np.exp(p[1]))}
         else:
             exceedances = x - threshold
@@ -481,9 +540,19 @@ def fit_distribution(
             ]
 
             def transform(p: np.ndarray) -> dict[str, float]:
+                """Convert trial optimisation coordinates to distribution parameters.
+
+                Args:
+                    p: Distribution parameter values in their natural coordinates.
+                """
                 return {"shape": float(p[0]), "scale": float(np.exp(p[1])), "loc": threshold}
 
         def objective(p: np.ndarray) -> float:
+            """Evaluate the negative log-likelihood in trial coordinates.
+
+            Args:
+                p: Distribution parameter values in their natural coordinates.
+            """
             with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
                 ll = _log_likelihood(family, transform(p), x, c, w, threshold)
             return -ll if np.isfinite(ll) else 1e100
@@ -554,7 +623,12 @@ def _other_families() -> tuple[type[DistributionBase], ...]:
 
 
 def _frozen_distribution(family: type[DistributionBase], params: dict[str, float]) -> t.Any:
-    """Build an independent SciPy reference distribution for inference."""
+    """Build an independent SciPy reference distribution for inference.
+
+    Args:
+        family: PAL distribution class selecting the mathematical parameterisation.
+        params: Distribution parameter values in the family's natural coordinates.
+    """
     from . import distributions as _distributions
 
     p = params
@@ -627,7 +701,17 @@ def _fit_other(
     optimizer: OptimizerMethod | str,
     optimizer_options: t.Mapping[str, t.Any] | None,
 ) -> FitResult[_T]:
-    """Fit additional two- and three-parameter severity distributions."""
+    """Fit additional two- and three-parameter severity distributions.
+
+    Args:
+        distribution: PAL distribution class or instance used for the calculation.
+        x: Loss values at which to evaluate the calculation.
+        censored: Indicators that observations are right-censored at their recorded values.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+        optimizer: Numerical optimiser used for non-analytical fitting.
+        optimizer_options: Options passed to the selected SciPy optimiser.
+    """
     from . import distributions as _distributions
 
     family = distribution
@@ -694,6 +778,11 @@ def _fit_other(
         starts = [[np.log(1.0), np.log(scale)], [np.log(2.0), np.log(scale)], [np.log(0.75), np.log(scale)]]
 
     def make_params(raw: np.ndarray) -> dict[str, float]:
+        """Convert trial optimisation coordinates to distribution parameters.
+
+        Args:
+            raw: Trial parameters in unconstrained optimisation coordinates.
+        """
         if family is _distributions.GeneralizedInverseGaussian:
             return {"p": float(raw[0]), "chi": float(np.exp(raw[1])), "psi": float(np.exp(raw[2])), "loc": 0.0}
         if family is _distributions.GEV:
@@ -704,6 +793,11 @@ def _fit_other(
         return pars
 
     def loglik(pars: dict[str, float]) -> float:
+        """Evaluate the weighted conditional log-likelihood.
+
+        Args:
+            pars: Distribution parameter values in the family's natural coordinates.
+        """
         if family is _distributions.LogGamma:
             log_x = np.log(x)
             alpha, beta = pars["alpha"], pars["beta"]
@@ -731,6 +825,11 @@ def _fit_other(
         return value if np.isfinite(value) else -np.inf
 
     def objective(raw: np.ndarray) -> float:
+        """Evaluate the negative log-likelihood in trial coordinates.
+
+        Args:
+            raw: Trial parameters in unconstrained optimisation coordinates.
+        """
         with np.errstate(all="ignore"):
             val = loglik(make_params(raw))
         return -val if np.isfinite(val) else 1e100
@@ -779,6 +878,10 @@ def empirical_mean_excess(
     Evaluation takes O(n log n + m log n) time and O(n + m) storage for n
     observations and m thresholds. No exceedances (or nonfinite thresholds)
     produce NaN. Threshold order and shape are preserved.
+
+    Args:
+        observations: Observed values used in the likelihood or empirical estimate.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
     """
     x = np.asarray(observations, dtype=float)
     if x.ndim != 1 or not x.size or not np.all(np.isfinite(x)):
@@ -836,7 +939,17 @@ def _fit_gpd_free_location(
     optimizer: OptimizerMethod | str,
     optimizer_options: t.Mapping[str, t.Any] | None,
 ) -> FitResult[_T]:
-    """Estimate GPD shape, scale and location subject to support constraints."""
+    """Estimate GPD shape, scale and location subject to support constraints.
+
+    Args:
+        distribution: PAL distribution class or instance used for the calculation.
+        x: Loss values at which to evaluate the calculation.
+        c: Right-censoring indicators aligned with the observations.
+        w: Observation weights aligned with the observations.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+        optimizer: Numerical optimiser used for non-analytical fitting.
+        optimizer_options: Options passed to the selected SciPy optimiser.
+    """
     smallest = float(np.min(x))
     delta = max(smallest * 1e-8, 1e-9)
     max_loc = smallest - delta
@@ -845,6 +958,11 @@ def _fit_gpd_free_location(
     base_loc = min(threshold, max_loc - delta)
 
     def transform(raw: np.ndarray) -> dict[str, float]:
+        """Convert trial optimisation coordinates to distribution parameters.
+
+        Args:
+            raw: Trial parameters in unconstrained optimisation coordinates.
+        """
         # Keeping the location below the smallest observation avoids invalid
         # density evaluations. The truncation correction is retained.
         return {
@@ -854,6 +972,11 @@ def _fit_gpd_free_location(
         }
 
     def objective(raw: np.ndarray) -> float:
+        """Evaluate the negative log-likelihood in trial coordinates.
+
+        Args:
+            raw: Trial parameters in unconstrained optimisation coordinates.
+        """
         with np.errstate(over="ignore", divide="ignore", invalid="ignore", under="ignore"):
             ll = _log_likelihood(distribution, transform(raw), x, c, w, threshold)
         return -ll if np.isfinite(ll) else 1e100
@@ -897,7 +1020,15 @@ def _fit_exponential(
     weights: np.ndarray,
     threshold: float,
 ) -> FitResult[_T]:
-    """Use the exact censored MLE for an exponential above the threshold."""
+    """Use the exact censored MLE for an exponential above the threshold.
+
+    Args:
+        distribution: PAL distribution class or instance used for the calculation.
+        x: Loss values at which to evaluate the calculation.
+        censored: Indicators that observations are right-censored at their recorded values.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+    """
     events = float(np.sum(weights[~censored]))
     total = float(np.sum(weights * (x - threshold)))
     if events <= 0 or total <= 0:
@@ -925,7 +1056,13 @@ def _fit_exponential(
 
 
 def _gb2_log_regularized_beta(alpha: float, beta: float, log_z: np.ndarray) -> np.ndarray:
-    """Stable log I_z(alpha, beta), including probabilities below float underflow."""
+    """Stable log I_z(alpha, beta), including probabilities below float underflow.
+
+    Args:
+        alpha: First shape parameter of the gamma or beta family.
+        beta: Second shape or gamma scale parameter, according to the family.
+        log_z: Logarithm of the dimensionless transformed loss coordinate.
+    """
     log_z = np.asarray(log_z, dtype=float)
     z = np.exp(log_z)
     with np.errstate(divide="ignore", under="ignore", invalid="ignore"):
@@ -945,7 +1082,12 @@ def _gb2_log_regularized_beta(alpha: float, beta: float, log_z: np.ndarray) -> n
 
 
 def _gb2_terms(x: np.ndarray, pars: dict[str, float]) -> tuple[np.ndarray, np.ndarray]:
-    """Log-density and log-survival for the generalised beta prime family."""
+    """Log-density and log-survival for the generalised beta prime family.
+
+    Args:
+        x: Loss values at which to evaluate the calculation.
+        pars: Distribution parameter values in the family's natural coordinates.
+    """
     a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
     log_ratio = np.log(x) - np.log(b)
     log_power = a * log_ratio
@@ -965,7 +1107,17 @@ def _fit_gb2(
     optimizer: OptimizerMethod | str,
     optimizer_options: t.Mapping[str, t.Any] | None,
 ) -> FitResult[_T]:
-    """Fit the four-parameter GB2 distribution in log-parameter coordinates."""
+    """Fit the four-parameter GB2 distribution in log-parameter coordinates.
+
+    Args:
+        distribution: PAL distribution class or instance used for the calculation.
+        x: Loss values at which to evaluate the calculation.
+        censored: Indicators that observations are right-censored at their recorded values.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+        optimizer: Numerical optimiser used for non-analytical fitting.
+        optimizer_options: Options passed to the selected SciPy optimiser.
+    """
     base_scale = float(np.median(x))
     starts = (
         (1.0, base_scale, 1.0, 2.0),
@@ -975,9 +1127,19 @@ def _fit_gb2(
     )
 
     def transform(params: np.ndarray) -> dict[str, float]:
+        """Convert trial optimisation coordinates to distribution parameters.
+
+        Args:
+            params: Distribution parameter values in the family's natural coordinates.
+        """
         return dict(zip(("a", "b", "p", "q"), (float(np.exp(v)) for v in params), strict=False))
 
     def likelihood(params: dict[str, float]) -> float:
+        """Evaluate the likelihood at the supplied natural parameters.
+
+        Args:
+            params: Distribution parameter values in the family's natural coordinates.
+        """
         pdf, sf = _gb2_terms(x, params)
         if threshold > 0:
             _, log_sf_thresh = _gb2_terms(np.array([threshold]), params)
@@ -989,6 +1151,11 @@ def _fit_gb2(
         return ll if np.isfinite(ll) else -np.inf
 
     def objective(v: np.ndarray) -> float:
+        """Evaluate the negative log-likelihood in trial coordinates.
+
+        Args:
+            v: Trial parameter vector in unconstrained optimisation coordinates.
+        """
         with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
             ll = likelihood(transform(v))
         return -ll if np.isfinite(ll) else 1e100

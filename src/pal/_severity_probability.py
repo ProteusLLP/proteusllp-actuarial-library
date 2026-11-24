@@ -9,12 +9,22 @@ from scipy import special
 
 
 def _log_softplus(x: t.Any, module: t.Any) -> t.Any:
-    """Return the log of softplus without losing its exponentially small tail."""
+    """Return the log of softplus without losing its exponentially small tail.
+
+    Args:
+        x: Loss values at which to evaluate the calculation.
+        module: NumPy or CuPy namespace used to evaluate the array operations.
+    """
     return module.where(x < -36, x, module.log(module.logaddexp(0.0, x)))
 
 
 def _log_survival_from_log_hazard(log_hazard: t.Any, module: t.Any) -> t.Any:
-    """Evaluate log survival given the logarithm of minus log CDF."""
+    """Evaluate log survival given the logarithm of minus log CDF.
+
+    Args:
+        log_hazard: Logarithm of the negative log probability.
+        module: NumPy or CuPy namespace used to evaluate the array operations.
+    """
     return module.where(
         log_hazard < -36,
         log_hazard,
@@ -32,7 +42,17 @@ def _burr_terms(
     inverse: bool = False,
     module: t.Any = np,
 ) -> tuple[t.Any, t.Any, t.Any]:
-    """Return log density, log survival and log CDF for Burr XII or III."""
+    """Return log density, log survival and log CDF for Burr XII or III.
+
+    Args:
+        x: Loss values at which to evaluate the calculation.
+        power: Power parameter controlling the distribution's loss transformation.
+        shape: Shape parameter of the distribution, under PAL's parameterisation.
+        scale: Positive distribution scale, in loss units.
+        loc: Location shift applied to the unshifted distribution.
+        inverse: Whether to evaluate Burr III instead of Burr XII.
+        module: NumPy or CuPy namespace used to evaluate the array operations.
+    """
     x, power, shape, scale, loc = (module.asarray(v, dtype=float) for v in (x, power, shape, scale, loc))
     y = x - loc
     with np.errstate(all="ignore"):
@@ -76,7 +96,15 @@ def _inverse_weibull_terms(
     *,
     module: t.Any = np,
 ) -> tuple[t.Any, t.Any, t.Any]:
-    """Return log density, log survival and log CDF for inverse Weibull."""
+    """Return log density, log survival and log CDF for inverse Weibull.
+
+    Args:
+        x: Loss values at which to evaluate the calculation.
+        shape: Shape parameter of the distribution, under PAL's parameterisation.
+        scale: Positive distribution scale, in loss units.
+        loc: Location shift applied to the unshifted distribution.
+        module: NumPy or CuPy namespace used to evaluate the array operations.
+    """
     x, shape, scale, loc = (module.asarray(v, dtype=float) for v in (x, shape, scale, loc))
     y = x - loc
     with np.errstate(all="ignore"):
@@ -100,6 +128,12 @@ class _StableSeverityReference:
     """Delegate non-probability operations to SciPy, not its unstable tails."""
 
     def __init__(self, frozen: t.Any, terms: t.Callable[[t.Any], tuple[t.Any, t.Any, t.Any]]) -> None:
+        """Initialize the numerical evaluator.
+
+        Args:
+            frozen: Frozen reference distribution supplying probability or density evaluations.
+            terms: Callable returning log density, log survival and log CDF.
+        """
         self._frozen = frozen
         self._terms = terms
 
@@ -107,27 +141,51 @@ class _StableSeverityReference:
         return getattr(self._frozen, name)
 
     def logpdf(self, x: t.Any) -> t.Any:
-        """Return the stable log density."""
+        """Return the stable log density.
+
+        Args:
+            x: Loss values at which to evaluate the calculation.
+        """
         return self._terms(x)[0]
 
     def logsf(self, x: t.Any) -> t.Any:
-        """Return the stable log survival."""
+        """Return the stable log survival.
+
+        Args:
+            x: Loss values at which to evaluate the calculation.
+        """
         return self._terms(x)[1]
 
     def logcdf(self, x: t.Any) -> t.Any:
-        """Return the stable log CDF."""
+        """Return the stable log CDF.
+
+        Args:
+            x: Loss values at which to evaluate the calculation.
+        """
         return self._terms(x)[2]
 
     def pdf(self, x: t.Any) -> t.Any:
-        """Return the density."""
+        """Return the density.
+
+        Args:
+            x: Loss values at which to evaluate the calculation.
+        """
         return np.exp(self.logpdf(x))
 
     def sf(self, x: t.Any) -> t.Any:
-        """Return the survival probability."""
+        """Return the survival probability.
+
+        Args:
+            x: Loss values at which to evaluate the calculation.
+        """
         return np.exp(self.logsf(x))
 
     def cdf(self, x: t.Any) -> t.Any:
-        """Return the cumulative probability."""
+        """Return the cumulative probability.
+
+        Args:
+            x: Loss values at which to evaluate the calculation.
+        """
         return np.exp(self.logcdf(x))
 
 
@@ -136,6 +194,12 @@ def _log_beta_probability(alpha: float, beta: float, log_x: np.ndarray, log_comp
 
     The complementary coordinate is essential when the direct argument rounds
     to one. Small probabilities below float underflow retain their logarithms.
+
+    Args:
+        alpha: First beta shape parameter.
+        beta: Second beta shape parameter.
+        log_x: Logarithm of the beta integration coordinate.
+        log_complement: Logarithm of one minus the beta integration coordinate.
     """
     if beta == 1:
         log_hazard = np.log(alpha) + np.where(log_complement < -36, log_complement, np.log(-log_x))
@@ -158,7 +222,13 @@ def _log_beta_probability(alpha: float, beta: float, log_x: np.ndarray, log_comp
 
 
 def _inverse_gaussian_log_tails(x: np.ndarray, mu: float, lam: float) -> tuple[np.ndarray, ...]:
-    """Normal log probabilities shared by the inverse-Gaussian moment formulas."""
+    """Normal log probabilities shared by the inverse-Gaussian moment formulas.
+
+    Args:
+        x: Positive losses.
+        mu: Inverse-Gaussian mean.
+        lam: Inverse-Gaussian shape.
+    """
     root = np.sqrt(lam) / np.sqrt(x)
     scaled = np.sqrt(lam) * np.sqrt(x) / mu
     a, b = scaled - root, scaled + root
@@ -171,14 +241,23 @@ def _inverse_gaussian_log_tails(x: np.ndarray, mu: float, lam: float) -> tuple[n
 
 
 def _log_gamma1p(a: float) -> float:
-    """Resolve the normalizing constant even for shapes below machine epsilon."""
+    """Resolve the normalizing constant even for shapes below machine epsilon.
+
+    Args:
+        a: Gamma shape increment above one.
+    """
     if a < 1e-5:
         return float(a * (-np.euler_gamma + a * (np.pi**2 / 12 - a * special.zeta(3) / 3)))
     return float(special.gammaln(1 + a))
 
 
 def _log_gamma_lower_probability(a: float, log_z: np.ndarray) -> np.ndarray:
-    """Log regularized lower incomplete gamma from an unrounded log argument."""
+    """Log regularized lower incomplete gamma from an unrounded log argument.
+
+    Args:
+        a: Gamma shape parameter.
+        log_z: Logarithm of the unit-scale gamma evaluation point.
+    """
     z = np.exp(log_z)
     out = np.asarray(np.log(special.gammainc(a, z)))
     small = log_z < -36
