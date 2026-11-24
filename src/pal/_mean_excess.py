@@ -315,7 +315,19 @@ def _inverse_gaussian_excess(ds: np.ndarray, mu: float, lambda_: float) -> np.nd
     log_sf = log_a + np.log(-np.expm1(log_b - log_a))
     log_moment = np.log(mu) + np.logaddexp(log_a, log_b)
     lr = log_moment - log_sf - np.log(x)
-    out[ds > 0] = np.where((lr > 1e-6) & (log_a - log_b > 1e-6), x * np.expm1(lr), np.nan)
+    values = np.where((lr > 1e-5) & (log_a - log_b > 1e-5), _positive_log_excess(np.log(x), lr), np.nan)
+    # The normal-tail difference becomes ill-conditioned for large x.
+    # Evaluate the conditional density after removing its exponential tilt.
+    width = 2 * mu**2 / lam
+    far = x > max(2 * mu, 10 * width)
+    if np.any(far):
+        nodes, weights = special.roots_laguerre(32)
+        u = width * nodes
+        ratio = u / x[far, None]
+        correction = -1.5 * np.log1p(ratio) + lam / (2 * x[far, None]) * ratio / (1 + ratio)
+        density = weights * np.exp(correction)
+        values[far] = np.sum(density * u, axis=1) / np.sum(density, axis=1)
+    out[ds > 0] = values
     out[ds <= 0] = mu - ds[ds <= 0]
     return out
 
