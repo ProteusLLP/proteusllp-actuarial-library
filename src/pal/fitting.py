@@ -350,6 +350,18 @@ def _prepare(
     allow_any_real: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Validate sample alignment, truncation and frequency weights."""
+    """Validate and align loss observations, censoring flags and weights.
+
+    Args:
+        observations: Observed losses before weight filtering.
+        threshold: Left-truncation threshold.
+        censored: Indicators of right-censoring.
+        weights: Nonnegative observation weights.
+        allow_any_real: Allow signed observations for families with real-valued support.
+
+    Returns:
+        Validated observations, censoring flags and weights after zero-weight filtering.
+    """
     x = np.asarray(observations, dtype=np.float64)
     if x.ndim != 1 or x.size == 0:
         raise ValueError("observations must be a nonempty one-dimensional array")
@@ -388,13 +400,6 @@ def _log_likelihood(
     w: np.ndarray,
     threshold: float,
 ) -> float:
-
-    Args:
-        observations: Observed losses before weight filtering.
-        threshold: Left-truncation threshold.
-        censored: Indicators of right-censoring.
-        weights: Nonnegative observation weights.
-        allow_any_real: Allow signed observations for families with real-valued support.
     """Return a conditional right-censored, left-truncated log-likelihood.
 
     Args:
