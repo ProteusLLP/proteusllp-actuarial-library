@@ -148,6 +148,16 @@ class WeightedDistribution(DistributionBase):
             weights=ensemble.weights.copy(),
         )
 
+    def lev(self, limit: float | np.ndarray) -> float | np.ndarray:
+        """Return the probability-weighted limited expected value of the mixture."""
+        if self._sources():
+            raise ValueError("lev requires fixed component parameters and model weights")
+        result = np.zeros(np.asarray(limit).shape, dtype=float)
+        for weight, component in zip(self.weights, self._components(), strict=True):
+            if weight > 0:
+                result += weight * np.asarray(component.lev(limit))
+        return float(result) if result.ndim == 0 else result
+
     @property
     def model_indices(self) -> StochasticScalar | None:
         """Selected distribution index for each simulation, when sampled."""

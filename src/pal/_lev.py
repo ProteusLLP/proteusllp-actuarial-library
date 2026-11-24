@@ -269,7 +269,7 @@ def _gev_lev(p: dict[str, float], d: np.ndarray) -> np.ndarray:
     xi, loc, scale = p["shape"], p["loc"], p["scale"]
     z = (d - loc) / scale
     if xi == 0:
-        return d - scale * special.exp1(np.exp(-z))
+        return np.where(z > 35, loc + scale * np.euler_gamma, d - scale * special.exp1(np.exp(-z)))
     rv = stats.genextreme(-xi, loc=loc, scale=scale)
     out = np.empty_like(d)
     lower, upper = rv.support()
@@ -314,7 +314,9 @@ def limited_expected_value(distribution: DistributionBase, limit: float | np.nda
                 bad = (~np.isfinite(out)) | (out > d + 1e-12 * np.maximum(1, np.abs(d))) | ((d > loc) & (out <= loc))
                 if np.any(bad):
                     rv = (
-                        None if family in (dist.LogGamma, dist.GeneralizedBetaPrime) else _frozen_distribution(family, p)
+                        None
+                        if family in (dist.LogGamma, dist.GeneralizedBetaPrime)
+                        else _frozen_distribution(family, p)
                     )
                     for i in np.flatnonzero(bad):
                         out[i] = _positive_fallback(family, p, rv, float(d[i]))

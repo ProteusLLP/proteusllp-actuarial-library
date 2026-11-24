@@ -134,7 +134,8 @@ class DistributionBase:
         """Return the limited expected value of the numeric loss.
 
         This is the expected value of the minimum of the loss and the
-        supplied limit, without a lower clamp at zero. Scalar parameters
+        supplied limit, without a lower clamp at zero. Non-finite limits
+        return NaN. Scalar parameters
         are required. Array limits retain their shape and order. Evaluation
         is deterministic on the CPU, including when simulation uses a GPU.
         """
