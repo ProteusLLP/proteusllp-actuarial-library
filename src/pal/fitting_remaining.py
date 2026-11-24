@@ -608,7 +608,8 @@ def _mbbefd_excess(g: float, b: float, d: np.ndarray) -> np.ndarray:
     delta = np.expm1(gap * log_b)
     log_gb = np.log(g) + log_b
     # q is the relative change of the LEV logarithm's argument.
-    q = (1 - g * b) / (1 - b) * (delta / inv_sf)
+    coefficient = (g - 1 / b) / (1 - 1 / b) if b > 1 else (1 - g * b) / (1 - b)
+    q = coefficient * (delta / inv_sf)
     factor = np.ones_like(q)
     nonzero = q != 0
     safe = nonzero & (q > -0.5)
@@ -616,7 +617,10 @@ def _mbbefd_excess(g: float, b: float, d: np.ndarray) -> np.ndarray:
     # When q is close to -1, use the directly evaluated log ratio.
     near = q <= -0.5
     factor[near] = (log_gb - x[near] * log_b - np.log(inv_sf[near])) / q[near]
-    out[valid] = delta / log_b * factor - np.minimum(d[valid], 0)
+    value = delta / log_b * factor
+    huge = np.isposinf(q)
+    value[huge] = (log_gb - x[huge] * log_b - np.log(inv_sf[huge])) / log_b * (inv_sf[huge] / coefficient)
+    out[valid] = value - np.minimum(d[valid], 0)
     return out
 
 
@@ -639,6 +643,60 @@ def _student_t_excess(nu: float, mu: float, sigma: float, d: np.ndarray) -> np.n
     zc = z[central]
     residual = np.exp(stats.t.logpdf(zc, nu) - stats.t.logsf(zc, nu))
     out[central] = sigma * ((nu + zc * zc) / (nu - 1) * residual - zc)
+    return out
+
+
+def _ncx2_tail_excess(df: float, nonc: float, d: float) -> float:
+    """Integrate a conditional noncentral chi-square density on tail-width units."""
+    rv = stats.ncx2(df, nonc)
+    order = df / 2 - 1
+    root = np.sqrt(nonc) * np.sqrt(d)
+    bessel = special.ive(order, root)
+    log_pdf = rv.logpdf(d)
+    width = 2 / max(0.1, 1 - np.sqrt(nonc / d) - max(df / 2 - 1, 0) * 2 / d)
+
+    def density(t: float) -> float:
+        u = width * t
+        log_ratio = np.log1p(u / d)
+        root_delta = root * np.expm1(0.5 * log_ratio)
+        shifted = special.ive(order, root + root_delta)
+        if bessel > 0 and shifted > 0:
+            log_value = -u / 2 + (df / 4 - 0.5) * log_ratio + root_delta + np.log(shifted / bessel)
+        elif root > max(1e8, 100 * order**2):
+            # Large-argument scaled Bessel ratio is (1+u/d)**(-1/4).
+            log_value = -u / 2 + (df / 4 - 0.75) * log_ratio + root_delta
+        else:
+            log_value = rv.logpdf(d + u) - log_pdf
+        return float(np.exp(log_value))
+
+    denominator, den_error = integrate.quad(density, 0, np.inf, epsabs=0, epsrel=1e-9)
+    numerator, num_error = integrate.quad(lambda t: t * density(t), 0, np.inf, epsabs=0, epsrel=1e-9)
+    if (
+        not np.isfinite(denominator + numerator)
+        or denominator <= 0
+        or numerator <= 0
+        or den_error > 1e-7 * denominator
+        or num_error > 1e-7 * numerator
+    ):
+        raise ArithmeticError("Noncentral chi-square conditional moment integration did not converge")
+    return float(width * numerator / denominator)
+
+
+def _ncx2_excess(df: float, nonc: float, d: np.ndarray) -> np.ndarray:
+    """Evaluate shifted noncentral chi-square moments, recovering deep tails."""
+    if nonc == 0:
+        from ._mean_excess import _gamma_excess
+
+        return _gamma_excess(d, df / 2, 2.0)
+    rv = stats.ncx2(df, nonc)
+    # Poisson mixture: x f_df,nc = df f_df+2,nc + nc f_df+4,nc.
+    sf = rv.sf(d)
+    moment = df * stats.ncx2.sf(d, df + 2, nonc) + nonc * stats.ncx2.sf(d, df + 4, nonc)
+    out = moment / sf - d
+    out[d <= 0] = df + nonc - d[d <= 0]
+    bad = (d > 0) & ((sf < 1e-280) | (out <= 1e-5 * np.maximum(d, 1)) | ~np.isfinite(out))
+    for i in np.flatnonzero(bad):
+        out[i] = _ncx2_tail_excess(df, nonc, float(d[i]))
     return out
 
 
@@ -719,17 +777,7 @@ def mean_excess_remaining(
         elif family is _distributions.StudentsT:
             out = _student_t_excess(pars["nu"], pars["mu"], pars["sigma"], d)
         elif family is _distributions.NonCentralChiSquared:
-            df, nonc = pars["df"], pars["nonc"]
-            rv = stats.ncx2(df, nonc)
-            # Poisson mixture: x f_df,nc = df f_df+2,nc + nc f_df+4,nc.
-            sf = rv.sf(d)
-            moment = df * stats.ncx2.sf(d, df + 2, nonc) + nonc * stats.ncx2.sf(d, df + 4, nonc)
-            out = moment / sf - d
-            out[d < 0] = df + nonc - d[d < 0]
-            bad = (d >= 0) & (sf > 0) & ((out <= 1e-7 * np.maximum(d, 1)) | ~np.isfinite(out))
-            for i in np.flatnonzero(bad):
-                area, _ = integrate.quad(rv.sf, d[i], np.inf, epsrel=1e-8)
-                out[i] = area / sf[i]
+            out = _ncx2_excess(pars["df"], pars["nonc"], d)
         else:
             # Counts: truncated first moment divided by strict survival.
             k = np.floor(d)
