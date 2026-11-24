@@ -92,3 +92,17 @@ ordinary and stressed parameterisations. At up to 1,000 thresholds it compares
 batch evaluation with repeated scalar calls (or repeated filtering for empirical
 losses), checking numerical agreement. This is a same-version comparison, not a
 comparison with a previous PAL release. Results are descriptive, not timing gates.
+
+To reproduce the independent 50-digit parameter sweep (961 cases):
+
+<!--pytest-codeblocks:skip-->
+
+```bash
+pip install mpmath
+python -m benchmarks.check_mean_excess_accuracy
+```
+
+The sweep covers GB2, Beta, Gamma, inverse Gaussian, GEV and LogNormal,
+including difficult shapes and thresholds; it does not require mpmath at PAL
+runtime. The performance workflow also runs the sweep. The GIG timing reports
+batched values only because repeated adaptive scalar integration is costly.
