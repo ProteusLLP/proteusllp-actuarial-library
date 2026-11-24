@@ -609,6 +609,8 @@ def _gev_excess(ds: np.ndarray, shape: float, loc: float, scale: float) -> np.nd
 def _gig_excess(ds: np.ndarray, p: float, chi: float, psi: float, loc: float) -> np.ndarray:
     """Evaluate the deep GIG tail using a scaled conditional density integral."""
     x = ds - loc
+    if p == -0.5:
+        return _inverse_gaussian_excess(x, np.sqrt(chi / psi), chi)
     out = np.full(ds.shape, np.nan)
     width = 2 / psi
     far = x > max(2 * np.sqrt(chi / psi), 10 * width * max(1, abs(p - 1)))
@@ -622,19 +624,17 @@ def _gig_excess(ds: np.ndarray, p: float, chi: float, psi: float, loc: float) ->
     return out
 
 
+def _loggamma_fraction_excess(alpha: float, beta: float, d: np.ndarray, z: np.ndarray) -> np.ndarray:
+    """Evaluate the divided difference of the upper-gamma fraction in a batch."""
+    y = (1 - beta) * z
+    _, correction, difference = _tail_fraction_pair(z, y, alpha)
+    return d * (np.log(d) * (1 + difference) / (y + 1 - alpha + correction))
+
+
 def _loggamma_tail_excess(alpha: float, beta: float, d: float) -> float:
-    """Evaluate a gamma excess moment without subtracting the attachment."""
+    """Evaluate the remaining log-gamma moment ratios in log space."""
     z = np.log(d) / beta
-    # The conditional exponential moment is D(z)/D((1-beta)*z),
-    # where D is the denominator of the upper-gamma continued fraction.
-    # Its divided difference avoids rounding away beta*z for tiny beta.
     rate = 1 - beta
-    y = rate * z
-    if y > max(1.0, alpha + 1):
-        _, correction, difference = _tail_fraction_pair(np.array([z]), np.array([y]), alpha)
-        value = d * (np.log(d) * (1 + difference[0]) / (y + 1 - alpha + correction[0]))
-        if np.isfinite(value) and value > 0:
-            return float(value)
     log_num = -alpha * np.log1p(-beta) + float(_gamma_logsf(alpha, z * rate))
     log_den = float(_gamma_logsf(alpha, z))
     log_ratio = log_num - log_den - np.log(d)
@@ -655,6 +655,12 @@ def _loggamma_excess(ds: np.ndarray, alpha: float, beta: float) -> np.ndarray:
     out = np.where(log_ratio > 1e-5, _positive_log_excess(log_x, log_ratio), np.nan)
     out += np.maximum(1 - ds, 0)
     out = np.where(ds <= 1, np.expm1(-alpha * np.log1p(-beta)) + (1 - ds), out)
+    # The conditional exponential moment is D(z)/D((1-beta)*z),
+    # where D is the upper-gamma fraction denominator. Its divided
+    # difference avoids rounding away beta*z for small beta.
+    tail = np.isnan(out) & ((1 - beta) * z > max(1.0, alpha + 1))
+    if np.any(tail):
+        out[tail] = _loggamma_fraction_excess(alpha, beta, ds[tail], z[tail])
     return _repair_tail(ds, out, lambda d: _loggamma_tail_excess(alpha, beta, d))
 
 
