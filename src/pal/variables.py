@@ -689,9 +689,19 @@ class ProteusVariable(t.Generic[T]):
 
     # Equality operations
     def __eq__(self, other: object) -> Self:  # type: ignore[override]
+        """Compare the operands for equality at corresponding entries.
+
+        Args:
+            other: Scalar or variable operand to compare with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: a == b))
 
     def __ne__(self, other: object) -> Self:  # type: ignore[override]
+        """Compare the operands for inequality at corresponding entries.
+
+        Args:
+            other: Scalar or variable operand to compare with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: a != b))
 
     def _stochastic_getitem(self, selector: StochasticScalar | FreqSevSims) -> StochasticScalar | FreqSevSims:
@@ -701,13 +711,7 @@ class ProteusVariable(t.Generic[T]):
         entry positions, as for ordinary indexing.
 
         Args:
-            other: Scalar or variable operand to combine with this variable.
-        """
-        Args:
-            other: Scalar or variable operand to combine with this variable.
-        """
-        Args:
-            selector: Selection of dimension keys or simulation entries.
+            selector: Stochastic selector identifying the dimension entry for each simulation or event.
         """
         if not self.values:
             raise ValueError("Cannot select from an empty ProteusVariable")
