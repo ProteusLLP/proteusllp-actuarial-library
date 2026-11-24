@@ -39,23 +39,61 @@ def _exponential_excess(ds: np.ndarray, scale: float, loc: float) -> np.ndarray:
     return np.maximum(loc - ds, 0) + scale
 
 
-def _gamma_far_excess(alpha: float, z: np.ndarray) -> np.ndarray:
-    """Integrate the conditional gamma density after removing its exponential tilt.
+def _tail_fraction_pair(
+    x: np.ndarray,
+    y: np.ndarray,
+    alpha: float | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Evaluate a tail continued fraction and its divided difference.
 
-    Gauss-Laguerre quadrature is used only for z > 2*alpha and z > 500,
-    where the residual integrand is smooth and close to one.
+    For the normal Mills ratio, 1/R(x) = x + C(x), with numerators n
+    and denominators x. For the upper incomplete gamma,
+    x**alpha * exp(-x) / Gamma(alpha,x) = x+1-alpha+C(x),
+    with numerators n*(alpha-n) and denominators x+2*n+1-alpha.
+
+    Backward recurrence propagates (C(x)-C(y))/(x-y) analytically,
+    including when x and y round to the same value. Doubling the depth
+    provides a convergence check; unresolved entries return NaN.
     """
-    nodes, weights = _laguerre_rule(32)
-    rate = 1 - (alpha - 1) / z
-    u = nodes / rate[:, None]
-    ratio = u / z[:, None]
-    density = weights * np.exp((alpha - 1) * (np.log1p(ratio) - ratio))
-    return np.sum(density * u, axis=1) / np.sum(density, axis=1)
+    if not x.size:
+        return np.zeros_like(x), np.zeros_like(x), np.zeros_like(x)
+    previous = None
+    for depth in (8, 16, 32, 64, 128, 256, 512, 1024):
+        cx = np.zeros_like(x)
+        cy = np.zeros_like(y)
+        difference = np.zeros_like(x)
+        for n in range(depth, 0, -1):
+            numerator = n if alpha is None else n * (alpha - n)
+            offset = 0 if alpha is None else 2 * n + 1 - alpha
+            dx = x + offset + cx
+            dy = y + offset + cy
+            cx = numerator / dx
+            cy = numerator / dy
+            difference = -(cx / dy) * (1 + difference)
+        current = (cx, cy, difference)
+        if previous is not None:
+            converged = np.ones(x.shape, dtype=bool)
+            for value, old in zip(current, previous, strict=True):
+                converged &= np.abs(value - old) <= 4e-15 * np.maximum(np.abs(value), 1e-300)
+            if np.all(converged):
+                return current
+        previous = current
+    return (np.where(converged, cx, np.nan), np.where(converged, cy, np.nan), np.where(converged, difference, np.nan))
+
+
+def _gamma_far_excess(alpha: float, z: np.ndarray) -> np.ndarray:
+    """Cancel the attachment analytically using the upper-gamma fraction."""
+    correction, _, _ = _tail_fraction_pair(z, z, alpha)
+    return 1 + correction
 
 
 def _gamma_tail_excess(alpha: float, theta: float, d: float) -> float:
     """Integrate conditional gamma survival when the moment ratio is ill-conditioned."""
     z = d / theta
+    if z > alpha + 1:
+        candidate = float(_gamma_far_excess(alpha, np.array([z]))[0])
+        if np.isfinite(candidate) and candidate > 0:
+            return theta * candidate
     log_survival = float(_gamma_logsf(alpha, z))
     log_next_survival = float(_gamma_logsf(alpha + 1.0, z))
     excess = alpha * np.exp(log_next_survival - log_survival) - z
@@ -116,30 +154,44 @@ def _lognormal_coordinate(ds: np.ndarray, mu: float, sigma: float) -> np.ndarray
     return z
 
 
-@lru_cache(maxsize=1)
-def _legendre_rule() -> tuple[np.ndarray, np.ndarray]:
-    """Cache nodes for the narrow lognormal conditional integrals."""
-    return special.roots_legendre(64)
+def _lognormal_fraction_excess(z: np.ndarray, sigma: float) -> np.ndarray:
+    """Evaluate the Mills-ratio difference without subtracting close arguments."""
+    y = z - sigma
+    _, correction, difference = _tail_fraction_pair(z, y)
+    return sigma * (1 + difference) / (y + correction)
+
+
+def _lognormal_series_excess(z: np.ndarray, sigma: float) -> np.ndarray:
+    """Expand exp(sigma*u)-1 in conditional normal moments.
+
+    Used only for small sigma and moderate z, where the moment recurrence
+    is stable and the series converges in a few terms.
+    """
+    mills = np.sqrt(np.pi / 2) * special.erfcx(z / np.sqrt(2))
+    previous = np.ones_like(z)
+    moment = 1 / mills - z
+    coefficient = sigma
+    total = coefficient * moment
+    converged = np.zeros(z.shape, dtype=bool)
+    for n in range(2, 33):
+        following = (n - 1) * previous - z * moment
+        coefficient *= sigma / n
+        term = coefficient * following
+        total += term
+        converged = np.abs(term) <= 2e-15 * total
+        if np.all(converged):
+            break
+        previous, moment = moment, following
+    return np.where(converged, total, np.nan)
 
 
 def _lognormal_narrow_excess(ds: np.ndarray, z: np.ndarray, sigma: float) -> np.ndarray:
-    """Integrate conditional excesses without subtracting almost equal moments."""
-    nodes, weights = _legendre_rule()
-    out = np.empty_like(ds)
-    for start in range(0, ds.size, 4096):
-        stop = min(start + 4096, ds.size)
-        zz = z[start:stop]
-        width = 1 / np.maximum(1, zz)
-        zw = zz * width
-        # Truncate where the Gaussian log-density has fallen by 40 or more.
-        end = np.where(zz >= 0, 80 / (np.sqrt(zw**2 + 80 * width**2) + zw), 12 - zz)
-        u = (nodes + 1) * (width * end / 2)[:, None]
-        tilt = sigma * u
-        log_density = -zz[:, None] * u - 0.5 * u**2 - np.maximum(-zz, 0)[:, None] ** 2 / 2
-        denominator = np.sum(weights * np.exp(log_density), axis=1)
-        numerator = np.sum(weights * np.exp(log_density + tilt) * (-np.expm1(-tilt)), axis=1)
-        out[start:stop] = ds[start:stop] * (numerator / denominator)
-    return out
+    """Use a moment series near the mean and a continued fraction in the tail."""
+    result = np.empty_like(z)
+    tail = z - sigma >= 4
+    result[tail] = _lognormal_fraction_excess(z[tail], sigma)
+    result[~tail] = _lognormal_series_excess(z[~tail], sigma)
+    return ds * result
 
 
 def _lognormal_tail_excess(sigma: float, d: float, z: float) -> float:
@@ -178,6 +230,9 @@ def _lognormal_excess(ds: np.ndarray, mu: float, sigma: float) -> np.ndarray:
         narrow = (ds > 0) & (z >= -12) & np.isfinite(z)
         out[narrow] = _lognormal_narrow_excess(ds[narrow], z[narrow], sigma)
     out = np.where(ds <= 0, np.exp(mu + 0.5 * sigma**2) - ds, out)
+    unresolved = (np.isnan(out) | (out <= 0)) & (z - sigma >= 4)
+    if np.any(unresolved):
+        out[unresolved] = ds[unresolved] * _lognormal_fraction_excess(z[unresolved], sigma)
     for i in np.flatnonzero(np.isnan(out) | (out <= 0)):
         out[i] = _lognormal_tail_excess(sigma, float(ds[i]), float(z[i]))
     return out
@@ -429,6 +484,30 @@ def _inverse_weibull_excess(ds: np.ndarray, shape: float, scale: float, loc: flo
     return _inverse_generalized_gamma_excess(ds - loc, 1.0, scale, shape)
 
 
+def _inverse_gaussian_fraction(
+    mu: float,
+    x: np.ndarray,
+    a: np.ndarray,
+    b: np.ndarray,
+    gap: np.ndarray,
+) -> np.ndarray:
+    """Cancel the attachment in the ratio of normal Mills functions."""
+    ca = np.empty_like(a)
+    cb = np.empty_like(b)
+    difference = np.empty_like(a)
+    tail = a >= 4
+    cb[tail], ca[tail], difference[tail] = _tail_fraction_pair(b[tail], a[tail])
+    central = ~tail
+    # Here a*b>20, so b is well into the positive tail and the gap
+    # is large enough for direct subtraction of the Mills corrections.
+    ac = a[central]
+    bc = b[central]
+    ca[central] = np.sqrt(2 / np.pi) / special.erfcx(ac / np.sqrt(2)) - ac
+    cb[central] = _tail_fraction_pair(bc, bc)[0]
+    difference[central] = (cb[central] - ca[central]) / gap[central]
+    return (mu * ((ca + cb) / gap) - x * difference) / (1 + difference)
+
+
 def _inverse_gaussian_excess(ds: np.ndarray, mu: float, lambda_: float) -> np.ndarray:
     """Evaluate inverse Gaussian residual life via normal tail moments."""
     lam = lambda_
@@ -445,17 +524,12 @@ def _inverse_gaussian_excess(ds: np.ndarray, mu: float, lambda_: float) -> np.nd
     log_moment = np.log(mu) + np.logaddexp(log_a, log_b)
     lr = log_moment - log_sf - np.log(x)
     values = np.where((lr > 1e-5) & (log_a - log_b > 1e-5), _positive_log_excess(np.log(x), lr), np.nan)
-    # The normal-tail difference becomes ill-conditioned for large x.
-    # Evaluate the conditional density after removing its exponential tilt.
+    # Express both normal tails as inverse Mills ratios. Cancelling
+    # the attachment before evaluation leaves only small positive terms.
     rate = lam / (2 * mu**2) * ((x - mu) / x) * (1 + mu / x)
     far = (x > mu) & (rate * x > 10)
     if np.any(far):
-        nodes, weights = _laguerre_rule(32)
-        u = nodes / rate[far, None]
-        ratio = u / x[far, None]
-        correction = -1.5 * np.log1p(ratio) - lam / (2 * x[far, None]) * ratio**2 / (1 + ratio)
-        density = weights * np.exp(correction)
-        values[far] = np.sum(density * u, axis=1) / np.sum(density, axis=1)
+        values[far] = _inverse_gaussian_fraction(mu, x[far], normal_a[far], normal_b[far], 2 * root[far])
     out[ds > 0] = values
     out[ds <= 0] = mu - ds[ds <= 0]
     return out
@@ -531,22 +605,18 @@ def _gig_excess(ds: np.ndarray, p: float, chi: float, psi: float, loc: float) ->
 
 
 def _loggamma_tail_excess(alpha: float, beta: float, d: float) -> float:
-    """Integrate a gamma excess moment without subtracting the attachment."""
+    """Evaluate a gamma excess moment without subtracting the attachment."""
     z = np.log(d) / beta
-    # Integrate in units of the tilted exponential tail. The numerator
-    # includes 1-exp(-beta*u), so it stays bounded even for beta near one.
+    # The conditional exponential moment is D(z)/D((1-beta)*z),
+    # where D is the denominator of the upper-gamma continued fraction.
+    # Its divided difference avoids rounding away beta*z for tiny beta.
     rate = 1 - beta
-    slope = (alpha - 1) / z
-    if slope < rate / 2:
-        width = 1 / (rate - slope)
-        nodes, weights = _laguerre_rule(32)
-        u = nodes * width
-        correction = np.exp((alpha - 1) * (np.log1p(u / z) - u / z))
-        numerator = width * np.sum(weights * correction * (-np.expm1(-beta * u)))
-        width_den = 1 / (1 - slope)
-        v = nodes * width_den
-        denominator = width_den * np.sum(weights * np.exp((alpha - 1) * (np.log1p(v / z) - v / z)))
-        return float(d * (numerator / denominator))
+    y = rate * z
+    if y > max(1.0, alpha + 1):
+        _, correction, difference = _tail_fraction_pair(np.array([z]), np.array([y]), alpha)
+        value = d * np.log(d) * (1 + difference[0]) / (y + 1 - alpha + correction[0])
+        if np.isfinite(value) and value > 0:
+            return float(value)
     log_num = -alpha * np.log1p(-beta) + float(_gamma_logsf(alpha, z * rate))
     log_den = float(_gamma_logsf(alpha, z))
     log_ratio = log_num - log_den - np.log(d)
