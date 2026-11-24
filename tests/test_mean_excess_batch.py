@@ -205,3 +205,18 @@ def test_inverse_gaussian_concentrated_and_diffuse(lam, threshold, expected):
 )
 def test_gev_near_gumbel_transition(shape, threshold, expected):
     assert GEV(shape=shape, scale=1).mean_excess(threshold) == pytest.approx(expected, rel=5e-9, abs=0)
+
+
+@pytest.mark.parametrize(
+    ("mu", "threshold", "expected"),
+    [
+        (-20, 2.061153621820215e-9, 6.192574469519574e-19),
+        (-20, 2.0611536226446694e-9, 1.0823921061848084e-19),
+        (20, 485165195.4097903, 0.03871058206540314),
+        (20, 485165195.652372, 0.00904855191864086),
+    ],
+)
+def test_lognormal_narrow_shifted_coordinates(mu, threshold, expected):
+    # Fixed binary64 attachments; rounding exp(mu) would change this reference.
+    model = LogNormal(mu=mu, sigma=1e-10)
+    assert model.mean_excess(threshold) == pytest.approx(expected, rel=1e-11, abs=0)
