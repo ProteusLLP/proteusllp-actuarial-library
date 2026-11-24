@@ -139,7 +139,7 @@ class _StableSeverityReference:
 
     def __getattr__(self, name: str) -> t.Any:
         """Delegate non-probability attributes to the wrapped reference.
-        
+
         Args:
             name: Attribute name to retrieve.
         """

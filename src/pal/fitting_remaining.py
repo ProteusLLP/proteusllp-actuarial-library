@@ -203,6 +203,7 @@ def _fit_continuous(
     """Estimate a continuous family's parameters with a full likelihood.
 
     Args:
+        cls: PAL distribution class to instantiate at the estimated parameters.
         observations: Observed values used in the likelihood or empirical estimate.
         weights: Nonnegative observation weights; zero-weight observations are excluded.
         censored: Indicators that observations are right-censored at their recorded values.
@@ -420,6 +421,7 @@ def _fit_discrete(
     """Fit counting distributions with required fixed experiment parameters.
 
     Args:
+        cls: PAL distribution class to instantiate at the estimated parameters.
         observations: Observed values used in the likelihood or empirical estimate.
         weights: Nonnegative observation weights; zero-weight observations are excluded.
         options: Method-specific fitting or optimiser options.
@@ -531,6 +533,7 @@ def _fit_mbbefd(
     """Fit MBBEFD including the point mass at the policy limit.
 
     Args:
+        cls: PAL distribution class to instantiate at the estimated parameters.
         observations: Observed values used in the likelihood or empirical estimate.
         weights: Nonnegative observation weights; zero-weight observations are excluded.
         options: Method-specific fitting or optimiser options.
@@ -617,6 +620,7 @@ def _fit_uniform(
     """Fit unknown endpoints for numeric or calendar/date uniform samples.
 
     Args:
+        cls: PAL distribution class to instantiate at the estimated parameters.
         observations: Observed values used in the likelihood or empirical estimate.
         weights: Nonnegative observation weights; zero-weight observations are excluded.
         options: Method-specific fitting or optimiser options.
@@ -666,6 +670,7 @@ def _fit_categorical(
     """Estimate multinomial category probabilities and preserve label order.
 
     Args:
+        cls: PAL distribution class to instantiate at the estimated parameters.
         observations: Observed values used in the likelihood or empirical estimate.
         weights: Nonnegative observation weights; zero-weight observations are excluded.
         options: Method-specific fitting or optimiser options.

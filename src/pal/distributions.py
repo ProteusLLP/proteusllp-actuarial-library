@@ -133,7 +133,7 @@ class DistributionBase:
         """Initialize distribution with parameters.
 
         Args:
-            *params: Distribution parameters supplied in the order required by the probability function.
+            **params: Named distribution parameters, including stochastic parameter values.
         """
         # Store parameters in a private dictionary.
         self._params: dict[str, DistributionParameter] = params

@@ -246,14 +246,16 @@ class XoLTower:
     """Represents a tower of excess of loss reinsurance contracts.
 
     Attributes:
-        aggregate_deductible: Aggregate deductible applied across recoveries within each simulation. Values can differ by layer.
+        aggregate_deductible: Aggregate deductible applied across recoveries within each simulation.
+            Values can differ by layer.
         aggregate_limit: Maximum aggregate recovery permitted in each simulation. Values can differ by layer.
         excess: Per-occurrence attachment of the reinsurance layer. Values can differ by layer.
         franchise: Minimum occurrence loss required for the franchise cover to respond. Values can differ by layer.
         layers: Ordered collection of excess-of-loss layers in the tower.
         limit: Per-occurrence recovery limit. Values can differ by layer.
         n_layers: Number of layers in the tower.
-        reverse_franchise: Maximum occurrence loss qualifying for the reverse franchise cover. Values can differ by layer.
+        reverse_franchise: Maximum occurrence loss qualifying for the reverse franchise cover.
+            Values can differ by layer.
     """
 
     def __init__(

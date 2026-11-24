@@ -61,7 +61,7 @@ def _scaled_power_integral(log_scale: float, exponent: float, t_: np.ndarray) ->
 
 def _pareto_lev(d: np.ndarray, shape: float, scale: float) -> np.ndarray:
     """Calculate the capped expectation for a Type I Pareto loss.
-    
+
     Args:
         d: Policy limits in loss units.
         shape: Positive Pareto tail index.
@@ -76,7 +76,7 @@ def _pareto_lev(d: np.ndarray, shape: float, scale: float) -> np.ndarray:
 
 def _gpd_lev(d: np.ndarray, shape: float, scale: float) -> np.ndarray:
     """Calculate the capped expectation of an unshifted GPD.
-    
+
     Args:
         d: Policy limits relative to the location.
         shape: GPD tail shape, including zero and negative values.
@@ -103,7 +103,7 @@ def _gpd_lev(d: np.ndarray, shape: float, scale: float) -> np.ndarray:
 
 def _count_lev(family: type[DistributionBase], p: dict[str, float], d: np.ndarray) -> np.ndarray:
     """Calculate capped count moments using shifted count probabilities.
-    
+
     Args:
         family: Discrete PAL distribution class.
         p: Natural distribution parameter values.
@@ -183,7 +183,7 @@ def _mbbefd_lev(g: float, b: float, d: np.ndarray) -> np.ndarray:
 
 def _remaining_lev(family: type[DistributionBase], p: dict[str, float], d: np.ndarray) -> np.ndarray | None:
     """Dispatch capped moments for non-severity families.
-    
+
     Args:
         family: PAL distribution class.
         p: Natural distribution parameter values.
@@ -272,7 +272,7 @@ def _burr_family_lev(family: type[DistributionBase], p: dict[str, float], x: np.
 
 def _severity_lev(family: type[DistributionBase], p: dict[str, float], d: np.ndarray) -> np.ndarray:
     """Evaluate vectorised analytical capped severity moments.
-    
+
     Args:
         family: PAL severity distribution class.
         p: Natural distribution parameter values.

@@ -178,7 +178,13 @@ class Audit(ast.NodeVisitor):
         self.generic_visit(node)
         self.scope.pop()
 
-    visit_AsyncFunctionDef = visit_FunctionDef
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        """Apply the same documentation rules to asynchronous callables.
+
+        Args:
+            node: Asynchronous function definition to inspect.
+        """
+        self.visit_FunctionDef(node)
 
 
 def scan(path: str, content: str) -> set[str]:
