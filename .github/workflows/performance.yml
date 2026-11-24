@@ -26,6 +26,9 @@ on:
       - "src/pal/fitting.py"
       - "src/pal/fitting_remaining.py"
       - "src/pal/_severity_probability.py"
+      - "src/pal/_lev.py"
+      - "src/pal/_lev_integrals.py"
+      - "src/pal/_gig.py"
 
 permissions:
   contents: read
@@ -50,6 +53,11 @@ jobs:
           python -m benchmarks.benchmark_mean_excess \
             --output "$RUNNER_TEMP/pal-mean-excess.json"
           cat "$RUNNER_TEMP/pal-mean-excess.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Benchmark limited expected values
+        run: |
+          python -m benchmarks.benchmark_lev --sizes 1000,10000,100000 \
+            --output "$RUNNER_TEMP/pal-lev.json"
+          cat "$RUNNER_TEMP/pal-lev.json" >> "$GITHUB_STEP_SUMMARY"
       - name: Benchmark CPU
         env:
           BENCH_SIZES: ${{ inputs.sizes || '10000,100000' }}
@@ -79,6 +87,7 @@ jobs:
             ${{ runner.temp }}/pal-cpu.*
             ${{ runner.temp }}/pal-memory-cpu.*
             ${{ runner.temp }}/pal-mean-excess*.json
+            ${{ runner.temp }}/pal-lev.json
           retention-days: 30
 
   fitting:

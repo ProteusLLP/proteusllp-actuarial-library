@@ -122,3 +122,17 @@ cases. The report records log-likelihood differences, parameters, convergence,
 boundary warnings, actual optimizer, fallback use and elapsed time. Use
 `--case Gamma` to select a subset. Timings are descriptive; a worse likelihood
 or unsuccessful fit is a numerical investigation target, not a speedup.
+
+## Limited expected value
+
+<!--pytest-codeblocks:skip-->
+
+```bash
+python -m benchmarks.benchmark_lev --sizes 1000,10000,100000 --repeat 3
+```
+
+Reports median batch times for analytical and adaptive LEV paths, sampled
+scalar agreement, and scalar-loop comparisons at 1,000 limits. GIG is
+benchmarked through 10,000 limits because it still integrates its density.
+The accuracy tests include extreme parameters, infinite means and the
+finite-mean identity relating LEV to mean excess. Timings are descriptive.

@@ -139,3 +139,84 @@ def test_lev_infinite_mean_and_mixture():
     expected[-1] = np.nan
     np.testing.assert_allclose(mix.lev(limits), expected, rtol=1e-12)
     assert mix.lev(np.empty((0, 2))).shape == (0, 2)
+
+
+@pytest.mark.parametrize(
+    ("model", "limit", "reference"),
+    [
+        (Gamma(alpha=1e-10, theta=1e300), 1e-100, 9.21456779078616646e-108),
+        (Gamma(alpha=2, theta=1e300), 1e-100, 1e-100),
+        (LogNormal(mu=0, sigma=100), 1.0, 0.50398902398135681),
+        (LogNormal(mu=200, sigma=100), 1e100, 3.84925128728399367e99),
+        (LogNormal(mu=-300, sigma=30), 1e100, 7.89709726678477296e30),
+        (LogNormal(mu=0, sigma=1e-10), 1.0, 0.999999999960105772),
+        (InverseBurr(power=2, shape=1e30, scale=1e-15, loc=0), 1.0, 0.910926144109219655),
+        (InverseBurr(power=1, shape=1e300, scale=1e-310, loc=0), 1.0, 2.3448635265088924e-9),
+        (GeneralizedBetaPrime(a=0.7, b=2, p=3, q=0.8), 1e8, 27925.041062164178),
+        (GeneralizedBetaPrime(a=0.5, b=2, p=3, q=2), 1e10, 229.99357634541635),
+        (InverseGamma(alpha=0.2, theta=1e-100), 1e100, 1.36140552632292038e60),
+        (InverseGamma(alpha=1, theta=1e-200), 1e200, 9.21456821532716741e-198),
+        (InverseGamma(alpha=0.9999999999, theta=3), 1e20, 136.12762202768256),
+        (InverseWeibull(shape=0.3, scale=1e-100), 1e100, 1.42857142857142857e40),
+        (InverseExponential(scale=1e-200), 1e200, 9.21456821532716741e-198),
+        (GEV(shape=1.2, loc=0, scale=1), 1e20, 11098.8464837877705),
+        (GEV(shape=1, loc=0, scale=1), 1e20, 45.47448619497938),
+        (GEV(shape=1 - 1e-12, loc=0, scale=1), 1e20, 45.47448619396449),
+        (GEV(shape=1e-8, loc=0, scale=1), 10.0, 0.577170275349920232),
+        (GEV(shape=-1e-8, loc=0, scale=1), 10.0, 0.577170255624187101),
+        (GEV(shape=-100, loc=0, scale=1), -10.0, -9.33262154439441527e155),
+    ],
+)
+def test_lev_high_precision_extreme_parameters(model, limit, reference):
+    """Independent incomplete gamma/beta moments or 70-digit integrals."""
+    assert model.lev(limit) == pytest.approx(reference, rel=5e-10, abs=0)
+    values = np.array([[limit, np.nan], [limit, 0.5 * limit]])
+    result = model.lev(values)
+    assert result.shape == values.shape
+    assert result[0, 0] == pytest.approx(reference, rel=5e-10, abs=0)
+    assert result[1, 0] == result[0, 0]
+    assert np.isnan(result[0, 1])
+    if limit >= 0:
+        assert result[1, 1] <= result[0, 0] * (1 + 1e-12)
+    else:
+        assert result[1, 1] >= result[0, 0] - 1e-12 * abs(result[0, 0])
+
+
+@pytest.mark.parametrize(
+    ("model", "rv"),
+    [
+        (Gamma(alpha=3, theta=2), stats.gamma(3, scale=2)),
+        (LogNormal(mu=2, sigma=0.5), stats.lognorm(0.5, scale=np.exp(2))),
+        (Burr(power=2, shape=3, scale=2, loc=0), stats.burr12(2, 3, scale=2)),
+        (InverseBurr(power=2, shape=3, scale=2, loc=0), stats.burr(2, 3, scale=2)),
+        (InverseGamma(alpha=2, theta=3), stats.invgamma(2, scale=3)),
+        (InverseGaussian(mu=3, lambda_=4), stats.invgauss(0.75, scale=4)),
+        (GeneralizedInverseGaussian(p=0.5, chi=4, psi=1), stats.geninvgauss(0.5, 2, scale=2)),
+    ],
+)
+def test_lev_mean_excess_identity(model, rv):
+    limits = rv.ppf(np.linspace(0.25, 0.99, 25))
+    expected = rv.mean() - rv.sf(limits) * model.mean_excess(limits)
+    np.testing.assert_allclose(model.lev(limits), expected, rtol=1e-8, atol=1e-10)
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        InverseGamma(alpha=0.7, theta=2),
+        InverseWeibull(shape=0.7, scale=2),
+        GeneralizedBetaPrime(a=0.7, b=2, p=3, q=0.8),
+        GEV(shape=1.2, loc=1, scale=2),
+    ],
+)
+def test_large_lev_batch_is_monotone_and_matches_scalar(model):
+    limits = np.geomspace(0.1, 1e8, 10000)
+    values = model.lev(limits)
+    assert np.all(np.isfinite(values))
+    assert np.all(values <= limits * (1 + 1e-10))
+    assert np.all(np.diff(values) >= 0)
+    indices = np.linspace(0, len(limits) - 1, 12, dtype=int)
+    reference = np.array([model.lev(float(limits[i])) for i in indices])
+    np.testing.assert_allclose(values[indices], reference, rtol=5e-10, atol=1e-12)
+    shuffled = limits[indices[::-1]].reshape(3, 4)
+    np.testing.assert_allclose(model.lev(shuffled), reference[::-1].reshape(3, 4), rtol=5e-10, atol=1e-12)
