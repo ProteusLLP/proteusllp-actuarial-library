@@ -233,7 +233,10 @@ def _lognormal_excess(ds: np.ndarray, mu: float, sigma: float) -> np.ndarray:
     if np.any(unresolved):
         out[unresolved] = ds[unresolved] * _lognormal_fraction_excess(z[unresolved], sigma)
     for i in np.flatnonzero(np.isnan(out) | (out <= 0)):
-        out[i] = _lognormal_tail_excess(sigma, float(ds[i]), float(z[i]))
+        try:
+            out[i] = _lognormal_tail_excess(sigma, float(ds[i]), float(z[i]))
+        except ArithmeticError:
+            out[i] = np.nan
     return out
 
 
@@ -274,9 +277,13 @@ def _burr_excess(ds: np.ndarray, power: float, shape: float, scale: float, loc: 
     out = np.where(x <= 0, mean - x, out)
     unresolved = ~np.isfinite(out) | (out <= 0)
     if np.any(unresolved):
-        tail_log_w = log_w[unresolved]
-        log_beta = special.betaln(a, b) + _gb2_log_regularized_beta(a, b, tail_log_w)
-        out[unresolved] = np.exp(np.log(scale / power) + log_beta - shape * tail_log_w)
+        for i in np.flatnonzero(unresolved):
+            try:
+                tail_log_w = log_w[i]
+                log_beta = special.betaln(a, b) + _gb2_log_regularized_beta(a, b, np.asarray(tail_log_w))
+                out[i] = np.exp(np.log(scale / power) + log_beta - shape * tail_log_w)
+            except ArithmeticError:
+                out[i] = np.nan
     return out
 
 
@@ -840,6 +847,8 @@ def _integrate_log_interval(
     Scaling the increment handles concentrated distributions. Its logarithm
     converts polynomial tails to exponentially decaying integrands.
     """
+    if stop == start:
+        return 0.0
     location = pars.get("loc", 0.0)
     shifted = start - location
     log_width = float(np.log(width))
@@ -962,5 +971,9 @@ def _integrate_unresolved(
 def _repair_tail(ds: np.ndarray, out: np.ndarray, fallback: t.Callable[[float], float]) -> np.ndarray:
     """Evaluate only unresolved entries with a more robust scalar expression."""
     for i in np.flatnonzero(np.isnan(out) | (out <= 0)):
-        out[i] = fallback(float(ds[i]))
+        try:
+            out[i] = fallback(float(ds[i]))
+        except ArithmeticError:
+            # The generic conditional-survival fallback may still succeed.
+            out[i] = np.nan
     return out
