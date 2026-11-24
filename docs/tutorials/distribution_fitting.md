@@ -229,15 +229,14 @@ picture of the underlying tail.
 attachments = np.linspace(reporting_threshold, 380_000, 65)
 
 # Synthetic-data diagnostic only: actual ultimate losses are not normally observed.
-empirical_mean_excess = np.array([
-    np.mean(reported_losses[reported_losses > d] - d)
-    for d in attachments
-])
+from pal.fitting import empirical_mean_excess
+
+empirical_excess = empirical_mean_excess(reported_losses, attachments)
 
 mean_excess_figure = go.Figure()
 mean_excess_figure.add_scatter(
     x=attachments,
-    y=empirical_mean_excess,
+    y=empirical_excess,
     name="Empirical (uncapped synthetic losses)",
     mode="lines+markers",
 )
