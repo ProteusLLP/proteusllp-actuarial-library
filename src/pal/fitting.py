@@ -349,7 +349,6 @@ def _prepare(
     *,
     allow_any_real: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Validate sample alignment, truncation and frequency weights."""
     """Validate and align loss observations, censoring flags and weights.
 
     Args:
