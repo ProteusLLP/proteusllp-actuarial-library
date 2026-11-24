@@ -597,8 +597,7 @@ def mean_excess_remaining(
                         out[i] = expected * (1 - float(model.exposure_curve(attachment))) / survival
         elif family is _distributions.Uniform:
             a, b = pars["a"], pars["b"]
-            out = np.where(d < a, 0.5 * (a - d) + 0.5 * (b - d),
-                           np.where(d < b, 0.5 * (b - d), np.nan))
+            out = np.where(d < a, 0.5 * (a - d) + 0.5 * (b - d), np.where(d < b, 0.5 * (b - d), np.nan))
         elif family is _distributions.Beta:
             a, b, scale, loc = pars["alpha"], pars["beta"], pars["scale"], pars["loc"]
             u = (d - loc) / scale
