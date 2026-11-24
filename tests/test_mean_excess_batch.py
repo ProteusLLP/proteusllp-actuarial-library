@@ -10,6 +10,7 @@ from pal.distributions import (
     Beta,
     Exponential,
     Gamma,
+    GeneralizedBetaPrime,
     GeneralizedInverseGaussian,
     InverseBurr,
     InverseGamma,
@@ -148,3 +149,59 @@ def test_gumbel_and_central_chisquare_underflow():
 def test_noncentral_chisquare_underflow():
     # 60-digit independent Bessel-density moment ratio.
     assert NonCentralChiSquared(df=4, nonc=3).mean_excess(2000) == pytest.approx(2.0810388910582227, rel=1e-11)
+
+
+@pytest.mark.parametrize(
+    ("a", "p", "q", "threshold", "expected"),
+    [
+        (0.1, 0.1, 1000, 2.0, 0.039351048528653634),
+        (0.1, 10, 1000, 2.0, 0.03972305541742264),
+        (0.1, 10, 1000, 10000.0, 142.25041770588297),
+        (1, 0.1, 100, 10000.0, 101.02011200245536),
+        (100, 1, 1000, 1.0, 1.998045855540408e-5),
+        (100, 1000, 1000, 1.0, 0.00035699924727082777),
+    ],
+)
+def test_gb2_extreme_parameter_grid(a, p, q, threshold, expected):
+    # Independent 50-digit incomplete-beta moment ratios.
+    model = GeneralizedBetaPrime(a=a, b=1, p=p, q=q)
+    np.testing.assert_allclose(model.mean_excess(np.array([threshold, threshold])), expected, rtol=5e-9, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("alpha", "beta", "threshold", "expected"),
+    [
+        (1000, 1000, 0.9, 0.00011232464024910889),
+        (1000, 1000, 0.999, 9.999980000139827e-7),
+        (1000, 1000, 1 - 1e-10, 9.990010817582138e-14),
+        (0.1, 1000, 0.5, 0.0004990535842651377),
+    ],
+)
+def test_beta_extreme_parameter_grid(alpha, beta, threshold, expected):
+    assert Beta(alpha=alpha, beta=beta).mean_excess(threshold) == pytest.approx(expected, rel=5e-9, abs=0)
+
+
+@pytest.mark.parametrize(
+    ("lam", "threshold", "expected"),
+    [
+        (1e6, 1.5, 3.5999593932368467e-6),
+        (1e6, 2.0, 2.666656592695439e-6),
+        (1e4, 2.0, 0.0002665660286177533),
+        (1e-4, 1e5, 16238.94762069739),
+    ],
+)
+def test_inverse_gaussian_concentrated_and_diffuse(lam, threshold, expected):
+    assert InverseGaussian(mu=1, lambda_=lam).mean_excess(threshold) == pytest.approx(expected, rel=5e-9, abs=0)
+
+
+@pytest.mark.parametrize(
+    ("shape", "threshold", "expected"),
+    [
+        (1e-5, 5.0, 1.0017454371220431),
+        (1e-5, 1.0, 1.0936945396410311),
+        (-1e-5, 5.0, 1.0016247966039277),
+        (-1e-5, 1.0, 1.0936488527313808),
+    ],
+)
+def test_gev_near_gumbel_transition(shape, threshold, expected):
+    assert GEV(shape=shape, scale=1).mean_excess(threshold) == pytest.approx(expected, rel=5e-9, abs=0)
