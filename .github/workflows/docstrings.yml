@@ -44,6 +44,7 @@ jobs:
           from pathlib import Path
           def code(source):
               tree = ast.parse(source, type_comments=True)
+              tree.type_ignores = []  # Ignore line-number shifts in existing type-ignore comments.
               for node in ast.walk(tree):
                   if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
                       if ast.get_docstring(node, clean=False) is not None:
@@ -64,6 +65,14 @@ jobs:
           print("Non-docstring changes:", differences)
           raise SystemExit(bool(differences))
           PY
+      - name: Install lint and test dependencies
+        run: pip install ruff pytest
+      - name: Test documentation auditor
+        run: python -m pytest -q tests/test_docstring_audit.py
+      - name: Lint library and documentation checks
+        run: |
+          ruff check src/pal tests/test_docstring_audit.py scripts/check_docstrings.py
+          ruff format --check src/pal tests/test_docstring_audit.py scripts/check_docstrings.py
       - name: Audit argument and attribute documentation
         run: |
           python scripts/check_docstrings.py --inventory
