@@ -595,6 +595,8 @@ class GPD(DistributionBase):
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         free_location: bool = False,
+        optimizer: OptimizerMethod | str = OptimizerMethod.NELDER_MEAD,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
     ) -> FitResult[GPD]:
         """Fit a GPD with the location fixed at threshold or estimated."""
         return fit_distribution(
