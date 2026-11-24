@@ -552,6 +552,96 @@ def _fit_categorical(
     )
 
 
+def _count_tail_excess(
+    k: float,
+    d: float,
+    ratio: t.Callable[[float], float],
+) -> float:
+    """Sum conditional count probabilities relative to the first exceedance.
+
+    The first mass is scaled to one, so neither tail probability nor PMF
+    need be representable. Only invoked when the ordinary moment ratio fails.
+    """
+    first = k + 1
+    if first <= k:
+        raise ArithmeticError("Count threshold exceeds integer precision")
+    mass = 1.0
+    total = 1.0
+    moment = 0.0
+    for j in range(1, 100001):
+        r = ratio(first + j - 1)
+        if r < 0 or not np.isfinite(r):
+            raise ArithmeticError("Invalid count tail probability ratio")
+        mass *= r
+        total += mass
+        moment += j * mass
+        if mass == 0 or (r < 1 and mass * (j + 1 / (1 - r)) / (1 - r) < 1e-13 * total):
+            return first - d + moment / total
+    raise ArithmeticError("Count conditional moment did not converge")
+
+
+def _mbbefd_excess(g: float, b: float, d: np.ndarray) -> np.ndarray:
+    """Evaluate residual life using the remaining interval, not 1 minus LEV."""
+    if not np.isfinite(g) or not np.isfinite(b) or g < 1 or b < 0:
+        raise ValueError("Invalid MBBEFD parameters")
+    out = np.full(d.shape, np.nan)
+    valid = d < 1
+    x = np.maximum(d[valid], 0)
+    gap = 1 - x
+    if g == 1 or b == 0:
+        out[valid] = 1 - d[valid]
+        return out
+    if b == 1:
+        r = (g - 1) * gap / (1 + (g - 1) * x)
+        factor = np.ones_like(r)
+        nonzero = r != 0
+        factor[nonzero] = np.log1p(r[nonzero]) / r[nonzero]
+        out[valid] = gap * factor - np.minimum(d[valid], 0)
+        return out
+    log_b = np.log(b)
+    # Compute 1/S(x) as a sum of non-negative terms.
+    if b > 1:
+        h = -np.expm1(-x * log_b) / (-np.expm1(-log_b))
+    else:
+        h = np.exp(gap * log_b) * (-np.expm1(x * log_b)) / (-np.expm1(log_b))
+    inv_sf = 1 + (g - 1) * h
+    delta = np.expm1(gap * log_b)
+    log_gb = np.log(g) + log_b
+    # q is the relative change of the LEV logarithm's argument.
+    q = (1 - g * b) / (1 - b) * (delta / inv_sf)
+    factor = np.ones_like(q)
+    nonzero = q != 0
+    safe = nonzero & (q > -0.5)
+    factor[safe] = np.log1p(q[safe]) / q[safe]
+    # When q is close to -1, use the directly evaluated log ratio.
+    near = q <= -0.5
+    factor[near] = (log_gb - x[near] * log_b - np.log(inv_sf[near])) / q[near]
+    out[valid] = delta / log_b * factor - np.minimum(d[valid], 0)
+    return out
+
+
+def _student_t_excess(nu: float, mu: float, sigma: float, d: np.ndarray) -> np.ndarray:
+    """Evaluate Student t moments, cancelling small beta-tail probabilities."""
+    if nu <= 1:
+        return np.full(d.shape, np.inf)
+    z = (d - mu) / sigma
+    out = np.empty(z.shape)
+    # The hypergeometric representation cancels the small t**(nu/2)
+    # common to density and survival, even if both would underflow.
+    far = z > max(10.0, np.sqrt(100 * nu))
+    z_far = z[far]
+    t_beta = (np.sqrt(nu) / z_far) ** 2
+    t_beta /= 1 + t_beta
+    correction = special.hyp2f1(nu / 2, 0.5, nu / 2 + 1, t_beta)
+    log_ratio = -np.log1p(-1 / nu) - 0.5 * np.log1p(-t_beta) - np.log(correction)
+    out[far] = (d[far] - mu) * np.expm1(log_ratio)
+    central = ~far
+    zc = z[central]
+    residual = np.exp(stats.t.logpdf(zc, nu) - stats.t.logsf(zc, nu))
+    out[central] = sigma * ((nu + zc * zc) / (nu - 1) * residual - zc)
+    return out
+
+
 def mean_excess_remaining(
     distribution: DistributionBase,
     threshold: float | np.ndarray,
@@ -585,16 +675,7 @@ def mean_excess_remaining(
     out = np.full(d.shape, np.nan, dtype=float)
     with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
         if family is _distributions.MBBEFD:
-            # Preserve the existing mixed-distribution endpoint semantics.
-            model = t.cast(t.Any, distribution)
-            expected = float(model.mean())
-            for i, attachment in enumerate(d):
-                if attachment < 0:
-                    out[i] = expected - attachment
-                elif attachment < 1:
-                    survival = 1 - float(model.cdf(attachment))
-                    if survival > 0:
-                        out[i] = expected * (1 - float(model.exposure_curve(attachment))) / survival
+            out = _mbbefd_excess(pars["g"], pars["b"], d)
         elif family is _distributions.Uniform:
             a, b = pars["a"], pars["b"]
             out = np.where(d < a, 0.5 * (a - d) + 0.5 * (b - d), np.where(d < b, 0.5 * (b - d), np.nan))
@@ -608,9 +689,11 @@ def mean_excess_remaining(
             sf = special.betainc(b, a, w[pos])
             ratio = b / (a + b) * special.betainc(b + 1, a, w[pos]) / sf / w[pos]
             excess = w[pos] * (1 - ratio)
+            if a == 1:
+                excess = w[pos] / (b + 1)
             # B_w(b,a) = w**b/b * 2F1(b,1-a;b+1;w).
             # The ratio cancels the tiny w**b and normalizing factors.
-            bad = (~np.isfinite(excess)) | (excess <= 1e-7 * w[pos])
+            bad = ((~np.isfinite(excess)) | (excess <= 1e-7 * w[pos])) & (a != 1)
             wb = w[pos][bad]
             h0 = special.hyp2f1(b, 1 - a, b + 1, wb)
             h1 = special.hyp2f1(b + 1, 1 - a, b + 2, wb)
@@ -634,13 +717,7 @@ def mean_excess_remaining(
             z = (d - mu) / sigma
             out = np.where(z > 35, sigma, sigma * np.logaddexp(0, -z) / special.expit(-z))
         elif family is _distributions.StudentsT:
-            nu, mu, sigma = pars["nu"], pars["mu"], pars["sigma"]
-            if nu <= 1:
-                out.fill(np.inf)
-            else:
-                z = (d - mu) / sigma
-                residual = np.exp(stats.t.logpdf(z, nu) - stats.t.logsf(z, nu))
-                out = sigma * ((nu + z * z) / (nu - 1) * residual - z)
+            out = _student_t_excess(pars["nu"], pars["mu"], pars["sigma"], d)
         elif family is _distributions.NonCentralChiSquared:
             df, nonc = pars["df"], pars["nonc"]
             rv = stats.ncx2(df, nonc)
@@ -679,5 +756,29 @@ def mean_excess_remaining(
                     else np.zeros_like(d)
                 )
             out = np.where(sf > 0, moment / sf - d, np.nan)
+            # Only recover tails with nonzero mathematical probability.
+            if family is _distributions.Poisson:
+                upper = np.inf if lam > 0 else 0.0
+
+                def ratio_fn(j: float) -> float:
+                    return lam / (j + 1)
+            elif family in (_distributions.Binomial, _distributions.Bernoulli):
+                upper = float(n) if p > 0 else 0.0
+
+                def ratio_fn(j: float) -> float:
+                    return (n - j) / (j + 1) * p / (1 - p) if j < n and p < 1 else 0.0
+            elif family is _distributions.NegBinomial:
+                upper = np.inf if p < 1 else 0.0
+
+                def ratio_fn(j: float) -> float:
+                    return (j + n) / (j + 1) * (1 - p)
+            else:
+                upper = float(min(good, draws))
+
+                def ratio_fn(j: float) -> float:
+                    return (good - j) * (draws - j) / ((j + 1) * (bad - draws + j + 1)) if j < upper else 0.0
+            unresolved = (d < upper) & ((sf < 1e-280) | (out < 1e-6 * np.maximum(1, np.abs(d))))
+            for i in np.flatnonzero(unresolved & (k >= 0)):
+                out[i] = _count_tail_excess(float(k[i]), float(d[i]), ratio_fn)
     result[valid] = out
     return float(result) if result.ndim == 0 else result
