@@ -40,6 +40,10 @@ jobs:
           python-version: "3.13"
       - name: Install PAL
         run: pip install -e .
+      - name: Check mean excess accuracy
+        run: |
+          pip install mpmath
+          python -m benchmarks.check_mean_excess_accuracy | tee "$RUNNER_TEMP/pal-mean-excess-accuracy.json"
       - name: Benchmark mean excess
         run: |
           python -m benchmarks.benchmark_mean_excess \
@@ -73,7 +77,7 @@ jobs:
           path: |
             ${{ runner.temp }}/pal-cpu.*
             ${{ runner.temp }}/pal-memory-cpu.*
-            ${{ runner.temp }}/pal-mean-excess.json
+            ${{ runner.temp }}/pal-mean-excess*.json
           retention-days: 30
 
   variable-io:
