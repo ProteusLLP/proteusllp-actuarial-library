@@ -13,7 +13,7 @@ import typing as t
 import numpy as np
 from scipy import integrate, optimize, special, stats
 
-from .fitting import _minimize_multistart, _with_uncertainty, OptimizerMethod, UncertaintyMethod, _FitMethod
+from .fitting import OptimizerMethod, UncertaintyMethod, _FitMethod, _minimize_multistart, _with_uncertainty
 
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
