@@ -65,6 +65,10 @@ jobs:
           print("Non-docstring changes:", differences)
           raise SystemExit(bool(differences))
           PY
+      - name: Audit argument and attribute documentation
+        run: |
+          python scripts/check_docstrings.py --inventory
+          python scripts/check_docstrings.py
       - name: Install lint and test dependencies
         run: pip install ruff pytest
       - name: Test documentation auditor
@@ -73,7 +77,3 @@ jobs:
         run: |
           ruff check src/pal tests/test_docstring_audit.py scripts/check_docstrings.py
           ruff format --check src/pal tests/test_docstring_audit.py scripts/check_docstrings.py
-      - name: Audit argument and attribute documentation
-        run: |
-          python scripts/check_docstrings.py --inventory
-          python scripts/check_docstrings.py

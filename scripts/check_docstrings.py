@@ -67,11 +67,12 @@ def decorator_name(node: ast.expr) -> str:
     return node.id if isinstance(node, ast.Name) else ""
 
 
-def argument_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+def argument_names(node: ast.FunctionDef | ast.AsyncFunctionDef, *, is_method: bool = False) -> set[str]:
     """Collect all callable arguments except the implicit receiver.
 
     Args:
         node: Function or method definition to inspect.
+        is_method: Whether the callable has an implicit instance or class receiver.
     """
     args = node.args
     names = [a.arg for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)]
@@ -79,7 +80,9 @@ def argument_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
         names.append(args.vararg.arg)
     if args.kwarg:
         names.append(args.kwarg.arg)
-    return set(names) - {"self", "cls"}
+    if is_method and names and names[0] in {"self", "cls"}:
+        names.pop(0)
+    return set(names)
 
 
 def public_attributes(node: ast.ClassDef) -> set[str]:
@@ -121,6 +124,7 @@ class Audit(ast.NodeVisitor):
         path: Repository-relative source path.
         scope: Stack of enclosing definition names.
         issues: Stable identifiers for documentation defects.
+        class_scopes: Qualified scopes of class definitions encountered during traversal.
     """
 
     def __init__(self, path: str) -> None:
@@ -132,6 +136,7 @@ class Audit(ast.NodeVisitor):
         self.path = path
         self.scope: list[str] = []
         self.issues: set[str] = set()
+        self.class_scopes: set[tuple[str, ...]] = set()
 
     def report(self, message: str) -> None:
         """Record a defect against the current qualified name.
@@ -148,6 +153,7 @@ class Audit(ast.NodeVisitor):
             node: Class syntax tree.
         """
         self.scope.append(node.name)
+        self.class_scopes.add(tuple(self.scope))
         doc = ast.get_docstring(node) or ""
         if not doc:
             self.report("missing docstring")
@@ -167,13 +173,14 @@ class Audit(ast.NodeVisitor):
             Overloads describe typing, not separate implementations. The
             implementation itself must document its callable contract.
         """
-        self.scope.append(node.name)
         decorators = {decorator_name(d) for d in node.decorator_list}
+        is_method = tuple(self.scope) in self.class_scopes and "staticmethod" not in decorators
+        self.scope.append(node.name)
         if "overload" not in decorators:
             doc = ast.get_docstring(node) or ""
             if not doc:
                 self.report("missing docstring")
-            for name in sorted(argument_names(node) - documented(doc, {"Args", "Arguments", "Parameters"})):
+            for name in sorted(argument_names(node, is_method=is_method) - documented(doc, {"Args", "Arguments", "Parameters"})):
                 self.report(f"missing argument {name}")
         self.generic_visit(node)
         self.scope.pop()

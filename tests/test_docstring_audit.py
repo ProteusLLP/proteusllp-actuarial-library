@@ -81,3 +81,21 @@ def f(x):
     """
 '''
     assert scan("test.py", source) == {"test.py:f: missing argument x"}
+
+
+def test_explicit_cls_and_static_self_are_not_receivers():
+    source = '''
+def construct(cls):
+    """Construct an instance."""
+
+class Model:
+    """A model."""
+
+    @staticmethod
+    def f(self):
+        """An ordinary input named self."""
+'''
+    assert scan("test.py", source) == {
+        "test.py:construct: missing argument cls",
+        "test.py:Model.f: missing argument self",
+    }
