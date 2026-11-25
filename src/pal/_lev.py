@@ -77,35 +77,87 @@ def _gpd_lev(d: np.ndarray, shape: float, scale: float) -> np.ndarray:
     return np.where(t_ < 1e-8, x * (1 - t_ / 2), value)
 
 
-def _count_lev(family: type[DistributionBase], p: dict[str, float], d: np.ndarray) -> np.ndarray:
+def _capped_count(d: np.ndarray, moment: np.ndarray, survival: np.ndarray) -> np.ndarray:
+    """Combine a truncated count moment and capped tail.
+
+    Args:
+        d: Policy limits in count units, which need not be integers.
+        moment: First moments truncated at the integer parts of the limits.
+        survival: Probabilities of exceeding the integer parts of the limits.
+    """
+    return np.where(d <= 0, d, moment + d * survival)
+
+
+def _poisson_lev(d: np.ndarray, mean: float) -> np.ndarray:
+    """Evaluate the Poisson capped expectation using shifted count probabilities.
+
+    Args:
+        d: Policy limits in count units.
+        mean: Nonnegative expected event count.
+    """
     k = np.floor(d)
-    if family is dist.Poisson:
-        mean = p["mean"]
-        rv = stats.poisson(mean)
-        moment = mean * rv.cdf(k - 1)
-    elif family in (dist.Binomial, dist.Bernoulli):
-        n = 1 if family is dist.Bernoulli else int(p["n"])
-        prob = p["p"]
-        rv = stats.binom(n, prob)
-        moment = n * prob * stats.binom.cdf(k - 1, n - 1, prob) if n > 0 else np.zeros_like(d)
-    elif family is dist.NegBinomial:
-        n, prob = p["n"], p["p"]
-        rv = stats.nbinom(n, prob)
-        moment = n * (1 - prob) / prob * stats.nbinom.cdf(k - 1, n + 1, prob)
-    else:
-        good, bad, draws = int(p["ngood"]), int(p["nbad"]), int(p["n"])
-        population = good + bad
-        rv = stats.hypergeom(population, good, draws)
-        moment = (
-            draws * good / population * stats.hypergeom.cdf(k - 1, population - 1, good - 1, draws - 1)
-            if good > 0 and draws > 0
-            else np.zeros_like(d)
-        )
-    return np.where(d <= 0, d, moment + d * rv.sf(k))
+    rv = stats.poisson(mean)
+    return _capped_count(d, mean * rv.cdf(k - 1), rv.sf(k))
 
 
-def _mbbefd_lev(g: float, b: float, d: np.ndarray) -> np.ndarray:
-    """Integrate MBBEFD survival without overflowing the exposure-curve factors."""
+def _binomial_lev(d: np.ndarray, n: float, p: float) -> np.ndarray:
+    """Evaluate the binomial capped expectation using shifted count probabilities.
+
+    Args:
+        d: Policy limits in count units.
+        n: Number of Bernoulli trials, represented as an integer-valued scalar.
+        p: Probability of success on each trial.
+    """
+    trials = int(n)
+    k = np.floor(d)
+    rv = stats.binom(trials, p)
+    moment = trials * p * stats.binom.cdf(k - 1, trials - 1, p) if trials > 0 else np.zeros_like(d)
+    return _capped_count(d, moment, rv.sf(k))
+
+
+def _negative_binomial_lev(d: np.ndarray, n: float, p: float) -> np.ndarray:
+    """Evaluate the negative binomial capped expectation.
+
+    Args:
+        d: Policy limits in count units.
+        n: Positive negative binomial size parameter.
+        p: Probability of success under the failures-before-successes convention.
+    """
+    k = np.floor(d)
+    rv = stats.nbinom(n, p)
+    moment = n * (1 - p) / p * stats.nbinom.cdf(k - 1, n + 1, p)
+    return _capped_count(d, moment, rv.sf(k))
+
+
+def _hypergeometric_lev(d: np.ndarray, ngood: float, nbad: float, n: float) -> np.ndarray:
+    """Evaluate the hypergeometric capped expectation using a reduced population.
+
+    Args:
+        d: Policy limits in count units.
+        ngood: Number of successful items in the population.
+        nbad: Number of unsuccessful items in the population.
+        n: Number of items drawn without replacement.
+    """
+    good, bad, draws = int(ngood), int(nbad), int(n)
+    population = good + bad
+    k = np.floor(d)
+    rv = stats.hypergeom(population, good, draws)
+    moment = (
+        draws * good / population * stats.hypergeom.cdf(k - 1, population - 1, good - 1, draws - 1)
+        if good > 0 and draws > 0
+        else np.zeros_like(d)
+    )
+    return _capped_count(d, moment, rv.sf(k))
+
+
+def _mbbefd_lev(d: np.ndarray, g: float, b: float) -> np.ndarray:
+    """Integrate MBBEFD survival without overflowing the exposure-curve factors.
+
+    Args:
+        d: Policy limits as fractions of the insured value.
+        g: Reciprocal of the probability of a total loss.
+        b: MBBEFD exposure-curve shape parameter.
+    """
     x = np.clip(d, 0, 1)
     if g == 1 or b == 0:
         return np.minimum(d, 1)
@@ -138,43 +190,117 @@ def _mbbefd_lev(g: float, b: float, d: np.ndarray) -> np.ndarray:
     return np.where(d <= 0, d, value)
 
 
+def _uniform_lev(d: np.ndarray, a: float, b: float) -> np.ndarray:
+    """Evaluate the uniform capped expectation, including a point mass.
+
+    Args:
+        d: Policy limits in original loss units.
+        a: Lower endpoint of the uniform support.
+        b: Upper endpoint of the uniform support.
+    """
+    if a == b:
+        return np.minimum(d, a)
+    x = np.clip(d, a, b) - a
+    return np.where(d <= a, d, a + x * (1 - 0.5 * x / (b - a)))
+
+
+def _beta_lev(d: np.ndarray, alpha: float, beta: float, scale: float, loc: float) -> np.ndarray:
+    """Evaluate the scaled and shifted beta capped expectation.
+
+    Args:
+        d: Policy limits in original loss units.
+        alpha: First positive beta shape parameter.
+        beta: Second positive beta shape parameter.
+        scale: Width of the bounded support.
+        loc: Lower endpoint of the support.
+    """
+    x = np.clip(d - loc, 0, scale)
+    u = x / scale
+    moment = scale * alpha / (alpha + beta) * special.betainc(alpha + 1, beta, u)
+    return np.where(d <= loc, d, loc + moment + x * special.betaincc(alpha, beta, u))
+
+
+def _normal_lev(d: np.ndarray, mu: float, sigma: float) -> np.ndarray:
+    """Evaluate the normal capped expectation using normal tail probabilities.
+
+    Args:
+        d: Policy limits in original loss units.
+        mu: Normal mean.
+        sigma: Positive normal standard deviation.
+    """
+    z = (d - mu) / sigma
+    return mu * special.ndtr(z) - sigma * np.exp(stats.norm.logpdf(z)) + d * special.ndtr(-z)
+
+
+def _logistic_lev(d: np.ndarray, mu: float, sigma: float) -> np.ndarray:
+    """Evaluate the logistic capped expectation with stable softplus expressions.
+
+    Args:
+        d: Policy limits in original loss units.
+        mu: Logistic location.
+        sigma: Positive logistic scale.
+    """
+    z = (d - mu) / sigma
+    return np.where(z > 0, mu - sigma * np.logaddexp(0, -z), d - sigma * np.logaddexp(0, z))
+
+
+def _students_t_lev(d: np.ndarray, nu: float, mu: float, sigma: float) -> np.ndarray:
+    """Evaluate the Student's t capped expectation, including divergent left moments.
+
+    Args:
+        d: Policy limits in original loss units.
+        nu: Positive degrees of freedom.
+        mu: Student's t location.
+        sigma: Positive Student's t scale.
+    """
+    if nu <= 1:
+        return np.full_like(d, -np.inf)
+    z = (d - mu) / sigma
+    density_moment = np.exp(stats.t.logpdf(z, nu) + np.logaddexp(np.log(nu), 2 * np.log(np.abs(z))))
+    return mu * stats.t.cdf(z, nu) - sigma * density_moment / (nu - 1) + d * stats.t.sf(z, nu)
+
+
+def _noncentral_chi_squared_lev(d: np.ndarray, df: float, nonc: float) -> np.ndarray:
+    """Evaluate the noncentral chi-squared capped expectation using shifted degrees of freedom.
+
+    Args:
+        d: Policy limits in original loss units.
+        df: Positive degrees of freedom.
+        nonc: Nonnegative noncentrality parameter.
+    """
+    moment = df * stats.ncx2.cdf(d, df + 2, nonc) + nonc * stats.ncx2.cdf(d, df + 4, nonc)
+    return np.where(d <= 0, d, moment + d * stats.ncx2.sf(d, df, nonc))
+
+
+_REMAINING_LEV_FORMULAS: dict[type[DistributionBase], t.Callable[..., np.ndarray]] = {
+    dist.Poisson: _poisson_lev,
+    dist.Binomial: _binomial_lev,
+    dist.Bernoulli: _binomial_lev,
+    dist.NegBinomial: _negative_binomial_lev,
+    dist.HyperGeometric: _hypergeometric_lev,
+    dist.Uniform: _uniform_lev,
+    dist.Beta: _beta_lev,
+    dist.Normal: _normal_lev,
+    dist.Logistic: _logistic_lev,
+    dist.StudentsT: _students_t_lev,
+    dist.NonCentralChiSquared: _noncentral_chi_squared_lev,
+    dist.MBBEFD: _mbbefd_lev,
+}
+
+
 def _remaining_lev(family: type[DistributionBase], p: dict[str, float], d: np.ndarray) -> np.ndarray | None:
-    if family in (dist.Poisson, dist.Binomial, dist.Bernoulli, dist.NegBinomial, dist.HyperGeometric):
-        return _count_lev(family, p, d)
-    if family is dist.Uniform:
-        a, b = p["a"], p["b"]
-        if a == b:
-            return np.minimum(d, a)
-        x = np.clip(d, a, b) - a
-        return np.where(d <= a, d, a + x * (1 - 0.5 * x / (b - a)))
-    if family is dist.Beta:
-        a, b, scale, loc = p["alpha"], p["beta"], p["scale"], p["loc"]
-        x = np.clip(d - loc, 0, scale)
-        u = x / scale
-        moment = scale * a / (a + b) * special.betainc(a + 1, b, u)
-        return np.where(d <= loc, d, loc + moment + x * special.betaincc(a, b, u))
-    if family is dist.Normal:
-        mu, sigma = p["mu"], p["sigma"]
-        z = (d - mu) / sigma
-        return mu * special.ndtr(z) - sigma * np.exp(stats.norm.logpdf(z)) + d * special.ndtr(-z)
-    if family is dist.Logistic:
-        mu, sigma = p["mu"], p["sigma"]
-        z = (d - mu) / sigma
-        return np.where(z > 0, mu - sigma * np.logaddexp(0, -z), d - sigma * np.logaddexp(0, z))
-    if family is dist.StudentsT:
-        nu, mu, sigma = p["nu"], p["mu"], p["sigma"]
-        if nu <= 1:
-            return np.full_like(d, -np.inf)
-        z = (d - mu) / sigma
-        density_moment = np.exp(stats.t.logpdf(z, nu) + np.logaddexp(np.log(nu), 2 * np.log(np.abs(z))))
-        return mu * stats.t.cdf(z, nu) - sigma * density_moment / (nu - 1) + d * stats.t.sf(z, nu)
-    if family is dist.NonCentralChiSquared:
-        df, nc = p["df"], p["nonc"]
-        moment = df * stats.ncx2.cdf(d, df + 2, nc) + nc * stats.ncx2.cdf(d, df + 4, nc)
-        return np.where(d <= 0, d, moment + d * stats.ncx2.sf(d, df, nc))
-    if family is dist.MBBEFD:
-        return _mbbefd_lev(p["g"], p["b"], d)
-    return None
+    """Dispatch the capped moments for the remaining numeric families.
+
+    Args:
+        family: PAL distribution class.
+        p: Natural distribution parameter values.
+        d: Policy limits in original loss units.
+
+    Returns:
+        Vectorised capped expectations, or None for families handled elsewhere.
+    """
+    formula = _REMAINING_LEV_FORMULAS.get(family)
+    return None if formula is None else formula(d, **p)
 
 
 def _gb2_lev(x: np.ndarray, a: float, b: float, p: float, q: float) -> np.ndarray:
