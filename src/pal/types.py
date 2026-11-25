@@ -34,13 +34,13 @@ __all__ = [
     "VectorLike",
 ]
 
-Numeric = t.Union[float, int, np.number]
+Numeric = float | int | np.number
 
 # Type alias for scipy special functions and numpy random generators
 # These functions expect more restrictive types than our general Numeric type.
 # They don't accept complex numbers, _NumericProtocol objects, or general
 # np.number types.
-ScipyNumeric = t.Union[float, int, np.floating, np.integer]
+ScipyNumeric = float | int | np.floating | np.integer
 
 # Type alias for distribution parameters - clean type for documentation
 if t.TYPE_CHECKING:
@@ -55,15 +55,41 @@ T_co = t.TypeVar("T_co", covariant=True)
 
 
 class SamplingMethod(str, Enum):
-    """Sampling approaches supported by PAL."""
+    """Sampling methods for stochastic simulation.
+
+    MC uses independent pseudorandom draws. RQMC uses randomized, scrambled
+    Sobol sequences to improve coverage of the unit hypercube.
+
+    Attributes:
+        MC: Pseudorandom Monte Carlo sampling, also selected by the string mc.
+        RQMC: Randomized quasi-Monte Carlo sampling using scrambled Sobol sequences.
+    """
 
     MC = "pseudo"
+    """Pseudorandom Monte Carlo sampling (also selected by the string `"mc"`)."""
+
     RQMC = "rqmc"
+    """Randomized quasi-Monte Carlo sampling using scrambled Sobol sequences."""
+
+    @property
+    def description(self) -> str:
+        """A short explanation of the sampling method."""
+        if self is SamplingMethod.MC:
+            return "Pseudorandom Monte Carlo sampling"
+        return "Randomized quasi-Monte Carlo sampling using scrambled Sobol sequences"
 
 
 @dataclasses.dataclass
 class Config:
-    """Configuration class for PAL."""
+    """Configuration class for PAL.
+
+    Attributes:
+        n_sims: Number of simulations represented by the object.
+        qmc_dimensions: Number of Sobol dimensions per randomized block.
+        rng: Configured random generator instance.
+        sampling_method: Configured pseudorandom or randomized quasi-Monte Carlo sampling method.
+        seed: Seed used to initialize the random number generator.
+    """
 
     n_sims: int = 10000
     seed: int = 123456789
@@ -86,17 +112,89 @@ class ArithmeticProtocol(t.Protocol):
     """
 
     # Arithmetic operations
-    def __add__(self, other: t.Any) -> Self: ...
-    def __radd__(self, other: t.Any) -> Self: ...
-    def __sub__(self, other: t.Any) -> Self: ...
-    def __rsub__(self, other: t.Any) -> Self: ...
-    def __mul__(self, other: t.Any) -> Self: ...
-    def __rmul__(self, other: t.Any) -> Self: ...
-    def __truediv__(self, other: t.Any) -> Self: ...
-    def __rtruediv__(self, other: t.Any) -> Self: ...
-    def __pow__(self, other: t.Any) -> Self: ...
-    def __rpow__(self, other: t.Any) -> Self: ...
-    def __neg__(self) -> t.Any: ...
+    def __add__(self, other: t.Any) -> Self:
+        """Add the other operand to this object.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __radd__(self, other: t.Any) -> Self:
+        """Add this object to the left operand.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __sub__(self, other: t.Any) -> Self:
+        """Subtract the other operand from this object.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __rsub__(self, other: t.Any) -> Self:
+        """Subtract this object from the left operand.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __mul__(self, other: t.Any) -> Self:
+        """Multiply this object by the other operand.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __rmul__(self, other: t.Any) -> Self:
+        """Multiply the left operand by this object.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __truediv__(self, other: t.Any) -> Self:
+        """Divide this object by the other operand.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __rtruediv__(self, other: t.Any) -> Self:
+        """Divide the left operand by this object.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __pow__(self, other: t.Any) -> Self:
+        """Raise this object to the other operand's power.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __rpow__(self, other: t.Any) -> Self:
+        """Raise the left operand to this object's power.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __neg__(self) -> t.Any:
+        """Return the additive inverse."""
+        ...
 
 
 @t.runtime_checkable
@@ -107,14 +205,54 @@ class NumericProtocol(ArithmeticProtocol, t.Protocol):
     """
 
     # Comparison operations (scalar semantics - return bool)
-    def __lt__(self, other: t.Any) -> bool: ...
-    def __le__(self, other: t.Any) -> bool: ...
-    def __gt__(self, other: t.Any) -> bool: ...
-    def __ge__(self, other: t.Any) -> bool: ...
+    def __lt__(self, other: t.Any) -> bool:
+        """Compare whether this object is less than the other operand.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __le__(self, other: t.Any) -> bool:
+        """Compare whether this object is less than or equal to the other operand.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __gt__(self, other: t.Any) -> bool:
+        """Compare whether this object is greater than the other operand.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __ge__(self, other: t.Any) -> bool:
+        """Compare whether this object is greater than or equal to the other operand.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
 
     # Equality operations (scalar semantics - return bool)
-    def __eq__(self, other: t.Any) -> bool: ...
-    def __ne__(self, other: t.Any) -> bool: ...
+    def __eq__(self, other: t.Any) -> bool:
+        """Compare the operands for equality.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __ne__(self, other: t.Any) -> bool:
+        """Compare the operands for inequality.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
 
 
 @t.runtime_checkable
@@ -153,7 +291,11 @@ class SupportsArray(t.Protocol):
     """
 
     def __array__(self, dtype: t.Any = None) -> npt.NDArray[t.Any]:
-        """Convert to numpy array for compatibility with numpy functions."""
+        """Convert to numpy array for compatibility with numpy functions.
+
+        Args:
+            dtype: Requested data type for the converted or reduced array.
+        """
         ...
 
     def __array_function__(
@@ -163,7 +305,14 @@ class SupportsArray(t.Protocol):
         args: tuple[t.Any, ...],
         kwargs: dict[str, t.Any],
     ) -> t.Any:
-        """Handle numpy function dispatch to preserve object semantics."""
+        """Handle numpy function dispatch to preserve object semantics.
+
+        Args:
+            _: Types participating in NumPy dispatch; unused by PAL's implementation.
+            args: Positional arguments supplied by the caller or NumPy dispatch.
+            func: Array function to dispatch.
+            kwargs: Keyword arguments supplied by the caller or NumPy dispatch.
+        """
         ...
 
     def __array_ufunc__(
@@ -173,7 +322,14 @@ class SupportsArray(t.Protocol):
         *inputs: t.Any,
         **kwargs: t.Any,
     ) -> t.Any:
-        """Handle numpy ufuncs to preserve type through element-wise operations."""
+        """Handle numpy ufuncs to preserve type through element-wise operations.
+
+        Args:
+            *inputs: Input operands supplied to the NumPy universal function.
+            **kwargs: Keyword arguments supplied by the caller or NumPy dispatch.
+            method: Method of the universal function to invoke.
+            ufunc: NumPy universal function to apply.
+        """
         ...
 
 
@@ -191,19 +347,61 @@ class VectorOperations(ArithmeticProtocol, t.Protocol):
     """
 
     # Comparison operations (vector semantics - return Self)
-    def __lt__(self, other: t.Any) -> Self: ...
-    def __le__(self, other: t.Any) -> Self: ...
-    def __gt__(self, other: t.Any) -> Self: ...
-    def __ge__(self, other: t.Any) -> Self: ...
+    def __lt__(self, other: t.Any) -> Self:
+        """Compare whether this object is less than the other operand.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __le__(self, other: t.Any) -> Self:
+        """Compare whether this object is less than or equal to the other operand.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __gt__(self, other: t.Any) -> Self:
+        """Compare whether this object is greater than the other operand.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __ge__(self, other: t.Any) -> Self:
+        """Compare whether this object is greater than or equal to the other operand.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
 
     # Equality operations (vector semantics - return Self)
     # Note: These override object.__eq__ and object.__ne__ which return bool,
     # but vector types need to return Self for element-wise comparisons
-    def __eq__(self, other: t.Any) -> Self: ...  # type: ignore[override]
-    def __ne__(self, other: t.Any) -> Self: ...  # type: ignore[override]
+    def __eq__(self, other: t.Any) -> Self:  # type: ignore[override]
+        """Compare the operands for equality.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
+
+    def __ne__(self, other: t.Any) -> Self:  # type: ignore[override]
+        """Compare the operands for inequality.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
+        ...
 
     # Length support
-    def __len__(self) -> int: ...
+    def __len__(self) -> int:
+        """Return the number of entries."""
+        ...
 
 
 @t.runtime_checkable
@@ -228,27 +426,62 @@ class VectorLike(VectorOperations, SupportsArray, t.Protocol[T_co]):
 
 # Union type that includes both the basic numeric types and objects implementing
 # the scalar protocol (comparison operations return bool)
-NumericLike = t.Union[Numeric, NumericProtocol]
+NumericLike = Numeric | NumericProtocol
 
 
-# FIXME: VectorLike should be generic VectorLike[T] to enable proper typing
-# of math functions like sum(VectorLike[T]) -> T. This would allow:
-# - sum(StochasticScalar) -> float
-# - sum(ProteusVariable) -> StochasticScalar (when containing StochasticScalar)
-# Currently blocked by need to refactor all VectorLike usage sites.
+# Generic typing of VectorLike and reduction results is tracked in
+# https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/183.
 
 
 @t.runtime_checkable
 class SequenceLike(t.Protocol[T_value]):
     """Protocol for sequence-like objects."""
 
-    def __len__(self) -> int: ...
-    def __getitem__(self, index: int) -> T_value: ...
-    def __iter__(self) -> t.Iterator[T_value]: ...
-    def __contains__(self, value: object) -> bool: ...
-    def __reversed__(self) -> t.Iterator[T_value]: ...
-    def count(self, value: T_value) -> int: ...
-    def index(self, value: T_value, start: int = 0, stop: int | None = None) -> int: ...
+    def __len__(self) -> int:
+        """Return the number of entries."""
+        ...
+
+    def __getitem__(self, index: int) -> T_value:
+        """Retrieve the selected entry or entries.
+
+        Args:
+            index: Index or slice selecting entries.
+        """
+        ...
+
+    def __iter__(self) -> t.Iterator[T_value]:
+        """Iterate over the entries in their stored order."""
+        ...
+
+    def __contains__(self, value: object) -> bool:
+        """Test whether the object is a member of the collection.
+
+        Args:
+            value: Value to convert, compare or assign.
+        """
+        ...
+
+    def __reversed__(self) -> t.Iterator[T_value]:
+        """Iterate over the entries in reverse order."""
+        ...
+
+    def count(self, value: T_value) -> int:
+        """Count occurrences of the supplied value.
+
+        Args:
+            value: Value to convert, compare or assign.
+        """
+        ...
+
+    def index(self, value: T_value, start: int = 0, stop: int | None = None) -> int:
+        """Find the first matching value within the specified index range.
+
+        Args:
+            start: First position included in the selection.
+            stop: Exclusive end position of the selection.
+            value: Value to convert, compare or assign.
+        """
+        ...
 
 
 @t.runtime_checkable
@@ -317,6 +550,10 @@ class ProteusLike(VectorOperations, SequenceLike[T_value], t.Protocol):
             self.n_sims = self._calculate_n_sims()
 
     ```
+
+    Attributes:
+        n_sims: Number of simulations represented by the object.
+        values: Stored values in simulation or dimension order.
     """
 
     n_sims: int | None
@@ -332,6 +569,9 @@ class ProteusLike(VectorOperations, SequenceLike[T_value], t.Protocol):
         This override is necessary because SequenceLike protocol only supports
         int indexing, but ProteusLike containers are mapping-like and need
         string key access for dimension names.
+
+        Args:
+            key: Key identifying a member of the variable.
         """
         ...
 
@@ -362,11 +602,19 @@ class DistributionLike(t.Protocol[T_distribution]):
     """
 
     def cdf(self, x: T_distribution) -> T_distribution:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Value at which to evaluate the distribution's probability function.
+        """
         ...
 
     def invcdf(self, u: T_distribution) -> T_distribution:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability to convert to a quantile.
+        """
         ...
 
     def generate(self, n_sims: int | None = None, rng: RandomGenerator | None = None) -> ProteusLike[T_distribution]:

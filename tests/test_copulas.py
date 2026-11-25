@@ -430,7 +430,7 @@ def test_apply_copula_matches_independent_rank_reference(n_margins: int):
     derived = variables[1] * 3
     copulas.apply_copula(variables, samples)
 
-    for actual, reference in zip(variables, expected):
+    for actual, reference in zip(variables, expected, strict=False):
         np.testing.assert_array_equal(host_values(actual), reference)
     np.testing.assert_array_equal(host_values(derived), 3 * expected[1])
     assert all(var.coupled_variable_group is variables[0].coupled_variable_group for var in variables)
@@ -460,7 +460,7 @@ def test_apply_copula_rejects_samples_coupled_to_marginals_without_mutation(samp
         copulas.apply_copula(variables, samples)
 
     # The validation must happen before reordering or merging any groups.
-    for scalar, expected, group in zip(all_scalars, original_values, original_groups):
+    for scalar, expected, group in zip(all_scalars, original_values, original_groups, strict=False):
         np.testing.assert_array_equal(host_values(scalar), expected)
         assert scalar.coupled_variable_group is group
 

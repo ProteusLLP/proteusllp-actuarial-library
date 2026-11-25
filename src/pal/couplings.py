@@ -21,18 +21,39 @@ from pal._maths import asnumpy, to_backend
 from pal.config import Config
 
 
-def validate_stochastic_axes(variables: t.Iterable[ProteusStochasticVariable], n_sims: int | None = None) -> int | None:
-    """Validate scenario lengths before calculations or coupling-group mutations.
+def _is_scalar_constant(variable: ProteusStochasticVariable) -> bool:
+    """A length-one StochasticScalar is a constant, not a one-path random factor.
 
-    Claim-indexed temporaries must not be passed alongside scenario-indexed
-    variables. Their dimensions require a separate, explicit mapping.
+    Args:
+        variable: Stochastic variable whose coupling or data is being processed.
     """
+    from .stochastic_scalar import StochasticScalar
+
+    return isinstance(variable, StochasticScalar) and variable.n_sims == 1
+
+
+def validate_stochastic_axes(variables: t.Iterable[ProteusStochasticVariable], n_sims: int | None = None) -> int | None:
+    """Validate full simulation axes while permitting length-one scalar constants.
+
+    Only StochasticScalar objects with one element can broadcast. Frequency-
+    severity results and nonconstant vectors must always match the full
+    scenario count. This validation does not mutate variables or coupling
+    groups, including when a later input is incompatible.
+
+    Args:
+        n_sims: Number of simulations on the scenario axis.
+        variables: Stochastic variables to process in their existing order.
+    """
+    has_constant = False
     for variable in variables:
+        if _is_scalar_constant(variable):
+            has_constant = True
+            continue
         if n_sims is None:
             n_sims = variable.n_sims
         elif variable.n_sims != n_sims:
             raise ValueError(f"Stochastic inputs must have matching n_sims (expected {n_sims}, got {variable.n_sims})")
-    return n_sims
+    return n_sims if n_sims is not None else (1 if has_constant else None)
 
 
 def couple_stochastic_results(
@@ -51,15 +72,29 @@ def couple_stochastic_results(
 
     The first input's existing group is retained when possible. Groups hold
     weak references, so linking outputs does not prolong temporary lifetimes.
+
+    Args:
+        inputs: Input operands supplied to the NumPy universal function.
+        n_sims: Number of simulations on the scenario axis.
+        results: New stochastic results to associate with the input coupling groups.
     """
     output_leaves = tuple(results)
     sources = tuple(inputs)
     if not output_leaves:
         raise ValueError("At least one stochastic result is required")
-    validate_stochastic_axes((*sources, *output_leaves), n_sims=n_sims)
-
-    anchor = (sources or output_leaves)[0].coupled_variable_group
-    for variable in (*sources, *output_leaves):
+    target_n = validate_stochastic_axes((*sources, *output_leaves), n_sims=n_sims)
+    if target_n is None:
+        raise ValueError("Cannot determine stochastic simulation axis")
+    # A full-length result must be materialised before coupling. Constant
+    # inputs are not attached to a scenario coupling group: reordering them
+    # would incorrectly change their one-element shape.
+    if target_n > 1 and any(variable.n_sims != target_n for variable in output_leaves):
+        raise ValueError("Stochastic result has incompatible n_sims")
+    participants = tuple(
+        variable for variable in (*sources, *output_leaves) if target_n == 1 or not _is_scalar_constant(variable)
+    )
+    anchor = participants[0].coupled_variable_group
+    for variable in participants:
         anchor.merge(variable.coupled_variable_group)
 
 
@@ -77,20 +112,35 @@ class CouplingGroup:
         )
 
     def add(self, obj: ProteusStochasticVariable) -> None:
-        """Add a variable to the coupling group."""
+        """Add a variable to the coupling group.
+
+        Args:
+            obj: Candidate object to test or wrap.
+        """
         self._refs[obj._uid] = obj  # type: ignore[misc]  # pyright: ignore[reportPrivateUsage]
 
     def discard(self, obj: ProteusStochasticVariable) -> None:
-        """Remove a variable from the coupling group if it exists."""
+        """Remove a variable from the coupling group if it exists.
+
+        Args:
+            obj: Candidate object to test or wrap.
+        """
         self._refs.pop(obj._uid, None)  # type: ignore[misc]  # pyright: ignore[reportPrivateUsage]
 
     def __contains__(self, obj: ProteusStochasticVariable) -> bool:
+        """Test whether the object is a member of the collection.
+
+        Args:
+            obj: Candidate object to test or wrap.
+        """
         return obj._uid in self._refs  # type: ignore[misc]  # pyright: ignore[reportPrivateUsage]
 
     def __len__(self) -> int:
+        """Return the number of entries."""
         return len(self._refs)
 
     def __iter__(self) -> t.Iterator[ProteusStochasticVariable]:
+        """Iterate over the entries in their stored order."""
         # yield live objects only
         yield from self._refs.values()
 
@@ -110,7 +160,13 @@ class CouplingGroup:
 
 
 class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
-    """A class to represent a stochastic variable in a simulation."""
+    """A class to represent a stochastic variable in a simulation.
+
+    Attributes:
+        coupled_variable_group: Coupling group identifying simulations that must remain aligned.
+        n_sims: Number of simulations represented by the object.
+        values: Stored values in simulation or dimension order.
+    """
 
     n_sims: int
     values: npt.NDArray[np.number[t.Any]]
@@ -126,7 +182,12 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
         self.coupled_variable_group = CouplingGroup(self)
 
     def __array__(self, dtype: t.Any = None, copy: bool | None = None) -> npt.NDArray[t.Any]:
-        """Return the underlying numpy array for compatibility with numpy functions."""
+        """Return the underlying numpy array for compatibility with numpy functions.
+
+        Args:
+            copy: Whether to return a copy rather than sharing existing storage.
+            dtype: Requested data type for the converted or reduced array.
+        """
         result = asnumpy(self.values, dtype=dtype)
         if copy is True:
             return result.copy()
@@ -138,89 +199,173 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
     # Since our __array_ufunc__ correctly returns Self, we override these methods
     # to provide accurate type information to static type checkers.
     def __gt__(self, other: t.Any) -> Self:
-        """Greater than comparison returning instance of same type."""
+        """Greater than comparison returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__gt__(other)  # type: ignore[return-value]
 
     def __ge__(self, other: t.Any) -> Self:
-        """Greater than or equal comparison returning instance of same type."""
+        """Greater than or equal comparison returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__ge__(other)  # type: ignore[return-value]
 
     def __lt__(self, other: t.Any) -> Self:
-        """Less than comparison returning instance of same type."""
+        """Less than comparison returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__lt__(other)  # type: ignore[return-value]
 
     def __le__(self, other: t.Any) -> Self:
-        """Less than or equal comparison returning instance of same type."""
+        """Less than or equal comparison returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__le__(other)  # type: ignore[return-value]
 
     def __eq__(self, other: t.Any) -> Self:  # type: ignore[override]
-        """Equality comparison returning instance of same type."""
+        """Equality comparison returning instance of same type.
+
+        Args:
+            other: Other operand of the comparison.
+        """
         return super().__eq__(other)  # type: ignore[return-value]
 
     def __ne__(self, other: t.Any) -> Self:  # type: ignore[override]
-        """Not equal comparison returning instance of same type."""
+        """Not equal comparison returning instance of same type.
+
+        Args:
+            other: Other operand of the comparison.
+        """
         return super().__ne__(other)  # type: ignore[return-value]
 
     # Override NDArrayOperatorsMixin arithmetic operators with proper return
     # type annotations for direct arithmetic operations and ufuncs.
     def __add__(self, other: t.Any) -> Self:
-        """Add operation returning instance of same type."""
+        """Add operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__add__(other)  # type: ignore[return-value]
 
     def __radd__(self, other: t.Any) -> Self:
-        """Right add operation returning instance of same type."""
+        """Right add operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__radd__(other)  # type: ignore[return-value]
 
     def __sub__(self, other: t.Any) -> Self:
-        """Subtract operation returning instance of same type."""
+        """Subtract operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__sub__(other)  # type: ignore[return-value]
 
     def __rsub__(self, other: t.Any) -> Self:
-        """Right subtract operation returning instance of same type."""
+        """Right subtract operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__rsub__(other)  # type: ignore[return-value]
 
     def __mul__(self, other: t.Any) -> Self:
-        """Multiply operation returning instance of same type."""
+        """Multiply operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__mul__(other)  # type: ignore[return-value]
 
     def __rmul__(self, other: t.Any) -> Self:
-        """Right multiply operation returning instance of same type."""
+        """Right multiply operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__rmul__(other)  # type: ignore[return-value]
 
     def __truediv__(self, other: t.Any) -> Self:
-        """Division operation returning instance of same type."""
+        """Division operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__truediv__(other)  # type: ignore[return-value]
 
     def __rtruediv__(self, other: t.Any) -> Self:
-        """Right division operation returning instance of same type."""
+        """Right division operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__rtruediv__(other)  # type: ignore[return-value]
 
     def __pow__(self, other: t.Any) -> Self:
-        """Power operation returning instance of same type."""
+        """Power operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__pow__(other)  # type: ignore[return-value]
 
     def __rpow__(self, other: t.Any) -> Self:
-        """Right power operation returning instance of same type."""
+        """Right power operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__rpow__(other)  # type: ignore[return-value]
 
     def __floordiv__(self, other: t.Any) -> Self:
-        """Floor division operation returning instance of same type."""
+        """Floor division operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__floordiv__(other)  # type: ignore[return-value]
 
     def __rfloordiv__(self, other: t.Any) -> Self:
-        """Right floor division operation returning instance of same type."""
+        """Right floor division operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__rfloordiv__(other)  # type: ignore[return-value]
 
     def __mod__(self, other: t.Any) -> Self:
-        """Modulo operation returning instance of same type."""
+        """Modulo operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__mod__(other)  # type: ignore[return-value]
 
     def __rmod__(self, other: t.Any) -> Self:
-        """Right modulo operation returning instance of same type."""
+        """Right modulo operation returning instance of same type.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         return super().__rmod__(other)  # type: ignore[return-value]
 
     def __divmod__(self, other: t.Any) -> tuple[Self, Self]:
-        """Combined quotient and remainder returning tuple of same types."""
+        """Combined quotient and remainder returning tuple of same types.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         # Validate both scenario axes before the operation or any group merge.
         if isinstance(other, ProteusStochasticVariable):
             validate_stochastic_axes((self, other))
@@ -237,7 +382,11 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
         return quotient, remainder  # type: ignore[return-value]
 
     def __rdivmod__(self, other: t.Any) -> tuple[Self, Self]:
-        """Right combined quotient and remainder returning tuple of same types."""
+        """Right combined quotient and remainder returning tuple of same types.
+
+        Args:
+            other: Other operand of the arithmetic or comparison operation.
+        """
         # Validate both scenario axes before the operation or any group merge.
         if isinstance(other, ProteusStochasticVariable):
             validate_stochastic_axes((self, other))
@@ -264,7 +413,11 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
         return np.abs(self)  # type: ignore[return-value]
 
     def __round__(self, ndigits: int | None = None) -> Self:
-        """Round to specified number of digits returning instance of same type."""
+        """Round to specified number of digits returning instance of same type.
+
+        Args:
+            ndigits: Number of decimal places to round to.
+        """
         # Use numpy function to ensure proper handling through __array_ufunc__
         if ndigits is None:
             return np.round(self)  # type: ignore[return-value]
@@ -313,6 +466,12 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
 
         This approach is intentionally simple: we convert our custom types to arrays
         and let numpy handle the function, which matches numpy's default behavior.
+
+        Args:
+            _: Types participating in NumPy dispatch; unused by PAL's implementation.
+            args: Positional arguments supplied by the caller or NumPy dispatch.
+            func: Array function to dispatch.
+            kwargs: Keyword arguments supplied by the caller or NumPy dispatch.
         """
         # Convert arguments that are our type to arrays
         converted_args: list[t.Any] = []
@@ -374,4 +533,9 @@ class ProteusStochasticVariable(NDArrayOperatorsMixin, ABC):
 
     # Private methods for internal use
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
+        """Reorder the simulations using the supplied permutation.
+
+        Args:
+            new_order: Permutation of simulation positions to apply.
+        """
         raise NotImplementedError

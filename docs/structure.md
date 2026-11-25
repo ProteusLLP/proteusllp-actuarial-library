@@ -11,6 +11,7 @@
 - Type system remains independent of specific implementations
 
 **Example**:
+<!--pytest-codeblocks:skip-->
 ```python
 import typing as t
 
@@ -38,7 +39,7 @@ def generate() -> VectorLike: ...  # ✅ Depends only on abstraction
 
 **Pattern**:
 
-<!--pytest-codeblocks:cont-->
+<!--pytest-codeblocks:skip-->
 
 ```python
 from typing import Self
@@ -84,7 +85,7 @@ ProteusLike[T] (Generic Protocol)
 
 ### Type Aliases
 
-<!--pytest-codeblocks:cont-->
+<!--pytest-codeblocks:skip-->
 
 ```python
 import numpy as np

@@ -38,12 +38,12 @@ def test_shared_helper_rejects_late_result_axis_failure_atomically() -> None:
     groups = tuple(variable.coupled_variable_group for variable in variables)
     values = tuple(asnumpy(variable.values).copy() for variable in variables)
 
-    with pytest.raises(ValueError, match="matching n_sims"):
+    with pytest.raises(ValueError, match="incompatible n_sims"):
         couple_stochastic_results((first_leaf, bad_leaf), (source, other))
 
-    assert all(variable.coupled_variable_group is group for variable, group in zip(variables, groups))
+    assert all(variable.coupled_variable_group is group for variable, group in zip(variables, groups, strict=False))
     assert all(len(group) == 1 for group in groups)
-    for variable, before in zip(variables, values):
+    for variable, before in zip(variables, values, strict=False):
         np.testing.assert_array_equal(asnumpy(variable.values), before)
 
 
@@ -85,7 +85,7 @@ def test_multivariate_and_matrix_leaves_share_parameter_ancestry() -> None:
 
 def test_frequency_severity_ufunc_checks_simulation_axis_before_merging() -> None:
     events = FreqSevSims([0, 2, 2], [3.0, 4.0, 5.0], 3)
-    mismatched = StochasticScalar([10.0])
+    mismatched = StochasticScalar([10.0, 20.0])
     event_group = events.coupled_variable_group
     other_group = mismatched.coupled_variable_group
     original = asnumpy(events.values).copy()
@@ -146,7 +146,7 @@ def test_python_divmod_links_two_outputs_without_losing_ancestry() -> None:
 
 def test_divmod_mismatched_axes_do_not_merge() -> None:
     numerator = StochasticScalar([1.0, 2.0, 3.0])
-    divisor = StochasticScalar([2.0])
+    divisor = StochasticScalar([2.0, 3.0])
     first_group = numerator.coupled_variable_group
     second_group = divisor.coupled_variable_group
     with pytest.raises(ValueError, match="matching n_sims"):
@@ -157,7 +157,7 @@ def test_divmod_mismatched_axes_do_not_merge() -> None:
 
 def test_mixture_prevalidates_all_stochastic_parameter_axes_before_rng_use() -> None:
     rate = StochasticScalar([1.0, 2.0, 3.0])
-    location = StochasticScalar([0.0])
+    location = StochasticScalar([0.0, 0.5])
     mixture = HyperExponential(weights=[0.3, 0.7], rates=[rate, 2.0], loc=location)
     rng = np.random.default_rng(270)
 

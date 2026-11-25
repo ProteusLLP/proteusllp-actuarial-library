@@ -17,6 +17,14 @@ def generalized_inverse_gaussian_mc(rng: t.Any, n_sims: int, p: t.Any, shape: t.
     Standard GIG(-1/2,b) equals IG(mean=1,shape=b). Reciprocal symmetry
     gives GIG(+1/2,b). All random draws and array operations are on the
     active backend, with only a scalar condition check for the index family.
+
+    Args:
+        rng: Random generator on the active backend.
+        n_sims: Number of simulated scenarios.
+        p: GIG index, either -1/2 or +1/2 in each scenario.
+        shape: Positive SciPy GIG shape parameter.
+        scale: Positive multiplicative scale.
+        loc: Additive location shift.
     """
     index = xp.broadcast_to(xp.asarray(p, dtype=xp.float64), (n_sims,))
     if not bool(xp.all(xp.abs(index) == 0.5)):

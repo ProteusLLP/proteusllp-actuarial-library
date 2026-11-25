@@ -32,11 +32,13 @@ from scipy.stats import geninvgauss
 
 # Local imports
 from ._compat import override
+from ._gig import _gig_log_probabilities
 from ._maths import asnumpy, scalar_or_array, special, to_backend, xp
+from ._severity_probability import _burr_terms, _inverse_weibull_terms
 from ._value_arrays import stochastic_array
 from .config import config
 from .couplings import couple_stochastic_results, validate_stochastic_axes
-from .fitting import fit_distribution, mean_excess
+from .fitting import OptimizerMethod, UncertaintyMethod, fit_distribution, mean_excess
 from .fitting_remaining import fit_remaining, mean_excess_remaining
 from .qmc import (
     _inverse_transform_uniforms,
@@ -67,21 +69,27 @@ if t.TYPE_CHECKING:
     from .multivariate_distributions import Wishart as Wishart
 
 TOLERANCE = 1e-10  # Tolerance for numerical comparisons
-# FIXME: Consider replaching with VectorLike from types.py
-ReturnType = t.Union[int, float, StochasticScalar]
+# Review whether VectorLike can represent this alias without widening its
+# semantics: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/184.
+ReturnType = int | float | StochasticScalar
 
 
 def _special_call(function: t.Callable[..., t.Any], *args: t.Any) -> t.Any:
-    """Call a SciPy-compatible special function on active-backend values."""
+    """Call a SciPy-compatible special function on active-backend values.
+
+    Args:
+        *args: Arguments to the probability function, potentially including stochastic values.
+        function: Probability function to evaluate on the active backend.
+    """
     stochastic_args = [arg for arg in args if isinstance(arg, StochasticScalar)]
-    validate_stochastic_axes(stochastic_args)
+    target_n_sims = validate_stochastic_axes(stochastic_args)
     processed_args = [arg.values if isinstance(arg, StochasticScalar) else to_backend(arg) for arg in args]
     result = function(*processed_args)
     if stochastic_args and getattr(result, "ndim", None) == 1:
-        if len(result) != stochastic_args[0].n_sims:
+        if target_n_sims not in (None, 1) and len(result) != target_n_sims:
             raise ValueError("Special function result has incompatible n_sims")
         wrapped = StochasticScalar(result)
-        couple_stochastic_results((wrapped,), stochastic_args)
+        couple_stochastic_results((wrapped,), stochastic_args, n_sims=len(result))
         return wrapped
     return scalar_or_array(result)
 
@@ -95,6 +103,11 @@ def _discrete_count_ppf(
     solve for a distribution parameter, not for the count. For CuPy inputs this
     calculation transfers the arguments to the host and the result back to the
     active backend. The zero-probability quantile is the minimum count, zero.
+
+    Args:
+        function: Probability function to evaluate on the active backend.
+        *params: Distribution parameters supplied in the order required by the probability function.
+        u: Cumulative probability in the interval from zero to one.
     """
     arguments = (u, *params)
     stochastic_args = [arg for arg in arguments if isinstance(arg, StochasticScalar)]
@@ -118,15 +131,39 @@ class DistributionBase:
     """Abstract base class for statistical distributions."""
 
     def __init__(self, **params: DistributionParameter) -> None:
-        """Initialize distribution with parameters."""
+        """Initialize distribution with parameters.
+
+        Args:
+            **params: Named distribution parameters, including stochastic parameter values.
+        """
         # Store parameters in a private dictionary.
         self._params: dict[str, DistributionParameter] = params
 
     def _validate_probability_inputs(self, argument: DistributionParameter) -> None:
-        """Reject incompatible scenario-indexed inputs before intermediate calculations."""
+        """Reject incompatible scenario-indexed inputs before intermediate calculations.
+
+        Args:
+            argument: Probability-function input used to preserve simulation coupling.
+        """
         validate_stochastic_axes(
             value for value in (argument, *self._params.values()) if isinstance(value, StochasticScalar)
         )
+
+    def lev(self, limit: float | np.ndarray) -> float | np.ndarray:
+        """Return the limited expected value of the numeric loss.
+
+        This is the expected value of the minimum of the loss and the
+        supplied limit, without a lower clamp at zero. Non-finite limits
+        return NaN. Scalar parameters
+        are required. Array limits retain their shape and order. Evaluation
+        is deterministic on the CPU, including when simulation uses a GPU.
+
+        Args:
+            limit: Policy limit or array of limits in the same units as the loss.
+        """
+        from ._lev import limited_expected_value
+
+        return limited_expected_value(self, limit)
 
     def cdf(self, x: DistributionParameter) -> ReturnType:
         """Compute the cumulative distribution function at x.
@@ -206,6 +243,7 @@ class DistributionBase:
     def _param_values(
         self,
     ) -> t.Generator[t.Any, None, None]:
+        """Yield parameters with stochastic values resolved to their simulation arrays."""
         # Yields parameter values; if a parameter is a StochasticScalar, its
         # 'values' are returned - which will be a numpy array otherwise we just yield
         # the parameter value directly.
@@ -249,34 +287,63 @@ class Poisson(DiscreteDistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Poisson]:
-        """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights)
+        """Estimate distribution parameters from observed values.
+
+        Args:
+            observations: Observed values used to estimate the distribution parameters.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+        """
+        return fit_remaining(cls, observations, weights=weights, uncertainty_method=uncertainty_method)
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return conditional expected numeric excess above an attachment."""
+        """Return conditional expected numeric excess above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess_remaining(self, threshold)
 
     def __init__(self, mean: DistributionParameter) -> None:
-        """Initialize Poisson distribution with mean parameter."""
+        """Initialize Poisson distribution with mean parameter.
+
+        Args:
+            mean: Expected value of the distribution.
+        """
         super().__init__(mean=mean)
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         # scipy.special functions support array inputs despite restrictive type stubs
         (mean,) = self._params.values()
         return _special_call(special.pdtr, x, mean)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Return the smallest nonnegative count whose cumulative probability reaches u."""
+        """Return the smallest nonnegative count whose cumulative probability reaches u.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         (mean,) = self._params.values()
         return _discrete_count_ppf(scipy_stats.poisson.ppf, u, mean)
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
+        """Generate samples using the distribution's backend-specific sampling routine.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator supplying the simulation draws.
+        """
         (mean,) = self._param_values
         return StochasticScalar(_sample_rng(rng, "poisson", n_sims, mean))
 
@@ -301,13 +368,24 @@ class NegBinomial(DiscreteDistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[NegBinomial]:
-        """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights)
+        """Estimate distribution parameters from observed values.
+
+        Args:
+            observations: Observed values used to estimate the distribution parameters.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+        """
+        return fit_remaining(cls, observations, weights=weights, uncertainty_method=uncertainty_method)
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return conditional expected numeric excess above an attachment."""
+        """Return conditional expected numeric excess above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess_remaining(self, threshold)
 
     def __init__(
@@ -325,18 +403,32 @@ class NegBinomial(DiscreteDistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         n, p = self._params.values()
         return _special_call(special.nbdtr, x, n, p)  # type: ignore[misc, arg-type]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Return the smallest count whose cumulative probability reaches u."""
+        """Return the smallest count whose cumulative probability reaches u.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         n, p = self._params.values()
         return _discrete_count_ppf(scipy_stats.nbinom.ppf, u, n, p)
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
+        """Generate samples using the distribution's backend-specific sampling routine.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator supplying the simulation draws.
+        """
         n, p = self._param_values
         return StochasticScalar(_sample_rng(rng, "negative_binomial", n_sims, n, p))
 
@@ -361,14 +453,26 @@ class Binomial(DiscreteDistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         n: int | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Binomial]:
-        """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights, n=n)
+        """Estimate distribution parameters from observed values.
+
+        Args:
+            n: Known number of trials per observed count.
+            observations: Observed values used to estimate the distribution parameters.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+        """
+        return fit_remaining(cls, observations, weights=weights, n=n, uncertainty_method=uncertainty_method)
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return conditional expected numeric excess above an attachment."""
+        """Return conditional expected numeric excess above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess_remaining(self, threshold)
 
     def __init__(self, n: DistributionParameter, p: DistributionParameter) -> None:
@@ -382,18 +486,32 @@ class Binomial(DiscreteDistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         n, p = self._params.values()
         return _special_call(special.bdtr, x, n, p)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Return the smallest count whose cumulative probability reaches u."""
+        """Return the smallest count whose cumulative probability reaches u.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         n, p = self._params.values()
         return _discrete_count_ppf(scipy_stats.binom.ppf, u, n, p)
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
+        """Generate samples using the distribution's backend-specific sampling routine.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator supplying the simulation draws.
+        """
         n, p = self._param_values
         return StochasticScalar(_sample_rng(rng, "binomial", n_sims, n, p))
 
@@ -424,15 +542,35 @@ class HyperGeometric(DiscreteDistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         population_size: int | None = None,
         n_draws: int | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[HyperGeometric]:
-        """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights, population_size=population_size, n_draws=n_draws)
+        """Estimate distribution parameters from observed values.
+
+        Args:
+            n_draws: Number of draws from the finite population.
+            observations: Observed values used to estimate the distribution parameters.
+            population_size: Total number of items in the population.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+        """
+        return fit_remaining(
+            cls,
+            observations,
+            weights=weights,
+            population_size=population_size,
+            n_draws=n_draws,
+            uncertainty_method=uncertainty_method,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return conditional expected numeric excess above an attachment."""
+        """Return conditional expected numeric excess above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess_remaining(self, threshold)
 
     def __init__(
@@ -453,7 +591,11 @@ class HyperGeometric(DiscreteDistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         # Use scipy.stats because scipy.special does not expose hypergeom CDF directly
         from scipy.stats import hypergeom
 
@@ -473,7 +615,11 @@ class HyperGeometric(DiscreteDistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         from scipy.stats import hypergeom
 
         self._validate_probability_inputs(u)
@@ -491,6 +637,12 @@ class HyperGeometric(DiscreteDistributionBase):
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
+        """Generate samples using the distribution's backend-specific sampling routine.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator supplying the simulation draws.
+        """
         ngood, nbad, n_draws = self._param_values
         return StochasticScalar(
             _sample_rng(rng, "hypergeometric", n_sims, t.cast(int, ngood), t.cast(int, nbad), t.cast(int, n_draws))
@@ -516,16 +668,32 @@ class Bernoulli(Binomial):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         n: int | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Bernoulli]:
-        """Estimate distribution parameters from observed values."""
+        """Estimate distribution parameters from observed values.
+
+        Args:
+            n: Number of trials; Bernoulli fitting requires one trial.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+        """
         if n not in (None, 1):
             raise ValueError("Bernoulli has exactly one trial")
-        return fit_remaining(cls, observations, weights=weights)
+        return fit_remaining(cls, observations, weights=weights, uncertainty_method=uncertainty_method)
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return conditional expected numeric excess above an attachment."""
+        """Return conditional expected numeric excess above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess_remaining(self, threshold)
 
     def __init__(self, p: DistributionParameter) -> None:
@@ -561,12 +729,28 @@ class GPD(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         free_location: bool = False,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
     ) -> FitResult[GPD]:
-        """Fit a GPD with the location fixed at threshold or estimated."""
+        """Fit a GPD with the location fixed at threshold or estimated.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            free_location: Estimate the GPD location rather than fixing it at the reporting threshold.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -574,10 +758,18 @@ class GPD(DistributionBase):
             censored=censored,
             weights=weights,
             free_location=free_location,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return the theoretical mean loss in excess of the attachment."""
+        """Return the theoretical mean loss in excess of the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(
@@ -597,9 +789,21 @@ class GPD(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
 
         def evaluate(x, shape, scale, loc):
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                scale: Positive scale parameter of the distribution.
+                shape: Shape parameter of the distribution.
+                x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+            """
             x, shape, scale, loc = (xp.asarray(value) for value in (x, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 z = (x - loc) / scale
@@ -615,9 +819,21 @@ class GPD(DistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
 
         def evaluate(u, shape, scale, loc):
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                scale: Positive scale parameter of the distribution.
+                shape: Shape parameter of the distribution.
+                u: Resolved cumulative probability or array of probabilities.
+            """
             u, shape, scale, loc = (xp.asarray(value) for value in (u, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 y = -xp.log1p(-u)
@@ -652,15 +868,44 @@ class Burr(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Burr]:
-        """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Estimate distribution parameters by maximum likelihood.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return the theoretical mean loss in excess of the attachment."""
+        """Return the theoretical mean loss in excess of the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(
@@ -680,25 +925,89 @@ class Burr(DistributionBase):
         """
         super().__init__(power=power, shape=shape, scale=scale, loc=loc)
 
-    @override
-    def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
+        """Evaluate the selected probability kernel while preserving stochastic coupling.
+
+        Args:
+            index: Index selecting log density, log survival or log CDF from the probability kernel.
+            logarithmic: Whether to return the logarithm rather than the probability or density.
+            x: Value at which to evaluate the probability or density.
+        """
 
         def evaluate(x, power, shape, scale, loc):
-            x, power, shape, scale, loc = (xp.asarray(v) for v in (x, power, shape, scale, loc))
-            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-                z = xp.maximum((x - loc) / scale, 0.0)
-                log_term = xp.logaddexp(0.0, power * xp.log(z))
-                result = -xp.expm1(-shape * log_term)
-                return xp.where((power > 0) & (shape > 0) & (scale > 0), result, xp.nan)
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                power: Positive exponent of the scaled loss.
+                scale: Positive scale parameter of the distribution.
+                shape: Shape parameter of the distribution.
+                x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+            """
+            result = _burr_terms(x, power, shape, scale, loc, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
 
         return _special_call(evaluate, x, *self._params.values())
 
     @override
+    def cdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the cumulative probability.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=True)
+
+    @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
 
         def evaluate(u, power, shape, scale, loc):
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                power: Positive exponent of the scaled loss.
+                scale: Positive scale parameter of the distribution.
+                shape: Shape parameter of the distribution.
+                u: Resolved cumulative probability or array of probabilities.
+            """
             u, power, shape, scale, loc = (xp.asarray(v) for v in (u, power, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 y = -xp.log1p(-u) / shape
@@ -750,15 +1059,44 @@ class GeneralizedBetaPrime(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[GeneralizedBetaPrime]:
-        """Fit positive severity observations by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Fit positive severity observations by maximum likelihood.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Calculate the theoretical expected severity above the attachment."""
+        """Calculate the theoretical expected severity above the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(
@@ -768,7 +1106,14 @@ class GeneralizedBetaPrime(DistributionBase):
         p: DistributionParameter,
         q: DistributionParameter,
     ) -> None:
-        """Initialize a generalized beta prime severity distribution."""
+        """Initialize a generalized beta prime severity distribution.
+
+        Args:
+            a: Positive power of the scaled loss.
+            b: Positive scale of the loss.
+            p: Positive lower-tail beta shape parameter.
+            q: Upper-tail beta-prime shape parameter.
+        """
         for name, value in (("a", a), ("b", b), ("p", p), ("q", q)):
             raw = value.values if isinstance(value, StochasticScalar) else value
             values = xp.asarray(raw)
@@ -778,7 +1123,11 @@ class GeneralizedBetaPrime(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute the probability of a claim severity not exceeding x."""
+        """Compute the probability of a claim severity not exceeding x.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         a, b, p, q = self._params.values()
         # Avoid division by zero outside the positive support. Evaluate the
         # complementary beta tail above the scale to avoid rounding z to one.
@@ -792,7 +1141,11 @@ class GeneralizedBetaPrime(DistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute the severity quantile at probability u."""
+        """Compute the severity quantile at probability u.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         a, b, p, q = self._params.values()
         # Invert the smaller beta tail to retain accuracy for high severity quantiles.
         upper_tail = np.greater(u, 0.5)
@@ -806,7 +1159,12 @@ class GeneralizedBetaPrime(DistributionBase):
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
-        """Sample via a ratio of independent unit-scale gamma variates."""
+        """Sample via a ratio of independent unit-scale gamma variates.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator supplying the simulation draws.
+        """
         a, b, p, q = self._param_values
         return StochasticScalar(_sample_generalized_beta_prime(rng, n_sims, a, b, p, q))
 
@@ -838,19 +1196,50 @@ class Beta(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
         loc: float = 0.0,
         scale: float = 1.0,
     ) -> FitResult[Beta]:
-        """Estimate distribution parameters from observed values."""
+        """Estimate distribution parameters from observed values.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            loc: Location shift applied to the distribution.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            scale: Positive scale parameter of the distribution.
+            threshold: Optional left-truncation level; None uses the complete lower support.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
         return fit_remaining(
-            cls, observations, weights=weights, censored=censored, threshold=threshold, loc=loc, scale=scale
+            cls,
+            observations,
+            weights=weights,
+            censored=censored,
+            threshold=threshold,
+            loc=loc,
+            scale=scale,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return conditional expected numeric excess above an attachment."""
+        """Return conditional expected numeric excess above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess_remaining(self, threshold)
 
     def __init__(
@@ -872,18 +1261,32 @@ class Beta(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         alpha, beta, scale, loc = self._params.values()
         return _special_call(special.betainc, alpha, beta, (x - loc) / scale)  # type: ignore[return-type]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         alpha, beta, scale, loc = self._params.values()
         return _special_call(special.betaincinv, alpha, beta, u) * scale + loc  # type: ignore[return-type]
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
+        """Generate samples using the distribution's backend-specific sampling routine.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator supplying the simulation draws.
+        """
         alpha, beta, scale, loc = self._param_values
         return StochasticScalar(_sample_scaled_beta(rng, n_sims, alpha, beta, scale, loc))
 
@@ -979,13 +1382,38 @@ class MBBEFD(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[MBBEFD]:
-        """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights)
+        """Estimate distribution parameters from observed values.
+
+        Args:
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_remaining(
+            cls,
+            observations,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return conditional expected numeric excess above an attachment."""
+        """Return conditional expected numeric excess above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess_remaining(self, threshold)
 
     def __init__(
@@ -1034,7 +1462,12 @@ class MBBEFD(DistributionBase):
         result: t.Any,
         argument: DistributionParameter,
     ) -> ReturnType:
-        """Preserve stochastic coupling for array-valued results."""
+        """Preserve stochastic coupling for array-valued results.
+
+        Args:
+            argument: Probability-function input used to preserve simulation coupling.
+            result: Calculated probability or quantile, before wrapping with stochastic metadata.
+        """
         candidates = (argument, *self._params.values())
         stochastic_inputs = [value for value in candidates if isinstance(value, StochasticScalar)]
         if not stochastic_inputs:
@@ -1046,7 +1479,11 @@ class MBBEFD(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute the cumulative distribution function, including the atom at one."""
+        """Compute the cumulative distribution function, including the atom at one.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         g, b = self._validated_params()
         values = xp.asarray(x.values if isinstance(x, StochasticScalar) else x)
         degenerate = (g == 1) | (b == 0)
@@ -1071,7 +1508,11 @@ class MBBEFD(DistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute the inverse CDF, returning one across the total-loss atom."""
+        """Compute the inverse CDF, returning one across the total-loss atom.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         g, b = self._validated_params()
         probabilities = xp.asarray(u.values if isinstance(u, StochasticScalar) else u)
         degenerate = (g == 1) | (b == 0)
@@ -1195,15 +1636,44 @@ class LogLogistic(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[LogLogistic]:
-        """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Estimate distribution parameters by maximum likelihood.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return the theoretical mean loss in excess of the attachment."""
+        """Return the theoretical mean loss in excess of the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(
@@ -1221,15 +1691,77 @@ class LogLogistic(DistributionBase):
         """
         super().__init__(shape=shape, scale=scale, loc=loc)
 
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
+        """Evaluate the selected probability kernel while preserving stochastic coupling.
+
+        Args:
+            index: Index selecting log density, log survival or log CDF from the probability kernel.
+            logarithmic: Whether to return the logarithm rather than the probability or density.
+            x: Value at which to evaluate the probability or density.
+        """
+
+        def evaluate(x, shape, scale, loc):
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                scale: Positive scale parameter of the distribution.
+                shape: Shape parameter of the distribution.
+                x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+            """
+            result = _burr_terms(x, shape, 1.0, scale, loc, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
+
+        return _special_call(evaluate, x, *self._params.values())
+
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        shape, scale, loc = self._params.values()
-        y = ((x - loc) / scale) ** shape
-        result = y / (1 + y)
-        return result
+        """Compute the cumulative probability.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=True)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Evaluate the inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         shape, scale, loc = self._params.values()
         result = scale * ((u / (1 - u)) ** (1 / shape)) + loc
         return result
@@ -1261,15 +1793,44 @@ class Normal(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
     ) -> FitResult[Normal]:
-        """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold)
+        """Estimate distribution parameters from observed values.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Optional left-truncation level; None uses the complete lower support.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_remaining(
+            cls,
+            observations,
+            weights=weights,
+            censored=censored,
+            threshold=threshold,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return conditional expected numeric excess above an attachment."""
+        """Return conditional expected numeric excess above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess_remaining(self, threshold)
 
     def __init__(self, mu: DistributionParameter, sigma: DistributionParameter) -> None:
@@ -1283,7 +1844,11 @@ class Normal(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         self._validate_probability_inputs(x)
         mu, sigma = self._params.values()
         arg = (x - mu) / sigma
@@ -1291,7 +1856,11 @@ class Normal(DistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         self._validate_probability_inputs(u)
         mu, sigma = self._params.values()
         return _special_call(special.ndtri, u) * sigma + mu
@@ -1317,15 +1886,44 @@ class Logistic(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
     ) -> FitResult[Logistic]:
-        """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold)
+        """Estimate distribution parameters from observed values.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Optional left-truncation level; None uses the complete lower support.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_remaining(
+            cls,
+            observations,
+            weights=weights,
+            censored=censored,
+            threshold=threshold,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return conditional expected numeric excess above an attachment."""
+        """Return conditional expected numeric excess above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess_remaining(self, threshold)
 
     def __init__(self, mu: DistributionParameter, sigma: DistributionParameter) -> None:
@@ -1339,14 +1937,22 @@ class Logistic(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         self._validate_probability_inputs(x)
         mu, sigma = self._params.values()
         return t.cast(ReturnType, 1 / (1 + np.exp(-(x - mu) / sigma)))
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         self._validate_probability_inputs(u)
         mu, sigma = self._params.values()
         return t.cast(ReturnType, mu + sigma * np.log(u / (1 - u)))
@@ -1374,15 +1980,44 @@ class LogNormal(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[LogNormal]:
-        """Fit this distribution by maximum likelihood, with truncation and censoring."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Fit this distribution by maximum likelihood, with truncation and censoring.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return the theoretical mean loss in excess of the attachment."""
+        """Return the theoretical mean loss in excess of the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(self, mu: DistributionParameter, sigma: DistributionParameter) -> None:
@@ -1396,7 +2031,11 @@ class LogNormal(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         self._validate_probability_inputs(x)
         mu, sigma = self._params.values()
         result = _special_call(special.ndtr, (np.log(x) - mu) / sigma)
@@ -1404,7 +2043,11 @@ class LogNormal(DistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         self._validate_probability_inputs(u)
         mu, sigma = self._params.values()
         return np.exp(_special_call(special.ndtri, u) * sigma + mu)
@@ -1429,15 +2072,44 @@ class Gamma(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Gamma]:
-        """Fit this distribution by maximum likelihood, with truncation and censoring."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Fit this distribution by maximum likelihood, with truncation and censoring.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return the theoretical mean loss in excess of the attachment."""
+        """Return the theoretical mean loss in excess of the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(
@@ -1457,14 +2129,22 @@ class Gamma(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         self._validate_probability_inputs(x)
         alpha, theta, loc = self._params.values()
         return _special_call(special.gammainc, alpha, (x - loc) / theta)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         self._validate_probability_inputs(u)
         alpha, theta, loc = self._params.values()
         result = _special_call(special.gammaincinv, alpha, u) * theta + loc
@@ -1472,6 +2152,12 @@ class Gamma(DistributionBase):
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
+        """Generate samples using the distribution's backend-specific sampling routine.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator supplying the simulation draws.
+        """
         alpha, theta, loc = self._param_values
         return StochasticScalar(_sample_shifted_gamma(rng, n_sims, alpha, theta, loc))
 
@@ -1515,10 +2201,9 @@ class NonCentralChiSquared(DistributionBase):
         nonc: Noncentrality parameter :math:`\lambda\geq0`.
 
     Notes:
-        Monte Carlo generation uses the active backend, and GPU RQMC for
-        fixed moderate noncentrality uses an exact two-coordinate Poisson
-        mixture. The CDF and inverse CDF call SciPy on the host when running
-        with CuPy: measured native GPU inversions were much slower.
+        Monte Carlo generation uses the active backend. GPU RQMC uses a two-coordinate
+        Poisson mixture for fixed moderate noncentrality. CDF and inverse CDF on GPU
+        use SciPy host fallbacks.
     """
 
     @classmethod
@@ -1526,15 +2211,44 @@ class NonCentralChiSquared(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
     ) -> FitResult[NonCentralChiSquared]:
-        """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold)
+        """Estimate distribution parameters from observed values.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Optional left-truncation level; None uses the complete lower support.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_remaining(
+            cls,
+            observations,
+            weights=weights,
+            censored=censored,
+            threshold=threshold,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return conditional expected numeric excess above an attachment."""
+        """Return conditional expected numeric excess above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess_remaining(self, threshold)
 
     def __init__(
@@ -1561,7 +2275,11 @@ class NonCentralChiSquared(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute the cumulative distribution function."""
+        """Compute the cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         self._validated_params()
         self._validate_probability_inputs(x)
         cdf_function = special.chndtr if xp is np else lambda *values: _scipy_on_backend(scipy_special.chndtr, *values)
@@ -1574,7 +2292,11 @@ class NonCentralChiSquared(DistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute the inverse cumulative distribution function."""
+        """Compute the inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         self._validated_params()
         self._validate_probability_inputs(u)
         host_ppf = scipy_special.chndtrix
@@ -1588,7 +2310,12 @@ class NonCentralChiSquared(DistributionBase):
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
-        """Generate random samples on the backend used by the random generator."""
+        """Generate random samples on the backend used by the random generator.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator supplying the simulation draws.
+        """
         df, nonc = self._validated_params()
         return StochasticScalar(_sample_rng(rng, "noncentral_chisquare", n_sims, df, nonc))
 
@@ -1614,15 +2341,44 @@ class InverseGamma(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseGamma]:
-        """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Estimate distribution parameters by maximum likelihood.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return the theoretical mean loss in excess of the attachment."""
+        """Return the theoretical mean loss in excess of the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(
@@ -1642,13 +2398,21 @@ class InverseGamma(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         alpha, theta, loc = self._params.values()
         return _special_call(special.gammaincc, alpha, np.divide(theta, (x - loc)))  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         alpha, theta, loc = self._params.values()
         return t.cast(ReturnType, np.divide(theta, _special_call(special.gammainccinv, alpha, u)) + loc)
 
@@ -1674,15 +2438,41 @@ class Pareto(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Pareto]:
-        """Fit this distribution by maximum likelihood, with truncation and censoring."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Fit this distribution by maximum likelihood, with truncation and censoring.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return the theoretical mean loss in excess of the attachment."""
+        """Return the theoretical mean loss in excess of the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(self, shape: DistributionParameter, scale: DistributionParameter) -> None:
@@ -1696,13 +2486,21 @@ class Pareto(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         shape, scale = self._params.values()
         return 1 - (x / scale) ** (-shape)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         shape, scale = self._params.values()
         return (1 - u) ** (-1 / shape) * scale
 
@@ -1731,15 +2529,44 @@ class Paralogistic(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Paralogistic]:
-        """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Estimate distribution parameters by maximum likelihood.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return the theoretical mean loss in excess of the attachment."""
+        """Return the theoretical mean loss in excess of the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(
@@ -1757,14 +2584,77 @@ class Paralogistic(DistributionBase):
         """
         super().__init__(shape=shape, scale=scale, loc=loc)
 
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
+        """Evaluate the selected probability kernel while preserving stochastic coupling.
+
+        Args:
+            index: Index selecting log density, log survival or log CDF from the probability kernel.
+            logarithmic: Whether to return the logarithm rather than the probability or density.
+            x: Value at which to evaluate the probability or density.
+        """
+
+        def evaluate(x, shape, scale, loc):
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                scale: Positive scale parameter of the distribution.
+                shape: Shape parameter of the distribution.
+                x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+            """
+            result = _burr_terms(x, shape, shape, scale, loc, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
+
+        return _special_call(evaluate, x, *self._params.values())
+
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        shape, scale, loc = self._params.values()
-        y = 1 / (1 + ((x - loc) / scale) ** shape)
-        return 1 - y**shape
+        """Compute the cumulative probability.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=True)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Evaluate the inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         shape, scale, loc = self._params.values()
         return loc + scale * (((1 - u) ** (-1 / shape)) - 1) ** (1 / shape)
 
@@ -1795,15 +2685,44 @@ class InverseBurr(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseBurr]:
-        """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Estimate distribution parameters by maximum likelihood.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return the theoretical mean loss in excess of the attachment."""
+        """Return the theoretical mean loss in excess of the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(
@@ -1827,14 +2746,78 @@ class InverseBurr(DistributionBase):
         self._scale = scale
         self._loc = loc
 
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
+        """Evaluate the selected probability kernel while preserving stochastic coupling.
+
+        Args:
+            index: Index selecting log density, log survival or log CDF from the probability kernel.
+            logarithmic: Whether to return the logarithm rather than the probability or density.
+            x: Value at which to evaluate the probability or density.
+        """
+
+        def evaluate(x, power, shape, scale, loc):
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                power: Positive exponent of the scaled loss.
+                scale: Positive scale parameter of the distribution.
+                shape: Shape parameter of the distribution.
+                x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+            """
+            result = _burr_terms(x, power, shape, scale, loc, inverse=True, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
+
+        return _special_call(evaluate, x, *self._params.values())
+
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        y = ((x - self._loc) / self._scale) ** self._power
-        return (y / (1 + y)) ** self._shape
+        """Compute the cumulative probability.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=True)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         # Transform quantile u using shape parameter
         u_transformed = np.float_power(u, (-1 / self._shape))
 
@@ -1868,15 +2851,44 @@ class InverseParalogistic(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseParalogistic]:
-        """Fit the distribution using right-censored, left-truncated observations."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Fit the distribution using right-censored, left-truncated observations.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Compute the mean residual loss above the attachment."""
+        """Compute the mean residual loss above the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(
@@ -1894,18 +2906,77 @@ class InverseParalogistic(DistributionBase):
         """
         super().__init__(shape=shape, scale=scale, loc=loc)
 
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
+        """Evaluate the selected probability kernel while preserving stochastic coupling.
+
+        Args:
+            index: Index selecting log density, log survival or log CDF from the probability kernel.
+            logarithmic: Whether to return the logarithm rather than the probability or density.
+            x: Value at which to evaluate the probability or density.
+        """
+
+        def evaluate(x, shape, scale, loc):
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                scale: Positive scale parameter of the distribution.
+                shape: Shape parameter of the distribution.
+                x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+            """
+            result = _burr_terms(x, shape, shape, scale, loc, inverse=True, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
+
+        return _special_call(evaluate, x, *self._params.values())
+
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        # Unpack parameters with explicit type annotations
-        params = tuple(self._params.values())
-        shape_val = params[0]
-        scale_val = params[1]
-        loc_val = params[2]
-        y = ((x - loc_val) / scale_val) ** shape_val
-        return (y / (1 + y)) ** shape_val
+        """Compute the cumulative probability.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=True)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Evaluate the inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         params = tuple(self._params.values())
         shape_val = params[0]
         scale_val = params[1]
@@ -1935,15 +3006,44 @@ class Weibull(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Weibull]:
-        """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Estimate distribution parameters by maximum likelihood.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return the theoretical mean loss in excess of the attachment."""
+        """Return the theoretical mean loss in excess of the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(self, shape: float, scale: float, loc: float = 0) -> None:
@@ -1958,9 +3058,21 @@ class Weibull(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
 
         def evaluate(x, shape, scale, loc):
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                scale: Positive scale parameter of the distribution.
+                shape: Shape parameter of the distribution.
+                x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+            """
             x, shape, scale, loc = (xp.asarray(v) for v in (x, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 z = xp.maximum((x - loc) / scale, 0.0)
@@ -1971,9 +3083,21 @@ class Weibull(DistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
 
         def evaluate(u, shape, scale, loc):
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                scale: Positive scale parameter of the distribution.
+                shape: Shape parameter of the distribution.
+                u: Resolved cumulative probability or array of probabilities.
+            """
             u, shape, scale, loc = (xp.asarray(v) for v in (u, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 result = loc + scale * (-xp.log1p(-u)) ** (1 / shape)
@@ -2008,15 +3132,44 @@ class InverseWeibull(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseWeibull]:
-        """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Estimate distribution parameters by maximum likelihood.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return the theoretical mean loss in excess of the attachment."""
+        """Return the theoretical mean loss in excess of the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(self, shape: float, scale: float, loc: float = 0) -> None:
@@ -2032,13 +3185,77 @@ class InverseWeibull(DistributionBase):
         self._scale = scale
         self._loc = loc
 
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
+        """Evaluate the selected probability kernel while preserving stochastic coupling.
+
+        Args:
+            index: Index selecting log density, log survival or log CDF from the probability kernel.
+            logarithmic: Whether to return the logarithm rather than the probability or density.
+            x: Value at which to evaluate the probability or density.
+        """
+
+        def evaluate(x, shape, scale, loc):
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                scale: Positive scale parameter of the distribution.
+                shape: Shape parameter of the distribution.
+                x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+            """
+            result = _inverse_weibull_terms(x, shape, scale, loc, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
+
+        return _special_call(evaluate, x, *self._params.values())
+
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        y = np.float_power((x - self._loc) / self._scale, -self._shape)
-        return np.exp(-y)  # type: ignore[no-any-return]
+        """Compute the cumulative probability.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=True)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Evaluate the inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         return self._loc + self._scale * (-1 / np.log(u)) ** (1 / self._shape)  # type: ignore[return-value]
 
 
@@ -2051,7 +3268,12 @@ class LogGamma(DistributionBase):
     """
 
     def __init__(self, alpha: DistributionParameter, beta: DistributionParameter) -> None:
-        """Initialise a log-gamma distribution with positive parameters."""
+        """Initialise a log-gamma distribution with positive parameters.
+
+        Args:
+            alpha: First shape parameter of the distribution.
+            beta: Positive scale of the underlying log-loss gamma variable.
+        """
         super().__init__(alpha=alpha, beta=beta)
 
     @classmethod
@@ -2059,22 +3281,62 @@ class LogGamma(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[LogGamma]:
-        """Estimate a log-gamma distribution by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Estimate a log-gamma distribution by maximum likelihood.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return the expected loss in excess of the given threshold."""
+        """Return the expected loss in excess of the given threshold.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute the log-gamma cumulative distribution function."""
+        """Compute the log-gamma cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
 
         def evaluate(values: t.Any, alpha: t.Any, beta: t.Any) -> t.Any:
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                alpha: First shape parameter of the distribution.
+                beta: Positive scale of the underlying log-loss gamma variable.
+                values: Values of the categories in their specified order.
+            """
             values, alpha, beta = (xp.asarray(v) for v in (values, alpha, beta))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 z = xp.log(xp.maximum(values, 1.0)) / beta
@@ -2085,9 +3347,20 @@ class LogGamma(DistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute log-gamma quantiles from the inverse incomplete gamma."""
+        """Compute log-gamma quantiles from the inverse incomplete gamma.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
 
         def evaluate(values: t.Any, alpha: t.Any, beta: t.Any) -> t.Any:
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                alpha: First shape parameter of the distribution.
+                beta: Positive scale of the underlying log-loss gamma variable.
+                values: Values of the categories in their specified order.
+            """
             values, alpha, beta = (xp.asarray(v) for v in (values, alpha, beta))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 result = xp.exp(beta * special.gammaincinv(alpha, values))
@@ -2129,15 +3402,44 @@ class GEV(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[GEV]:
-        """Fit parameters by maximum likelihood with truncation and censoring."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Fit parameters by maximum likelihood with truncation and censoring.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Calculate the theoretical mean residual loss above an attachment."""
+        """Calculate the theoretical mean residual loss above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(
@@ -2157,9 +3459,21 @@ class GEV(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
 
         def evaluate(x, shape, scale, loc):
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                scale: Positive scale parameter of the distribution.
+                shape: Shape parameter of the distribution.
+                x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+            """
             x, shape, scale, loc = (xp.asarray(value) for value in (x, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 z = (x - loc) / scale
@@ -2174,9 +3488,21 @@ class GEV(DistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
 
         def evaluate(u, shape, scale, loc):
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                scale: Positive scale parameter of the distribution.
+                shape: Shape parameter of the distribution.
+                u: Resolved cumulative probability or array of probabilities.
+            """
             u, shape, scale, loc = (xp.asarray(value) for value in (u, shape, scale, loc))
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
                 y = -xp.log(-xp.log(u))
@@ -2220,15 +3546,44 @@ class StudentsT(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
     ) -> FitResult[StudentsT]:
-        """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights, censored=censored, threshold=threshold)
+        """Estimate distribution parameters from observed values.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Optional left-truncation level; None uses the complete lower support.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_remaining(
+            cls,
+            observations,
+            weights=weights,
+            censored=censored,
+            threshold=threshold,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return conditional expected numeric excess above an attachment."""
+        """Return conditional expected numeric excess above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess_remaining(self, threshold)
 
     def __init__(
@@ -2248,7 +3603,11 @@ class StudentsT(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         nu, mu, sigma = self._params.values()
         z = (x - mu) / sigma
         # Use the relationship between t CDF and incomplete beta function
@@ -2261,7 +3620,11 @@ class StudentsT(DistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
+        """Compute inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         nu, mu, sigma = self._params.values()
 
         # Use the relationship between t-distribution and Beta distribution
@@ -2280,7 +3643,12 @@ class StudentsT(DistributionBase):
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
-        """Generate samples using the active backend's Student's t sampler."""
+        """Generate samples using the active backend's Student's t sampler.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator supplying the simulation draws.
+        """
         nu, mu, sigma = self._param_values
         return StochasticScalar(_sample_students_t(rng, n_sims, nu, mu, sigma))
 
@@ -2314,15 +3682,44 @@ class InverseGaussian(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseGaussian]:
-        """Estimate distribution parameters by maximum likelihood."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Estimate distribution parameters by maximum likelihood.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return the theoretical mean loss in excess of the attachment."""
+        """Return the theoretical mean loss in excess of the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(
@@ -2340,7 +3737,11 @@ class InverseGaussian(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
+        """Compute cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         mu, lambda_ = self._params.values()
         sqrt_lambda_x = np.sqrt(lambda_ / x)
         term1 = _special_call(special.ndtr, sqrt_lambda_x * (x / mu - 1))
@@ -2352,6 +3753,9 @@ class InverseGaussian(DistributionBase):
         """Compute inverse cumulative distribution function.
 
         Uses numerical root finding since there is no closed form.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
         """
         # For inverse Gaussian, there's no closed-form inverse CDF
         # We'll need to use numerical methods or approximations
@@ -2369,6 +3773,10 @@ class InverseGaussian(DistributionBase):
             Michael, J. R., Schucany, W. R. and Haas, R. W. (1976).
             Generating random variates using transformations with multiple roots.
             The American Statistician 30, 88-90.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator supplying the simulation draws.
         """
         mu, lambda_ = self._param_values
         return StochasticScalar(_sample_inverse_gaussian(rng, n_sims, mu, lambda_))
@@ -2444,9 +3852,8 @@ class GeneralizedInverseGaussian(DistributionBase):
         loc: Location parameter :math:`\mu` (default 0).
 
     Notes:
-        On GPU, MC and RQMC for p=+/-1/2 use an exact, fast CuPy
-        inverse-Gaussian transform. Other GIG indices and probability
-        evaluations use SciPy host fallbacks.
+        On GPU, MC and RQMC for p=+/-1/2 use a two-coordinate inverse-Gaussian
+        transform. Other indices and probability evaluations use host fallbacks.
     """
 
     @classmethod
@@ -2454,15 +3861,44 @@ class GeneralizedInverseGaussian(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[GeneralizedInverseGaussian]:
-        """Fit parameters by maximum likelihood with truncation and censoring."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Fit parameters by maximum likelihood with truncation and censoring.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Calculate the theoretical mean residual loss above an attachment."""
+        """Calculate the theoretical mean residual loss above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(
@@ -2496,57 +3932,80 @@ class GeneralizedInverseGaussian(DistributionBase):
     def _wrap_result(
         self,
         result: t.Any,
-        argument: DistributionParameter,
-    ) -> ReturnType:
-        """Preserve stochastic coupling when SciPy returns an array."""
+        argument: DistributionParameter | np.ndarray,
+    ) -> ReturnType | np.ndarray:
+        """Preserve array shape and stochastic coupling.
+
+        Args:
+            argument: Probability-function input used to preserve simulation coupling.
+            result: Calculated probability or quantile, before wrapping with stochastic metadata.
+        """
         candidates = (argument, *self._params.values())
         stochastic_inputs = [value for value in candidates if isinstance(value, StochasticScalar)]
         if not stochastic_inputs:
-            return float(result)
+            return scalar_or_array(result)
 
         wrapped = StochasticScalar(result)
         couple_stochastic_results((wrapped,), stochastic_inputs)
         return wrapped
 
-    @override
-    def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute cumulative distribution function."""
-        self._validate_probability_inputs(x)
-        p, scipy_shape, scipy_scale, loc = self._scipy_params()
-        values = x.values if isinstance(x, StochasticScalar) else x
-        result = _scipy_on_backend(
-            lambda value, index, shape, location, scale: geninvgauss.cdf(
-                value, index, shape, loc=location, scale=scale
-            ),
-            values,
-            p,
-            scipy_shape,
-            loc,
-            scipy_scale,
-        )
-        return self._wrap_result(result, x)
+    @t.overload
+    def cdf(self, x: DistributionParameter) -> ReturnType: ...
+
+    @t.overload
+    def cdf(self, x: np.ndarray) -> np.ndarray | StochasticScalar: ...
 
     @override
-    def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute inverse cumulative distribution function."""
-        self._validate_probability_inputs(u)
+    def cdf(self, x: DistributionParameter | np.ndarray) -> ReturnType | np.ndarray:
+        """Compute cumulative probabilities, reusing intervals for fixed parameters.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         p, scipy_shape, scipy_scale, loc = self._scipy_params()
+        validate_stochastic_axes(value for value in (x, *self._params.values()) if isinstance(value, StochasticScalar))
+        values = x.values if isinstance(x, StochasticScalar) else x
+        if all(np.ndim(parameter) == 0 for parameter in (p, scipy_shape, scipy_scale, loc)):
+            standardized = (asnumpy(values, dtype=float) - float(loc)) / float(scipy_scale)
+            logcdf, _ = _gig_log_probabilities(standardized, float(p), float(scipy_shape))
+            result = np.exp(logcdf)
+        else:
+            # With stochastic parameters each scenario can have a different
+            # density, so the interval integrals cannot generally be reused.
+            result = geninvgauss.cdf(
+                asnumpy(values), asnumpy(p), asnumpy(scipy_shape), loc=asnumpy(loc), scale=asnumpy(scipy_scale)
+            )
+        return self._wrap_result(result, x)
+
+    @t.overload
+    def invcdf(self, u: DistributionParameter) -> ReturnType: ...
+
+    @t.overload
+    def invcdf(self, u: np.ndarray) -> np.ndarray | StochasticScalar: ...
+
+    @override
+    def invcdf(self, u: DistributionParameter | np.ndarray) -> ReturnType | np.ndarray:
+        """Compute inverse cumulative probabilities.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
+        p, scipy_shape, scipy_scale, loc = self._scipy_params()
+        validate_stochastic_axes(value for value in (u, *self._params.values()) if isinstance(value, StochasticScalar))
         values = u.values if isinstance(u, StochasticScalar) else u
-        result = _scipy_on_backend(
-            lambda value, index, shape, location, scale: geninvgauss.ppf(
-                value, index, shape, loc=location, scale=scale
-            ),
-            values,
-            p,
-            scipy_shape,
-            loc,
-            scipy_scale,
+        result = geninvgauss.ppf(
+            asnumpy(values), asnumpy(p), asnumpy(scipy_shape), loc=asnumpy(loc), scale=asnumpy(scipy_scale)
         )
         return self._wrap_result(result, u)
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
-        """Generate using GPU rejection sampling or the CPU SciPy sampler."""
+        """Generate random samples using the active sampler for the GIG index.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator supplying the simulation draws.
+        """
         p, scipy_shape, scipy_scale, loc = self._scipy_params()
         return StochasticScalar(_sample_generalized_inverse_gaussian(rng, n_sims, p, scipy_shape, scipy_scale, loc))
 
@@ -2576,15 +4035,41 @@ class Exponential(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Exponential]:
-        """Fit the distribution using right-censored, left-truncated observations."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Fit the distribution using right-censored, left-truncated observations.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Compute the mean residual loss above the attachment."""
+        """Compute the mean residual loss above the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(self, scale: DistributionParameter, loc: DistributionParameter = 0.0) -> None:
@@ -2598,12 +4083,22 @@ class Exponential(DistributionBase):
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
+        """Evaluate the cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         scale, loc = self._params.values()
         y = (x - loc) / scale
         return -np.expm1(-y)  # type: ignore[return-value]
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Evaluate the inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         scale, loc = self._params.values()
         return loc + scale * (-np.log(1 - u))  # type: ignore[return-value]
 
@@ -2625,13 +4120,24 @@ class Uniform(DistributionBase):
         cls,
         observations: t.Sequence[t.Any] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Uniform]:
-        """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights)
+        """Estimate distribution parameters from observed values.
+
+        Args:
+            observations: Observed values used to estimate the distribution parameters.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+        """
+        return fit_remaining(cls, observations, weights=weights, uncertainty_method=uncertainty_method)
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Return conditional expected numeric excess above an attachment."""
+        """Return conditional expected numeric excess above an attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess_remaining(self, threshold)
 
     def __init__(
@@ -2639,7 +4145,12 @@ class Uniform(DistributionBase):
         a: float | dt.date | np.datetime64,
         b: float | dt.date | np.datetime64,
     ) -> None:
-        """Initialize a numeric, calendar-date or datetime uniform distribution."""
+        """Initialize a numeric, calendar-date or datetime uniform distribution.
+
+        Args:
+            a: Lower endpoint of the uniform support.
+            b: Upper endpoint of the uniform support.
+        """
         super().__init__(a=t.cast(t.Any, a), b=t.cast(t.Any, b))
         is_date_a = isinstance(a, (dt.date, np.datetime64))
         is_date_b = isinstance(b, (dt.date, np.datetime64))
@@ -2649,6 +4160,11 @@ class Uniform(DistributionBase):
         if is_date_a:
 
             def has_time(value: dt.date | np.datetime64) -> bool:
+                """Determine whether the date value contains a time component.
+
+                Args:
+                    value: Date or timestamp to inspect for non-midnight time information.
+                """
                 if isinstance(value, dt.datetime):
                     return True
                 if isinstance(value, np.datetime64):
@@ -2657,8 +4173,8 @@ class Uniform(DistributionBase):
 
             unit: t.Literal["D", "us"] = "us" if has_time(t.cast(t.Any, a)) or has_time(t.cast(t.Any, b)) else "D"
             self._date_unit = unit
-            self._date_start = np.datetime64(t.cast(t.Union[dt.date, np.datetime64], a), unit)
-            end = np.datetime64(t.cast(t.Union[dt.date, np.datetime64], b), unit)
+            self._date_start = np.datetime64(t.cast(dt.date | np.datetime64, a), unit)
+            end = np.datetime64(t.cast(dt.date | np.datetime64, b), unit)
             if np.isnat(self._date_start) or np.isnat(end):
                 raise ValueError("Uniform date bounds cannot be NaT")
             self._date_span = int((end - self._date_start) / np.timedelta64(1, unit))
@@ -2667,7 +4183,11 @@ class Uniform(DistributionBase):
 
     @override
     def cdf(self, x: t.Any) -> ReturnType:
-        """Compute the cumulative distribution function."""
+        """Compute the cumulative distribution function.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         a, b = self._params.values()
         if self._date_unit is None:
             return (x - a) / (b - a)
@@ -2689,7 +4209,11 @@ class Uniform(DistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute a uniform quantile, returning dates for date bounds."""
+        """Compute a uniform quantile, returning dates for date bounds.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         a, b = self._params.values()
         if self._date_unit is None:
             return a + (b - a) * u
@@ -2722,18 +4246,31 @@ class Categorical(DistributionBase):
         cls,
         observations: t.Sequence[t.Any] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         values: t.Sequence[t.Any] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Categorical]:
-        """Estimate distribution parameters from observed values."""
-        return fit_remaining(cls, observations, weights=weights, values=values)
+        """Estimate distribution parameters from observed values.
+
+        Args:
+            observations: Observed values used to estimate the distribution parameters.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            values: Values of the categories in their specified order.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+        """
+        return fit_remaining(cls, observations, weights=weights, values=values, uncertainty_method=uncertainty_method)
 
     def __init__(
         self,
         values: t.Sequence[str | dt.date | np.datetime64],
         probabilities: t.Sequence[float] | None = None,
     ) -> None:
-        """Initialize a distribution of category labels and their probabilities."""
+        """Initialize a distribution of category labels and their probabilities.
+
+        Args:
+            probabilities: Probability mass assigned to each category, in category order.
+            values: Values of the categories in their specified order.
+        """
         super().__init__()
         if len(values) == 0:
             raise ValueError("At least one category is required")
@@ -2759,7 +4296,11 @@ class Categorical(DistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Return the category corresponding to each cumulative probability."""
+        """Return the category corresponding to each cumulative probability.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         source = u.values if isinstance(u, StochasticScalar) else u
         p = np.asarray(asnumpy(source), dtype=float)
         if np.any(~np.isfinite(p)) or np.any((p < 0) | (p > 1)):
@@ -2774,7 +4315,11 @@ class Categorical(DistributionBase):
 
     @override
     def cdf(self, x: t.Any) -> ReturnType:
-        """Return cumulative probability at the category's position."""
+        """Return cumulative probability at the category's position.
+
+        Args:
+            x: Category label at which to evaluate the cumulative probability.
+        """
         source = x.values if isinstance(x, StochasticScalar) else x
         labels = np.asarray(asnumpy(source))
         if self._values.dtype.kind == "M":
@@ -2817,15 +4362,44 @@ class InverseExponential(DistributionBase):
         cls,
         observations: t.Sequence[float] | np.ndarray,
         *,
+        uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
+        optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+        optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseExponential]:
-        """Fit the distribution using right-censored, left-truncated observations."""
-        return fit_distribution(cls, observations, threshold=threshold, censored=censored, weights=weights)
+        """Fit the distribution using right-censored, left-truncated observations.
+
+        Args:
+            censored: Indicators of right-censoring at the recorded observation values.
+            observations: Observed values used to estimate the distribution parameters.
+            optimizer: Numerical optimisation method; analytical estimators do not require an optimiser.
+            optimizer_options: Additional options passed to the selected optimiser.
+            threshold: Left-truncation threshold for the conditional likelihood.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
+            weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
+        """
+        return fit_distribution(
+            cls,
+            observations,
+            threshold=threshold,
+            censored=censored,
+            weights=weights,
+            uncertainty_method=uncertainty_method,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
+        )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
-        """Compute the mean residual loss above the attachment."""
+        """Compute the mean residual loss above the attachment.
+
+        Args:
+            threshold: Attachment or array of attachments defining the conditional excess above the threshold.
+        """
         return mean_excess(self, threshold)
 
     def __init__(self, scale: float, loc: float = 0) -> None:
@@ -2837,14 +4411,76 @@ class InverseExponential(DistributionBase):
         """
         super().__init__(scale=scale, loc=loc)
 
+    def _probability_terms(self, x: t.Any, index: int, *, logarithmic: bool) -> t.Any:
+        """Evaluate the selected probability kernel while preserving stochastic coupling.
+
+        Args:
+            index: Index selecting log density, log survival or log CDF from the probability kernel.
+            logarithmic: Whether to return the logarithm rather than the probability or density.
+            x: Value at which to evaluate the probability or density.
+        """
+
+        def evaluate(x, scale, loc):
+            """Evaluate the distribution formula using the resolved parameter values.
+
+            Args:
+                loc: Location shift applied to the distribution.
+                scale: Positive scale parameter of the distribution.
+                x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+            """
+            result = _inverse_weibull_terms(x, 1.0, scale, loc, module=xp)[index]
+            return result if logarithmic else xp.exp(result)
+
+        return _special_call(evaluate, x, *self._params.values())
+
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        scale, loc = self._params.values()
-        y = scale * np.float_power((x - loc), -1)
-        return np.exp(-y)  # type: ignore[return-value]
+        """Compute the cumulative probability.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 2, logarithmic=False)
+
+    def sf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the survival probability directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=False)
+
+    def logsf(self, x: DistributionParameter) -> ReturnType:
+        """Compute log survival without subtracting the CDF from one.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 1, logarithmic=True)
+
+    def pdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the probability density.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=False)
+
+    def logpdf(self, x: DistributionParameter) -> ReturnType:
+        """Compute the log density directly.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
+        return self._probability_terms(x, 0, logarithmic=True)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
+        """Evaluate the inverse cumulative distribution function.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         scale, loc = self._params.values()
         return loc - scale / np.log(u)  # type: ignore[return-value]
 
@@ -2893,6 +4529,9 @@ class DistributionGeneratorBase:
     """Base class for parameterized distribution generators.
 
     Wraps a DistributionBase instance.
+
+    Attributes:
+        this_distribution: Distribution instance delegated to by the generator.
     """
 
     def __init__(self, distribution: DistributionBase) -> None:
@@ -2903,12 +4542,28 @@ class DistributionGeneratorBase:
         """
         self.this_distribution = distribution
 
+    def lev(self, limit: float | np.ndarray) -> float | np.ndarray:
+        """Delegate limited expected value to the wrapped distribution.
+
+        Args:
+            limit: Policy limit or array of limits in the same units as the loss.
+        """
+        return self.this_distribution.lev(limit)
+
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Delegate to wrapped distribution."""
+        """Delegate to wrapped distribution.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         return self.this_distribution.cdf(x)
 
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Delegate to wrapped distribution."""
+        """Delegate to wrapped distribution.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         return self.this_distribution.invcdf(u)
 
     def generate(
@@ -2961,3 +4616,8 @@ class ContinuousDistributionGenerator(DistributionGeneratorBase):
             )
         distribution_cls = AVAILABLE_CONTINUOUS_DISTRIBUTIONS[distribution_name]
         super().__init__(distribution_cls(*parameters))
+
+
+# Keep weighted model averaging separate from the individual distribution families.
+from .model_averaging import ModelAveragingResult as ModelAveragingResult  # noqa: E402
+from .model_averaging import WeightedDistribution as WeightedDistribution  # noqa: E402

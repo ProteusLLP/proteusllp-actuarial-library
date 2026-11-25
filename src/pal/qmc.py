@@ -30,6 +30,12 @@ class _Block:
     No path-by-dimension point matrix is retained. Each coordinate is
     reconstructed only when requested using the same multidimensional Sobol
     direction vectors and one shared ordering of simulation indices.
+
+    Attributes:
+        dimension: Number of Sobol coordinates allocated to this block.
+        gray: Gray-code indices for the Sobol points.
+        shifts: Random digital shifts for the block.
+        tables: Precomputed lookup tables of direction-number contributions.
     """
 
     gray: t.Any
@@ -60,10 +66,20 @@ class RandomizedQMCGenerator:
     Args:
         seed: Seed for reproducible scrambling and permutations.
         dimensions: Number of Sobol coordinates before starting a new block.
+
+    Attributes:
+        dimensions: Number of Sobol coordinates available per randomized block.
+        max_cache_bytes: Maximum memory budget for cached Sobol blocks.
+        seed: Seed used to initialize the random number generator.
     """
 
     def __init__(self, seed: int = 123456789, dimensions: int = 32) -> None:
-        """Create an independently randomized sequence of Sobol blocks."""
+        """Create an independently randomized sequence of Sobol blocks.
+
+        Args:
+            dimensions: Number of Sobol coordinates available in each randomized block.
+            seed: Seed controlling the reproducible randomisation of the generator.
+        """
         if isinstance(dimensions, bool) or not isinstance(dimensions, int) or not 1 <= dimensions <= 21201:
             raise ValueError("dimensions must be an integer between 1 and 21201")
         self.seed = seed
@@ -79,7 +95,11 @@ class RandomizedQMCGenerator:
 
     @staticmethod
     def _lookup_tables(vectors: np.ndarray) -> np.ndarray:
-        """Build compact 8-bit XOR tables for 32-bit Sobol direction vectors."""
+        """Build compact 8-bit XOR tables for 32-bit Sobol direction vectors.
+
+        Args:
+            vectors: Sobol direction numbers used to construct lookup tables.
+        """
         dimensions = vectors.shape[0]
         tables = np.zeros((dimensions, 4, 256), dtype=np.uint32)
         byte_values = np.arange(256, dtype=np.uint32)
@@ -89,7 +109,11 @@ class RandomizedQMCGenerator:
         return tables
 
     def _new_direction_block(self, n: int) -> _Block:
-        """Create one scrambled multidimensional Sobol block without its points."""
+        """Create one scrambled multidimensional Sobol block without its points.
+
+        Args:
+            n: Number of points or trials required by the operation.
+        """
         if xp is np:
             seed = int(self._random.integers(0, 2**32, dtype=np.uint64))
             engine: t.Any = qmc.Sobol(d=self.dimensions, scramble=True, bits=32, seed=seed)
@@ -133,7 +157,11 @@ class RandomizedQMCGenerator:
         return _Block(gpu_xp.asarray(gray), gpu_xp.asarray(self._lookup_tables(vectors)), gpu_xp.asarray(shifts_host))
 
     def _active_block(self, n: int) -> _Block:
-        """Return the next available Sobol block for a simulation count."""
+        """Return the next available Sobol block for a simulation count.
+
+        Args:
+            n: Number of points or trials required by the operation.
+        """
         if n < 1:
             raise ValueError("Simulation count must be positive")
         if n > 2**30:
@@ -150,7 +178,11 @@ class RandomizedQMCGenerator:
         return block
 
     def _next_coordinate(self, n: int) -> t.Any:
-        """Construct one scrambled Sobol coordinate, retaining O(n + d) state."""
+        """Construct one scrambled Sobol coordinate, retaining O(n + d) state.
+
+        Args:
+            n: Number of points or trials required by the operation.
+        """
         block = self._active_block(n)
         j = block.dimension
         values = xp.full((n,), block.shifts[j], dtype=xp.uint32)
@@ -170,6 +202,12 @@ class RandomizedQMCGenerator:
         The direction lookup evaluates only those active rows. Consequently,
         shrinking active sets do not start unrelated Sobol sequences, and all
         paths in one iteration share the same coordinate.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            path_indices: Indices of simulations that need draws from the active Sobol block.
+            scenario_axis: Axis of the requested output corresponding to simulations.
+            size: Requested output shape or number of draws.
         """
         if not size:
             raise ValueError("Active draws require at least one scenario axis")
@@ -210,6 +248,12 @@ class RandomizedQMCGenerator:
         Only observed claims are reconstructed; no n_sims-by-max_count matrix
         or per-ordinal inverse-CDF call is required. Dimension recycling uses
         exactly the same sequence of independently randomized blocks.
+
+        Args:
+            event_ordinals: Ordinal of each event within its own simulation.
+            event_paths: Simulation indices of the events requiring draws.
+            max_count: Maximum number of events in any simulation.
+            n_sims: Number of simulations on the scenario axis.
         """
         total_events = len(event_paths)
         if total_events != len(event_ordinals) or max_count < 0:
@@ -253,10 +297,20 @@ class RandomizedQMCGenerator:
 
     @staticmethod
     def _host(value: t.Any) -> np.ndarray:
-        """Convert distribution parameters to SciPy-compatible arrays."""
+        """Convert distribution parameters to SciPy-compatible arrays.
+
+        Args:
+            value: Scalar or array to convert to a host NumPy array.
+        """
         return np.asarray(asnumpy(value))
 
     def _shape(self, size: t.Any, *parameters: t.Any) -> tuple[int, ...]:
+        """Determine the broadcast output shape of the requested random draws.
+
+        Args:
+            *parameters: Distribution parameters broadcast to the requested sample shape.
+            size: Requested output shape or number of draws.
+        """
         if size is not None:
             shape = (int(np.asarray(size).item()),) if np.isscalar(size) else tuple(int(part) for part in size)
         else:
@@ -272,6 +326,12 @@ class RandomizedQMCGenerator:
         return shape
 
     def _uniform_values(self, shape: tuple[int, ...], scenario_axis: int | None = None) -> t.Any:
+        """Generate randomized uniform values on the requested scenario axis.
+
+        Args:
+            scenario_axis: Axis of the requested output corresponding to simulations.
+            shape: Requested output array shape.
+        """
         if not shape:
             return xp.asarray(self._next_coordinate(1)[0])
         if 0 in shape:
@@ -304,6 +364,16 @@ class RandomizedQMCGenerator:
         gpu_func: t.Callable[..., t.Any] | None = None,
         scenario_axis: int | None = None,
     ) -> t.Any:
+        """Transform randomized Sobol uniforms to the requested quantiles.
+
+        Args:
+            discrete: Whether the inverse CDF returns integer-valued counts.
+            func: Inverse CDF or quantile function used to transform uniforms.
+            gpu_func: Device-compatible inverse CDF to use when available.
+            *parameters: Distribution parameters broadcast to the requested sample shape.
+            scenario_axis: Axis of the requested output corresponding to simulations.
+            size: Requested output shape or number of draws.
+        """
         shape = self._shape(size, *parameters)
         uniforms = self._uniform_values(shape, scenario_axis=scenario_axis)
         # Avoid infinities in inverse CDFs of unbounded distributions.
@@ -318,25 +388,49 @@ class RandomizedQMCGenerator:
         return xp.asarray(result)
 
     def random(self, size: t.Any = None, *, scenario_axis: int | None = None) -> t.Any:
-        """Draw U(0,1) values, using one coordinate per component."""
+        """Draw U(0,1) values, using one coordinate per component.
+
+        Args:
+            scenario_axis: Axis of the requested output corresponding to simulations.
+            size: Requested output shape or number of draws.
+        """
         return self._uniform_values(self._shape(size), scenario_axis=scenario_axis)
 
     def uniform(
         self, low: t.Any = 0.0, high: t.Any = 1.0, size: t.Any = None, *, scenario_axis: int | None = None
     ) -> t.Any:
-        """Draw continuous uniform values using the active Sobol coordinate."""
+        """Draw continuous uniform values using the active Sobol coordinate.
+
+        Args:
+            high: Upper endpoint of the requested random values.
+            low: Lower endpoint of the requested random values.
+            scenario_axis: Axis of the requested output corresponding to simulations.
+            size: Requested output shape or number of draws.
+        """
         shape = self._shape(size, low, high)
         lo, hi = xp.asarray(low), xp.asarray(high)
         return lo + (hi - lo) * self._uniform_values(shape, scenario_axis=scenario_axis)
 
     def standard_normal(self, size: t.Any = None, *, scenario_axis: int | None = None) -> t.Any:
-        """Draw standard normal quantiles."""
+        """Draw standard normal quantiles.
+
+        Args:
+            scenario_axis: Axis of the requested output corresponding to simulations.
+            size: Requested output shape or number of draws.
+        """
         return self._quantiles(scipy_special.ndtri, size, gpu_func=special.ndtri, scenario_axis=scenario_axis)
 
     def normal(
         self, loc: t.Any = 0.0, scale: t.Any = 1.0, size: t.Any = None, *, scenario_axis: int | None = None
     ) -> t.Any:
-        """Draw normal quantiles."""
+        """Draw normal quantiles.
+
+        Args:
+            loc: Location shift of the sampled distribution.
+            scale: Positive scale of the sampled distribution.
+            scenario_axis: Axis of the requested output corresponding to simulations.
+            size: Requested output shape or number of draws.
+        """
         return self._quantiles(
             lambda u, mean, std: mean + std * scipy_special.ndtri(u),
             size,
@@ -347,7 +441,13 @@ class RandomizedQMCGenerator:
         )
 
     def exponential(self, scale: t.Any = 1.0, size: t.Any = None, *, scenario_axis: int | None = None) -> t.Any:
-        """Draw exponential quantiles."""
+        """Draw exponential quantiles.
+
+        Args:
+            scale: Positive scale of the sampled distribution.
+            scenario_axis: Axis of the requested output corresponding to simulations.
+            size: Requested output shape or number of draws.
+        """
         return self._quantiles(
             lambda u, s: -s * np.log1p(-u),
             size,
@@ -357,7 +457,14 @@ class RandomizedQMCGenerator:
         )
 
     def gamma(self, shape: t.Any, scale: t.Any = 1.0, size: t.Any = None, *, scenario_axis: int | None = None) -> t.Any:
-        """Draw gamma quantiles."""
+        """Draw gamma quantiles.
+
+        Args:
+            scale: Positive scale of the sampled distribution.
+            scenario_axis: Axis of the requested output corresponding to simulations.
+            shape: Distribution shape parameter or requested output shape.
+            size: Requested output shape or number of draws.
+        """
         return self._quantiles(
             lambda u, a, s: scipy_special.gammaincinv(a, u) * s,
             size,
@@ -368,7 +475,14 @@ class RandomizedQMCGenerator:
         )
 
     def beta(self, a: t.Any, b: t.Any, size: t.Any = None, *, scenario_axis: int | None = None) -> t.Any:
-        """Draw beta quantiles."""
+        """Draw beta quantiles.
+
+        Args:
+            a: First shape parameter of the distribution.
+            b: Second shape parameter of the distribution.
+            scenario_axis: Axis of the requested output corresponding to simulations.
+            size: Requested output shape or number of draws.
+        """
         return self._quantiles(
             lambda u, alpha, beta: scipy_special.betaincinv(alpha, beta, u),
             size,
@@ -385,6 +499,10 @@ class RandomizedQMCGenerator:
         once and invert all Sobol coordinates with CuPy searchsorted.
         A stochastic or very large intensity retains the SciPy PPF fallback.
         The inverse transform preserves RQMC dependence between coordinates.
+
+        Args:
+            lam: Expected Poisson event count.
+            size: Requested output shape or number of draws.
         """
         intensity = float(lam) if isinstance(lam, (int, float, np.integer, np.floating)) else math.nan
         if xp is not np and math.isfinite(intensity) and intensity >= 0:
@@ -400,15 +518,34 @@ class RandomizedQMCGenerator:
         return self._quantiles(scipy_stats.poisson.ppf, size, lam, discrete=True)
 
     def negative_binomial(self, n: t.Any, p: t.Any, size: t.Any = None) -> t.Any:
-        """Draw negative-binomial quantiles."""
+        """Draw negative-binomial quantiles.
+
+        Args:
+            n: Negative binomial size parameter.
+            p: Probability of success or distribution shape parameter.
+            size: Requested output shape or number of draws.
+        """
         return self._quantiles(scipy_stats.nbinom.ppf, size, n, p, discrete=True)
 
     def binomial(self, n: t.Any, p: t.Any, size: t.Any = None) -> t.Any:
-        """Draw binomial quantiles."""
+        """Draw binomial quantiles.
+
+        Args:
+            n: Number of Bernoulli trials.
+            p: Probability of success or distribution shape parameter.
+            size: Requested output shape or number of draws.
+        """
         return self._quantiles(scipy_stats.binom.ppf, size, n, p, discrete=True)
 
     def hypergeometric(self, ngood: t.Any, nbad: t.Any, nsample: t.Any, size: t.Any = None) -> t.Any:
-        """Draw hypergeometric quantiles."""
+        """Draw hypergeometric quantiles.
+
+        Args:
+            nbad: Number of unsuccessful items in the finite population.
+            ngood: Number of successful items in the finite population.
+            nsample: Number of items drawn without replacement.
+            size: Requested output shape or number of draws.
+        """
         return self._quantiles(
             lambda u, good, bad, sample: scipy_stats.hypergeom.ppf(u, good + bad, good, sample),
             size,
@@ -419,11 +556,22 @@ class RandomizedQMCGenerator:
         )
 
     def standard_t(self, df: t.Any, size: t.Any = None) -> t.Any:
-        """Draw Student's t quantiles."""
+        """Draw Student's t quantiles.
+
+        Args:
+            df: Degrees of freedom of the distribution.
+            size: Requested output shape or number of draws.
+        """
         return self._quantiles(scipy_stats.t.ppf, size, df)
 
     def chisquare(self, df: t.Any, size: t.Any = None, *, scenario_axis: int | None = None) -> t.Any:
-        """Draw chi-squared quantiles."""
+        """Draw chi-squared quantiles.
+
+        Args:
+            df: Degrees of freedom of the distribution.
+            scenario_axis: Axis of the requested output corresponding to simulations.
+            size: Requested output shape or number of draws.
+        """
         return self._quantiles(
             lambda u, degrees: 2 * scipy_special.gammaincinv(degrees / 2, u),
             size,
@@ -433,26 +581,37 @@ class RandomizedQMCGenerator:
         )
 
     def noncentral_chisquare(self, df: t.Any, nonc: t.Any, size: t.Any = None) -> t.Any:
-        """Draw a noncentral chi-square through two RQMC coordinates on GPU.
+        """Draw noncentral chi-squared samples, using a two-coordinate GPU mixture when supported.
 
-        The exact Poisson-mixture representation is X|K ~ chi2(df+2K),
-        K ~ Poisson(nonc/2). Both marginal inversions use CuPy operations
-        for fixed moderate noncentrality. This avoids the expensive repeated
-        Poisson-mixture CDF inversion of a single Sobol coordinate.
+        Args:
+            df: Degrees of freedom of the distribution.
+            nonc: Noncentrality parameter of the chi-squared distribution.
+            size: Requested output shape or number of draws.
         """
         if xp is not np and isinstance(nonc, (int, float, np.integer, np.floating)) and 0 <= nonc <= 16000:
             shape = self._shape(size, df, nonc)
             count = self.poisson(float(nonc) / 2, size=shape)
             return self.chisquare(xp.asarray(df) + 2 * count, size=shape)
-        # Stochastic or extreme noncentrality retains the SciPy host PPF.
         return self._quantiles(scipy_stats.ncx2.ppf, size, df, nonc)
 
     def logseries(self, p: t.Any, size: t.Any = None) -> t.Any:
-        """Draw logarithmic-series quantiles."""
+        """Draw logarithmic-series quantiles.
+
+        Args:
+            p: Probability of success or distribution shape parameter.
+            size: Requested output shape or number of draws.
+        """
         return self._quantiles(scipy_stats.logser.ppf, size, p, discrete=True)
 
     def integers(self, low: t.Any, high: t.Any = None, size: t.Any = None, endpoint: bool = False) -> t.Any:
-        """Draw uniformly distributed integers using quantile mapping."""
+        """Draw uniformly distributed integers using quantile mapping.
+
+        Args:
+            endpoint: Whether the integer upper endpoint is inclusive.
+            high: Upper endpoint of the requested random values.
+            low: Lower endpoint of the requested random values.
+            size: Requested output shape or number of draws.
+        """
         if high is None:
             low, high = 0, low
         if endpoint:
@@ -477,6 +636,15 @@ def _draw_active_scenarios(
     For ordinary Monte Carlo, keep the existing draw behaviour. Under RQMC,
     produce the requested marginal transform using coordinates selected from
     the n_sims-path design. No new stream is allocated for the active count.
+
+    Args:
+        **kwargs: Keyword arguments supplied by the caller or NumPy dispatch.
+        method: Name of the random-generator sampling method to invoke.
+        n_sims: Number of simulations on the scenario axis.
+        path_indices: Indices of simulations that need draws from the active Sobol block.
+        rng: Random number generator supplying the draws.
+        scenario_axis: Axis of the requested output corresponding to simulations.
+        size: Requested output shape or number of draws.
     """
     if not isinstance(rng, RandomizedQMCGenerator):
         # NumPy Generator uses integers(), but CuPy's legacy RandomState
@@ -503,7 +671,15 @@ def _draw_active_scenarios(
 
 
 def _draw_scenarios(rng: t.Any, method: str, *args: t.Any, scenario_axis: int, **kwargs: t.Any) -> t.Any:
-    """Tell RQMC which axis holds simulation paths without changing NumPy's API."""
+    """Tell RQMC which axis holds simulation paths without changing NumPy's API.
+
+    Args:
+        *args: Positional arguments supplied by the caller or NumPy dispatch.
+        **kwargs: Keyword arguments supplied by the caller or NumPy dispatch.
+        method: Name of the random-generator sampling method to invoke.
+        rng: Random number generator supplying the draws.
+        scenario_axis: Axis of the requested output corresponding to simulations.
+    """
     draw = getattr(rng, method)
     if isinstance(rng, RandomizedQMCGenerator):
         return draw(*args, scenario_axis=scenario_axis, **kwargs)
@@ -516,42 +692,93 @@ def _draw_scenarios(rng: t.Any, method: str, *args: t.Any, scenario_axis: int, *
 
 
 def _rng_value(value: t.Any, rng: t.Any) -> t.Any:
-    """Convert parameters to the backend expected by a random generator."""
+    """Convert parameters to the backend expected by a random generator.
+
+    Args:
+        rng: Random number generator supplying the draws.
+        value: Value to convert, compare or assign.
+    """
     if type(rng).__module__.startswith("numpy"):
         return asnumpy(value) if isinstance(value, xp.ndarray) else value
     return to_backend(value)
 
 
 def _sample_rng(rng: t.Any, method: str, n_sims: int, *parameters: t.Any) -> t.Any:
-    """Sample one PAL distribution on the generator's own backend."""
+    """Sample one PAL distribution on the generator's own backend.
+
+    Args:
+        method: Name of the random-generator sampling method to invoke.
+        n_sims: Number of simulations on the scenario axis.
+        *parameters: Distribution parameters broadcast to the requested sample shape.
+        rng: Random number generator supplying the draws.
+    """
     converted = (_rng_value(value, rng) for value in parameters)
     return getattr(rng, method)(*converted, size=n_sims)
 
 
 def _inverse_transform_uniforms(rng: t.Any, n_sims: int) -> t.Any:
-    """Generate probability inputs on PAL's active backend for inverse CDFs."""
+    """Generate probability inputs on PAL's active backend for inverse CDFs.
+
+    Args:
+        n_sims: Number of simulations on the scenario axis.
+        rng: Random number generator supplying the draws.
+    """
     return xp.asarray(_sample_rng(rng, "uniform", n_sims))
 
 
 def _sample_generalized_beta_prime(rng: t.Any, n_sims: int, a: t.Any, b: t.Any, p: t.Any, q: t.Any) -> t.Any:
-    """Sample GB2 as the ratio of two independent unit-scale Gamma variables."""
+    """Sample GB2 as the ratio of two independent unit-scale Gamma variables.
+
+    Args:
+        a: Positive power parameter of the GB2 distribution.
+        b: Positive GB2 scale parameter.
+        n_sims: Number of simulations on the scenario axis.
+        p: Positive lower-tail beta-prime shape parameter.
+        q: Upper-tail beta-prime shape parameter.
+        rng: Random number generator supplying the draws.
+    """
     numerator = _sample_rng(rng, "gamma", n_sims, p, 1.0)
     denominator = _sample_rng(rng, "gamma", n_sims, q, 1.0)
     return _rng_value(b, rng) * (numerator / denominator) ** (1 / _rng_value(a, rng))
 
 
 def _sample_scaled_beta(rng: t.Any, n_sims: int, alpha: t.Any, beta: t.Any, scale: t.Any, loc: t.Any) -> t.Any:
-    """Sample a shifted and scaled beta distribution."""
+    """Sample a shifted and scaled beta distribution.
+
+    Args:
+        alpha: First positive shape parameter of the sampled distribution.
+        beta: Second positive shape parameter of the sampled distribution.
+        loc: Location shift of the sampled distribution.
+        n_sims: Number of simulations on the scenario axis.
+        rng: Random number generator supplying the draws.
+        scale: Positive scale of the sampled distribution.
+    """
     return _sample_rng(rng, "beta", n_sims, alpha, beta) * _rng_value(scale, rng) + _rng_value(loc, rng)
 
 
 def _sample_shifted_gamma(rng: t.Any, n_sims: int, alpha: t.Any, theta: t.Any, loc: t.Any) -> t.Any:
-    """Sample a shifted gamma distribution."""
+    """Sample a shifted gamma distribution.
+
+    Args:
+        alpha: First positive shape parameter of the sampled distribution.
+        loc: Location shift of the sampled distribution.
+        n_sims: Number of simulations on the scenario axis.
+        rng: Random number generator supplying the draws.
+        theta: Positive scale of the gamma distribution.
+    """
     return _sample_rng(rng, "gamma", n_sims, alpha, theta) + _rng_value(loc, rng)
 
 
 def _sample_students_t(rng: t.Any, n_sims: int, nu: t.Any, mu: t.Any, sigma: t.Any) -> t.Any:
-    """Sample a shifted and scaled Student's t distribution."""
+    """Sample a shifted and scaled Student's t distribution.
+
+    Args:
+        mu: Location or mean of the sampled distribution.
+        n_sims: Number of simulations on the scenario axis.
+        nu: Degrees of freedom of the Student's t distribution.
+        rng: Random number generator supplying the draws.
+        sigma: Positive dispersion of the sampled distribution.
+    """
     return _rng_value(mu, rng) + _rng_value(sigma, rng) * _sample_rng(rng, "standard_t", n_sims, nu)
 
 
@@ -560,6 +787,12 @@ def _sample_inverse_gaussian(rng: t.Any, n_sims: int, mu: t.Any, lambda_: t.Any)
 
     This construction uses two draws, and therefore two Sobol coordinates when
     RQMC is active. It retains the ordinary generator semantics under MC.
+
+    Args:
+        lambda_: Positive inverse-Gaussian shape parameter.
+        mu: Location or mean of the sampled distribution.
+        n_sims: Number of simulations on the scenario axis.
+        rng: Random number generator supplying the draws.
     """
     nu = xp.asarray(_sample_rng(rng, "normal", n_sims, 0, 1) ** 2)
     y = mu + (mu**2 * nu) / (2 * lambda_) - (mu / (2 * lambda_)) * xp.sqrt(4 * mu * lambda_ * nu + mu**2 * nu**2)
@@ -570,12 +803,15 @@ def _sample_inverse_gaussian(rng: t.Any, n_sims: int, mu: t.Any, lambda_: t.Any)
 def _sample_generalized_inverse_gaussian(
     rng: t.Any, n_sims: int, p: t.Any, shape: t.Any, scale: t.Any, loc: t.Any
 ) -> t.Any:
-    """Use exact GPU sampling for half-order GIG and SciPy for other indices.
+    """Use a native half-order GPU sampler or the established SciPy fallback.
 
-    Half-order MC and RQMC use two device-resident random coordinates.
-    The general-index MC sampler falls back to SciPy on the host because
-    the vectorised GPU rejection method is slower even at 65,536 paths.
-    General-index RQMC uses SciPy's one-coordinate quantile transform.
+    Args:
+        loc: Location shift of the sampled distribution.
+        n_sims: Number of simulations on the scenario axis.
+        p: GIG index controlling the power of loss in the density.
+        rng: Random number generator supplying the draws.
+        scale: Positive scale of the sampled distribution.
+        shape: Distribution shape parameter or requested output shape.
     """
     half_order_gpu = xp is not np and bool(xp.all(xp.abs(xp.asarray(p)) == 0.5))
     if half_order_gpu:
@@ -606,5 +842,10 @@ def _sample_generalized_inverse_gaussian(
 
 
 def _scipy_on_backend(function: t.Callable[..., t.Any], *parameters: t.Any) -> t.Any:
-    """Evaluate a SciPy function on host arrays and restore PAL's backend."""
+    """Evaluate a SciPy function on host arrays and restore PAL's backend.
+
+    Args:
+        function: Probability or special function to evaluate on the appropriate backend.
+        *parameters: Distribution parameters broadcast to the requested sample shape.
+    """
     return xp.asarray(function(*(asnumpy(value) for value in parameters)))

@@ -4,6 +4,7 @@
   "typeCheckingMode": "standard",
   "reportMissingImports": true,
   "reportMissingTypeStubs": false,
+  "reportPrivateImportUsage": "error",
   "reportInvalidTypeForm": "none",
   "reportUnknownMemberType": "none",
   "reportUnknownVariableType": "none",

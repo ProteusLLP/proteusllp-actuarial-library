@@ -25,7 +25,13 @@ from .types import Numeric, ScipyNumeric
 
 
 class StochasticScalar(ProteusStochasticVariable):
-    """A class to represent a single scalar variable in a simulation."""
+    """A class to represent a single scalar variable in a simulation.
+
+    Attributes:
+        coupled_variable_group: Coupling group identifying simulations that must remain aligned.
+        n_sims: Number of simulations represented by the object.
+        values: Stored values in simulation or dimension order.
+    """
 
     coupled_variable_group: CouplingGroup
     n_sims: int  # pyright: ignore[reportIncompatibleVariableOverride]
@@ -68,6 +74,7 @@ class StochasticScalar(ProteusStochasticVariable):
         self.n_sims = len(array)
 
     def __repr__(self) -> str:
+        """Return a developer-facing representation of the object."""
         try:
             return f"{type(self).__name__}(values={self.values}, n_sims={self.n_sims})"
         except AttributeError:
@@ -87,6 +94,12 @@ class StochasticScalar(ProteusStochasticVariable):
         their outputs are detached. With `out=`, NumPy's original destination
         object is returned and its coupling is updated only after a successful
         calculation and write.
+
+        Args:
+            *inputs: Input operands supplied to the NumPy universal function.
+            **kwargs: Keyword arguments supplied by the caller or NumPy dispatch.
+            method: Method of the universal function to invoke.
+            ufunc: NumPy universal function to apply.
         """
         other_variable = next(
             (
@@ -114,7 +127,11 @@ class StochasticScalar(ProteusStochasticVariable):
         stochastic_inputs = tuple(value for value in inputs if isinstance(value, StochasticScalar))
         mask_source = (where,) if isinstance(where, StochasticScalar) else ()
         output_sources = tuple(value for value in destinations if isinstance(value, StochasticScalar))
-        validate_stochastic_axes((self, *stochastic_inputs, *mask_source, *output_sources))
+        target_n_sims = validate_stochastic_axes((self, *stochastic_inputs, *mask_source, *output_sources))
+        if target_n_sims is None:
+            raise ValueError("Cannot determine stochastic simulation axis")
+        if target_n_sims > 1 and any(value.n_sims != target_n_sims for value in output_sources):
+            raise ValueError("Stochastic out= destination has incompatible n_sims")
 
         # Only elementwise operations preserve scenario alignment in the output.
         if method != "__call__" and output_sources:
@@ -126,7 +143,7 @@ class StochasticScalar(ProteusStochasticVariable):
             mask_dtype = raw_mask.dtype if hasattr(raw_mask, "dtype") else np.asarray(raw_mask).dtype
             if mask_dtype.kind != "b":
                 raise TypeError("where must be a boolean mask")
-            if mask_shape not in ((), (self.n_sims,)):
+            if mask_shape not in ((), (1,), (target_n_sims,)):
                 raise ValueError("where mask has incompatible n_sims")
         if method == "__call__" and not (isinstance(raw_mask, (bool, np.bool_)) and bool(raw_mask)):
             if not destinations or any(destination is None for destination in destinations):
@@ -144,6 +161,11 @@ class StochasticScalar(ProteusStochasticVariable):
         operation = getattr(np, ufunc.__name__, ufunc) if is_host else ufunc
 
         def prepare_input(value: t.Any) -> t.Any:
+            """Resolve the numerical input for universal-function dispatch.
+
+            Args:
+                value: Value to convert, compare or assign.
+            """
             if isinstance(value, StochasticScalar):
                 return asnumpy(value.values) if is_host else value.values
             if is_host:
@@ -179,7 +201,7 @@ class StochasticScalar(ProteusStochasticVariable):
             if method == "__call__" and len(values) != len(destinations):
                 raise ValueError("Unexpected number of ufunc results")
             casting = kwargs.get("casting", "same_kind")
-            for value, destination in zip(values, destinations):
+            for value, destination in zip(values, destinations, strict=False):
                 if destination is None:
                     continue
                 raw_dest = destination.values if isinstance(destination, StochasticScalar) else destination
@@ -191,7 +213,7 @@ class StochasticScalar(ProteusStochasticVariable):
                     raise TypeError("out= cannot represent the result with the requested casting")
 
             result_leaves: list[t.Any] = []
-            for value, destination in zip(values, destinations):
+            for value, destination in zip(values, destinations, strict=False):
                 if destination is None:
                     result_leaves.append(StochasticScalar(value) if method == "__call__" else value)
                     continue
@@ -213,7 +235,9 @@ class StochasticScalar(ProteusStochasticVariable):
                 result_leaves.append(destination)
             coupled_results = tuple(value for value in result_leaves if isinstance(value, StochasticScalar))
             if coupled_results:
-                couple_stochastic_results(coupled_results, (self, *stochastic_inputs, *mask_source), n_sims=self.n_sims)
+                couple_stochastic_results(
+                    coupled_results, (self, *stochastic_inputs, *mask_source), n_sims=target_n_sims
+                )
             result = tuple(result_leaves) if len(result_leaves) > 1 else result_leaves[0]
             return result
 
@@ -236,6 +260,12 @@ class StochasticScalar(ProteusStochasticVariable):
         Only elementwise functions keep coupling. Sorting, rolling, cumulative
         functions and selections of a different shape create detached results,
         even if the final array happens to have `n_sims` entries.
+
+        Args:
+            _: Types participating in NumPy dispatch; unused by PAL's implementation.
+            args: Positional arguments supplied by the caller or NumPy dispatch.
+            func: Array function to dispatch.
+            kwargs: Keyword arguments supplied by the caller or NumPy dispatch.
         """
         if func in (np.copyto, np.put, np.putmask, np.place):
             raise NotImplementedError("Use a controlled stochastic operation instead of raw NumPy mutation")
@@ -264,13 +294,22 @@ class StochasticScalar(ProteusStochasticVariable):
 
         sources = (self, *(arg for arg in (*args, *kwargs.values()) if isinstance(arg, StochasticScalar)))
         targets = (output,) if isinstance(output, StochasticScalar) else ()
-        validate_stochastic_axes((*sources, *targets), n_sims=self.n_sims)
+        target_n_sims = validate_stochastic_axes((*sources, *targets))
+        if target_n_sims is None:
+            raise ValueError("Cannot determine stochastic simulation axis")
+        if target_n_sims > 1 and any(value.n_sims != target_n_sims for value in targets):
+            raise ValueError("Stochastic out= destination has incompatible n_sims")
         is_host = host_values(self.values) or any(
             host_values(value.values if isinstance(value, StochasticScalar) else value)
             for value in (*args, *kwargs.values())
         )
 
         def unwrapped(value: t.Any) -> t.Any:
+            """Extract the numerical values used by the dispatched array function.
+
+            Args:
+                value: Value to convert, compare or assign.
+            """
             if isinstance(value, StochasticScalar):
                 return asnumpy(value.values) if is_host else value.values
             if is_host and isinstance(value, xp.ndarray):
@@ -295,7 +334,7 @@ class StochasticScalar(ProteusStochasticVariable):
             values = asnumpy(calculated) if destination_backend is np else xp.asarray(calculated)
             destination_backend.copyto(destination, values, casting="same_kind")
             if isinstance(output, StochasticScalar):
-                couple_stochastic_results((output,), sources, n_sims=self.n_sims)
+                couple_stochastic_results((output,), sources, n_sims=target_n_sims)
             return output
 
         scalar_result = scalar_or_array(calculated)
@@ -304,7 +343,7 @@ class StochasticScalar(ProteusStochasticVariable):
         if getattr(calculated, "ndim", None) != 1:
             return calculated
         if preserving:
-            if len(calculated) != self.n_sims:
+            if self.n_sims != 1 and len(calculated) != target_n_sims:
                 raise ValueError("Stochastic result has incompatible n_sims")
             return self._wrap_result_with_coupling(calculated, sources)
         return StochasticScalar(calculated)
@@ -325,13 +364,13 @@ class StochasticScalar(ProteusStochasticVariable):
         return result
 
     def __getitem__(self, index: ScipyNumeric | StochasticScalar) -> StochasticScalar:
-        # FIXME: Type signature inconsistent with SequenceLike protocol and runtime
-        # - SequenceLike expects __getitem__(int) -> T_co (should return float)
-        # - Runtime: int indexing returns scalar, StochasticScalar returns
-        #   StochasticScalar.
-        # - Current signature claims all indexing returns StochasticScalar (wrong)
-        # Need overloads to match runtime behavior and protocol expectations
-        # See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/24
+        """Retrieve the selected entry or entries.
+
+        Args:
+            index: Index or slice selecting entries.
+        """
+        # Integer indexing and stochastic indexing have different return types.
+        # Type overloads are tracked in issue #24.
         # handle an actual numeric index...
         if isinstance(index, ScipyNumeric):
             return self.values[int(index)]  # type: ignore[return-value]
@@ -393,7 +432,14 @@ class StochasticScalar(ProteusStochasticVariable):
         out: t.Any = None,
         keepdims: bool = False,
     ) -> t.Any:
-        """Return the mean across the simulations."""
+        """Return the mean across the simulations.
+
+        Args:
+            axis: Axis along which to perform the reduction.
+            dtype: Requested data type for the converted or reduced array.
+            keepdims: Whether to retain the reduced axes with length one.
+            out: Optional destination for the reduction result.
+        """
         result = xp.mean(self.values, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
         return self._wrap_reduction_result(result)
 
@@ -404,7 +450,14 @@ class StochasticScalar(ProteusStochasticVariable):
         out: t.Any = None,
         keepdims: bool = False,
     ) -> t.Any:
-        """Return the sum across the simulations."""
+        """Return the sum across the simulations.
+
+        Args:
+            axis: Axis along which to perform the reduction.
+            dtype: Requested data type for the converted or reduced array.
+            keepdims: Whether to retain the reduced axes with length one.
+            out: Optional destination for the reduction result.
+        """
         result = xp.sum(self.values, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
         return self._wrap_reduction_result(result)
 
@@ -416,7 +469,15 @@ class StochasticScalar(ProteusStochasticVariable):
         ddof: int = 0,
         keepdims: bool = False,
     ) -> t.Any:
-        """Return the standard deviation across the simulations."""
+        """Return the standard deviation across the simulations.
+
+        Args:
+            axis: Axis along which to perform the reduction.
+            ddof: Degrees-of-freedom adjustment used in the variance estimate.
+            dtype: Requested data type for the converted or reduced array.
+            keepdims: Whether to retain the reduced axes with length one.
+            out: Optional destination for the reduction result.
+        """
         result = xp.std(self.values, axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
         return self._wrap_reduction_result(result)
 
@@ -428,7 +489,15 @@ class StochasticScalar(ProteusStochasticVariable):
         ddof: int = 0,
         keepdims: bool = False,
     ) -> t.Any:
-        """Return the variance across the simulations."""
+        """Return the variance across the simulations.
+
+        Args:
+            axis: Axis along which to perform the reduction.
+            ddof: Degrees-of-freedom adjustment used in the variance estimate.
+            dtype: Requested data type for the converted or reduced array.
+            keepdims: Whether to retain the reduced axes with length one.
+            out: Optional destination for the reduction result.
+        """
         result = xp.var(self.values, axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
         return self._wrap_reduction_result(result)
 
@@ -458,7 +527,11 @@ class StochasticScalar(ProteusStochasticVariable):
         return stats.tvar(self.values, p)
 
     def upsample(self, n_sims: int) -> Self:
-        """Increase the number of simulations in the variable."""
+        """Increase the number of simulations in the variable.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+        """
         if n_sims == self.n_sims:
             return self
         backend = np if host_values(self.values) else xp
@@ -541,12 +614,22 @@ class StochasticScalar(ProteusStochasticVariable):
     # ===================
 
     def _reorder_sims(self, new_order: t.Sequence[int]) -> None:
-        """Reorder the simulations in the variable."""
+        """Reorder the simulations in the variable.
+
+        Args:
+            new_order: Permutation of simulation positions to apply.
+        """
         order = asnumpy(new_order) if host_values(self.values) else new_order
+        if self.n_sims == 1 and len(new_order) != 1:
+            return  # A deterministic constant is independent of scenario order.
         self.values = self.values[order]
 
     def _wrap_reduction_result(self, result: t.Any) -> t.Any:
-        """Return scalar reductions directly and preserve one-dimensional results."""
+        """Return scalar reductions directly and preserve one-dimensional results.
+
+        Args:
+            result: Numerical result to wrap with simulation metadata.
+        """
         scalar_result = scalar_or_array(result)
         if scalar_result is not result:
             return scalar_result
@@ -562,18 +645,28 @@ class StochasticScalar(ProteusStochasticVariable):
 
         A multi-output ufunc must not couple its first output if a later
         output has an incompatible simulation axis.
+
+        Args:
+            inputs: Input operands supplied to the NumPy universal function.
+            result_array: Array of result values before stochastic wrapping.
         """
 
         def prepare(value: t.Any) -> t.Any:
+            """Prepare operands for NumPy dispatch while preserving their simulation alignment.
+
+            Args:
+                value: Value to convert, compare or assign.
+            """
             scalar_result = scalar_or_array(value)
             if scalar_result is not value:
                 return scalar_result
             if getattr(value, "ndim", None) != 1:
                 return value
-            if len(value) != self.n_sims:
-                raise ValueError(
-                    f"Stochastic result has incompatible n_sims (expected {self.n_sims}, got {len(value)})"
-                )
+            # A length-one constant can participate in longer scenario
+            # expressions, but full stochastic arrays cannot change length.
+            target = self.n_sims if self.n_sims != 1 else len(value)
+            if len(value) != target:
+                raise ValueError(f"Stochastic result has incompatible n_sims (expected {target}, got {len(value)})")
             return StochasticScalar(value)
 
         if isinstance(result_array, tuple):
@@ -584,5 +677,5 @@ class StochasticScalar(ProteusStochasticVariable):
         result_leaves = tuple(value for value in leaves if isinstance(value, StochasticScalar))
         if result_leaves:
             stochastic_inputs = (self, *(value for value in inputs if isinstance(value, ProteusStochasticVariable)))
-            couple_stochastic_results(result_leaves, stochastic_inputs, n_sims=self.n_sims)
+            couple_stochastic_results(result_leaves, stochastic_inputs, n_sims=result_leaves[0].n_sims)
         return prepared
