@@ -13,6 +13,8 @@ import typing as t
 
 from ._compat import override
 from ._maths import scalar_or_array, xp
+from .config import config
+from .couplings import couple_stochastic_results, validate_stochastic_axes
 from .distributions import DistributionBase, ReturnType
 from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
@@ -150,26 +152,40 @@ class HyperExponential(DistributionBase):
         return weights, rates
 
     def _wrap_result(self, result: t.Any, argument: DistributionParameter) -> ReturnType:
-        """Preserve coupling from the argument and all stochastic parameters."""
+        """Preserve coupling from the argument and all stochastic parameters.
+
+        Args:
+            argument: Evaluation input used to preserve stochastic simulation alignment.
+            result: Calculated result to wrap with its stochastic metadata.
+        """
         candidates = (argument, self._params["loc"], *self._component_inputs())
         stochastic_inputs = [value for value in candidates if isinstance(value, StochasticScalar)]
         if not stochastic_inputs:
             return scalar_or_array(result)
 
         wrapped = StochasticScalar(result)
-        for value in stochastic_inputs:
-            wrapped.coupled_variable_group.merge(value.coupled_variable_group)
+        couple_stochastic_results((wrapped,), stochastic_inputs)
         return wrapped
 
     @staticmethod
     def _mixture_cdf(values: t.Any, weights: t.Any, rates: t.Any) -> t.Any:
-        """Evaluate the zero-location CDF for non-negative values."""
+        """Evaluate the zero-location CDF for non-negative values.
+
+        Args:
+            rates: Positive rate parameters of the exponential mixture.
+            values: Values to convert or process in their existing order.
+            weights: Mixture probabilities assigned to the exponential components.
+        """
         component_cdfs = -xp.expm1(-values[..., None] * rates)
         return xp.sum(weights * component_cdfs, axis=-1)
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute the cumulative distribution function."""
+        """Compute the cumulative distribution function.
+
+        Args:
+            x: Loss at which the mixture probability is evaluated.
+        """
         weights, rates = self._validated_component_parameters()
         values = xp.asarray(x.values if isinstance(x, StochasticScalar) else x)
         loc = self._params["loc"]
@@ -187,6 +203,9 @@ class HyperExponential(DistributionBase):
         A general hyperexponential quantile has no closed form. The upper
         bracket follows from the slowest exponential component, so no heuristic
         root-search bound is required.
+
+        Args:
+            u: Cumulative probability at which to evaluate the quantile.
         """
         weights, rates = self._validated_component_parameters()
         probabilities = xp.asarray(u.values if isinstance(u, StochasticScalar) else u)
@@ -222,16 +241,30 @@ class HyperExponential(DistributionBase):
         n_sims: int | None = None,
         rng: RandomGenerator | None = None,
     ) -> StochasticScalar:
-        """Generate samples and preserve component-parameter coupling."""
+        """Generate samples and preserve component-parameter coupling.
+
+        Args:
+            n_sims: Number of simulations represented by the data or requested draws.
+            rng: Random number generator supplying the draws.
+        """
+        sources = tuple(
+            value
+            for value in (*self._params.values(), *self._component_inputs())
+            if isinstance(value, StochasticScalar)
+        )
+        validate_stochastic_axes(sources, n_sims=config.n_sims if n_sims is None else n_sims)
         result = super().generate(n_sims=n_sims, rng=rng)
-        for value in self._component_inputs():
-            if isinstance(value, StochasticScalar):
-                result.coupled_variable_group.merge(value.coupled_variable_group)
+        couple_stochastic_results((result,), sources)
         return result
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
-        """Generate directly by first drawing the mixture component."""
+        """Generate directly by first drawing the mixture component.
+
+        Args:
+            n_sims: Number of simulations represented by the data or requested draws.
+            rng: Random number generator supplying the draws.
+        """
         if n_sims < 1:
             raise ValueError(f"n_sims must be >= 1, got {n_sims}")
 

@@ -17,17 +17,23 @@ import scipy.stats
 from scipy.special import gamma
 
 from . import ProteusVariable, StochasticScalar, _fra1
-from ._maths import asnumpy, special
-from ._maths import xp as np
 
 # Local imports
+from ._correlation_preparation import RepairMode, prepare_correlation_matrix
+from ._maths import asnumpy, special
+from ._maths import xp as np
 from .config import config
+from .couplings import couple_stochastic_results
 from .qmc import RandomizedQMCGenerator, _draw_active_scenarios, _draw_scenarios
 from .types import RandomGenerator
 
 
 def _host_rng_arg(value: t.Any) -> t.Any:
-    """Copy backend array arguments to the host for NumPy random methods."""
+    """Copy backend array arguments to the host for NumPy random methods.
+
+    Args:
+        value: Value to convert, compare or assign.
+    """
     if isinstance(value, np.ndarray):
         return asnumpy(value)
     if isinstance(value, tuple):
@@ -41,9 +47,19 @@ class _BackendGenerator:
     """Adapt NumPy's seeded Generator so samples immediately move to the backend."""
 
     def __init__(self, generator: t.Any) -> None:
+        """Initialize the backend-aware random generator wrapper.
+
+        Args:
+            generator: Random generator whose methods are wrapped for backend compatibility.
+        """
         self._generator = generator
 
     def __getattr__(self, name: str) -> t.Any:
+        """Delegate generator operations to the wrapped random generator.
+
+        Args:
+            name: Name of the delegated random-generator operation.
+        """
         # CuPy's RandomState follows NumPy's legacy ``randint`` spelling.
         # Present the modern Generator spelling used by PAL's copula code.
         if name == "integers" and not hasattr(self._generator, name):
@@ -54,6 +70,12 @@ class _BackendGenerator:
             return attribute
 
         def sample(*args: t.Any, **kwargs: t.Any) -> t.Any:
+            """Draw samples using the wrapped generator and return them on the active backend.
+
+            Args:
+                *args: Positional arguments supplied by the caller or NumPy dispatch.
+                **kwargs: Keyword arguments supplied by the caller or NumPy dispatch.
+            """
             if type(self._generator).__module__.startswith("numpy"):
                 args = tuple(_host_rng_arg(arg) for arg in args)
                 kwargs = {key: _host_rng_arg(value) for key, value in kwargs.items()}
@@ -63,7 +85,11 @@ class _BackendGenerator:
 
 
 def _backend_rng(generator: RandomGenerator | _BackendGenerator) -> RandomGenerator | _BackendGenerator:
-    """Return a backend-producing random generator adapter."""
+    """Return a backend-producing random generator adapter.
+
+    Args:
+        generator: Random generator whose methods are wrapped for backend compatibility.
+    """
     if isinstance(generator, (_BackendGenerator, RandomizedQMCGenerator)):
         return generator
     if type(generator).__module__.startswith(np.__name__):
@@ -72,7 +98,12 @@ def _backend_rng(generator: RandomGenerator | _BackendGenerator) -> RandomGenera
 
 
 def _student_t_cdf(values: t.Any, dof: float) -> t.Any:
-    """Evaluate Student's t CDF without moving backend arrays to the host."""
+    """Evaluate Student's t CDF without moving backend arrays to the host.
+
+    Args:
+        dof: Degrees of freedom of the Student's t distribution.
+        values: Values aligned with the simulations or component axis.
+    """
     if np.__name__ == "numpy":
         return special.stdtr(dof, values)
 
@@ -92,6 +123,9 @@ class Copula(ABC):
     All copula implementations generate ProteusVariable containers with VectorLike
     values (typically StochasticScalar instances) that represent correlated
     uniform random samples on [0,1].
+
+    Attributes:
+        dimension: Number of uniform margins in the copula.
     """
 
     dimension: int
@@ -155,10 +189,8 @@ class Copula(ABC):
             "dim1",
             {f"{type(self).__name__}_{i}": StochasticScalar(sample) for i, sample in enumerate(uniform_samples)},
         )
-        # Merge all variables into the same coupled group
-        first_scalar = result[0]
-        for val in result:
-            val.coupled_variable_group.merge(first_scalar.coupled_variable_group)
+        couple_stochastic_results(result.values.values(), n_sims=len(result[0]))
+
         return result
 
     def _generate_base(
@@ -216,7 +248,11 @@ class Copula(ABC):
 
 
 class EllipticalCopula(Copula, ABC):
-    """A base class to represent an elliptical copula."""
+    """A base class to represent an elliptical copula.
+
+    Attributes:
+        correlation_matrix: Correlation matrix specifying the elliptical or extremal-t dependence.
+    """
 
     _matrix: npt.NDArray[np.floating]
     _chol: npt.NDArray[np.floating]
@@ -226,33 +262,54 @@ class EllipticalCopula(Copula, ABC):
         matrix: npt.NDArray[np.floating] | list[list[float]],
         *args: t.Any,
         matrix_type: str = "linear",
+        repair: RepairMode = "higham",
+        weights: npt.ArrayLike | None = None,
+        pattern: t.Sequence[tuple[int, int]] | None = None,
         **kwargs: t.Any,
     ) -> None:
         """Initialize an elliptical copula.
 
         Args:
-            matrix: Correlation matrix or Cholesky decomposition.
-            matrix_type: Type of matrix - "linear" or "chol".
-            *args: Additional positional arguments.
-            **kwargs: Additional keyword arguments.
+            matrix: Correlation matrix or a factor when matrix_type="chol".
+            matrix_type: "linear" for correlations or "chol" for a factor.
+            repair: Higham repair by default; "none" rejects invalid inputs.
+            weights: Optional positive vector of Higham row/column weights.
+            pattern: Optional correlations to hold fixed during repair.
+            *args: Retained for compatibility with subclasses.
+            **kwargs: Retained for compatibility with subclasses.
         """
-        _matrix = np.asarray(matrix)
+        _matrix = np.asarray(matrix, dtype=float)
         if _matrix.ndim != 2 or _matrix.shape[0] != _matrix.shape[1]:
             raise ValueError("Matrix must be square")
         if matrix_type == "linear":
-            self.correlation_matrix = _matrix
-            # Check that the correlation matrix is positive definite
-            if float(np.linalg.eigvalsh(self.correlation_matrix).min()) <= 0:
-                raise ValueError("Correlation matrix is not positive definite")
-            try:
-                self._chol = np.linalg.cholesky(self.correlation_matrix)
-            except np.linalg.LinAlgError as e:
-                raise ValueError("Correlation matrix is not positive definite") from e
+            correlations = _matrix
         elif matrix_type == "chol":
-            self._chol = _matrix
+            correlations = _matrix @ _matrix.T
         else:
             raise ValueError("matrix_type must be 'linear' or 'chol'")
-        self._matrix = _matrix
+
+        adjusted, self.was_repaired = prepare_correlation_matrix(
+            correlations,
+            repair=repair,
+            weights=weights,
+            pattern=pattern,
+            name="Copula correlation matrix",
+        )
+        # Preserve the exact coefficients used by the factor independently
+        # of the existing mutable correlation_matrix attribute.
+        self._adjusted_correlation_matrix = adjusted.copy()
+        self.correlation_matrix = adjusted
+        if matrix_type == "chol" and not self.was_repaired:
+            # A supplied factor already represents the requested correlations.
+            self._chol = _matrix.copy()
+        else:
+            self._chol = np.linalg.cholesky(adjusted)
+        self._matrix = _matrix.copy()
+
+    @property
+    def adjusted_correlation_matrix(self) -> t.Any:
+        """The correlations actually used for simulation, as a copy."""
+        return self._adjusted_correlation_matrix.copy()
 
 
 class GaussianCopula(EllipticalCopula):
@@ -275,26 +332,57 @@ class GaussianCopula(EllipticalCopula):
         self,
         matrix: npt.NDArray[np.floating] | list[list[float]],
         matrix_type: str = "linear",
+        *,
+        repair: RepairMode = "higham",
+        weights: npt.ArrayLike | None = None,
+        pattern: t.Sequence[tuple[int, int]] | None = None,
     ) -> None:
-        """Initialize a Gaussian copula.
+        """Initialize a Gaussian copula with optional correlation repair.
+
+        Higham repair is automatic when required and raises a UserWarning.
+        Inspect adjusted_correlation_matrix to see the coefficients used.
 
         Args:
-            matrix: Correlation matrix.
-            matrix_type: Type of matrix - "linear" or "chol".
+            matrix: Matrix supplied for correlation validation or repair.
+            matrix_type: Whether the matrix contains correlations or rank correlations.
+            pattern: Optional structural constraints on correlation matrix repair.
+            repair: Whether and how to repair an invalid correlation matrix.
+            weights: Optional weights controlling correlation matrix repair.
         """
-        super().__init__(matrix, matrix_type=matrix_type)
+        super().__init__(
+            matrix,
+            matrix_type=matrix_type,
+            repair=repair,
+            weights=weights,
+            pattern=pattern,
+        )
 
     def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
-        """Transform normal samples to uniform using CDF."""
+        """Transform normal samples to uniform using CDF.
+
+        Args:
+            unnormalised_samples: Latent copula samples before transformation to uniform margins.
+        """
         return special.ndtr(unnormalised_samples)
 
     def generate(
         self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
-        """Generate samples from the Gaussian copula."""
+        """Generate samples from the Gaussian copula.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+        """
         return self._generate_base(n_sims, rng)
 
     def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Generate the latent multivariate samples before uniform transformation.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+        """
         n_vars = self.correlation_matrix.shape[0]
         normal_samples = _draw_scenarios(rng, "standard_normal", size=(n_vars, n_sims), scenario_axis=1)
         return self._chol.dot(normal_samples)
@@ -321,6 +409,9 @@ class StudentsTCopula(EllipticalCopula):
         \lambda_U = \lambda_L = 2\,t_{\nu+1}\left(-\sqrt{\frac{(\nu+1)(1-\rho)}{1+\rho}}\right)
 
     where :math:`\nu` is the degrees of freedom and :math:`\rho` is the correlation parameter.
+
+    Attributes:
+        dof: Degrees of freedom of the Student's t copula.
     """
 
     def __init__(
@@ -328,30 +419,60 @@ class StudentsTCopula(EllipticalCopula):
         matrix: npt.NDArray[np.float64] | list[list[float]],
         dof: float,
         matrix_type: str = "linear",
+        *,
+        repair: RepairMode = "higham",
+        weights: npt.ArrayLike | None = None,
+        pattern: t.Sequence[tuple[int, int]] | None = None,
     ) -> None:
-        """Initialize a Student's T copula.
+        """Initialize a Student's t copula with automatic Higham repair.
+
+        Raises UserWarning if correlation coefficients require adjustment.
 
         Args:
-            matrix: Correlation matrix.
-            dof: Degrees of freedom.
-            matrix_type: Type of matrix - "linear" or "chol".
+            dof: Degrees of freedom of the Student's t distribution.
+            matrix: Matrix supplied for correlation validation or repair.
+            matrix_type: Whether the matrix contains correlations or rank correlations.
+            pattern: Optional structural constraints on correlation matrix repair.
+            repair: Whether and how to repair an invalid correlation matrix.
+            weights: Optional weights controlling correlation matrix repair.
         """
-        super().__init__(matrix, matrix_type=matrix_type)
+        super().__init__(
+            matrix,
+            matrix_type=matrix_type,
+            repair=repair,
+            weights=weights,
+            pattern=pattern,
+        )
         if dof <= 0:
             raise ValueError("Degrees of Freedom must be positive")
         self.dof = dof
 
     def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
-        """Transform t-distributed samples to uniform using CDF."""
+        """Transform t-distributed samples to uniform using CDF.
+
+        Args:
+            unnormalised_samples: Latent copula samples before transformation to uniform margins.
+        """
         return _student_t_cdf(unnormalised_samples, self.dof)
 
     def generate(
         self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
-        """Generate samples from the Student's T copula."""
+        """Generate samples from the Student's T copula.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+        """
         return self._generate_base(n_sims, rng)
 
     def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Generate the latent multivariate samples before uniform transformation.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+        """
         n_vars = self.correlation_matrix.shape[0]
         normal_samples = self._chol.dot(_draw_scenarios(rng, "standard_normal", size=(n_vars, n_sims), scenario_axis=1))
         chi_samples = np.sqrt(rng.gamma(self.dof / 2, 2 / self.dof, size=n_sims))
@@ -363,27 +484,51 @@ class ArchimedeanCopula(Copula, ABC):
 
     @abstractmethod
     def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
-        """The inverse generator function of the copula."""
+        """The inverse generator function of the copula.
+
+        Args:
+            t: Argument of the inverse Archimedean generator.
+        """
         pass
 
     @abstractmethod
     def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
-        """Generate samples from the latent distribution of the copula."""
+        """Generate samples from the latent distribution of the copula.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+        """
         pass
 
     def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
-        """Transform using inverse generator function."""
+        """Transform using inverse generator function.
+
+        Args:
+            unnormalised_samples: Latent copula samples before transformation to uniform margins.
+        """
         return self.generator_inv(-unnormalised_samples)
 
     def generate(
         self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
-        """Generate samples from the Archimedean copula."""
+        """Generate samples from the Archimedean copula.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+        """
         return self._generate_base(n_sims, rng)
 
     def _generate_unnormalised(
         self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> npt.NDArray[np.floating]:
+        """Generate the latent multivariate samples before uniform transformation.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+        """
         if n_sims is None:
             n_sims = config.n_sims
         if rng is None:
@@ -444,6 +589,11 @@ class FRA1Copula(Copula):
 
     The independence copula is obtained at :math:`\eta=\theta=-1`.
 
+    Attributes:
+        eta: Lower-tail dependence parameter.
+        theta: Upper-tail dependence parameter.
+        dimension: Number of copula margins.
+
     References:
         Hua, L. (2026). "A new tractable Archimedean copula for full-range
         tail dependence." arXiv:2609.18742.
@@ -503,10 +653,21 @@ class FRA1Copula(Copula):
     def generate(
         self, n_sims: int | None = None, rng: RandomGenerator | None = None
     ) -> ProteusVariable[StochasticScalar]:
-        """Generate uniform samples from the FRA1 copula."""
+        """Generate uniform samples from the FRA1 copula.
+
+        Args:
+            n_sims: Number of scenarios, or the configured default.
+            rng: Random generator, or the configured default.
+        """
         return self._generate_base(n_sims, rng)
 
     def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Generate a matrix of FRA1 uniforms.
+
+        Args:
+            n_sims: Number of scenarios.
+            rng: Random generator for scenario-aligned sampling.
+        """
         if self.dimension < 2:
             raise ValueError("FRA1Copula requires at least two variables")
 
@@ -553,6 +714,10 @@ class ClaytonCopula(ArchimedeanCopula):
         \phi(t) = \frac{1}{\theta}(t^{-\theta} - 1)
 
     For :math:`\theta = 0`, the copula reduces to the independence copula.
+
+    Attributes:
+        dimension: Number of uniform margins in the copula.
+        theta: Dependence parameter of the copula.
     """
 
     def __init__(self, theta: float, dimension: int | None = None) -> None:
@@ -589,6 +754,11 @@ class ClaytonCopula(ArchimedeanCopula):
         For Clayton copula, when theta=0, the copula reduces to the independence
         copula, and the latent distribution returns a constant value of 1.0 for
         all simulations.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+
 
         Returns:
             Array of shape (n_sims,) containing latent distribution samples.
@@ -657,6 +827,10 @@ class GumbelCopula(ArchimedeanCopula):
     .. math::
 
         \phi(t) = (-\ln t)^\theta
+
+    Attributes:
+        dimension: Number of uniform margins in the copula.
+        theta: Dependence parameter of the copula.
     """
 
     def __init__(self, theta: float, dimension: int | None = None) -> None:
@@ -673,11 +847,20 @@ class GumbelCopula(ArchimedeanCopula):
             self.dimension = dimension
 
     def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
-        """Inverse generator function for Gumbel copula."""
+        """Inverse generator function for Gumbel copula.
+
+        Args:
+            t: Argument of the inverse Archimedean generator.
+        """
         return np.exp(-(t ** (1 / self.theta)))
 
     def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
-        """Generate samples from the latent distribution."""
+        """Generate samples from the latent distribution.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+        """
         if self.theta == 1:
             return np.ones(n_sims)
         return levy_stable(1 / self.theta, 1, n_sims, rng) * (np.cos(np.pi / (2 * self.theta)) ** self.theta)
@@ -702,6 +885,10 @@ class FrankCopula(ArchimedeanCopula):
     .. math::
 
         \phi(t) = -\ln\left(\frac{e^{-\theta t} - 1}{e^{-\theta} - 1}\right)
+
+    Attributes:
+        dimension: Number of uniform margins in the copula.
+        theta: Dependence parameter of the copula.
     """
 
     def __init__(self, theta: float, dimension: int | None = None) -> None:
@@ -716,11 +903,20 @@ class FrankCopula(ArchimedeanCopula):
             self.dimension = dimension
 
     def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
-        """Inverse generator function for Frank copula."""
+        """Inverse generator function for Frank copula.
+
+        Args:
+            t: Argument of the inverse Archimedean generator.
+        """
         return -np.log1p(np.exp(-t) * (np.expm1(-self.theta))) / self.theta
 
     def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
-        """Generate samples from the latent distribution."""
+        """Generate samples from the latent distribution.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+        """
         return rng.logseries(1 - np.exp(-self.theta), size=n_sims).astype(np.float64)
 
 
@@ -748,6 +944,10 @@ class JoeCopula(ArchimedeanCopula):
 
     where :math:`\theta \geq 1` is the dependence parameter. The copula exhibits
     upper tail dependence with coefficient :math:`2 - 2^{1/\theta}`.
+
+    Attributes:
+        dimension: Number of uniform margins in the copula.
+        theta: Dependence parameter of the copula.
     """
 
     def __init__(self, theta: float, dimension: int | None = None) -> None:
@@ -764,11 +964,20 @@ class JoeCopula(ArchimedeanCopula):
             self.dimension = dimension
 
     def generator_inv(self, t: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
-        """Inverse generator function for Joe copula."""
+        """Inverse generator function for Joe copula.
+
+        Args:
+            t: Argument of the inverse Archimedean generator.
+        """
         return 1 - (1 - np.exp(-t)) ** (1 / self.theta)
 
     def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
-        """Generate samples from the latent distribution."""
+        """Generate samples from the latent distribution.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+        """
         if self.theta == 1:
             # Sibuya(1) is degenerate at one. The general sampler draws
             # Gamma(0) and is undefined at this independence boundary.
@@ -822,6 +1031,11 @@ class MM1Copula(Copula):
     References:
         Joe, H. (1997). Multivariate Models and Dependence Concepts. Chapman and Hall.
         Joe, H. (2015). Dependence Modeling with Copulas. Chapman and Hall.
+
+    Attributes:
+        delta_matrix: Pairwise delta parameters of the MM1 copula.
+        dimension: Number of uniform margins in the copula.
+        theta: Dependence parameter of the copula.
     """
 
     delta_matrix: list[list[float]]
@@ -851,10 +1065,20 @@ class MM1Copula(Copula):
         self.theta = theta
 
     def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
-        """Transform max-mixture samples to uniform."""
+        """Transform max-mixture samples to uniform.
+
+        Args:
+            unnormalised_samples: Latent copula samples before transformation to uniform margins.
+        """
         return np.exp(-((-np.log(unnormalised_samples)) ** (1 / self.theta)))
 
     def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Generate the latent multivariate samples before uniform transformation.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+        """
         n = self.dimension
         theta = self.theta
         delta_matrix = self.delta_matrix
@@ -942,6 +1166,10 @@ class GalambosCopula(Copula):
         Joe, H. (1997). Multivariate Models and Dependence Concepts. Chapman and Hall.
         Mai, Jan-Frederik. "Exact Simulation of Reciprocal Archimedean Copulas."
         Statistical Probability Letters (2018). arXiv preprint arXiv:1802.09996
+
+    Attributes:
+        dimension: Number of uniform margins in the copula.
+        theta: Dependence parameter of the copula.
     """
 
     def __init__(self, theta: float, dimension: int | None = None) -> None:
@@ -1080,6 +1308,10 @@ class PlackettCopula(Copula):
     References:
         Plackett, R. L. (1965). A class of bivariate distributions. Journal of the
         American Statistical Association, 60(310), 516-522.
+
+    Attributes:
+        delta: Bivariate dependence parameter of the Plackett copula.
+        dimension: Number of uniform margins in the copula.
     """
 
     dimension: int = 2
@@ -1212,6 +1444,11 @@ class HuslerReissCopula(Copula):
         Hüsler, J., & Reiss, R. D. (1989). Maxima of normal random vectors: between
         independence and complete dependence. Statistics & Probability Letters,
         7(4), 283-286.
+
+    Attributes:
+        adjusted_lambda_matrix: Valid Hüsler-Reiss dependence matrix after any necessary adjustment.
+        dimension: Number of uniform margins in the copula.
+        is_adjusted: Whether the supplied Hüsler-Reiss matrix was adjusted.
     """
 
     is_adjusted: bool = False
@@ -1556,6 +1793,11 @@ class ExtremalTCopula(Copula):
     References:
         Nikoloulopoulos, A. K., Joe, H., & Li, H. (2009). Extreme value properties of
         multivariate t copulas. Extremes, 12(2), 129-148.
+
+    Attributes:
+        correlation_matrix: Correlation matrix specifying the elliptical or extremal-t dependence.
+        dimension: Number of uniform margins in the copula.
+        nu: Degrees of freedom controlling extremal-t dependence.
     """
 
     def __init__(
@@ -1593,6 +1835,9 @@ class ExtremalTCopula(Copula):
         Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
         processes. Biometrika 103, no. 2 (2016): 303-17.
 
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
         """
         d = self.correlation_matrix.shape[0]
 
@@ -1876,7 +2121,7 @@ def apply_copula(
 
     # Process one margin at a time instead of allocating (dimension, n_sims)
     # matrices of ranks and sort indices. The first variable is unchanged.
-    for var, sample in zip(variables_list[1:], copula_list[1:]):
+    for var, sample in zip(variables_list[1:], copula_list[1:], strict=False):
         sample_order = np.argsort(sample.values, kind="stable")
         ranks[sample_order] = rank_values
         variable_order = np.argsort(var.values, kind="stable")

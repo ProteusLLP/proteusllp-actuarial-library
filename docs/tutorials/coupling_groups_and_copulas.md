@@ -101,6 +101,29 @@ After the copula reorders `loss_a`, the 1.15× ratio is preserved because
 PAL's coupling group system automatically reorders `loss_a_expenses` with
 the same permutation as `loss_a`.
 
+### Coupling Imported Simulation Data
+
+When PAL imports a table of stochastic variables, a shared `Simulation`
+identifier represents one joint outcome across all columns and dimensions.
+`ProteusVariable.from_dataframe`, `from_csv` and `from_parquet` therefore
+put all stochastic leaves imported in that call into a single coupling group
+by default. A later permutation will move those joint scenario outcomes
+together.
+
+This does **not** change the dependence in the imported observations.
+Coupling is an instruction about keeping scenarios aligned; it is not a
+correlation coefficient or fitted copula. For independently sampled
+marginals that you intend to combine using a copula, use
+`couple=False` on import. Separate imports do not automatically share
+a coupling group.
+
+Ordinary CSV and Parquet tables do not record an original model's
+coupling-group boundaries. For exact reconstruction of those boundaries,
+including multiple independent groups in one hierarchy, use
+`pal.serialization.save` and `load`. The
+[Data Interchange and Serialization tutorial](data_io.md) includes working
+examples and SQL/cloud storage integration.
+
 ## 2. Copulas
 
 A copula defines a dependency structure (correlation pattern) between
@@ -270,6 +293,7 @@ For dimensions above two, PAL samples the positive frailty whose Laplace
 transform is the FRA1 generator using numerical Laplace inversion, then applies
 the Marshall-Olkin Archimedean sampling construction. The two-dimensional
 implementation continues to use Hua's inverse conditional sampler.
+
 
 For a Gaussian copula, Spearman's rank correlation is related to the
 underlying correlation parameter by

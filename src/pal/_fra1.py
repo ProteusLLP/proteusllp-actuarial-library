@@ -17,12 +17,20 @@ _LOG_SMALL = np.log(1e-5)
 
 
 def _log1pexp(x: t.Any) -> t.Any:
-    """Return log(1 + exp(x)) without overflow."""
+    """Return log(1 + exp(x)) without overflow.
+
+    Args:
+        x: Log-domain input value or array.
+    """
     return np.maximum(x, 0.0) + np.log1p(np.exp(-np.abs(x)))
 
 
 def _logexpm1(x: t.Any) -> t.Any:
-    """Return log(exp(x) - 1) accurately for nonnegative x."""
+    """Return log(exp(x) - 1) accurately for nonnegative x.
+
+    Args:
+        x: Log-domain input value or array.
+    """
     zero = x == 0.0
     safe_x = np.where(zero, 1.0, x)
     value = safe_x + np.log(-np.expm1(-safe_x))
@@ -30,7 +38,11 @@ def _logexpm1(x: t.Any) -> t.Any:
 
 
 def _log_cosh_minus_one(x: t.Any) -> t.Any:
-    """Return log(cosh(x) - 1) accurately for nonnegative x."""
+    """Return log(cosh(x) - 1) accurately for nonnegative x.
+
+    Args:
+        x: Log-domain input value or array.
+    """
     zero = x == 0.0
     safe_x = np.where(zero, 1.0, x)
     regular = safe_x - _LOG_TWO + 2.0 * np.log(-np.expm1(-safe_x))
@@ -41,7 +53,11 @@ def _log_cosh_minus_one(x: t.Any) -> t.Any:
 
 
 def _acosh_one_plus_exp(log_x: t.Any) -> t.Any:
-    """Return acosh(1 + exp(log_x)) without overflowing exp(log_x)."""
+    """Return acosh(1 + exp(log_x)) without overflowing exp(log_x).
+
+    Args:
+        log_x: Natural logarithm of the positive input.
+    """
     regular = log_x < 20.0
     safe_log_x = np.where(regular, log_x, 20.0)
     x = np.exp(safe_log_x)
@@ -50,13 +66,23 @@ def _acosh_one_plus_exp(log_x: t.Any) -> t.Any:
 
 
 def _logsumexp_pair(x: t.Any, y: t.Any) -> t.Any:
-    """Return log(exp(x) + exp(y)) elementwise."""
+    """Return log(exp(x) + exp(y)) elementwise.
+
+    Args:
+        x: Log-domain input value or array.
+        y: Second log-domain input value or array.
+    """
     maximum = np.maximum(x, y)
     return maximum + np.log(np.exp(x - maximum) + np.exp(y - maximum))
 
 
 def _logdiffexp(x: t.Any, y: t.Any) -> t.Any:
-    """Return log(exp(x) - exp(y)) for x >= y."""
+    """Return log(exp(x) - exp(y)) for x >= y.
+
+    Args:
+        x: Log-domain input value or array.
+        y: Second log-domain input value or array.
+    """
     gap = -np.expm1(y - x)
     zero = gap == 0.0
     safe_gap = np.maximum(gap, np.finfo(np.float64).tiny)
@@ -65,7 +91,12 @@ def _logdiffexp(x: t.Any, y: t.Any) -> t.Any:
 
 
 def _log_f(log_s: t.Any, p: float) -> tuple[t.Any, t.Any, t.Any]:
-    """Return log(F_p), log(F_p') and log(-F_p'')."""
+    """Return log(F_p), log(F_p') and log(-F_p'').
+
+    Args:
+        log_s: Natural logarithm of the positive generator input.
+        p: Shape parameter of the auxiliary transform.
+    """
     if p == 1.0:
         return log_s, np.zeros_like(log_s), np.full_like(log_s, -np.inf)
 
@@ -99,7 +130,12 @@ def _log_f(log_s: t.Any, p: float) -> tuple[t.Any, t.Any, t.Any]:
 
 
 def _log_f_inv(log_x: t.Any, p: float) -> t.Any:
-    """Return log(F_p^{-1}(x)) from log(x)."""
+    """Return log(F_p^{-1}(x)) from log(x).
+
+    Args:
+        log_x: Natural logarithm of the positive input.
+        p: Shape parameter of the auxiliary transform.
+    """
     if p < 1e-7:
         log_a = 0.5 * (log_x + _LOG_TWO)
         capped = np.minimum(log_a, np.log(np.finfo(np.float64).max))
@@ -115,7 +151,12 @@ def _log_f_inv(log_x: t.Any, p: float) -> t.Any:
 
 
 def _log_j(log_t: t.Any, p: float) -> tuple[t.Any, t.Any]:
-    """Return log(J_p(t)) and log(J_p'(t))."""
+    """Return log(J_p(t)) and log(J_p'(t)).
+
+    Args:
+        log_t: Natural logarithm of the positive argument.
+        p: Shape parameter of the auxiliary transform.
+    """
     if p == 1.0:
         return log_t, np.zeros_like(log_t)
 
@@ -150,7 +191,12 @@ def _log_j(log_t: t.Any, p: float) -> tuple[t.Any, t.Any]:
 
 
 def _log_j_inv(log_y: t.Any, p: float) -> t.Any:
-    """Return log(J_p^{-1}(y)) from log(y)."""
+    """Return log(J_p^{-1}(y)) from log(y).
+
+    Args:
+        log_y: Natural logarithm of the transformed value.
+        p: Shape parameter of the auxiliary transform.
+    """
     if p == 1.0:
         return log_y
 
@@ -170,7 +216,12 @@ def _log_j_inv(log_y: t.Any, p: float) -> t.Any:
 
 
 def _log_k(log_t: t.Any, a: float) -> tuple[t.Any, t.Any]:
-    """Return log(K_a(t)) and log(K_a'(t))."""
+    """Return log(K_a(t)) and log(K_a'(t)).
+
+    Args:
+        log_t: Natural logarithm of the positive argument.
+        a: Shape parameter of the auxiliary K transform.
+    """
     h = _log1pexp(a * log_t)
     log_value = _logexpm1(h / a)
     tiny = a * log_t < -700.0
@@ -180,7 +231,12 @@ def _log_k(log_t: t.Any, a: float) -> tuple[t.Any, t.Any]:
 
 
 def _log_k_inv(log_y: t.Any, a: float) -> t.Any:
-    """Return log(K_a^{-1}(y)) from log(y)."""
+    """Return log(K_a^{-1}(y)) from log(y).
+
+    Args:
+        log_y: Natural logarithm of the transformed value.
+        a: Shape parameter of the auxiliary K transform.
+    """
     h = _log1pexp(log_y)
     result = _logexpm1(a * h) / a
     tiny = log_y < -700.0
@@ -189,7 +245,12 @@ def _log_k_inv(log_y: t.Any, a: float) -> t.Any:
 
 
 def _log_w(log_t: t.Any, theta: float) -> tuple[t.Any, t.Any]:
-    """Return log(W_theta(t)) and log(W_theta'(t))."""
+    """Return log(W_theta(t)) and log(W_theta'(t)).
+
+    Args:
+        log_t: Natural logarithm of the positive argument.
+        theta: FRA1 upper-tail dependence parameter.
+    """
     if theta <= 0.0:
         return _log_j(log_t, -theta)
 
@@ -199,7 +260,12 @@ def _log_w(log_t: t.Any, theta: float) -> tuple[t.Any, t.Any]:
 
 
 def _log_w_inv(log_y: t.Any, theta: float) -> t.Any:
-    """Return log(W_theta^{-1}(y)) from log(y)."""
+    """Return log(W_theta^{-1}(y)) from log(y).
+
+    Args:
+        log_y: Natural logarithm of the transformed value.
+        theta: FRA1 upper-tail dependence parameter.
+    """
     if theta <= 0.0:
         return _log_j_inv(log_y, -theta)
 
@@ -208,12 +274,22 @@ def _log_w_inv(log_y: t.Any, theta: float) -> t.Any:
 
 
 def _b(eta: float) -> float:
-    """Return b_eta for positive eta."""
+    """Return b_eta for positive eta.
+
+    Args:
+        eta: FRA1 lower-tail dependence parameter.
+    """
     return (1.0 - eta) / eta**2
 
 
 def log_inverse_generator(u: t.Any, eta: float, theta: float) -> t.Any:
-    """Return log(phi(u)), where phi=psi^{-1}, for interior u."""
+    """Return log(phi(u)), where phi=psi^{-1}, for interior u.
+
+    Args:
+        u: Interior uniform probability or array.
+        eta: FRA1 lower-tail dependence parameter.
+        theta: FRA1 upper-tail dependence parameter.
+    """
     log_target = np.log(-np.log(u))
 
     if eta > 0.0:
@@ -225,7 +301,13 @@ def log_inverse_generator(u: t.Any, eta: float, theta: float) -> t.Any:
 
 
 def _log_generator_and_negative_prime(log_t: t.Any, eta: float, theta: float) -> tuple[t.Any, t.Any]:
-    """Return log(psi(t)) and log(-psi'(t)) from log(t)."""
+    """Return log(psi(t)) and log(-psi'(t)) from log(t).
+
+    Args:
+        log_t: Natural logarithm of the positive argument.
+        eta: FRA1 lower-tail dependence parameter.
+        theta: FRA1 upper-tail dependence parameter.
+    """
     log_w, log_wp = _log_w(log_t, theta)
     log_f_value, log_fp, _ = _log_f(log_w, abs(eta))
 
@@ -242,7 +324,13 @@ def _log_generator_and_negative_prime(log_t: t.Any, eta: float, theta: float) ->
 
 
 def _log_negative_generator_prime(log_t: t.Any, eta: float, theta: float) -> t.Any:
-    """Return log(-psi'(t)) from log(t)."""
+    """Return log(-psi'(t)) from log(t).
+
+    Args:
+        log_t: Natural logarithm of the positive argument.
+        eta: FRA1 lower-tail dependence parameter.
+        theta: FRA1 upper-tail dependence parameter.
+    """
     return _log_generator_and_negative_prime(log_t, eta, theta)[1]
 
 
@@ -274,7 +362,13 @@ _STEHFEST_LOG_ARGUMENTS = np.log(_STEHFEST_INDICES * _LOG_TWO)
 
 
 def generator_from_log_argument(log_t: t.Any, eta: float, theta: float) -> t.Any:
-    """Evaluate the FRA1 generator from log(t)."""
+    """Evaluate the FRA1 generator from log(t).
+
+    Args:
+        log_t: Natural logarithm of the positive argument.
+        eta: FRA1 lower-tail dependence parameter.
+        theta: FRA1 upper-tail dependence parameter.
+    """
     log_t = np.asarray(log_t)
     at_zero = np.isneginf(log_t)
     safe_log_t = np.where(at_zero, 0.0, log_t)
@@ -289,6 +383,11 @@ def frailty_cdf_from_log(log_v: t.Any, eta: float, theta: float) -> t.Any:
     This evaluates its CDF using an 18-term Gaver-Stehfest inversion of
     psi(s) / s. Working in log coordinates keeps the inversion stable over
     the very wide frailty ranges that occur near the parameter boundaries.
+
+    Args:
+        log_v: Natural logarithm of the frailty value.
+        eta: FRA1 lower-tail dependence parameter.
+        theta: FRA1 upper-tail dependence parameter.
     """
     log_v = np.atleast_1d(np.asarray(log_v, dtype=np.float64))
     log_s = _STEHFEST_LOG_ARGUMENTS[:, np.newaxis] - log_v[np.newaxis, :]
@@ -302,7 +401,13 @@ def frailty_log_quantile_table(
     theta: float,
     grid_size: int = 8193,
 ) -> tuple[t.Any, t.Any]:
-    """Build a numerical quantile table for the FRA1 frailty distribution."""
+    """Build a numerical quantile table for the FRA1 frailty distribution.
+
+    Args:
+        eta: FRA1 lower-tail dependence parameter.
+        theta: FRA1 upper-tail dependence parameter.
+        grid_size: Number of points in the numerical frailty grid.
+    """
     if grid_size < 257:
         raise ValueError("grid_size must be at least 257")
 
@@ -331,7 +436,14 @@ def sample_log_frailty(
     eta: float,
     theta: float,
 ) -> t.Any:
-    """Sample log frailties for the multivariate Marshall-Olkin construction."""
+    """Sample log frailties for the multivariate Marshall-Olkin construction.
+
+    Args:
+        n_sims: Number of simulated scenarios.
+        rng: Random generator used for scenario-aligned draws.
+        eta: FRA1 lower-tail dependence parameter.
+        theta: FRA1 upper-tail dependence parameter.
+    """
     probabilities = rng.uniform(size=n_sims)
     cdf, log_v = frailty_log_quantile_table(eta, theta)
     return np.interp(probabilities, cdf, log_v)
@@ -344,7 +456,15 @@ def generate_multivariate(
     eta: float,
     theta: float,
 ) -> t.Any:
-    """Generate a d-variate FRA1 sample using its frailty representation."""
+    """Generate a d-variate FRA1 sample using its frailty representation.
+
+    Args:
+        dimension: Number of copula margins.
+        n_sims: Number of simulated scenarios.
+        rng: Random generator used for scenario-aligned draws.
+        eta: FRA1 lower-tail dependence parameter.
+        theta: FRA1 upper-tail dependence parameter.
+    """
     if dimension < 2:
         raise ValueError("dimension must be at least 2")
 
@@ -361,7 +481,14 @@ def generate_multivariate(
 
 
 def conditional_ppf(q: t.Any, v: t.Any, eta: float, theta: float) -> t.Any:
-    """Invert the FRA1 conditional CDF for bivariate sampling."""
+    """Invert the FRA1 conditional CDF for bivariate sampling.
+
+    Args:
+        q: Conditional quantile probability or array.
+        v: Conditioning uniform probability or array.
+        eta: FRA1 lower-tail dependence parameter.
+        theta: FRA1 upper-tail dependence parameter.
+    """
     log_y = log_inverse_generator(v, eta, theta)
     target = np.log(q) + _log_negative_generator_prime(log_y, eta, theta)
 

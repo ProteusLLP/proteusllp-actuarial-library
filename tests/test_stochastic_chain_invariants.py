@@ -28,7 +28,10 @@ def _events_by_simulation(events: FreqSevSims) -> list[list[float]]:
     """Retain the original event order within each simulation."""
     indices = host_values(events.sim_index)
     values = host_values(events)
-    return [[float(value) for index, value in zip(indices, values) if index == sim] for sim in range(events.n_sims)]
+    return [
+        [float(value) for index, value in zip(indices, values, strict=False) if index == sim]
+        for sim in range(events.n_sims)
+    ]
 
 
 def test_three_margin_copula_reorders_all_attached_frequency_severity_chains() -> None:
@@ -256,7 +259,7 @@ def test_invalid_copula_inputs_leave_dependency_chains_unchanged(invalid: str) -
     with pytest.raises(ValueError, match=match):
         apply_copula(margins, samples)
 
-    for variable, expected in zip((first, second, derived), before):
+    for variable, expected in zip((first, second, derived), before, strict=False):
         assert_array_equal(variable, expected)
     assert first.coupled_variable_group is original_groups[0]
     assert second.coupled_variable_group is original_groups[1]

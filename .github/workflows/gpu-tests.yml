@@ -40,7 +40,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -e ".[test,gpu]" "cupy-cuda12x[ctk]"
+        run: pip install -e ".[test,gpu,parquet]" "cupy-cuda12x[ctk]"
 
       - name: Determine CuPy kernel-cache compatibility
         id: cupy-cache-compatibility
@@ -118,6 +118,19 @@ jobs:
 
       - name: Run tests with GPU acceleration
         run: pytest -v --cov=pal --cov-report=term --codeblocks
+
+      - name: Check out PAL-based research examples
+        uses: actions/checkout@v7
+        with:
+          repository: ProteusLLP/proteus-research
+          ref: main
+          path: pal-research
+
+      - name: Run ODP research examples with MC and RQMC on GPU
+        env:
+          PYTHONPATH: ${{ github.workspace }}/pal-research
+        run: |
+          python -m pytest -q pal-research/tests/test_pal_research_examples.py
 
       - name: Compare MC and RQMC on GPU
         run: |
