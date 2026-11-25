@@ -41,6 +41,26 @@ fitting result also provides AICc, the observation count and the convergence
 status. Here MLE uses a numerical optimisation; other distributions such as
 an unconstrained Normal or a Poisson have analytical MLEs.
 
+### Optional starting values
+
+Numerical fitting uses automatic data-dependent starting estimates. To
+investigate a difficult fit, you can supply some or all of the estimated
+parameters in their usual distribution units:
+
+<!--pytest-codeblocks:cont-->
+
+```python
+custom_fit = Gamma.fit(losses, initial_parameters={"alpha": 2.0, "theta": 40_000.0})
+assert custom_fit.converged
+```
+
+These values are starting points, not fixed parameters. Unspecified
+parameters use the automatic estimates. Invalid or infeasible starting
+values raise an error. The automatic start remains available for recovery
+if the supplied start fails. Analytical estimators do not need initial
+values. For model averaging, supply different initial parameters through
+`per_family_options`.
+
 ### Including parameter uncertainty
 
 The fitted Gamma shape and scale are estimated from the data, so they are
@@ -229,15 +249,14 @@ picture of the underlying tail.
 attachments = np.linspace(reporting_threshold, 380_000, 65)
 
 # Synthetic-data diagnostic only: actual ultimate losses are not normally observed.
-empirical_mean_excess = np.array([
-    np.mean(reported_losses[reported_losses > d] - d)
-    for d in attachments
-])
+from pal.fitting import empirical_mean_excess
+
+empirical_excess = empirical_mean_excess(reported_losses, attachments)
 
 mean_excess_figure = go.Figure()
 mean_excess_figure.add_scatter(
     x=attachments,
-    y=empirical_mean_excess,
+    y=empirical_excess,
     name="Empirical (uncapped synthetic losses)",
     mode="lines+markers",
 )

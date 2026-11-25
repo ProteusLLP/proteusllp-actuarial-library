@@ -13,7 +13,8 @@ import typing as t
 import numpy as np
 from scipy import integrate, optimize, special, stats
 
-from .fitting import UncertaintyMethod, _FitMethod, _with_uncertainty
+from ._fitting_initial import _conditional_quantiles, _initial_coordinates, _override_initial
+from .fitting import OptimizerMethod, UncertaintyMethod, _FitMethod, _minimize, _with_uncertainty
 
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
@@ -82,6 +83,8 @@ def _result(
     threshold: float = 0.0,
     method: str = _FitMethod.MLE.value,
     converged: bool = True,
+    optimizer: str | None = None,
+    optimizer_fallback: bool = False,
 ) -> FitResult[_T]:
     """Construct consistent log-likelihood and information criterion diagnostics."""
     from .fitting import FitResult
@@ -93,6 +96,9 @@ def _result(
     else:
         aicc = np.nan
     return FitResult(
+        n_parameters=k,
+        optimizer=optimizer,
+        optimizer_fallback=optimizer_fallback,
         distribution=distribution,
         parameters=params,
         log_likelihood=float(ll),
@@ -188,6 +194,9 @@ def _fit_continuous(
 
     loc = float(options.pop("loc", 0.0)) if family is _distributions.Beta else 0.0
     scale = float(options.pop("scale", 1.0)) if family is _distributions.Beta else 1.0
+    optimizer = options.pop("optimizer", OptimizerMethod.L_BFGS_B)
+    optimizer_options = options.pop("optimizer_options", None)
+    initial_parameters = options.pop("initial_parameters", None)
     if options:
         raise TypeError(f"Unsupported fitting options for {family.__name__}: {sorted(options)}")
     if family is _distributions.Beta:
@@ -209,6 +218,8 @@ def _fit_continuous(
         raise ValueError(f"{family.__name__} parameters cannot be fitted to a constant sample")
 
     if family is _distributions.Normal and not np.any(c) and threshold is None:
+        if initial_parameters is not None:
+            raise ValueError("An uncensored, untruncated Normal uses an analytical fit")
         estimates = {"mu": mu, "sigma": std}
         ll = float(np.sum(w * stats.norm.logpdf(x, loc=mu, scale=std)))
         return _result(cls(**estimates), estimates, ll, w, k=2, method=_FitMethod.ANALYTIC.value)
@@ -218,8 +229,10 @@ def _fit_continuous(
         center = float(np.average(y, weights=w))
         v = float(np.average((y - center) ** 2, weights=w))
         common = max(center * (1.0 - center) / max(v, 1e-6) - 1.0, 0.25)
-        starts = [[np.log(max(center * common, 0.2)), np.log(max((1 - center) * common, 0.2))], [0.0, 0.0]]
+        initial = [np.log(max(center * common, 0.2)), np.log(max((1 - center) * common, 0.2))]
+        alternative = np.zeros(2)
         k = 2
+        names = ("alpha", "beta")
 
         def params(raw: np.ndarray) -> dict[str, float]:
             return {"alpha": float(np.exp(raw[0])), "beta": float(np.exp(raw[1])), "scale": scale, "loc": loc}
@@ -228,8 +241,11 @@ def _fit_continuous(
             return stats.beta(a=p["alpha"], b=p["beta"], loc=loc, scale=scale)
 
     elif family in (_distributions.Normal, _distributions.Logistic):
-        starts = [[mu, np.log(std)], [float(np.median(x)), np.log(std)]]
+        factor = np.sqrt(3) / np.pi if family is _distributions.Logistic else 1.0
+        initial = [mu, np.log(std * factor)]
+        alternative = np.array([float(np.median(x)), np.log(std)])
         k = 2
+        names = ("mu", "sigma")
 
         def params(raw: np.ndarray) -> dict[str, float]:
             return {"mu": float(raw[0]), "sigma": float(np.exp(raw[1]))}
@@ -239,8 +255,13 @@ def _fit_continuous(
             return rv(loc=p["mu"], scale=p["sigma"])
 
     elif family is _distributions.StudentsT:
-        starts = [[np.log(v), mu, np.log(std)] for v in (2.0, 5.0, 12.0)]
+        lo, med, hi = _conditional_quantiles(x, c, w, np.array([0.25, 0.5, 0.75]))
+        center = float(med) if np.isfinite(med) else mu
+        scale0 = float((hi - lo) / (2 * stats.t.ppf(0.75, 5))) if np.isfinite(hi - lo) and hi > lo else std
+        initial = [np.log(5.0), center, np.log(scale0)]
+        alternative = np.array([np.log(12.0), mu, np.log(std)])
         k = 3
+        names = ("nu", "mu", "sigma")
 
         def params(raw: np.ndarray) -> dict[str, float]:
             return {"nu": float(np.exp(raw[0])), "mu": float(raw[1]), "sigma": float(np.exp(raw[2]))}
@@ -251,12 +272,11 @@ def _fit_continuous(
     else:
         if family is not _distributions.NonCentralChiSquared:
             raise ValueError(f"Unsupported continuous fitting family: {family.__name__}")
-        starts = [
-            [np.log(max(mu / 2, 0.5)), np.sqrt(max(mu / 2, 0.1))],
-            [np.log(max(mu, 0.5)), 0.0],
-            [np.log(max(mu / 3, 0.5)), np.sqrt(max(2 * mu / 3, 0.1))],
-        ]
+        nonc = float(np.clip(variance / 2 - mu, 0.01, max(mu - 0.01, 0.01)))
+        initial = [np.log(max(mu - nonc, 0.01)), np.sqrt(nonc)]
+        alternative = np.array([np.log(max(mu, 0.5)), 0.0])
         k = 2
+        names = ("df", "nonc")
 
         def params(raw: np.ndarray) -> dict[str, float]:
             return {"df": float(np.exp(raw[0])), "nonc": float(raw[1] ** 2)}
@@ -281,16 +301,16 @@ def _fit_continuous(
             ll = log_likelihood(params(raw))
         return -ll if np.isfinite(ll) else 1e100
 
-    fits = [
-        optimize.minimize(
-            objective,
-            np.asarray(start, dtype=float),
-            method="Nelder-Mead",
-            options={"maxiter": 4000, "xatol": 1e-8, "fatol": 1e-8},
-        )
-        for start in starts
-    ]
-    best = min(fits, key=lambda v: float(v.fun))
+    start, alternative = _override_initial(
+        np.asarray(initial),
+        alternative,
+        initial_parameters,
+        params,
+        lambda p: _initial_coordinates(p, names, linear=("mu",), square_root=("nonc",)),
+        names,
+        objective,
+    )
+    best = _minimize(objective, start, optimizer, optimizer_options, 4000, alternative=alternative)
     if best.fun >= 1e100:
         raise RuntimeError(f"No finite {family.__name__} likelihood could be obtained")
     estimated = params(best.x)
@@ -303,6 +323,8 @@ def _fit_continuous(
         n_censored=int(np.count_nonzero(c)),
         threshold=0.0 if threshold is None else threshold,
         converged=bool(best.success),
+        optimizer=str(best.optimizer_used),
+        optimizer_fallback=bool(best.optimizer_fallback),
     )
 
 
@@ -419,6 +441,9 @@ def _fit_mbbefd(
     options: dict[str, t.Any],
 ) -> FitResult[_T]:
     """Fit MBBEFD including the point mass at the policy limit."""
+    optimizer = options.pop("optimizer", OptimizerMethod.L_BFGS_B)
+    optimizer_options = options.pop("optimizer_options", None)
+    initial_parameters = options.pop("initial_parameters", None)
     if options:
         raise TypeError(f"Unexpected MBBEFD fit options: {sorted(options)}")
     x, w = _input(observations, weights)
@@ -454,22 +479,47 @@ def _fit_mbbefd(
 
     atom_share = float(np.sum(w[atom]) / np.sum(w))
     initial_g = max(1.0 / atom_share, 1.01)
-    starts = [[np.log(initial_g - 1), logb] for logb in (-2.0, -0.3, 0.3, 2.0)]
-    fits = [
-        optimize.minimize(
-            objective,
-            np.asarray(start, dtype=float),
-            method="Nelder-Mead",
-            options={"maxiter": 4000, "xatol": 1e-8, "fatol": 1e-8},
-        )
-        for start in starts
-    ]
-    best = min(fits, key=lambda r: float(r.fun))
+    # g is identified by the observed total-loss atom. Select the better
+    # of two inexpensive density evaluations on either side of b=1.
+    left = np.array([np.log(initial_g - 1), -0.3])
+    right = np.array([np.log(initial_g - 1), 0.3])
+    initial, alternative = (left, right) if objective(left) <= objective(right) else (right, left)
+
+    def decode(raw: np.ndarray) -> dict[str, float]:
+        """Decode MBBEFD optimiser coordinates.
+
+        Args:
+            raw: Trial optimiser coordinates.
+        """
+        g, b = params(raw)
+        return {"g": g, "b": b}
+
+    def encode(natural: dict[str, float]) -> np.ndarray:
+        """Encode natural MBBEFD estimates.
+
+        Args:
+            natural: MBBEFD g and b parameters.
+        """
+        return _initial_coordinates({"g": natural["g"] - 1, "b": natural["b"]}, ("g", "b"))
+
+    start, alternative = _override_initial(
+        initial, alternative, initial_parameters, decode, encode, ("g", "b"), objective
+    )
+    best = _minimize(objective, start, optimizer, optimizer_options, 4000, alternative=alternative)
     if best.fun >= 1e100:
         raise RuntimeError("No finite MBBEFD likelihood found")
     g, b = params(best.x)
     pars = {"g": g, "b": b}
-    return _result(cls(**pars), pars, likelihood(g, b), w, k=2, converged=bool(best.success))
+    return _result(
+        cls(**pars),
+        pars,
+        likelihood(g, b),
+        w,
+        k=2,
+        converged=bool(best.success),
+        optimizer=str(best.optimizer_used),
+        optimizer_fallback=bool(best.optimizer_fallback),
+    )
 
 
 def _fit_uniform(
@@ -552,6 +602,154 @@ def _fit_categorical(
     )
 
 
+def _count_tail_excess(
+    k: float,
+    d: float,
+    ratio: t.Callable[[float], float],
+) -> float:
+    """Sum conditional count probabilities relative to the first exceedance.
+
+    The first mass is scaled to one, so neither tail probability nor PMF
+    need be representable. Only invoked when the ordinary moment ratio fails.
+    """
+    first = k + 1
+    if first <= k:
+        raise ArithmeticError("Count threshold exceeds integer precision")
+    mass = 1.0
+    total = 1.0
+    moment = 0.0
+    for j in range(1, 100001):
+        r = ratio(first + j - 1)
+        if r < 0 or not np.isfinite(r):
+            raise ArithmeticError("Invalid count tail probability ratio")
+        mass *= r
+        total += mass
+        moment += j * mass
+        if mass == 0 or (r < 1 and mass * (j + 1 / (1 - r)) / (1 - r) < 1e-13 * total):
+            return first - d + moment / total
+    raise ArithmeticError("Count conditional moment did not converge")
+
+
+def _mbbefd_excess(g: float, b: float, d: np.ndarray) -> np.ndarray:
+    """Evaluate residual life using the remaining interval, not 1 minus LEV."""
+    if not np.isfinite(g) or not np.isfinite(b) or g < 1 or b < 0:
+        raise ValueError("Invalid MBBEFD parameters")
+    out = np.full(d.shape, np.nan)
+    valid = d < 1
+    x = np.maximum(d[valid], 0)
+    gap = 1 - x
+    if g == 1 or b == 0:
+        out[valid] = 1 - d[valid]
+        return out
+    if b == 1:
+        r = (g - 1) * gap / (1 + (g - 1) * x)
+        factor = np.ones_like(r)
+        nonzero = r != 0
+        factor[nonzero] = np.log1p(r[nonzero]) / r[nonzero]
+        out[valid] = gap * factor - np.minimum(d[valid], 0)
+        return out
+    log_b = np.log(b)
+    # Compute 1/S(x) as a sum of non-negative terms.
+    if b > 1:
+        h = -np.expm1(-x * log_b) / (-np.expm1(-log_b))
+    else:
+        h = np.exp(gap * log_b) * (-np.expm1(x * log_b)) / (-np.expm1(log_b))
+    inv_sf = 1 + (g - 1) * h
+    delta = np.expm1(gap * log_b)
+    log_gb = np.log(g) + log_b
+    # q is the relative change of the LEV logarithm's argument.
+    coefficient = (g - 1 / b) / (1 - 1 / b) if b > 1 else (1 - g * b) / (1 - b)
+    q = coefficient * (delta / inv_sf)
+    factor = np.ones_like(q)
+    nonzero = q != 0
+    safe = nonzero & (q > -0.5)
+    factor[safe] = np.log1p(q[safe]) / q[safe]
+    # When q is close to -1, use the directly evaluated log ratio.
+    near = q <= -0.5
+    factor[near] = (log_gb - x[near] * log_b - np.log(inv_sf[near])) / q[near]
+    value = delta / log_b * factor
+    huge = np.isposinf(q)
+    value[huge] = (log_gb - x[huge] * log_b - np.log(inv_sf[huge])) / log_b * (inv_sf[huge] / coefficient)
+    out[valid] = value - np.minimum(d[valid], 0)
+    return out
+
+
+def _student_t_excess(nu: float, mu: float, sigma: float, d: np.ndarray) -> np.ndarray:
+    """Evaluate Student t moments, cancelling small beta-tail probabilities."""
+    if nu <= 1:
+        return np.full(d.shape, np.inf)
+    z = (d - mu) / sigma
+    out = np.empty(z.shape)
+    # The hypergeometric representation cancels the small t**(nu/2)
+    # common to density and survival, even if both would underflow.
+    far = z > max(10.0, np.sqrt(100 * nu))
+    z_far = z[far]
+    t_beta = (np.sqrt(nu) / z_far) ** 2
+    t_beta /= 1 + t_beta
+    correction = special.hyp2f1(nu / 2, 0.5, nu / 2 + 1, t_beta)
+    log_ratio = -np.log1p(-1 / nu) - 0.5 * np.log1p(-t_beta) - np.log(correction)
+    out[far] = (d[far] - mu) * np.expm1(log_ratio)
+    central = ~far
+    zc = z[central]
+    residual = np.exp(stats.t.logpdf(zc, nu) - stats.t.logsf(zc, nu))
+    out[central] = sigma * ((nu + zc * zc) / (nu - 1) * residual - zc)
+    return out
+
+
+def _ncx2_tail_excess(df: float, nonc: float, d: float) -> float:
+    """Integrate a conditional noncentral chi-square density on tail-width units."""
+    rv = stats.ncx2(df, nonc)
+    order = df / 2 - 1
+    root = np.sqrt(nonc) * np.sqrt(d)
+    bessel = special.ive(order, root)
+    log_pdf = rv.logpdf(d)
+    width = 2 / max(0.1, 1 - np.sqrt(nonc / d) - max(df / 2 - 1, 0) * 2 / d)
+
+    def density(t: float) -> float:
+        u = width * t
+        log_ratio = np.log1p(u / d)
+        root_delta = root * np.expm1(0.5 * log_ratio)
+        shifted = special.ive(order, root + root_delta)
+        if bessel > 0 and shifted > 0:
+            log_value = -u / 2 + (df / 4 - 0.5) * log_ratio + root_delta + np.log(shifted / bessel)
+        elif root > max(1e8, 100 * order**2):
+            # Large-argument scaled Bessel ratio is (1+u/d)**(-1/4).
+            log_value = -u / 2 + (df / 4 - 0.75) * log_ratio + root_delta
+        else:
+            log_value = rv.logpdf(d + u) - log_pdf
+        return float(np.exp(log_value))
+
+    denominator, den_error = integrate.quad(density, 0, np.inf, epsabs=0, epsrel=1e-9)
+    numerator, num_error = integrate.quad(lambda t: t * density(t), 0, np.inf, epsabs=0, epsrel=1e-9)
+    if (
+        not np.isfinite(denominator + numerator)
+        or denominator <= 0
+        or numerator <= 0
+        or den_error > 1e-7 * denominator
+        or num_error > 1e-7 * numerator
+    ):
+        raise ArithmeticError("Noncentral chi-square conditional moment integration did not converge")
+    return float(width * numerator / denominator)
+
+
+def _ncx2_excess(df: float, nonc: float, d: np.ndarray) -> np.ndarray:
+    """Evaluate shifted noncentral chi-square moments, recovering deep tails."""
+    if nonc == 0:
+        from ._mean_excess import _gamma_excess
+
+        return _gamma_excess(d, df / 2, 2.0)
+    rv = stats.ncx2(df, nonc)
+    # Poisson mixture: x f_df,nc = df f_df+2,nc + nc f_df+4,nc.
+    sf = rv.sf(d)
+    moment = df * stats.ncx2.sf(d, df + 2, nonc) + nonc * stats.ncx2.sf(d, df + 4, nonc)
+    out = moment / sf - d
+    out[d <= 0] = df + nonc - d[d <= 0]
+    bad = (d > 0) & ((sf < 1e-280) | (out <= 1e-5 * np.maximum(d, 1)) | ~np.isfinite(out))
+    for i in np.flatnonzero(bad):
+        out[i] = _ncx2_tail_excess(df, nonc, float(d[i]))
+    return out
+
+
 def mean_excess_remaining(
     distribution: DistributionBase,
     threshold: float | np.ndarray,
@@ -580,90 +778,105 @@ def mean_excess_remaining(
     ds = np.asarray(threshold, dtype=float)
     result = np.full(ds.shape, np.nan, dtype=float)
 
-    for index, d in np.ndenumerate(ds):
-        if not np.isfinite(d):
-            continue
+    valid = np.isfinite(ds)
+    d = ds[valid]
+    out = np.full(d.shape, np.nan, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
         if family is _distributions.MBBEFD:
-            model = t.cast(t.Any, distribution)
-            if d >= 1:
-                continue
-            expected = float(model.mean())
-            if d < 0:
-                result[index] = expected - d
-            else:
-                survival = 1.0 - float(model.cdf(d))
-                if survival > 0:
-                    result[index] = expected * (1.0 - float(model.exposure_curve(d))) / survival
-            continue
-        if family is _distributions.Uniform:
+            out = _mbbefd_excess(pars["g"], pars["b"], d)
+        elif family is _distributions.Uniform:
             a, b = pars["a"], pars["b"]
-            if d < a:
-                result[index] = 0.5 * (a + b) - d
-            elif d < b:
-                result[index] = 0.5 * (b - d)
-            continue
-        if family is _distributions.Beta:
+            out = np.where(d < a, 0.5 * (a - d) + 0.5 * (b - d), np.where(d < b, 0.5 * (b - d), np.nan))
+        elif family is _distributions.Beta:
             a, b, scale, loc = pars["alpha"], pars["beta"], pars["scale"], pars["loc"]
             u = (d - loc) / scale
-            if u < 0:
-                result[index] = loc + scale * a / (a + b) - d
-            elif u < 1:
-                sf = stats.beta.sf(u, a, b)
-                moment = a / (a + b) * stats.beta.sf(u, a + 1, b)
-                result[index] = scale * moment / sf + loc - d if sf > 0 else np.nan
-            continue
-        if family is _distributions.Normal:
+            w = (loc + scale - d) / scale
+            pos = (u >= 0) & (w > 0)
+            # Use the complementary variable Y=1-X. E[X-u|X>u]
+            # equals w minus the conditional lower-tail mean of Y.
+            sf = special.betainc(b, a, w[pos])
+            ratio = b / (a + b) * special.betainc(b + 1, a, w[pos]) / sf / w[pos]
+            excess = w[pos] * (1 - ratio)
+            if a == 1:
+                excess = w[pos] / (b + 1)
+            # B_w(b,a) = w**b/b * 2F1(b,1-a;b+1;w).
+            # The ratio cancels the tiny w**b and normalizing factors.
+            bad = ((~np.isfinite(excess)) | (excess <= 1e-7 * w[pos])) & (a != 1)
+            wb = w[pos][bad]
+            h0 = special.hyp2f1(b, 1 - a, b + 1, wb)
+            h1 = special.hyp2f1(b + 1, 1 - a, b + 2, wb)
+            excess[bad] = wb * (1 - b / (b + 1) * h1 / h0)
+            out[pos] = scale * excess
+            out[u < 0] = loc - d[u < 0] + scale * a / (a + b)
+        elif family is _distributions.Normal:
             mu, sigma = pars["mu"], pars["sigma"]
             z = (d - mu) / sigma
-            result[index] = mu - d + sigma * np.exp(stats.norm.logpdf(z) - stats.norm.logsf(z))
-            continue
-        if family is _distributions.Logistic:
+            low = z < 0
+            out[low] = sigma * (np.exp(stats.norm.logpdf(z[low]) - special.log_ndtr(-z[low])) - z[low])
+            central = (z >= 0) & (z < 30)
+            out[central] = sigma * (np.sqrt(2 / np.pi) / special.erfcx(z[central] / np.sqrt(2)) - z[central])
+            # Inverse Mills ratio minus z: asymptotic expansion in 1/z.
+            far = z >= 30
+            inv = 1 / z[far]
+            q = inv**2
+            out[far] = sigma * inv * (1 + q * (-2 + q * (10 + q * (-74 + q * (706 - 8162 * q)))))
+        elif family is _distributions.Logistic:
             mu, sigma = pars["mu"], pars["sigma"]
             z = (d - mu) / sigma
-            result[index] = sigma if z > 35 else sigma * np.logaddexp(0, -z) / special.expit(-z)
-            continue
-        if family is _distributions.StudentsT:
-            nu, mu, sigma = pars["nu"], pars["mu"], pars["sigma"]
-            if nu <= 1:
-                result[index] = np.inf
-            else:
-                z = (d - mu) / sigma
-                residual = np.exp(stats.t.logpdf(z, nu) - stats.t.logsf(z, nu))
-                result[index] = mu - d + sigma * (nu + z * z) / (nu - 1) * residual
-            continue
-        if family is _distributions.NonCentralChiSquared:
-            df, nonc = pars["df"], pars["nonc"]
-            rv = stats.ncx2(df, nonc)
-            if d < 0:
-                result[index] = df + nonc - d
-            elif rv.sf(d) > 0:
-                area, _ = integrate.quad(rv.sf, d, np.inf, epsrel=1e-8)
-                result[index] = area / rv.sf(d)
-            continue
-        # Counts: first truncated moment divided by survival.
-        k = int(np.floor(d))
-        if family is _distributions.Poisson:
-            lam = pars["mean"]
-            sf = stats.poisson.sf(k, lam)
-            moment = lam * stats.poisson.sf(k - 1, lam)
-        elif family in (_distributions.Binomial, _distributions.Bernoulli):
-            n = 1 if family is _distributions.Bernoulli else int(pars["n"])
-            p = pars["p"]
-            sf = stats.binom.sf(k, n, p)
-            moment = n * p * stats.binom.sf(k - 1, n - 1, p)
-        elif family is _distributions.NegBinomial:
-            n, p = pars["n"], pars["p"]
-            sf = stats.nbinom.sf(k, n, p)
-            moment = n * (1 - p) / p * stats.nbinom.sf(k - 1, n + 1, p)
+            out = np.where(z > 35, sigma, sigma * np.logaddexp(0, -z) / special.expit(-z))
+        elif family is _distributions.StudentsT:
+            out = _student_t_excess(pars["nu"], pars["mu"], pars["sigma"], d)
+        elif family is _distributions.NonCentralChiSquared:
+            out = _ncx2_excess(pars["df"], pars["nonc"], d)
         else:
-            good, bad, draws = int(pars["ngood"]), int(pars["nbad"]), int(pars["n"])
-            population = good + bad
-            sf = stats.hypergeom.sf(k, population, good, draws)
-            moment = (
-                draws * good / population * stats.hypergeom.sf(k - 1, population - 1, good - 1, draws - 1)
-                if good > 0 and draws > 0
-                else 0.0
-            )
-        if sf > 0:
-            result[index] = moment / sf - d
+            # Counts: truncated first moment divided by strict survival.
+            k = np.floor(d)
+            if family is _distributions.Poisson:
+                lam = pars["mean"]
+                sf = stats.poisson.sf(k, lam)
+                moment = lam * stats.poisson.sf(k - 1, lam)
+                upper = np.inf if lam > 0 else 0.0
+
+                def ratio_fn(j: float) -> float:
+                    return lam / (j + 1)
+
+            elif family in (_distributions.Binomial, _distributions.Bernoulli):
+                n = 1 if family is _distributions.Bernoulli else int(pars["n"])
+                p = pars["p"]
+                sf = stats.binom.sf(k, n, p)
+                moment = n * p * stats.binom.sf(k - 1, n - 1, p) if n > 0 else np.zeros_like(d)
+                upper = float(n) if p > 0 else 0.0
+
+                def ratio_fn(j: float) -> float:
+                    return (n - j) / (j + 1) * p / (1 - p) if j < n and p < 1 else 0.0
+
+            elif family is _distributions.NegBinomial:
+                n, p = pars["n"], pars["p"]
+                sf = stats.nbinom.sf(k, n, p)
+                moment = n * (1 - p) / p * stats.nbinom.sf(k - 1, n + 1, p)
+                upper = np.inf if p < 1 else 0.0
+
+                def ratio_fn(j: float) -> float:
+                    return (j + n) / (j + 1) * (1 - p)
+
+            else:
+                good, bad, draws = int(pars["ngood"]), int(pars["nbad"]), int(pars["n"])
+                population = good + bad
+                sf = stats.hypergeom.sf(k, population, good, draws)
+                moment = (
+                    draws * good / population * stats.hypergeom.sf(k - 1, population - 1, good - 1, draws - 1)
+                    if good > 0 and draws > 0
+                    else np.zeros_like(d)
+                )
+                upper = float(min(good, draws))
+
+                def ratio_fn(j: float) -> float:
+                    return (good - j) * (draws - j) / ((j + 1) * (bad - draws + j + 1)) if j < upper else 0.0
+
+            out = np.where(sf > 0, moment / sf - d, np.nan)
+            # Only recover tails with nonzero mathematical probability.
+            unresolved = (d < upper) & ((sf < 1e-280) | (out < 1e-6 * np.maximum(1, np.abs(d))))
+            for i in np.flatnonzero(unresolved & (k >= 0)):
+                out[i] = _count_tail_excess(float(k[i]), float(d[i]), ratio_fn)
+    result[valid] = out
     return float(result) if result.ndim == 0 else result
