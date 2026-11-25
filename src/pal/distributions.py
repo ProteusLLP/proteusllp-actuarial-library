@@ -26,6 +26,7 @@ import typing as t
 from abc import ABC
 
 import numpy as np
+import scipy.special as scipy_special
 import scipy.stats as scipy_stats
 from scipy.stats import geninvgauss
 
@@ -2200,8 +2201,9 @@ class NonCentralChiSquared(DistributionBase):
         nonc: Noncentrality parameter :math:`\lambda\geq0`.
 
     Notes:
-        Random generation supports both CPU and GPU execution. CDF and inverse
-        CDF evaluation are currently supported on the CPU only.
+        Monte Carlo generation uses the active backend. GPU RQMC uses a two-coordinate
+        Poisson mixture for fixed moderate noncentrality. CDF and inverse CDF on GPU
+        use SciPy host fallbacks.
     """
 
     @classmethod
@@ -2278,11 +2280,11 @@ class NonCentralChiSquared(DistributionBase):
         Args:
             x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
         """
-        if xp.__name__ == "cupy":
-            raise NotImplementedError("NonCentralChiSquared CDF is not supported on GPU.")
         self._validated_params()
+        self._validate_probability_inputs(x)
+        cdf_function = special.chndtr if xp is np else lambda *values: _scipy_on_backend(scipy_special.chndtr, *values)
         return _special_call(
-            special.chndtr,
+            cdf_function,
             x,
             self._params["df"],
             self._params["nonc"],
@@ -2295,11 +2297,12 @@ class NonCentralChiSquared(DistributionBase):
         Args:
             u: Cumulative probability in the interval from zero to one.
         """
-        if xp.__name__ == "cupy":
-            raise NotImplementedError("NonCentralChiSquared inverse CDF is not supported on GPU.")
         self._validated_params()
+        self._validate_probability_inputs(u)
+        host_ppf = scipy_special.chndtrix
+        ppf_function = special.chndtrix if xp is np else lambda *values: _scipy_on_backend(host_ppf, *values)
         return _special_call(
-            special.chndtrix,
+            ppf_function,
             u,
             self._params["df"],
             self._params["nonc"],
@@ -3849,8 +3852,8 @@ class GeneralizedInverseGaussian(DistributionBase):
         loc: Location parameter :math:`\mu` (default 0).
 
     Notes:
-        CDF evaluation, inverse CDF evaluation, and random generation are
-        currently supported on the CPU only.
+        On GPU, MC and RQMC for p=+/-1/2 use a two-coordinate inverse-Gaussian
+        transform. Other indices and probability evaluations use host fallbacks.
     """
 
     @classmethod
@@ -3917,16 +3920,13 @@ class GeneralizedInverseGaussian(DistributionBase):
 
     def _scipy_params(self) -> tuple[t.Any, t.Any, t.Any, t.Any]:
         """Convert the GIG parameters to SciPy's parameterisation."""
-        if xp.__name__ == "cupy":
-            raise NotImplementedError("GeneralizedInverseGaussian is not supported on GPU.")
-
         p, chi, psi, loc = self._param_values
-        if bool(np.any(chi <= 0)):
+        if bool(xp.any(xp.asarray(chi) <= 0)):
             raise ValueError("chi must be strictly positive.")
-        if bool(np.any(psi <= 0)):
+        if bool(xp.any(xp.asarray(psi) <= 0)):
             raise ValueError("psi must be strictly positive.")
-        scipy_shape = np.sqrt(chi * psi)
-        scipy_scale = np.sqrt(chi / psi)
+        scipy_shape = xp.sqrt(chi * psi)
+        scipy_scale = xp.sqrt(chi / psi)
         return p, scipy_shape, scipy_scale, loc
 
     def _wrap_result(
@@ -3966,13 +3966,15 @@ class GeneralizedInverseGaussian(DistributionBase):
         validate_stochastic_axes(value for value in (x, *self._params.values()) if isinstance(value, StochasticScalar))
         values = x.values if isinstance(x, StochasticScalar) else x
         if all(np.ndim(parameter) == 0 for parameter in (p, scipy_shape, scipy_scale, loc)):
-            standardized = (np.asarray(values, dtype=float) - loc) / scipy_scale
+            standardized = (asnumpy(values, dtype=float) - float(loc)) / float(scipy_scale)
             logcdf, _ = _gig_log_probabilities(standardized, float(p), float(scipy_shape))
             result = np.exp(logcdf)
         else:
             # With stochastic parameters each scenario can have a different
             # density, so the interval integrals cannot generally be reused.
-            result = geninvgauss.cdf(values, p, scipy_shape, loc=loc, scale=scipy_scale)
+            result = geninvgauss.cdf(
+                asnumpy(values), asnumpy(p), asnumpy(scipy_shape), loc=asnumpy(loc), scale=asnumpy(scipy_scale)
+            )
         return self._wrap_result(result, x)
 
     @t.overload
@@ -3991,12 +3993,14 @@ class GeneralizedInverseGaussian(DistributionBase):
         p, scipy_shape, scipy_scale, loc = self._scipy_params()
         validate_stochastic_axes(value for value in (u, *self._params.values()) if isinstance(value, StochasticScalar))
         values = u.values if isinstance(u, StochasticScalar) else u
-        result = geninvgauss.ppf(values, p, scipy_shape, loc=loc, scale=scipy_scale)
+        result = geninvgauss.ppf(
+            asnumpy(values), asnumpy(p), asnumpy(scipy_shape), loc=asnumpy(loc), scale=asnumpy(scipy_scale)
+        )
         return self._wrap_result(result, u)
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
-        """Generate random samples using SciPy's GIG sampler.
+        """Generate random samples using the active sampler for the GIG index.
 
         Args:
             n_sims: Number of simulations to generate.

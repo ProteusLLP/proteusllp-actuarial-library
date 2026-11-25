@@ -354,7 +354,6 @@ def test_gamma() -> None:
     assert allclose(np.std(sims), scale * np.sqrt(shape), 1e-3)
 
 
-@pytest.mark.skipif(np.__name__ == "cupy", reason="noncentral chi-squared CDF is CPU-only")
 def test_noncentral_chi_squared_numerical_values() -> None:
     """Test noncentral chi-squared CDF and quantiles against fixed values."""
     dist = distributions.NonCentralChiSquared(df=5.0, nonc=2.5)
@@ -416,7 +415,6 @@ def test_noncentral_chi_squared_stochastic_parameters() -> None:
     assert sims.coupled_variable_group == nonc.coupled_variable_group
 
 
-@pytest.mark.skipif(np.__name__ == "cupy", reason="noncentral chi-squared CDF is CPU-only")
 @pytest.mark.parametrize("method, argument", [("cdf", 5.0), ("invcdf", 0.5)])
 def test_noncentral_chi_squared_stochastic_parameter_coupling(method: str, argument: float) -> None:
     """Test results are coupled to every stochastic input and parameter."""
@@ -433,7 +431,6 @@ def test_noncentral_chi_squared_stochastic_parameter_coupling(method: str, argum
     assert result.coupled_variable_group is nonc.coupled_variable_group
 
 
-@pytest.mark.skipif(np.__name__ == "cupy", reason="noncentral chi-squared CDF is CPU-only")
 def test_noncentral_chi_squared_stochastic_parameter_with_scalar_argument() -> None:
     """Test a stochastic parameter produces a coupled stochastic CDF result."""
     df = StochasticScalar([2.0, 4.0, 6.0])
@@ -762,7 +759,7 @@ def test_inversegaussian_cdf_properties() -> None:
     assert 0.5 < cdf_at_mean < 0.8
 
 
-@pytest.mark.skipif(np.__name__ == "cupy", reason="generalized inverse Gaussian is CPU-only")
+@pytest.mark.skipif(np.__name__ == "cupy", reason="Large-sample GIG moment test uses CPU sampling")
 def test_generalized_inverse_gaussian() -> None:
     """Test the generalized inverse Gaussian distribution."""
     set_random_seed(12345678910)
@@ -814,7 +811,6 @@ def test_generalized_inverse_gaussian() -> None:
     assert np.var(sims) == pytest.approx(expected_variance, rel=1e-2)
 
 
-@pytest.mark.skipif(np.__name__ == "cupy", reason="generalized inverse Gaussian is CPU-only")
 @pytest.mark.parametrize("method, argument", [("cdf", 5.0), ("invcdf", 0.5)])
 def test_generalized_inverse_gaussian_stochastic_parameter_coupling(method: str, argument: float) -> None:
     """Test GIG results are coupled to every stochastic input and parameter."""
@@ -835,7 +831,6 @@ def test_generalized_inverse_gaussian_stochastic_parameter_coupling(method: str,
     assert result.coupled_variable_group is loc.coupled_variable_group
 
 
-@pytest.mark.skipif(np.__name__ == "cupy", reason="generalized inverse Gaussian is CPU-only")
 def test_generalized_inverse_gaussian_stochastic_parameter_generation_coupling() -> None:
     """Test GIG generation is coupled to every stochastic parameter."""
     set_random_seed(12345678910)
@@ -849,7 +844,6 @@ def test_generalized_inverse_gaussian_stochastic_parameter_generation_coupling()
     assert result.coupled_variable_group is psi.coupled_variable_group
 
 
-@pytest.mark.skipif(np.__name__ == "cupy", reason="generalized inverse Gaussian is CPU-only")
 def test_generalized_inverse_gaussian_contains_inverse_gaussian() -> None:
     """Test the inverse Gaussian special case of the GIG distribution."""
     mu = 4.0
@@ -865,7 +859,6 @@ def test_generalized_inverse_gaussian_contains_inverse_gaussian() -> None:
     assert np.allclose(gig.cdf(points), inverse_gaussian.cdf(points), rtol=1e-10)
 
 
-@pytest.mark.skipif(np.__name__ == "cupy", reason="generalized inverse Gaussian is CPU-only")
 def test_generalized_inverse_gaussian_generator() -> None:
     """Test construction through the named continuous generator."""
     generator = distributions.ContinuousDistributionGenerator(
@@ -877,7 +870,6 @@ def test_generalized_inverse_gaussian_generator() -> None:
 
 
 @pytest.mark.parametrize("chi, psi", [(0.0, 1.0), (-1.0, 1.0), (1.0, 0.0), (1.0, -1.0)])
-@pytest.mark.skipif(np.__name__ == "cupy", reason="generalized inverse Gaussian is CPU-only")
 def test_generalized_inverse_gaussian_rejects_invalid_scales(chi: float, psi: float) -> None:
     """Test that the GIG scale parameters must be strictly positive."""
     dist = distributions.GeneralizedInverseGaussian(p=0.5, chi=chi, psi=psi)

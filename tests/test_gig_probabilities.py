@@ -5,7 +5,6 @@ import pytest
 from scipy.stats import geninvgauss
 
 from pal._gig import _gig_log_probabilities
-from pal._maths import xp
 from pal.distributions import GeneralizedInverseGaussian
 
 
@@ -44,7 +43,6 @@ def test_gig_piecewise_reciprocity():
     np.testing.assert_allclose(cdf, sf[::-1], rtol=1e-12, atol=1e-12)
 
 
-@pytest.mark.skipif(xp.__name__ == "cupy", reason="GIG is CPU-only")
 def test_gig_public_array_cdf_and_invcdf():
     model = GeneralizedInverseGaussian(p=0.75, chi=2.5, psi=1.25, loc=3)
     points = np.array([[10, 4, 5, 4], [3, np.inf, np.nan, -np.inf]])

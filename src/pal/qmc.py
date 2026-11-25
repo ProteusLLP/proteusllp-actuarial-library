@@ -19,6 +19,7 @@ import scipy.special as scipy_special
 import scipy.stats as scipy_stats
 from scipy.stats import qmc
 
+from ._gpu_distributions import generalized_inverse_gaussian_mc
 from ._maths import asnumpy, special, to_backend, xp
 
 
@@ -580,13 +581,17 @@ class RandomizedQMCGenerator:
         )
 
     def noncentral_chisquare(self, df: t.Any, nonc: t.Any, size: t.Any = None) -> t.Any:
-        """Draw noncentral chi-squared quantiles.
+        """Draw noncentral chi-squared samples, using a two-coordinate GPU mixture when supported.
 
         Args:
             df: Degrees of freedom of the distribution.
             nonc: Noncentrality parameter of the chi-squared distribution.
             size: Requested output shape or number of draws.
         """
+        if xp is not np and isinstance(nonc, (int, float, np.integer, np.floating)) and 0 <= nonc <= 16000:
+            shape = self._shape(size, df, nonc)
+            count = self.poisson(float(nonc) / 2, size=shape)
+            return self.chisquare(xp.asarray(df) + 2 * count, size=shape)
         return self._quantiles(scipy_stats.ncx2.ppf, size, df, nonc)
 
     def logseries(self, p: t.Any, size: t.Any = None) -> t.Any:
@@ -798,7 +803,7 @@ def _sample_inverse_gaussian(rng: t.Any, n_sims: int, mu: t.Any, lambda_: t.Any)
 def _sample_generalized_inverse_gaussian(
     rng: t.Any, n_sims: int, p: t.Any, shape: t.Any, scale: t.Any, loc: t.Any
 ) -> t.Any:
-    """Use an inverse CDF for RQMC and SciPy's established sampler for MC.
+    """Use a native half-order GPU sampler or the established SciPy fallback.
 
     Args:
         loc: Location shift of the sampled distribution.
@@ -808,11 +813,32 @@ def _sample_generalized_inverse_gaussian(
         scale: Positive scale of the sampled distribution.
         shape: Distribution shape parameter or requested output shape.
     """
+    half_order_gpu = xp is not np and bool(xp.all(xp.abs(xp.asarray(p)) == 0.5))
+    if half_order_gpu:
+        return generalized_inverse_gaussian_mc(rng, n_sims, p, shape, scale, loc)
     if isinstance(rng, RandomizedQMCGenerator):
-        uniforms = asnumpy(rng.uniform(size=n_sims))
-        result = scipy_stats.geninvgauss.ppf(uniforms, p, shape, loc=loc, scale=scale)
-        return xp.asarray(result)
-    return scipy_stats.geninvgauss.rvs(p, shape, loc=loc, scale=scale, size=n_sims, random_state=rng)
+        return _scipy_on_backend(
+            lambda u, index, b, location, factor: scipy_stats.geninvgauss.ppf(u, index, b, loc=location, scale=factor),
+            rng.uniform(size=n_sims),
+            p,
+            shape,
+            loc,
+            scale,
+        )
+    if xp is not np:
+        seed = int(asnumpy(rng.randint(0, 2**31 - 1)))
+        host_rng = np.random.default_rng(seed)
+    else:
+        host_rng = rng
+    result = scipy_stats.geninvgauss.rvs(
+        asnumpy(p),
+        asnumpy(shape),
+        loc=asnumpy(loc),
+        scale=asnumpy(scale),
+        size=n_sims,
+        random_state=host_rng,
+    )
+    return xp.asarray(result)
 
 
 def _scipy_on_backend(function: t.Callable[..., t.Any], *parameters: t.Any) -> t.Any:
