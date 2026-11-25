@@ -11,8 +11,10 @@ from __future__ import annotations
 import dataclasses
 import importlib
 import math
+import os
 import typing as t
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import scipy.special as scipy_special
@@ -20,6 +22,53 @@ import scipy.stats as scipy_stats
 from scipy.stats import qmc
 
 from ._maths import asnumpy, special, to_backend, xp
+
+
+def _cpu_parallel_inverse(inverse: t.Callable[..., np.ndarray], uniforms: np.ndarray, *parameters: t.Any) -> np.ndarray:
+    """Evaluate large SciPy quantile vectors in bounded, independent chunks.
+
+    SciPy's inverse incomplete Gamma/Beta ufuncs release the GIL. Using a
+    small number of CPU workers accelerates the expensive transform without
+    changing the Sobol coordinates, their order or the pointwise quantiles.
+    Small or multidimensional calls retain the original single-thread path.
+
+    Args:
+        inverse: SciPy inverse special function.
+        uniforms: Quantile probabilities.
+        *parameters: Scalar or broadcastable shape parameters.
+
+    Returns:
+        Quantiles in the original order.
+    """
+    n = uniforms.size
+    workers = min(4, os.cpu_count() or 1, n // 16_384)
+    if xp is not np or uniforms.ndim != 1 or workers < 2:
+        return np.asarray(inverse(*parameters, uniforms))
+
+    arguments = tuple(np.asarray(param) for param in parameters)
+    if any(arg.ndim > 1 or (arg.ndim == 1 and arg.size not in (1, n)) for arg in arguments):
+        return np.asarray(inverse(*parameters, uniforms))
+
+    chunk_size = (n + workers - 1) // workers
+    slices = tuple((start, min(n, start + chunk_size)) for start in range(0, n, chunk_size))
+
+    def evaluate(start: int, end: int) -> tuple[int, int, np.ndarray]:
+        """Evaluate a contiguous chunk of quantiles.
+
+        Args:
+            start: Inclusive start of the chunk.
+            end: Exclusive end of the chunk.
+        """
+        params = tuple(arg if arg.ndim == 0 else arg[0] if arg.size == 1 else arg[start:end] for arg in arguments)
+        return start, end, np.asarray(inverse(*params, uniforms[start:end]))
+
+    values = np.empty(n, dtype=np.float64)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        pending = [executor.submit(evaluate, start, end) for start, end in slices]
+        for future in pending:
+            start, end, chunk = future.result()
+            values[start:end] = chunk
+    return values
 
 
 @dataclasses.dataclass
@@ -465,7 +514,7 @@ class RandomizedQMCGenerator:
             size: Requested output shape or number of draws.
         """
         return self._quantiles(
-            lambda u, a, s: scipy_special.gammaincinv(a, u) * s,
+            lambda u, a, s: _cpu_parallel_inverse(scipy_special.gammaincinv, u, a) * s,
             size,
             shape,
             scale,
@@ -483,7 +532,7 @@ class RandomizedQMCGenerator:
             size: Requested output shape or number of draws.
         """
         return self._quantiles(
-            lambda u, alpha, beta: scipy_special.betaincinv(alpha, beta, u),
+            lambda u, alpha, beta: _cpu_parallel_inverse(scipy_special.betaincinv, u, alpha, beta),
             size,
             a,
             b,
