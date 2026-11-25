@@ -13,7 +13,8 @@ import typing as t
 import numpy as np
 from scipy import integrate, optimize, special, stats
 
-from .fitting import OptimizerMethod, UncertaintyMethod, _FitMethod, _minimize_multistart, _with_uncertainty
+from ._fitting_initial import _conditional_quantiles
+from .fitting import OptimizerMethod, UncertaintyMethod, _FitMethod, _minimize, _with_uncertainty
 
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
@@ -263,7 +264,8 @@ def _fit_continuous(
         center = float(np.average(y, weights=w))
         v = float(np.average((y - center) ** 2, weights=w))
         common = max(center * (1.0 - center) / max(v, 1e-6) - 1.0, 0.25)
-        starts = [[np.log(max(center * common, 0.2)), np.log(max((1 - center) * common, 0.2))], [0.0, 0.0]]
+        initial = [np.log(max(center * common, 0.2)), np.log(max((1 - center) * common, 0.2))]
+        alternative = np.zeros(2)
         k = 2
 
         def params(raw: np.ndarray) -> dict[str, float]:
@@ -283,7 +285,9 @@ def _fit_continuous(
             return stats.beta(a=p["alpha"], b=p["beta"], loc=loc, scale=scale)
 
     elif family in (_distributions.Normal, _distributions.Logistic):
-        starts = [[mu, np.log(std)], [float(np.median(x)), np.log(std)]]
+        factor = np.sqrt(3) / np.pi if family is _distributions.Logistic else 1.0
+        initial = [mu, np.log(std * factor)]
+        alternative = np.array([float(np.median(x)), np.log(std)])
         k = 2
 
         def params(raw: np.ndarray) -> dict[str, float]:
@@ -304,7 +308,11 @@ def _fit_continuous(
             return rv(loc=p["mu"], scale=p["sigma"])
 
     elif family is _distributions.StudentsT:
-        starts = [[np.log(v), mu, np.log(std)] for v in (2.0, 5.0, 12.0)]
+        lo, med, hi = _conditional_quantiles(x, c, w, np.array([0.25, 0.5, 0.75]))
+        center = float(med) if np.isfinite(med) else mu
+        scale0 = float((hi - lo) / (2 * stats.t.ppf(0.75, 5))) if np.isfinite(hi - lo) and hi > lo else std
+        initial = [np.log(5.0), center, np.log(scale0)]
+        alternative = np.array([np.log(12.0), mu, np.log(std)])
         k = 3
 
         def params(raw: np.ndarray) -> dict[str, float]:
@@ -326,11 +334,9 @@ def _fit_continuous(
     else:
         if family is not _distributions.NonCentralChiSquared:
             raise ValueError(f"Unsupported continuous fitting family: {family.__name__}")
-        starts = [
-            [np.log(max(mu / 2, 0.5)), np.sqrt(max(mu / 2, 0.1))],
-            [np.log(max(mu, 0.5)), 0.0],
-            [np.log(max(mu / 3, 0.5)), np.sqrt(max(2 * mu / 3, 0.1))],
-        ]
+        nonc = float(np.clip(variance / 2 - mu, 0.01, max(mu - 0.01, 0.01)))
+        initial = [np.log(max(mu - nonc, 0.01)), np.sqrt(nonc)]
+        alternative = np.array([np.log(max(mu, 0.5)), 0.0])
         k = 2
 
         def params(raw: np.ndarray) -> dict[str, float]:
@@ -376,9 +382,7 @@ def _fit_continuous(
             ll = log_likelihood(params(raw))
         return -ll if np.isfinite(ll) else 1e100
 
-    best = _minimize_multistart(
-        objective, (np.asarray(start, dtype=float) for start in starts), optimizer, optimizer_options, 4000
-    )
+    best = _minimize(objective, np.asarray(initial), optimizer, optimizer_options, 4000, alternative=alternative)
     if best.fun >= 1e100:
         raise RuntimeError(f"No finite {family.__name__} likelihood could be obtained")
     estimated = params(best.x)
@@ -591,10 +595,12 @@ def _fit_mbbefd(
 
     atom_share = float(np.sum(w[atom]) / np.sum(w))
     initial_g = max(1.0 / atom_share, 1.01)
-    starts = [[np.log(initial_g - 1), logb] for logb in (-2.0, -0.3, 0.3, 2.0)]
-    best = _minimize_multistart(
-        objective, (np.asarray(start, dtype=float) for start in starts), optimizer, optimizer_options, 4000
-    )
+    # g is identified by the observed total-loss atom. Select the better
+    # of two inexpensive density evaluations on either side of b=1.
+    left = np.array([np.log(initial_g - 1), -0.3])
+    right = np.array([np.log(initial_g - 1), 0.3])
+    initial, alternative = (left, right) if objective(left) <= objective(right) else (right, left)
+    best = _minimize(objective, initial, optimizer, optimizer_options, 4000, alternative=alternative)
     if best.fun >= 1e100:
         raise RuntimeError("No finite MBBEFD likelihood found")
     g, b = params(best.x)
