@@ -508,6 +508,7 @@ def fit_distribution(
         parameters = {"shape": float(np.sum(w[~c])) / denominator, "scale": scale}
         converged = True
     else:
+        largest = float(np.max(x)) - threshold
         if family is _distributions.LogNormal:
             logs = np.log(x)
             mu0 = float(np.average(logs, weights=w))
@@ -526,7 +527,6 @@ def fit_distribution(
                 return {"alpha": float(np.exp(p[0])), "theta": float(np.exp(p[1]))}
         else:
             exceedances = x - threshold
-            largest = float(np.max(exceedances))
             xi0, sigma0 = _gpd_initial(exceedances, c, w)
             initial = [_gpd_shape_coordinate(xi0, sigma0, largest), np.log(sigma0)]
             alternative = np.array([0.0, np.log(float(np.dot(w, exceedances)) / np.sum(w[~c]))])
