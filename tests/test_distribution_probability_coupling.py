@@ -140,4 +140,4 @@ def test_discrete_cdf_rejects_incompatible_axes_without_coupling(family: str) ->
     groups = [value.coupled_variable_group for value in (n, p, x)]
     with pytest.raises(ValueError):
         dist.cdf(x)
-    assert all(value.coupled_variable_group is group for value, group in zip((n, p, x), groups))
+    assert all(value.coupled_variable_group is group for value, group in zip((n, p, x), groups, strict=False))

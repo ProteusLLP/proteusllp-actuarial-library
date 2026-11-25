@@ -11,7 +11,19 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 
 import numpy as np
-from scipy import integrate, optimize, special, stats
+from scipy import optimize, special, stats
+
+from ._fitting_initial import (
+    _gpd_initial,
+    _gpd_shape_coordinate,
+    _initial_coordinates,
+    _log_location_scale,
+    _override_initial,
+    _shape_coordinate,
+    _support_shape,
+)
+from ._gig import _gig_log_probabilities
+from ._severity_probability import _burr_terms, _inverse_weibull_terms, _StableSeverityReference
 
 if t.TYPE_CHECKING:
     from .distributions import DistributionBase
@@ -33,14 +45,40 @@ def _supported_families() -> tuple[type[DistributionBase], ...]:
 
 
 class UncertaintyMethod(str, Enum):
-    """Optional frequentist parameter uncertainty attached to a fit result."""
+    """Optional frequentist parameter uncertainty attached to a fit result.
+
+    Attributes:
+        NONE: Retain fitted point estimates only.
+        ASYMPTOTIC: Estimate joint parameter covariance using the fitted likelihood.
+    """
 
     NONE = "none"
     ASYMPTOTIC = "asymptotic"
 
 
+class OptimizerMethod(str, Enum):
+    """Numerical optimizer for severity maximum-likelihood estimation.
+
+    Attributes:
+        NELDER_MEAD: Derivative-free simplex optimisation.
+        L_BFGS_B: Limited-memory quasi-Newton optimisation with bound support.
+    """
+
+    NELDER_MEAD = "Nelder-Mead"
+    L_BFGS_B = "L-BFGS-B"
+
+
 class _FitMethod(str, Enum):
-    """Stable estimator labels; FitResult exposes their string values."""
+    """Stable estimator labels; FitResult exposes their string values.
+
+    Attributes:
+        MLE: Numerical maximum likelihood.
+        ANALYTIC: Closed-form maximum likelihood.
+        PROFILE: Profile maximum likelihood over a reduced parameter space.
+        INTEGER: Maximum likelihood over discrete parameter candidates.
+        ENDPOINT: Maximum likelihood from sample support endpoints.
+        MULTINOMIAL: Maximum likelihood from observed category frequencies.
+    """
 
     MLE = "mle"
     ANALYTIC = "analytic_mle"
@@ -58,6 +96,23 @@ class FitResult(t.Generic[_T]):
     observation contributes its conditional survival probability. AICc uses
     the total frequency weight when weights are non-negative integers;
     otherwise it is NaN because a frequency-sample interpretation is absent.
+
+    Attributes:
+        distribution: Distribution instantiated at the fitted parameters.
+        parameters: Estimated natural parameters, including any fixed support values.
+        log_likelihood: Maximised weighted conditional log-likelihood.
+        aic: Akaike information criterion.
+        aicc: Small-sample corrected AIC, or NaN when unavailable.
+        converged: Whether the selected estimator reported convergence.
+        n_observations: Number of positive-weight observation rows used.
+        n_censored: Number of right-censored observation rows used.
+        threshold: Left-truncation threshold used in the likelihood.
+        method: Identifier for the estimation method.
+        uncertainty: Optional joint asymptotic parameter uncertainty.
+        n_parameters: Number of independently estimated parameters.
+        warnings: Diagnostics for potentially limiting or extreme estimates.
+        optimizer: Numerical optimiser that produced the result, if applicable.
+        optimizer_fallback: Whether L-BFGS-B required a simplex fallback.
     """
 
     distribution: _T
@@ -71,6 +126,20 @@ class FitResult(t.Generic[_T]):
     threshold: float
     method: str = _FitMethod.MLE.value
     uncertainty: AsymptoticParameterUncertainty[_T] | None = field(default=None, repr=False, compare=False)
+    n_parameters: int = field(default=-1, kw_only=True)
+    warnings: tuple[str, ...] = field(default=(), kw_only=True)
+    optimizer: str | None = field(default=None, kw_only=True)
+    optimizer_fallback: bool = field(default=False, kw_only=True)
+
+    def __post_init__(self) -> None:
+        """Preserve compatibility with callers constructing older FitResult objects."""
+        if self.n_parameters == -1:
+            object.__setattr__(self, "n_parameters", round((self.aic + 2 * self.log_likelihood) / 2))
+
+    @property
+    def at_boundary(self) -> bool:
+        """Whether numerical diagnostics indicate a possible limiting fit."""
+        return bool(self.warnings)
 
     def asymptotic_uncertainty(
         self,
@@ -85,10 +154,140 @@ class FitResult(t.Generic[_T]):
         for fitting. The default point-estimate distribution is unchanged.
         The resulting object can create a PAL distribution whose parameters
         vary together by simulation path.
+
+        Args:
+            observations: Observed values used in the likelihood or empirical estimate.
+            censored: Indicators that observations are right-censored at their recorded values.
+            weights: Nonnegative observation weights; zero-weight observations are excluded.
         """
         from .fitting_uncertainty import asymptotic_parameter_uncertainty
 
         return asymptotic_parameter_uncertainty(self, observations, censored=censored, weights=weights)
+
+
+def _minimize(
+    objective: t.Callable[[np.ndarray], float],
+    initial: np.ndarray,
+    optimizer: OptimizerMethod | str,
+    options: t.Mapping[str, t.Any] | None,
+    maxiter: int,
+    *,
+    alternative: np.ndarray | None = None,
+) -> optimize.OptimizeResult:
+    """Optimise once from a statistical estimate, with failure-driven recovery.
+
+    Args:
+        objective: Function returning the negative log-likelihood.
+        initial: Initial parameter vector in unconstrained coordinates.
+        optimizer: Numerical optimiser for the primary fit.
+        options: Options passed to the primary optimiser.
+        maxiter: Default iteration budget for each attempt.
+        alternative: Optional recovery start, used only when the primary fit fails.
+
+    Returns:
+        Best finite optimisation result and diagnostics describing any recovery.
+    """
+    method = OptimizerMethod(optimizer)
+    simplex_options = {"maxiter": maxiter, "xatol": 1e-7, "fatol": 1e-7}
+    defaults: dict[str, t.Any] = (
+        simplex_options
+        if method is OptimizerMethod.NELDER_MEAD
+        else {"maxiter": maxiter, "ftol": 1e-13, "gtol": 1e-6, "maxls": 50}
+    )
+    settings = {**defaults, **(options or {})}
+
+    def safe_objective(raw: np.ndarray) -> float:
+        """Return a finite penalty for invalid parameter proposals.
+
+        Args:
+            raw: Trial vector in unconstrained coordinates.
+        """
+        try:
+            value = objective(raw)
+        except (ArithmeticError, ValueError):
+            return 1e100
+        return float(value) if np.isfinite(value) else 1e100
+
+    def run(start: np.ndarray, selected: OptimizerMethod) -> optimize.OptimizeResult:
+        """Execute one numerical optimisation.
+
+        Args:
+            start: Feasible starting parameter vector.
+            selected: Method to execute.
+        """
+        chosen_options = settings if selected is method else simplex_options
+        return optimize.minimize(
+            safe_objective,
+            start,
+            method=selected.value,
+            jac="3-point" if selected is OptimizerMethod.L_BFGS_B else None,
+            options=t.cast(t.Any, chosen_options),
+        )
+
+    def acceptable(result: optimize.OptimizeResult, selected: OptimizerMethod) -> bool:
+        """Check objective validity, convergence and gradient stationarity.
+
+        Args:
+            result: Result of one numerical optimisation.
+            selected: Method that produced the result.
+        """
+        if not result.success or not np.isfinite(result.fun) or result.fun >= 1e100:
+            return False
+        if selected is OptimizerMethod.NELDER_MEAD:
+            return True
+        gradient = np.asarray(result.jac)
+        return bool(np.all(np.isfinite(gradient)) and np.max(np.abs(gradient)) <= max(1e-4, 1e-7 * abs(result.fun)))
+
+    fallback = False
+    if safe_objective(initial) >= 1e100 and alternative is not None:
+        initial, alternative = alternative, None
+        fallback = True
+    best = run(initial, method)
+    used = method
+    if not acceptable(best, used):
+        fallback = True
+        if method is OptimizerMethod.L_BFGS_B and best.fun < 1e100:
+            polished = run(best.x, OptimizerMethod.NELDER_MEAD)
+            if polished.fun <= best.fun:
+                best, used = polished, OptimizerMethod.NELDER_MEAD
+        if not acceptable(best, used) and alternative is not None and safe_objective(alternative) < 1e100:
+            retry = run(alternative, method)
+            if retry.fun <= best.fun:
+                best, used = retry, method
+            if method is OptimizerMethod.L_BFGS_B and not acceptable(best, used) and best.fun < 1e100:
+                polished = run(best.x, OptimizerMethod.NELDER_MEAD)
+                if polished.fun <= best.fun:
+                    best, used = polished, OptimizerMethod.NELDER_MEAD
+    # OptimizeResult is a dict at runtime, but its stubs omit custom entries.
+    diagnostics = t.cast(dict[str, t.Any], best)
+    diagnostics["optimizer_used"] = used.value
+    diagnostics["optimizer_fallback"] = fallback
+    return best
+
+
+def _boundary_warnings(parameters: dict[str, float], observations: np.ndarray, threshold: float) -> tuple[str, ...]:
+    """Flag extreme transformed estimates relative to the observed loss scale.
+
+    These are diagnostics, not proof that a finite maximum fails to exist.
+    An optimizer can report convergence even on a nearly flat limiting ridge.
+
+    Args:
+        parameters: Distribution parameters in their natural coordinates.
+        observations: Observed values used in the likelihood or empirical estimate.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+    """
+    scale = max(float(np.median(np.abs(observations))), abs(threshold), np.finfo(float).tiny)
+    messages = []
+    positive_shapes = {"alpha", "beta", "shape", "power", "p", "q", "a", "nu"}
+    scales = {"scale", "theta", "b", "lambda_"}
+    for name, value in parameters.items():
+        if not np.isfinite(value):
+            messages.append(f"Non-finite parameter: {name}")
+        elif name in scales and value > 0 and abs(np.log(value) - np.log(scale)) > 30:
+            messages.append(f"{name} is extreme relative to the observation scale; likelihood may be on a ridge")
+        elif name in positive_shapes and value > 0 and abs(np.log(value)) > 30:
+            messages.append(f"{name} is extreme; likelihood may be on a limiting boundary")
+    return tuple(messages)
 
 
 def _with_uncertainty(
@@ -100,7 +299,16 @@ def _with_uncertainty(
     weights: t.Sequence[float] | np.ndarray | None = None,
     threshold_specified: bool = False,
 ) -> FitResult[_T]:
-    """Attach optional uncertainty without changing the MLE fitting result."""
+    """Attach optional uncertainty without changing the MLE fitting result.
+
+    Args:
+        fitted: Previously fitted distribution and its likelihood diagnostics.
+        observations: Observed values used in the likelihood or empirical estimate.
+        uncertainty_method: Method for estimating joint parameter uncertainty; none retains point estimates.
+        censored: Indicators that observations are right-censored at their recorded values.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        threshold_specified: Whether a reporting threshold was supplied to the fit.
+    """
     method = UncertaintyMethod(uncertainty_method)
     if method is UncertaintyMethod.NONE:
         return fitted
@@ -122,6 +330,10 @@ def _gamma_log_survival_underflow(shape: float, z: float) -> float:
     The upper incomplete-gamma continued fraction converges in this regime.
     The computation stays on the CPU because fitting is deterministic and
     does not depend on PAL's simulation backend.
+
+    Args:
+        shape: Gamma shape parameter.
+        z: Unit-scale threshold beyond the ordinary survival underflow point.
     """
     if not np.isfinite(z) or z <= shape + 1.0:
         raise ArithmeticError("Gamma survival continuation requires z > shape + 1")
@@ -152,7 +364,12 @@ def _gamma_log_survival_underflow(shape: float, z: float) -> float:
 
 
 def _gamma_logsf(shape: float, z: float | np.ndarray) -> float | np.ndarray:
-    """Stable log survival of a unit-scale Gamma, including underflowed tails."""
+    """Stable log survival of a unit-scale Gamma, including underflowed tails.
+
+    Args:
+        shape: Gamma shape parameter.
+        z: Unit-scale gamma evaluation points.
+    """
     values = np.asarray(z, dtype=np.float64)
     with np.errstate(divide="ignore", invalid="ignore", under="ignore"):
         result = np.asarray(np.log(special.gammaincc(shape, values)))
@@ -165,103 +382,6 @@ def _gamma_logsf(shape: float, z: float | np.ndarray) -> float | np.ndarray:
     return float(result) if result.ndim == 0 else result
 
 
-def _gamma_mean_excess(alpha: float, theta: float, d: float) -> float:
-    """Gamma mean residual life, avoiding loss of tail survival precision."""
-    if d <= 0.0:
-        return alpha * theta - d
-    if alpha == 1.0:
-        return theta
-    z = d / theta
-    if not np.isfinite(z):
-        raise ArithmeticError("Gamma tail attachment exceeds numeric range")
-    if z > max(1e6, 100.0 * alpha):
-        # Leading terms of the upper incomplete Gamma expansion. At this
-        # threshold the omitted terms are negligible for practical shapes.
-        return float(theta * (1.0 + (alpha - 1.0) / z))
-    log_survival = float(_gamma_logsf(alpha, z))
-    log_next_survival = float(_gamma_logsf(alpha + 1.0, z))
-    excess = alpha * np.exp(log_next_survival - log_survival) - z
-    if np.isfinite(excess) and excess > 1e-7 * max(1.0, z):
-        return float(theta * excess)
-    # When subtracting the attachment loses precision, integrate conditional
-    # survival in dimensionless tail-width units instead.
-    integral, error = integrate.quad(
-        lambda u: np.exp(float(_gamma_logsf(alpha, z + u)) - log_survival),
-        0.0,
-        np.inf,
-        epsrel=1e-10,
-        limit=300,
-    )
-    if not np.isfinite(integral) or not np.isfinite(error) or error > 1e-7:
-        raise ArithmeticError("Gamma conditional survival integration did not converge")
-    return float(theta * integral)
-
-
-def _lognormal_mean_excess(mu: float, sigma: float, d: float) -> float:
-    """Conditional first-moment formula with erfcx for upper-tail accuracy."""
-    if d <= 0.0:
-        return float(np.exp(mu + 0.5 * sigma**2) - d)
-    z = (np.log(d) - mu) / sigma
-    if z >= sigma:
-        numerator = special.erfcx((z - sigma) / np.sqrt(2.0))
-        denominator = special.erfcx(z / np.sqrt(2.0))
-        if denominator > 0.0 and np.isfinite(numerator):
-            relative_excess = (numerator - denominator) / denominator
-            if relative_excess > 1e-8:
-                return float(d * relative_excess)
-    log_ratio = mu + 0.5 * sigma**2 - np.log(d)
-    log_ratio += special.log_ndtr(sigma - z) - special.log_ndtr(-z)
-    if np.isfinite(log_ratio) and log_ratio > 1e-10:
-        return float(d * np.expm1(log_ratio))
-    if z > 1e7:
-        # Extreme normal-tail asymptotic, avoiding subtraction of close values.
-        return float(d * sigma / z)
-    raise ArithmeticError("LogNormal mean excess lost numerical precision")
-
-
-def _weibull_mean_excess(shape: float, scale: float, loc: float, d: float) -> float:
-    """Integrate a Weibull survival using the upper incomplete gamma ratio."""
-    a = 1.0 / shape
-    if d <= loc:
-        return float(loc + scale * np.exp(special.gammaln(1.0 + a)) - d)
-    if shape == 1.0:
-        return scale
-    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
-        z = float(np.power((d - loc) / scale, shape))
-    if not np.isfinite(z):
-        raise ArithmeticError("Weibull attachment exceeds numeric range")
-    if z > 1e7:
-        log_value = np.log(scale / shape) + (a - 1.0) * np.log(z)
-        log_value += np.log1p((a - 1.0) / z)
-    else:
-        log_value = np.log(scale) + special.gammaln(1.0 + a)
-        log_value += float(_gamma_logsf(a, z)) + z
-    return float(np.exp(log_value))
-
-
-def _burr_mean_excess(power: float, shape: float, scale: float, loc: float, d: float) -> float:
-    """Burr XII mean residual life via the complementary incomplete beta."""
-    if d <= loc:
-        mean = scale * shape * special.beta(1.0 + 1.0 / power, shape - 1.0 / power)
-        return float(loc + mean - d)
-    x = d - loc
-    if power == 1.0:
-        return float((scale + x) / (shape - 1.0))
-    a = shape - 1.0 / power
-    b = 1.0 / power
-    log_w = -np.logaddexp(0.0, power * (np.log(x) - np.log(scale)))
-    w = float(np.exp(log_w))
-    if w < 1e-12 and abs(b - 1.0) * w < 1e-12:
-        # B_w(a,b) = w**a/a * (1 + O(w)) in the far tail.
-        log_value = np.log(scale) - np.log(power) - np.log(a) - b * log_w
-    else:
-        incomplete = float(special.betainc(a, b, w))
-        if incomplete <= 0.0 or not np.isfinite(incomplete):
-            raise ArithmeticError("Burr mean excess incomplete beta underflowed")
-        log_value = np.log(scale) - np.log(power) + special.betaln(a, b) + np.log(incomplete) - shape * log_w
-    return float(np.exp(log_value))
-
-
 def _prepare(
     observations: t.Sequence[float] | np.ndarray,
     threshold: float,
@@ -270,7 +390,18 @@ def _prepare(
     *,
     allow_any_real: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Validate sample alignment, truncation and frequency weights."""
+    """Validate and align loss observations, censoring flags and weights.
+
+    Args:
+        observations: Observed losses before weight filtering.
+        threshold: Left-truncation threshold.
+        censored: Indicators of right-censoring.
+        weights: Nonnegative observation weights.
+        allow_any_real: Allow signed observations for families with real-valued support.
+
+    Returns:
+        Validated observations, censoring flags and weights after zero-weight filtering.
+    """
     x = np.asarray(observations, dtype=np.float64)
     if x.ndim != 1 or x.size == 0:
         raise ValueError("observations must be a nonempty one-dimensional array")
@@ -309,7 +440,16 @@ def _log_likelihood(
     w: np.ndarray,
     threshold: float,
 ) -> float:
-    """Return a conditional right-censored, left-truncated log-likelihood."""
+    """Return a conditional right-censored, left-truncated log-likelihood.
+
+    Args:
+        family: PAL distribution class selecting the mathematical parameterisation.
+        parameters: Distribution parameters in their natural coordinates.
+        x: Loss values at which to evaluate the calculation.
+        c: Right-censoring indicators aligned with the observations.
+        w: Observation weights aligned with the observations.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+    """
     from . import distributions as _distributions
 
     if family is _distributions.Pareto:
@@ -356,6 +496,9 @@ def fit_distribution(
     censored: t.Sequence[bool] | np.ndarray | None = None,
     weights: t.Sequence[float] | np.ndarray | None = None,
     free_location: bool = False,
+    optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
+    optimizer_options: t.Mapping[str, t.Any] | None = None,
+    initial_parameters: t.Mapping[str, float] | None = None,
     uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
 ) -> FitResult[_T]:
     """Fit a supported PAL distribution by maximum likelihood.
@@ -371,6 +514,10 @@ def fit_distribution(
             repeated observations for information criteria.
         free_location: Fit the three-parameter GPD when True. Only supported
             for GPD; the location defaults to the reporting threshold.
+        optimizer: Numerical method for non-analytical fits.
+        optimizer_options: Options passed to the selected SciPy optimizer.
+        initial_parameters: Optional natural starting estimates for a numerical fit. Unspecified parameters
+            use automatic estimates; fixed parameters cannot be changed.
         uncertainty_method: Optional joint parameter uncertainty method; defaults to None.
 
     Returns:
@@ -394,6 +541,9 @@ def fit_distribution(
             censored=censored,
             weights=weights,
             free_location=free_location,
+            optimizer=optimizer,
+            optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
         return _with_uncertainty(
             fitted,
@@ -417,17 +567,23 @@ def fit_distribution(
     if free_location and threshold > 0:
         raise ValueError("The GPD location is not identifiable from a left-truncated sample")
     x, c, w = _prepare(observations, threshold, censored, weights, allow_any_real=family is _distributions.GEV)
+    if initial_parameters is not None and family in (_distributions.Pareto, _distributions.Exponential):
+        raise ValueError(f"{family.__name__} uses an analytical fit and does not require initial_parameters")
     if free_location:
-        return _fit_gpd_free_location(distribution, x, c, w, threshold)
+        return _fit_gpd_free_location(
+            distribution, x, c, w, threshold, optimizer, optimizer_options, initial_parameters
+        )
     if family is _distributions.Exponential:
         return _fit_exponential(distribution, x, c, w, threshold)
     if family is _distributions.GeneralizedBetaPrime:
-        return _fit_gb2(distribution, x, c, w, threshold)
+        return _fit_gb2(distribution, x, c, w, threshold, optimizer, optimizer_options, initial_parameters)
     if family in _other_families():
-        return _fit_other(distribution, x, c, w, threshold)
+        return _fit_other(distribution, x, c, w, threshold, optimizer, optimizer_options, initial_parameters)
     total = float(np.sum(w))
     mean = float(np.average(x, weights=w))
     variance = float(np.average((x - mean) ** 2, weights=w))
+    optimizer_used: str | None = None
+    optimizer_fallback = False
     if family is _distributions.Pareto:
         scale = threshold if threshold > 0 else float(x.min())
         denominator = float(np.sum(w * np.log(x / scale)))
@@ -436,61 +592,92 @@ def fit_distribution(
         parameters = {"shape": float(np.sum(w[~c])) / denominator, "scale": scale}
         converged = True
     else:
+        largest = float(np.max(x)) - threshold
         if family is _distributions.LogNormal:
             logs = np.log(x)
             mu0 = float(np.average(logs, weights=w))
             sigma0 = float(np.sqrt(np.average((logs - mu0) ** 2, weights=w)))
-            starts = [[mu0, np.log(max(sigma0, 0.01))]]
+            initial = [mu0, np.log(max(sigma0, 0.01))]
+            alternative = None
 
             def transform(p: np.ndarray) -> dict[str, float]:
+                """Convert trial optimisation coordinates to distribution parameters.
+
+                Args:
+                    p: Distribution parameter values in their natural coordinates.
+                """
                 return {"mu": float(p[0]), "sigma": float(np.exp(p[1]))}
         elif family is _distributions.Gamma:
             alpha0 = max(min(mean * mean / max(variance, np.finfo(float).tiny), 1e4), 0.05)
-            starts = [
-                [np.log(alpha0), np.log(mean / alpha0)],
-                [0.0, np.log(mean)],
-                [np.log(2.0), np.log(mean / 2.0)],
-            ]
+            initial = [np.log(alpha0), np.log(mean / alpha0)]
+            alternative = np.array([0.0, np.log(mean)])
 
             def transform(p: np.ndarray) -> dict[str, float]:
+                """Convert trial optimisation coordinates to distribution parameters.
+
+                Args:
+                    p: Distribution parameter values in their natural coordinates.
+                """
                 return {"alpha": float(np.exp(p[0])), "theta": float(np.exp(p[1]))}
         else:
             exceedances = x - threshold
-            mean_exc = float(np.average(exceedances, weights=w))
-            if mean_exc <= 0:
-                raise ValueError("GPD scale is not identifiable for these observations")
-            var_exc = float(np.average((exceedances - mean_exc) ** 2, weights=w))
-            ratio = mean_exc * mean_exc / var_exc if var_exc > 0 else 1.0
-            xi0 = float(np.clip(0.5 * (1 - ratio), -0.45, 2.0))
-            starts = [
-                [xi0, np.log(mean_exc)],
-                [0.0, np.log(mean_exc)],
-                [0.5, np.log(mean_exc)],
-                [-0.2, np.log(mean_exc * 1.5)],
-            ]
+            xi0, sigma0 = _gpd_initial(exceedances, c, w)
+            initial = [_gpd_shape_coordinate(xi0, sigma0, largest), np.log(sigma0)]
+            alternative = np.array([0.0, np.log(float(np.dot(w, exceedances)) / np.sum(w[~c]))])
 
             def transform(p: np.ndarray) -> dict[str, float]:
-                return {"shape": float(p[0]), "scale": float(np.exp(p[1])), "loc": threshold}
+                """Convert trial optimisation coordinates to distribution parameters.
+
+                Args:
+                    p: Distribution parameter values in their natural coordinates.
+                """
+                scale = float(np.exp(p[1]))
+                shape = _support_shape(float(p[0]), scale, 0.0, largest) if scale > 0 else np.nan
+                return {"shape": shape, "scale": scale, "loc": threshold}
 
         def objective(p: np.ndarray) -> float:
+            """Evaluate the negative log-likelihood in trial coordinates.
+
+            Args:
+                p: Distribution parameter values in their natural coordinates.
+            """
             with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
                 ll = _log_likelihood(family, transform(p), x, c, w, threshold)
             return -ll if np.isfinite(ll) else 1e100
 
-        results = [
-            optimize.minimize(
-                objective,
-                np.asarray(start, dtype=np.float64),
-                method="Nelder-Mead",
-                options={"maxiter": 5000, "xatol": 1e-7, "fatol": 1e-7},
-            )
-            for start in starts
-        ]
-        best = min(results, key=lambda result: float(result.fun))
+        if family is _distributions.GPD:
+            free_names = ("shape", "scale")
+
+            def encode(params: dict[str, float]) -> np.ndarray:
+                """Encode natural GPD estimates.
+
+                Args:
+                    params: Natural GPD parameters.
+                """
+                shape = _shape_coordinate(params["shape"], params["scale"], 0.0, largest)
+                return np.array([shape, np.log(params["scale"])])
+
+        else:
+            free_names = ("mu", "sigma") if family is _distributions.LogNormal else ("alpha", "theta")
+
+            def encode(params: dict[str, float]) -> np.ndarray:
+                """Encode ordinary severity estimates.
+
+                Args:
+                    params: Natural severity parameters.
+                """
+                return _initial_coordinates(params, free_names, linear=("mu",))
+
+        start, alternative = _override_initial(
+            np.asarray(initial), alternative, initial_parameters, transform, encode, free_names, objective
+        )
+        best = _minimize(objective, start, optimizer, optimizer_options, 5000, alternative=alternative)
         if not np.isfinite(best.fun) or best.fun >= 1e100:
             raise RuntimeError(f"Unable to obtain a finite {family.__name__} fit")
         parameters = transform(best.x)
         converged = bool(best.success)
+        optimizer_used = str(best.optimizer_used)
+        optimizer_fallback = bool(best.optimizer_fallback)
     ll = _log_likelihood(family, parameters, x, c, w, threshold)
     if not np.isfinite(ll):
         raise RuntimeError(f"Fitted {family.__name__} has an invalid log-likelihood")
@@ -504,6 +691,10 @@ def fit_distribution(
     is_frequency_weight = bool(np.all(w == np.floor(w)))
     aicc = aic + 2.0 * k * (k + 1) / (total - k - 1) if is_frequency_weight and total > k + 1 else np.nan
     return FitResult(
+        n_parameters=k,
+        optimizer=optimizer_used,
+        optimizer_fallback=optimizer_fallback,
+        warnings=() if family is _distributions.Pareto else _boundary_warnings(parameters, x, threshold),
         distribution=model,
         parameters=parameters,
         log_likelihood=ll,
@@ -544,7 +735,12 @@ def _other_families() -> tuple[type[DistributionBase], ...]:
 
 
 def _frozen_distribution(family: type[DistributionBase], params: dict[str, float]) -> t.Any:
-    """Build an independent SciPy reference distribution for inference."""
+    """Build an independent SciPy reference distribution for inference.
+
+    Args:
+        family: PAL distribution class selecting the mathematical parameterisation.
+        params: Distribution parameter values in the family's natural coordinates.
+    """
     from . import distributions as _distributions
 
     p = params
@@ -555,29 +751,50 @@ def _frozen_distribution(family: type[DistributionBase], params: dict[str, float
     if family is _distributions.LogNormal:
         return stats.lognorm(s=p["sigma"], scale=np.exp(p["mu"]))
     if family is _distributions.Gamma:
-        return stats.gamma(a=p["alpha"], scale=p["theta"])
+        return stats.gamma(a=p["alpha"], scale=p["theta"], loc=p.get("loc", 0.0))
     if family is _distributions.Weibull:
         return stats.weibull_min(c=p["shape"], scale=p["scale"], loc=p["loc"])
     if family is _distributions.Burr:
-        return stats.burr12(c=p["power"], d=p["shape"], scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.burr12(c=p["power"], d=p["shape"], scale=p["scale"], loc=p["loc"]),
+            lambda x: _burr_terms(x, p["power"], p["shape"], p["scale"], p["loc"]),
+        )
     if family is _distributions.LogLogistic:
-        return stats.fisk(c=p["shape"], scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.fisk(c=p["shape"], scale=p["scale"], loc=p["loc"]),
+            lambda x: _burr_terms(x, p["shape"], 1.0, p["scale"], p["loc"]),
+        )
     if family is _distributions.InverseGaussian:
         return stats.invgauss(mu=p["mu"] / p["lambda_"], scale=p["lambda_"])
     if family is _distributions.Paralogistic:
-        return stats.burr12(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.burr12(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"]),
+            lambda x: _burr_terms(x, p["shape"], p["shape"], p["scale"], p["loc"]),
+        )
     if family is _distributions.InverseBurr:
-        return stats.burr(c=p["power"], d=p["shape"], scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.burr(c=p["power"], d=p["shape"], scale=p["scale"], loc=p["loc"]),
+            lambda x: _burr_terms(x, p["power"], p["shape"], p["scale"], p["loc"], inverse=True),
+        )
     if family is _distributions.InverseGamma:
         return stats.invgamma(a=p["alpha"], scale=p["theta"], loc=p["loc"])
     if family is _distributions.InverseWeibull:
-        return stats.invweibull(c=p["shape"], scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.invweibull(c=p["shape"], scale=p["scale"], loc=p["loc"]),
+            lambda x: _inverse_weibull_terms(x, p["shape"], p["scale"], p["loc"]),
+        )
     if family is _distributions.Exponential:
         return stats.expon(scale=p["scale"], loc=p["loc"])
     if family is _distributions.InverseExponential:
-        return stats.invweibull(c=1.0, scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.invweibull(c=1.0, scale=p["scale"], loc=p["loc"]),
+            lambda x: _inverse_weibull_terms(x, 1.0, p["scale"], p["loc"]),
+        )
     if family is _distributions.InverseParalogistic:
-        return stats.burr(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"])
+        return _StableSeverityReference(
+            stats.burr(c=p["shape"], d=p["shape"], scale=p["scale"], loc=p["loc"]),
+            lambda x: _burr_terms(x, p["shape"], p["shape"], p["scale"], p["loc"], inverse=True),
+        )
     if family is _distributions.GeneralizedInverseGaussian:
         return stats.geninvgauss(
             p=p["p"], b=np.sqrt(p["chi"] * p["psi"]), scale=np.sqrt(p["chi"] / p["psi"]), loc=p["loc"]
@@ -593,8 +810,22 @@ def _fit_other(
     censored: np.ndarray,
     weights: np.ndarray,
     threshold: float,
+    optimizer: OptimizerMethod | str,
+    optimizer_options: t.Mapping[str, t.Any] | None,
+    initial_parameters: t.Mapping[str, float] | None,
 ) -> FitResult[_T]:
-    """Fit additional two- and three-parameter severity distributions."""
+    """Fit additional two- and three-parameter severity distributions.
+
+    Args:
+        distribution: PAL distribution class or instance used for the calculation.
+        x: Loss values at which to evaluate the calculation.
+        censored: Indicators that observations are right-censored at their recorded values.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+        optimizer: Numerical optimiser used for non-analytical fitting.
+        optimizer_options: Options passed to the selected SciPy optimiser.
+        initial_parameters: Optional natural starting estimates.
+    """
     from . import distributions as _distributions
 
     family = distribution
@@ -627,14 +858,21 @@ def _fit_other(
     else:
         names = ("shape", "scale")
 
-    starts: list[list[float]]
+    alternative: np.ndarray | None = None
+    # Standardise the GEV location coordinate to the scale of the data.
+    spread = max(float(np.sqrt(variance)), np.finfo(float).eps * max(abs(median), 1.0))
+    smallest, largest = float(np.min(x)), float(np.max(x))
     if family is _distributions.GeneralizedInverseGaussian:
-        starts = [[-0.5, np.log(scale), np.log(1.0 / scale)], [0.5, np.log(scale), np.log(1.0 / scale)]]
+        lam = max(mean**3 / max(variance, np.finfo(float).tiny), np.finfo(float).tiny)
+        initial = [-0.5, np.log(lam), np.log(lam) - 2 * np.log(mean)]
+        alternative = np.array([0.5, np.log(scale), -np.log(scale)])
     elif family is _distributions.GEV:
-        spread = max(float(np.std(x)), 0.01)
-        starts = [[0.0, np.log(spread), median], [0.2, np.log(spread), median], [-0.2, np.log(spread), median]]
+        gumbel_scale = spread * np.sqrt(6) / np.pi
+        gumbel_loc = mean - np.euler_gamma * gumbel_scale
+        initial = [0.0, np.log(gumbel_scale), (gumbel_loc - median) / spread]
+        alternative = np.array([0.0, np.log(spread), 0.0])
     elif family in (_distributions.Exponential, _distributions.InverseExponential):
-        starts = [[np.log(max(mean, 1e-10))]]
+        initial = [np.log(max(mean, 1e-10))]
     elif family is _distributions.LogGamma:
         if np.any(x < 1.0):
             raise ValueError("log-gamma observations must be at least one")
@@ -643,34 +881,58 @@ def _fit_other(
         log_var = float(np.average((logs - log_mean) ** 2, weights=weights))
         alpha = max(log_mean**2 / max(log_var, np.finfo(float).tiny), 0.1)
         beta = max(log_var / max(log_mean, np.finfo(float).tiny), 0.01)
-        starts = [[np.log(alpha), np.log(beta)], [0.0, 0.0], [np.log(2.0), np.log(beta)]]
+        initial = [np.log(alpha), np.log(beta)]
+        alternative = np.zeros(2)
     elif family is _distributions.InverseGaussian:
         lam = max(mean**3 / max(variance, np.finfo(float).tiny), np.finfo(float).tiny)
-        starts = [[np.log(mean), np.log(lam)], [np.log(mean), np.log(mean)]]
-    elif family in (_distributions.Burr, _distributions.InverseBurr):
-        starts = [
-            [np.log(1.5), np.log(1.5), np.log(scale)],
-            [0.0, 0.0, np.log(scale)],
-            [np.log(2.5), 0.0, np.log(scale)],
-            [0.0, np.log(2.5), np.log(scale)],
-        ]
+        initial = [np.log(mean), np.log(lam)]
+        alternative = np.array([np.log(mean), np.log(mean)])
     elif family is _distributions.InverseGamma:
         alpha = max(mean * mean / max(variance, np.finfo(float).tiny) + 2.0, 1.5)
-        starts = [[np.log(alpha), np.log(max(mean * (alpha - 1.0), 1e-12))], [0.0, np.log(scale)]]
+        initial = [np.log(alpha), np.log(max(mean * (alpha - 1.0), 1e-12))]
+        alternative = np.array([0.0, np.log(scale)])
     else:
-        starts = [[np.log(1.0), np.log(scale)], [np.log(2.0), np.log(scale)], [np.log(0.75), np.log(scale)]]
+        center, iqr = _log_location_scale(x, censored, weights)
+        logistic_shape = float(np.clip(2 * np.log(3) / iqr, 0.05, 100.0))
+        if family in (_distributions.Burr, _distributions.InverseBurr):
+            initial = [np.log(logistic_shape), 0.0, center]
+            alternative = np.array([np.log(1.5), np.log(1.5), np.log(scale)])
+        elif family in (_distributions.Weibull, _distributions.InverseWeibull):
+            logs = np.log(x)
+            log_mean = float(np.average(logs, weights=weights))
+            log_std = float(np.sqrt(np.average((logs - log_mean) ** 2, weights=weights)))
+            shape = float(np.clip(np.pi / (np.sqrt(6) * max(log_std, 1e-4)), 0.05, 100.0))
+            sign = 1 if family is _distributions.Weibull else -1
+            initial = [np.log(shape), log_mean + sign * np.euler_gamma / shape]
+            alternative = np.array([0.0, np.log(scale)])
+        else:
+            initial = [np.log(logistic_shape), center]
+            alternative = np.array([0.0, np.log(scale)])
 
     def make_params(raw: np.ndarray) -> dict[str, float]:
+        """Convert trial optimisation coordinates to distribution parameters.
+
+        Args:
+            raw: Trial parameters in unconstrained optimisation coordinates.
+        """
         if family is _distributions.GeneralizedInverseGaussian:
             return {"p": float(raw[0]), "chi": float(np.exp(raw[1])), "psi": float(np.exp(raw[2])), "loc": 0.0}
         if family is _distributions.GEV:
-            return {"shape": float(raw[0]), "scale": float(np.exp(raw[1])), "loc": float(raw[2])}
-        pars: dict[str, float] = dict(zip(names, (float(np.exp(value)) for value in raw)))
+            gev_scale = float(np.exp(raw[1]))
+            loc = float(median + spread * raw[2])
+            shape = _support_shape(float(raw[0]), gev_scale, loc - smallest, largest - loc) if gev_scale > 0 else np.nan
+            return {"shape": shape, "scale": gev_scale, "loc": loc}
+        pars: dict[str, float] = dict(zip(names, (float(np.exp(value)) for value in raw), strict=False))
         if family not in (_distributions.InverseGaussian, _distributions.LogGamma):
             pars["loc"] = 0.0
         return pars
 
     def loglik(pars: dict[str, float]) -> float:
+        """Evaluate the weighted conditional log-likelihood.
+
+        Args:
+            pars: Distribution parameter values in the family's natural coordinates.
+        """
         if family is _distributions.LogGamma:
             log_x = np.log(x)
             alpha, beta = pars["alpha"], pars["beta"]
@@ -683,6 +945,18 @@ def _fit_other(
                 )
                 - base
             )
+        elif family is _distributions.GeneralizedInverseGaussian:
+            frozen = _frozen_distribution(family, pars)
+            terms = np.empty_like(x)
+            terms[~censored] = frozen.logpdf(x[~censored])
+            # Evaluate the reporting threshold and distinct censoring limits
+            # together. SciPy's generic survival integrates each point anew.
+            points = np.concatenate((np.array([threshold]), x[censored]))
+            root_chi, root_psi = np.sqrt(pars["chi"]), np.sqrt(pars["psi"])
+            _, survival = _gig_log_probabilities(points / (root_chi / root_psi), pars["p"], root_chi * root_psi)
+            base = float(survival[0])
+            terms[censored] = survival[1:]
+            terms -= base
         else:
             frozen = _frozen_distribution(family, pars)
             base = float(frozen.logsf(threshold)) if threshold > 0 else 0.0
@@ -698,20 +972,32 @@ def _fit_other(
         return value if np.isfinite(value) else -np.inf
 
     def objective(raw: np.ndarray) -> float:
+        """Evaluate the negative log-likelihood in trial coordinates.
+
+        Args:
+            raw: Trial parameters in unconstrained optimisation coordinates.
+        """
         with np.errstate(all="ignore"):
             val = loglik(make_params(raw))
         return -val if np.isfinite(val) else 1e100
 
-    results = [
-        optimize.minimize(
-            objective,
-            np.asarray(start, dtype=np.float64),
-            method="Nelder-Mead",
-            options={"maxiter": 5000, "xatol": 1e-7, "fatol": 1e-7},
-        )
-        for start in starts
-    ]
-    best = min(results, key=lambda item: float(item.fun))
+    def encode(params: dict[str, float]) -> np.ndarray:
+        """Encode natural estimates, including support-safe GEV coordinates.
+
+        Args:
+            params: Natural distribution parameters.
+        """
+        if family is _distributions.GEV:
+            loc, scale = params["loc"], params["scale"]
+            shape = _shape_coordinate(params["shape"], scale, loc - smallest, largest - loc)
+            return np.array([shape, np.log(scale), (loc - median) / spread])
+        linear = ("p",) if family is _distributions.GeneralizedInverseGaussian else ()
+        return _initial_coordinates(params, names, linear=linear)
+
+    start, alternative = _override_initial(
+        np.asarray(initial), alternative, initial_parameters, make_params, encode, names, objective
+    )
+    best = _minimize(objective, start, optimizer, optimizer_options, 5000, alternative=alternative)
     if best.fun >= 1e100 or not np.isfinite(best.fun):
         raise RuntimeError(f"Unable to obtain finite {family.__name__} likelihood")
     pars = make_params(best.x)
@@ -727,6 +1013,10 @@ def _fit_other(
         else np.nan
     )
     return FitResult(
+        n_parameters=n_params,
+        optimizer=str(best.optimizer_used),
+        optimizer_fallback=bool(best.optimizer_fallback),
+        warnings=_boundary_warnings(pars, x, threshold),
         distribution=model,
         parameters=pars,
         log_likelihood=ll,
@@ -737,6 +1027,47 @@ def _fit_other(
         n_censored=int(np.sum(censored)),
         threshold=threshold,
     )
+
+
+def empirical_mean_excess(
+    observations: t.Sequence[float] | np.ndarray,
+    threshold: float | np.ndarray,
+) -> float | np.ndarray:
+    """Empirical mean excess for uncensored observations, with strict exceedances.
+
+    Sort once and accumulate tail excesses using positive adjacent spacings.
+    Evaluation takes O(n log n + m log n) time and O(n + m) storage for n
+    observations and m thresholds. No exceedances (or nonfinite thresholds)
+    produce NaN. Threshold order and shape are preserved.
+
+    Args:
+        observations: Observed values used in the likelihood or empirical estimate.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+    """
+    x = np.asarray(observations, dtype=float)
+    if x.ndim != 1 or not x.size or not np.all(np.isfinite(x)):
+        raise ValueError("observations must be a nonempty finite one-dimensional array")
+    x = np.sort(x)
+    ds = np.asarray(threshold, dtype=float)
+    result = np.full(ds.shape, np.nan, dtype=float)
+    indices = np.searchsorted(x, ds, side="right")
+    valid = np.isfinite(ds) & (indices < x.size)
+    i = indices[valid]
+    # A sum of positive spacings avoids cancellation of sum(x) - n*d.
+    counts = np.arange(x.size - 1, 0, -1, dtype=float)
+    # Recurrence in mean units would avoid overflow but requires a Python
+    # loop; divide each spacing by n first to protect the cumulative sum.
+    areas = np.empty(x.size, dtype=float)
+    areas[-1] = 0.0
+    fractions = counts / x.size
+    with np.errstate(over="ignore"):
+        spacing = np.diff(x)
+        weighted = spacing * fractions
+        overflow = np.isinf(spacing)
+        weighted[overflow] = x[1:][overflow] * fractions[overflow] - x[:-1][overflow] * fractions[overflow]
+        areas[:-1] = np.cumsum(weighted[::-1])[::-1]
+    result[valid] = x[i] - ds[valid] + areas[i] / ((x.size - i) / x.size)
+    return float(result) if result.ndim == 0 else result
 
 
 def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -751,145 +1082,13 @@ def mean_excess(distribution: DistributionBase, threshold: float | np.ndarray) -
         and thresholds beyond a finite upper endpoint return NaN.
 
     Notes:
-        Analytical expressions are used for Pareto, GPD, Gamma, LogNormal,
-        Weibull and Burr. Other severity families use a conditional survival
-        integral. This function uses the CPU, without sampling.
+        Vectorised analytical expressions are used where available. Other
+        severity families use a conditional survival integral with reuse
+        across nearby decreasing thresholds. This function uses the CPU, without sampling.
     """
-    from . import distributions as _distributions
+    from ._mean_excess import severity_mean_excess
 
-    family = type(distribution)
-    if family not in (*_supported_families(), *_other_families()):
-        raise ValueError(f"No mean excess implementation for {family.__name__}")
-    params = distribution._params
-    from .stochastic_scalar import StochasticScalar
-
-    pars: dict[str, float] = {}
-    for key, value in params.items():
-        if isinstance(value, StochasticScalar):
-            raise ValueError("mean excess requires scalar distribution parameters")
-        pars[key] = float(value)
-    frozen = (
-        None
-        if family in (_distributions.LogGamma, _distributions.GeneralizedBetaPrime)
-        else _frozen_distribution(family, pars)
-    )
-    inputs = np.asarray(threshold, dtype=float)
-    result = np.full(inputs.shape, np.nan, dtype=float)
-    inf_mean = (
-        (family is _distributions.GEV and pars["shape"] >= 1.0)
-        or (family is _distributions.GeneralizedBetaPrime and pars["a"] * pars["q"] <= 1.0)
-        or (family is _distributions.LogGamma and pars["beta"] >= 1.0)
-        or (family is _distributions.Pareto and pars["shape"] <= 1.0)
-        or (family is _distributions.GPD and pars["shape"] >= 1.0)
-        or (family is _distributions.Burr and pars["power"] * pars["shape"] <= 1.0)
-        or (family is _distributions.LogLogistic and pars["shape"] <= 1.0)
-        or (family is _distributions.Paralogistic and pars["shape"] <= 1.0)
-        or (family is _distributions.InverseBurr and pars["power"] <= 1.0)
-        or (family is _distributions.InverseGamma and pars["alpha"] <= 1.0)
-        or (family is _distributions.InverseWeibull and pars["shape"] <= 1.0)
-        or family is _distributions.InverseExponential
-        or (family is _distributions.InverseParalogistic and pars["shape"] <= 1.0)
-    )
-    if family is _distributions.GeneralizedBetaPrime:
-        lower, upper = 0.0, np.inf
-    else:
-        lower, upper = (1.0, np.inf) if frozen is None else frozen.support()
-    for index, d in np.ndenumerate(inputs):
-        if not np.isfinite(d):
-            continue
-        if d >= upper:
-            continue
-        if inf_mean:
-            result[index] = np.inf
-            continue
-        if family is _distributions.GeneralizedBetaPrime:
-            result[index] = _gb2_mean_excess(pars, float(d))
-            continue
-        if family is _distributions.LogGamma:
-            alpha, beta = pars["alpha"], pars["beta"]
-            log_cutoff = max(np.log(max(float(d), 1.0)), 0.0)
-            log_num = -alpha * np.log1p(-beta) + float(_gamma_logsf(alpha, log_cutoff * (1.0 - beta) / beta))
-            log_den = float(_gamma_logsf(alpha, log_cutoff / beta))
-            result[index] = float(np.exp(log_num - log_den)) - d
-            continue
-        if family is _distributions.Pareto:
-            alpha, xm = pars["shape"], pars["scale"]
-            result[index] = max(xm - d, 0.0) + max(d, xm) / (alpha - 1.0)
-            continue
-        if family is _distributions.GPD:
-            xi, sigma, loc = pars["shape"], pars["scale"], pars["loc"]
-            base = max(float(d), loc)
-            result[index] = (base - d) + (sigma + xi * (base - loc)) / (1.0 - xi)
-            continue
-
-        if family is _distributions.Gamma:
-            result[index] = _gamma_mean_excess(pars["alpha"], pars["theta"], float(d))
-            continue
-        if family is _distributions.LogNormal:
-            result[index] = _lognormal_mean_excess(pars["mu"], pars["sigma"], float(d))
-            continue
-        if family is _distributions.Weibull:
-            result[index] = _weibull_mean_excess(pars["shape"], pars["scale"], pars["loc"], float(d))
-            continue
-        if family is _distributions.Burr:
-            result[index] = _burr_mean_excess(pars["power"], pars["shape"], pars["scale"], pars["loc"], float(d))
-            continue
-
-        if frozen is None:
-            raise ValueError(f"No continuous survival function for {family.__name__}")
-        # Scale by the local inverse hazard. Integrating in units of tail
-        # width prevents quadrature missing a narrow tail at a high threshold.
-        start = max(float(d), float(lower))
-        log_start_sf = float(frozen.logsf(start))
-        if not np.isfinite(log_start_sf):
-            raise ArithmeticError(f"{family.__name__} tail survival is numerically unresolved at {d}")
-        log_start_pdf = float(frozen.logpdf(start))
-        tail_probability = float(frozen.sf(start))
-        # The conditional median gives a representative tail width even if
-        # the density at the attachment is vanishingly small.
-        local_scale = np.nan
-        if tail_probability > 0:
-            median = float(frozen.isf(tail_probability * 0.5))
-            local_scale = median - start
-        if not np.isfinite(local_scale) or local_scale <= 0:
-            with np.errstate(over="ignore", under="ignore", invalid="ignore"):
-                local_scale = float(np.exp(log_start_sf - log_start_pdf))
-        if not np.isfinite(local_scale) or local_scale <= 0:
-            local_scale = max(abs(start) * 0.1, 1.0)
-        remaining = upper - start
-        limit = remaining / local_scale if np.isfinite(remaining) else np.inf
-
-        def conditional_survival(
-            u: float,
-            start: float = start,
-            local_scale: float = local_scale,
-            log_start_sf: float = log_start_sf,
-        ) -> float:
-            x = start + local_scale * u
-            return float(np.exp(float(frozen.logsf(x)) - log_start_sf))
-
-        if family is _distributions.GeneralizedInverseGaussian:
-            # SciPy's GIG survival may suffer cancellation in the far tail.
-            # Integrate the conditional density instead, avoiding noisy S(x).
-            def scaled_excess_density(
-                u: float,
-                start: float = start,
-                local_scale: float = local_scale,
-                log_start_sf: float = log_start_sf,
-            ) -> float:
-                x = start + local_scale * u
-                return float(u * np.exp(float(frozen.logpdf(x)) - log_start_sf))
-
-            area, error = integrate.quad(scaled_excess_density, 0.0, limit, epsrel=1e-9, limit=300)
-            excess = local_scale**2 * area
-        else:
-            area, error = integrate.quad(conditional_survival, 0.0, limit, epsrel=1e-9, limit=300)
-            excess = local_scale * area
-
-        if not np.isfinite(area) or area < 0 or not np.isfinite(error) or error > 1e-7 * max(1.0, abs(area)):
-            raise ArithmeticError(f"Mean excess integration did not converge for {family.__name__} at {d}")
-        result[index] = (start - d) + float(np.exp(log_start_sf - float(frozen.logsf(d)))) * excess
-    return float(result) if result.ndim == 0 else result
+    return severity_mean_excess(distribution, threshold)
 
 
 def _fit_gpd_free_location(
@@ -898,8 +1097,22 @@ def _fit_gpd_free_location(
     c: np.ndarray,
     w: np.ndarray,
     threshold: float,
+    optimizer: OptimizerMethod | str,
+    optimizer_options: t.Mapping[str, t.Any] | None,
+    initial_parameters: t.Mapping[str, float] | None,
 ) -> FitResult[_T]:
-    """Estimate GPD shape, scale and location subject to support constraints."""
+    """Estimate GPD shape, scale and location subject to support constraints.
+
+    Args:
+        distribution: PAL distribution class or instance used for the calculation.
+        x: Loss values at which to evaluate the calculation.
+        c: Right-censoring indicators aligned with the observations.
+        w: Observation weights aligned with the observations.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+        optimizer: Numerical optimiser used for non-analytical fitting.
+        optimizer_options: Options passed to the selected SciPy optimiser.
+        initial_parameters: Optional natural starting estimates.
+    """
     smallest = float(np.min(x))
     delta = max(smallest * 1e-8, 1e-9)
     max_loc = smallest - delta
@@ -908,35 +1121,50 @@ def _fit_gpd_free_location(
     base_loc = min(threshold, max_loc - delta)
 
     def transform(raw: np.ndarray) -> dict[str, float]:
+        """Convert trial optimisation coordinates to distribution parameters.
+
+        Args:
+            raw: Trial parameters in unconstrained optimisation coordinates.
+        """
         # Keeping the location below the smallest observation avoids invalid
         # density evaluations. The truncation correction is retained.
-        return {
-            "shape": float(raw[0]),
-            "scale": float(np.exp(raw[1])),
-            "loc": float(max_loc - np.exp(raw[2])),
-        }
+        scale = float(np.exp(raw[1]))
+        loc = float(max_loc - np.exp(raw[2]))
+        shape = _support_shape(float(raw[0]), scale, 0.0, float(np.max(x)) - loc) if scale > 0 else np.nan
+        return {"shape": shape, "scale": scale, "loc": loc}
 
     def objective(raw: np.ndarray) -> float:
+        """Evaluate the negative log-likelihood in trial coordinates.
+
+        Args:
+            raw: Trial parameters in unconstrained optimisation coordinates.
+        """
         with np.errstate(over="ignore", divide="ignore", invalid="ignore", under="ignore"):
             ll = _log_likelihood(distribution, transform(raw), x, c, w, threshold)
         return -ll if np.isfinite(ll) else 1e100
 
     distance = max(max_loc - base_loc, delta)
-    starts = [
-        [0.0, np.log(start_scale), np.log(distance)],
-        [0.3, np.log(start_scale), np.log(distance)],
-        [-0.2, np.log(start_scale), np.log(distance)],
-    ]
-    results = [
-        optimize.minimize(
-            objective,
-            np.asarray(start, dtype=float),
-            method="Nelder-Mead",
-            options={"maxiter": 5000, "xatol": 1e-7, "fatol": 1e-7},
-        )
-        for start in starts
-    ]
-    best = min(results, key=lambda item: float(item.fun))
+    xi0, sigma0 = _gpd_initial(x - base_loc, c, w)
+    largest = float(np.max(x)) - base_loc
+    initial = np.array([_gpd_shape_coordinate(xi0, sigma0, largest), np.log(sigma0), np.log(distance)])
+    alternative = np.array([0.0, np.log(start_scale), np.log(distance)])
+
+    def encode(params: dict[str, float]) -> np.ndarray:
+        """Encode free-location GPD estimates.
+
+        Args:
+            params: Natural GPD shape, scale and location.
+        """
+        loc, scale = params["loc"], params["scale"]
+        if loc >= max_loc:
+            raise ValueError("initial GPD location must be below the smallest observation")
+        shape = _shape_coordinate(params["shape"], scale, 0.0, float(np.max(x)) - loc)
+        return np.array([shape, np.log(scale), np.log(max_loc - loc)])
+
+    start, alternative = _override_initial(
+        initial, alternative, initial_parameters, transform, encode, ("shape", "scale", "loc"), objective
+    )
+    best = _minimize(objective, start, optimizer, optimizer_options, 5000, alternative=alternative)
     if best.fun >= 1e100 or not np.isfinite(best.fun):
         raise RuntimeError("Unable to obtain a finite three-parameter GPD fit")
     params = transform(best.x)
@@ -945,6 +1173,9 @@ def _fit_gpd_free_location(
     aic = 6.0 - 2.0 * ll
     aicc = aic + 24.0 / (n - 4) if np.all(w == np.floor(w)) and n > 4 else np.nan
     return FitResult(
+        n_parameters=3,
+        optimizer=str(best.optimizer_used),
+        optimizer_fallback=bool(best.optimizer_fallback),
         distribution=distribution(**params),
         parameters=params,
         log_likelihood=ll,
@@ -964,7 +1195,15 @@ def _fit_exponential(
     weights: np.ndarray,
     threshold: float,
 ) -> FitResult[_T]:
-    """Use the exact censored MLE for an exponential above the threshold."""
+    """Use the exact censored MLE for an exponential above the threshold.
+
+    Args:
+        distribution: PAL distribution class or instance used for the calculation.
+        x: Loss values at which to evaluate the calculation.
+        censored: Indicators that observations are right-censored at their recorded values.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+    """
     events = float(np.sum(weights[~censored]))
     total = float(np.sum(weights * (x - threshold)))
     if events <= 0 or total <= 0:
@@ -977,6 +1216,7 @@ def _fit_exponential(
     freq = bool(np.all(weights == np.floor(weights)))
     aicc = aic + 4 / (sample_size - 2) if freq and sample_size > 2 else np.nan
     return FitResult(
+        n_parameters=1,
         distribution=distribution(**params),
         parameters=params,
         log_likelihood=ll,
@@ -991,7 +1231,13 @@ def _fit_exponential(
 
 
 def _gb2_log_regularized_beta(alpha: float, beta: float, log_z: np.ndarray) -> np.ndarray:
-    """Stable log I_z(alpha, beta), including probabilities below float underflow."""
+    """Stable log I_z(alpha, beta), including probabilities below float underflow.
+
+    Args:
+        alpha: First shape parameter of the gamma or beta family.
+        beta: Second shape or gamma scale parameter, according to the family.
+        log_z: Logarithm of the dimensionless transformed loss coordinate.
+    """
     log_z = np.asarray(log_z, dtype=float)
     z = np.exp(log_z)
     with np.errstate(divide="ignore", under="ignore", invalid="ignore"):
@@ -1010,16 +1256,47 @@ def _gb2_log_regularized_beta(alpha: float, beta: float, log_z: np.ndarray) -> n
     return result
 
 
-def _gb2_terms(x: np.ndarray, pars: dict[str, float]) -> tuple[np.ndarray, np.ndarray]:
-    """Log-density and log-survival for the generalised beta prime family."""
+def _gb2_logpdf(log_x: np.ndarray, pars: dict[str, float]) -> np.ndarray:
+    """Evaluate the GB2 log density without calculating survival.
+
+    Args:
+        log_x: Natural logarithms of positive losses.
+        pars: Natural GB2 parameters a, b, p and q.
+
+    Returns:
+        Log densities in the original loss units.
+    """
     a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
-    log_ratio = np.log(x) - np.log(b)
+    log_ratio = log_x - np.log(b)
     log_power = a * log_ratio
     log_pdf = np.log(a) - np.log(b) - special.betaln(p, q) + (a * p - 1) * log_ratio
-    log_pdf -= (p + q) * np.logaddexp(0.0, log_power)
-    log_survival_argument = -np.logaddexp(0.0, log_power)
-    log_sf = _gb2_log_regularized_beta(q, p, log_survival_argument)
-    return log_pdf, log_sf
+    return log_pdf - (p + q) * np.logaddexp(0.0, log_power)
+
+
+def _gb2_logsf(log_x: np.ndarray, pars: dict[str, float]) -> np.ndarray:
+    """Evaluate the GB2 log survival without calculating density.
+
+    Args:
+        log_x: Natural logarithms of positive losses.
+        pars: Natural GB2 parameters a, b, p and q.
+
+    Returns:
+        Log survival probabilities, including representable logs of underflowed probabilities.
+    """
+    a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
+    log_survival_argument = -np.logaddexp(0.0, a * (log_x - np.log(b)))
+    return _gb2_log_regularized_beta(q, p, log_survival_argument)
+
+
+def _gb2_terms(x: np.ndarray, pars: dict[str, float]) -> tuple[np.ndarray, np.ndarray]:
+    """Log-density and log-survival for the generalised beta prime family.
+
+    Args:
+        x: Positive losses in original loss units.
+        pars: Natural GB2 parameters a, b, p and q.
+    """
+    log_x = np.log(x)
+    return _gb2_logpdf(log_x, pars), _gb2_logsf(log_x, pars)
 
 
 def _fit_gb2(
@@ -1028,45 +1305,73 @@ def _fit_gb2(
     censored: np.ndarray,
     weights: np.ndarray,
     threshold: float,
+    optimizer: OptimizerMethod | str,
+    optimizer_options: t.Mapping[str, t.Any] | None,
+    initial_parameters: t.Mapping[str, float] | None,
 ) -> FitResult[_T]:
-    """Fit the four-parameter GB2 distribution in log-parameter coordinates."""
-    base_scale = float(np.median(x))
-    starts = (
-        (1.0, base_scale, 1.0, 2.0),
-        (2.0, base_scale, 1.0, 1.0),
-        (1.0, base_scale, 2.0, 3.0),
-        (0.7, base_scale, 2.0, 2.0),
-    )
+    """Fit the four-parameter GB2 distribution in log-parameter coordinates.
+
+    Args:
+        distribution: PAL distribution class or instance used for the calculation.
+        x: Loss values at which to evaluate the calculation.
+        censored: Indicators that observations are right-censored at their recorded values.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+        optimizer: Numerical optimiser used for non-analytical fitting.
+        optimizer_options: Options passed to the selected SciPy optimiser.
+        initial_parameters: Optional natural starting estimates.
+    """
+    center, iqr = _log_location_scale(x, censored, weights)
+    shape = float(np.clip(2 * np.log(3) / iqr, 0.05, 100.0))
+    initial = np.array([np.log(shape), center, 0.0, 0.0])
+    alternative = np.array([0.0, np.log(float(np.median(x))), 0.0, np.log(2.0)])
 
     def transform(params: np.ndarray) -> dict[str, float]:
-        return dict(zip(("a", "b", "p", "q"), (float(np.exp(v)) for v in params)))
+        """Convert trial optimisation coordinates to distribution parameters.
+
+        Args:
+            params: Distribution parameter values in the family's natural coordinates.
+        """
+        return dict(zip(("a", "b", "p", "q"), (float(np.exp(v)) for v in params), strict=False))
+
+    log_x = np.log(x)
+    log_observed = log_x[~censored]
+    observed_weights = weights[~censored]
+    # Policy-limit censoring usually repeats the same loss value. Compress
+    # those terms once before optimisation, retaining their total weights.
+    log_capped, inverse = np.unique(log_x[censored], return_inverse=True)
+    capped_weights = np.bincount(inverse, weights=weights[censored], minlength=log_capped.size)
+    log_threshold = np.array([np.log(threshold)]) if threshold > 0 else np.empty(0)
+    survival_points = np.concatenate((log_threshold, log_capped))
 
     def likelihood(params: dict[str, float]) -> float:
-        pdf, sf = _gb2_terms(x, params)
-        if threshold > 0:
-            _, log_sf_thresh = _gb2_terms(np.array([threshold]), params)
-            truncation = float(log_sf_thresh[0])
-        else:
-            truncation = 0.0
-        terms = np.where(censored, sf, pdf) - truncation
-        ll = float(np.sum(weights * terms))
+        """Evaluate the likelihood at the supplied natural parameters.
+
+        Args:
+            params: Distribution parameter values in the family's natural coordinates.
+        """
+        density = _gb2_logpdf(log_observed, params)
+        survival = _gb2_logsf(survival_points, params) if survival_points.size else np.empty(0)
+        truncation = float(survival[0]) if log_threshold.size else 0.0
+        ll = float(np.dot(observed_weights, density - truncation))
+        ll += float(np.dot(capped_weights, survival[log_threshold.size :] - truncation))
         return ll if np.isfinite(ll) else -np.inf
 
     def objective(v: np.ndarray) -> float:
+        """Evaluate the negative log-likelihood in trial coordinates.
+
+        Args:
+            v: Trial parameter vector in unconstrained optimisation coordinates.
+        """
         with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
             ll = likelihood(transform(v))
         return -ll if np.isfinite(ll) else 1e100
 
-    candidates = [
-        optimize.minimize(
-            objective,
-            np.log(start),
-            method="Nelder-Mead",
-            options={"maxiter": 6000, "xatol": 1e-7, "fatol": 1e-7},
-        )
-        for start in starts
-    ]
-    best = min(candidates, key=lambda fit: float(fit.fun))
+    names = ("a", "b", "p", "q")
+    start, alternative = _override_initial(
+        initial, alternative, initial_parameters, transform, lambda p: _initial_coordinates(p, names), names, objective
+    )
+    best = _minimize(objective, start, optimizer, optimizer_options, 6000, alternative=alternative)
     if not np.isfinite(best.fun) or best.fun >= 1e100:
         raise RuntimeError("No finite generalised beta prime fit")
     pars = transform(best.x)
@@ -1076,6 +1381,10 @@ def _fit_gb2(
     frequency = bool(np.all(weights == np.floor(weights)))
     aicc = aic + 40 / (total_weight - 5) if frequency and total_weight > 5 else np.nan
     return FitResult(
+        n_parameters=4,
+        optimizer=str(best.optimizer_used),
+        optimizer_fallback=bool(best.optimizer_fallback),
+        warnings=_boundary_warnings(pars, x, threshold),
         distribution=distribution(**pars),
         parameters=pars,
         log_likelihood=ll,
@@ -1086,44 +1395,3 @@ def _fit_gb2(
         n_censored=int(np.sum(censored)),
         threshold=threshold,
     )
-
-
-def _gb2_mean_excess(pars: dict[str, float], attachment: float) -> float:
-    """GB2 mean residual life from complementary incomplete beta moments."""
-    a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
-    if a * q <= 1:
-        return np.inf
-    if attachment <= 0.0:
-        mean = b * np.exp(special.betaln(p + 1 / a, q - 1 / a) - special.betaln(p, q))
-        return float(mean - attachment)
-
-    log_ratio = a * (np.log(attachment) - np.log(b))
-    log_z = float(-np.logaddexp(0.0, log_ratio))
-    z = float(np.exp(log_z))
-    if log_z < np.log(1e-6):
-        # Exact incomplete-beta identity:
-        # B_z(A,B) = z**A/A * 2F1(A, 1-B; A+1; z).
-        # Taking the ratio of the two beta moments cancels the tiny
-        # probabilities, the beta normalisers and z**(q-1/a).
-        tail_shape = q - 1.0 / a
-        h_survival = float(special.hyp2f1(q, 1.0 - p, q + 1.0, z))
-        h_moment = float(special.hyp2f1(tail_shape, 1.0 - p - 1.0 / a, tail_shape + 1.0, z))
-        if not (np.isfinite(h_survival) and np.isfinite(h_moment)):
-            raise ArithmeticError("GB2 incomplete-beta tail ratio did not converge")
-        if h_survival <= 0.0 or h_moment <= 0.0:
-            raise ArithmeticError("GB2 incomplete-beta tail ratio is invalid")
-        log_conditional_ratio = -np.log1p(-1.0 / (a * q)) - np.log1p(-z) / a + np.log(h_moment) - np.log(h_survival)
-    else:
-        log_survival = float(_gb2_log_regularized_beta(q, p, np.asarray(log_z)))
-        log_moment = float(_gb2_log_regularized_beta(q - 1.0 / a, p + 1.0 / a, np.asarray(log_z)))
-        log_conditional_ratio = (
-            np.log(b)
-            + special.betaln(p + 1.0 / a, q - 1.0 / a)
-            - special.betaln(p, q)
-            + log_moment
-            - log_survival
-            - np.log(attachment)
-        )
-    # Computing E[X|X>d]/d - 1 using expm1 avoids cancellation when
-    # the mean residual life is small compared with attachment.
-    return float(attachment * np.expm1(log_conditional_ratio))

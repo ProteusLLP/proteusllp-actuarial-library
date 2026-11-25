@@ -575,3 +575,12 @@ def test_numpy_operations_with_scalar_values():
     x = ProteusVariable("dim", {"a": 5, "b": 10, "c": 15})
     result = np.sum(x)
     assert result == 30
+
+
+@pytest.mark.parametrize("key", [1.5, (0,), None, object()])
+def test_setitem_rejects_unsupported_keys(key: object) -> None:
+    """An invalid key must raise without changing the variable."""
+    variable = ProteusVariable("dim", {"a": 1, "b": 2})
+    with pytest.raises(TypeError, match="Key must be an integer or string"):
+        variable[key] = 3  # type: ignore[index]
+    assert variable.values == {"a": 1, "b": 2}

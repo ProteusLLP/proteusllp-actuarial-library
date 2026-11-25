@@ -77,3 +77,62 @@ with runtime and dependency versions. Python tracing does not capture all
 NumPy/Arrow native allocations, so do not treat the figures as total peak RSS.
 The benchmark validates round-trip numeric values and is not a performance
 regression gate.
+
+## Mean excess diagnostics
+
+<!--pytest-codeblocks:skip-->
+
+```bash
+python -m benchmarks.benchmark_mean_excess --sizes 1000,10000 --repeat 3
+```
+
+The CPU benchmark reports warmed median wall times for the public distribution
+mean-excess methods and empirical mean excess on 100,000 observations. It includes
+ordinary and stressed parameterisations. At up to 1,000 thresholds it compares
+batch evaluation with repeated scalar calls (or repeated filtering for empirical
+losses), checking numerical agreement. This is a same-version comparison, not a
+comparison with a previous PAL release. Results are descriptive, not timing gates.
+
+To reproduce the independent 50-digit parameter sweep (961 cases):
+
+<!--pytest-codeblocks:skip-->
+
+```bash
+pip install mpmath
+python -m benchmarks.check_mean_excess_accuracy
+```
+
+The sweep covers GB2, Beta, Gamma, inverse Gaussian, GEV and LogNormal,
+including difficult shapes and thresholds; it does not require mpmath at PAL
+runtime. The performance workflow also runs the sweep. The GIG timing reports
+batched values only because repeated adaptive scalar integration is costly.
+
+## Fitting optimizers
+
+<!--pytest-codeblocks:skip-->
+
+```bash
+python -m benchmarks.benchmark_fitting --size 10000 --output fitting.json
+```
+
+Compare the default safeguarded L-BFGS-B with Nelder-Mead on identical
+quantile-spaced samples, including a common 10,000-loss sample, known-family
+samples, weighted truncated and censored tail samples, and bounded-support
+cases. The report records log-likelihood differences, parameters, convergence,
+boundary warnings, actual optimizer, fallback use and elapsed time. Use
+`--case Gamma` to select a subset. Timings are descriptive; a worse likelihood
+or unsuccessful fit is a numerical investigation target, not a speedup.
+
+## Limited expected value
+
+<!--pytest-codeblocks:skip-->
+
+```bash
+python -m benchmarks.benchmark_lev --sizes 1000,10000,100000 --repeat 3
+```
+
+Reports median batch times for analytical and adaptive LEV paths, sampled
+scalar agreement, and scalar-loop comparisons at 1,000 limits. GIG is
+benchmarked through 10,000 limits because it still integrates its density.
+The accuracy tests include extreme parameters, infinite means and the
+finite-mean identity relating LEV to mean excess. Timings are descriptive.

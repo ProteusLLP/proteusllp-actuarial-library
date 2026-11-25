@@ -19,6 +19,16 @@ on:
       - "benchmarks/**"
       - ".github/workflows/performance.yml"
       - "src/pal/frequency_severity.py"
+      - "src/pal/couplings.py"
+      - "src/pal/copulas.py"
+      - "src/pal/distributions.py"
+      - "src/pal/_mean_excess.py"
+      - "src/pal/fitting.py"
+      - "src/pal/fitting_remaining.py"
+      - "src/pal/_severity_probability.py"
+      - "src/pal/_lev.py"
+      - "src/pal/_lev_integrals.py"
+      - "src/pal/_gig.py"
 
 permissions:
   contents: read
@@ -34,6 +44,20 @@ jobs:
           python-version: "3.13"
       - name: Install PAL
         run: pip install -e .
+      - name: Check mean excess accuracy
+        run: |
+          pip install mpmath
+          python -m benchmarks.check_mean_excess_accuracy | tee "$RUNNER_TEMP/pal-mean-excess-accuracy.json"
+      - name: Benchmark mean excess
+        run: |
+          python -m benchmarks.benchmark_mean_excess \
+            --output "$RUNNER_TEMP/pal-mean-excess.json"
+          cat "$RUNNER_TEMP/pal-mean-excess.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Benchmark limited expected values
+        run: |
+          python -m benchmarks.benchmark_lev --sizes 1000,10000,100000 \
+            --output "$RUNNER_TEMP/pal-lev.json"
+          cat "$RUNNER_TEMP/pal-lev.json" >> "$GITHUB_STEP_SUMMARY"
       - name: Benchmark CPU
         env:
           BENCH_SIZES: ${{ inputs.sizes || '10000,100000' }}
@@ -62,6 +86,32 @@ jobs:
           path: |
             ${{ runner.temp }}/pal-cpu.*
             ${{ runner.temp }}/pal-memory-cpu.*
+            ${{ runner.temp }}/pal-mean-excess*.json
+            ${{ runner.temp }}/pal-lev.json
+          retention-days: 30
+
+  fitting:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install PAL
+        run: pip install -e .
+      - name: Compare fitting optimizers
+        env:
+          OPENBLAS_NUM_THREADS: "1"
+          OMP_NUM_THREADS: "1"
+        run: |
+          python -m benchmarks.benchmark_fitting --size 10000 \
+            --output "$RUNNER_TEMP/pal-fitting.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pal-fitting-optimizers
+          path: ${{ runner.temp }}/pal-fitting.json
           retention-days: 30
 
   variable-io:

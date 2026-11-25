@@ -13,7 +13,11 @@ from ._maths import xp
 
 
 def stochastic_array(values: t.Any) -> npt.NDArray[t.Any]:
-    """Create a one-dimensional array without converting dates or labels to numbers."""
+    """Create a one-dimensional array without converting dates or labels to numbers.
+
+    Args:
+        values: Values to convert or process in their existing order.
+    """
     if isinstance(values, np.ndarray):
         candidate = values
     elif isinstance(values, (list, tuple)) and values and isinstance(values[0], (str, bytes, dt.date, np.datetime64)):
@@ -47,7 +51,11 @@ def stochastic_array(values: t.Any) -> npt.NDArray[t.Any]:
 
 
 def host_values(values: t.Any) -> bool:
-    """Whether an array, scalar or sequence needs the NumPy host backend."""
+    """Whether an array, scalar or sequence needs the NumPy host backend.
+
+    Args:
+        values: Values to convert or process in their existing order.
+    """
     if isinstance(values, np.ndarray):
         return values.dtype.kind in "USMmO"
     if isinstance(values, (str, bytes, dt.date, np.datetime64, np.timedelta64)):

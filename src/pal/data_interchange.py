@@ -30,6 +30,12 @@ def _leaves(
     value: t.Any,
     path: tuple[tuple[str, str], ...] = (),
 ) -> t.Iterator[tuple[tuple[tuple[str, str], ...], t.Any]]:
+    """Collect leaf variables and their dimension paths.
+
+    Args:
+        path: Ordered dimension keys identifying a leaf.
+        value: Input value to convert or inspect.
+    """
     if isinstance(value, ProteusVariable):
         for label, child in value.values.items():
             yield from _leaves(child, (*path, (value.dim_name, str(label))))
@@ -41,6 +47,12 @@ def _dimension_names(
     leaves: list[tuple[tuple[tuple[str, str], ...], t.Any]],
     dimension_columns: Sequence[str] | None,
 ) -> list[str]:
+    """Determine the dimension names present in the variable hierarchy.
+
+    Args:
+        dimension_columns: Columns identifying the successive variable dimensions.
+        leaves: Leaf variables and their associated dimension paths.
+    """
     depth = max(len(path) for path, _ in leaves)
     if dimension_columns is not None:
         if len(dimension_columns) != depth:
@@ -78,6 +90,16 @@ def to_dataframe(
     stochastic values, and long for heterogeneous, deterministic or claim data.
     Long claim tables retain their simulation count, including zero-claim
     simulations, through an ordinary 'N Simulations' column.
+
+    Args:
+        dimension_columns: Columns identifying the successive variable dimensions.
+        event_column: Column identifying individual events in a simulation.
+        kind_column: Column identifying the kind of PAL leaf stored in each row.
+        layout: Tabular representation used to organise the data.
+        n_sims_column: Column containing the declared number of simulations.
+        simulation_column: Column containing the simulation index.
+        values_column: Column containing numerical or categorical values.
+        variable: PAL variable to convert or serialize.
     """
     if layout not in ("auto", "wide", "long", "multiindex"):
         raise ValueError("layout must be 'auto', 'wide', 'multiindex' or 'long'")
@@ -111,7 +133,7 @@ def to_dataframe(
             data[path[0][1]] = asnumpy(value.values)
         return pd.DataFrame(data, copy=False)
     if layout == "multiindex" or (layout == "auto" and multiindex):
-        values = {labels: asnumpy(value.values) for labels, (_, value) in zip(paths, leaves)}
+        values = {labels: asnumpy(value.values) for labels, (_, value) in zip(paths, leaves, strict=False)}
         frame = pd.DataFrame(
             values,
             index=pd.RangeIndex(int(leaves[0][1].n_sims), name=simulation_column),
@@ -126,7 +148,7 @@ def to_dataframe(
     )
     frames: list[pd.DataFrame] = []
     for path, value in leaves:
-        labels = {name: label for name, (_, label) in zip(dim_names, path)}
+        labels = {name: label for name, (_, label) in zip(dim_names, path, strict=False)}
         if isinstance(value, StochasticScalar):
             vals = np.asarray(asnumpy(value.values))
             sims: t.Any = np.arange(len(vals), dtype=np.int64)
@@ -169,9 +191,20 @@ def to_dataframe(
 
 
 def _nested_variable(values: dict[tuple[str, ...], t.Any], dimension_columns: Sequence[str]) -> ProteusVariable[t.Any]:
-    """Reconstruct a heterogeneous hierarchy from its ordered leaf paths."""
+    """Reconstruct a heterogeneous hierarchy from its ordered leaf paths.
+
+    Args:
+        dimension_columns: Columns identifying the successive variable dimensions.
+        values: Values to convert or process in their existing order.
+    """
 
     def build(prefix: tuple[str, ...], level: int) -> ProteusVariable[t.Any]:
+        """Reconstruct the nested variable at the current hierarchy level.
+
+        Args:
+            level: Current hierarchy depth in the nested variable.
+            prefix: Dimension path of the current subtree.
+        """
         children: dict[str, t.Any] = {}
         for path, leaf in values.items():
             if path[:level] != prefix:
@@ -198,6 +231,10 @@ def _couple_imported(variable: ProteusVariable[t.Any], *, couple: bool) -> Prote
     A shared simulation ID identifies a joint scenario, not a particular
     statistical correlation. Opt out when columns represent independent
     marginal samples that will be re-coupled by a subsequent copula.
+
+    Args:
+        couple: Whether to couple restored stochastic leaves to maintain simulation alignment.
+        variable: PAL variable to convert or serialize.
     """
     if couple:
         leaves = [value for _, value in _leaves(variable) if isinstance(value, ProteusStochasticVariable)]
@@ -213,6 +250,14 @@ def _multiindex_import(
     *,
     couple: bool,
 ) -> ProteusVariable[t.Any]:
+    """Reconstruct PAL variables from a multi-index data frame.
+
+    Args:
+        couple: Whether to couple restored stochastic leaves to maintain simulation alignment.
+        dimension_columns: Columns identifying the successive variable dimensions.
+        frame: Data frame containing the records to convert.
+        simulation_column: Column containing the simulation index.
+    """
     if simulation_column is None:
         raise ValueError("MultiIndex stochastic data requires a simulation index")
     if frame.index.hasnans or not frame.index.is_unique:
@@ -256,6 +301,18 @@ def from_dataframe(
     coupled by default so that subsequent reordering preserves their existing
     joint samples. Use couple=False for independent marginals. Original PAL
     coupling-group boundaries require pal.serialization.load().
+
+    Args:
+        couple: Whether to couple restored stochastic leaves to maintain simulation alignment.
+        dim_name: Name to assign to the outermost variable dimension.
+        dimension_columns: Columns identifying the successive variable dimensions.
+        event_column: Column identifying individual events in a simulation.
+        frame: Data frame containing the records to convert.
+        kind_column: Column identifying the kind of PAL leaf stored in each row.
+        n_sims: Number of simulations represented by the data or requested draws.
+        n_sims_column: Column containing the declared number of simulations.
+        simulation_column: Column containing the simulation index.
+        values_column: Column containing numerical or categorical values.
     """
     if "_pal_schema" in frame or "_pal_path" in frame:
         raise ValueError("PAL snapshots must be loaded through pal.serialization.load()")

@@ -16,7 +16,11 @@ from ._maths import asnumpy, xp
 
 
 def _prepare(matrix: t.Any) -> np.ndarray:
-    """Copy lower-triangular observations into a symmetric matrix."""
+    """Copy lower-triangular observations into a symmetric matrix.
+
+    Args:
+        matrix: Matrix to validate, complete or use in the correlation calculation.
+    """
     raw = asnumpy(matrix, dtype=float).copy()
     if raw.ndim != 2 or raw.shape[0] != raw.shape[1] or raw.shape[0] == 0:
         raise ValueError("incomplete_matrix must be a nonempty square matrix.")
@@ -30,7 +34,11 @@ def _prepare(matrix: t.Any) -> np.ndarray:
 
 
 def _complete_sparse_cpu(source: np.ndarray) -> np.ndarray:
-    """Solve the maximum-entropy dual over observed precision entries."""
+    """Solve the maximum-entropy dual over observed precision entries.
+
+    Args:
+        source: Original matrix values or input data used in the completion calculation.
+    """
     n = len(source)
     rows, cols = np.where(np.tril(np.isfinite(source)))
     target = source[rows, cols]
@@ -44,6 +52,11 @@ def _complete_sparse_cpu(source: np.ndarray) -> np.ndarray:
     start[diagonal] = 1 / target[diagonal]
 
     def residuals(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Evaluate the matrix completion residuals at the trial coefficients.
+
+        Args:
+            x: Trial coefficients used to reconstruct missing correlation entries.
+        """
         precision = np.zeros((n, n))
         precision[rows, cols] = x
         precision[cols, rows] = x
@@ -72,7 +85,11 @@ def _complete_sparse_cpu(source: np.ndarray) -> np.ndarray:
 
 
 def _complete_dense_cpu(source: np.ndarray) -> np.ndarray:
-    """Solve for missing covariance entries with inverse zeros at those entries."""
+    """Solve for missing covariance entries with inverse zeros at those entries.
+
+    Args:
+        source: Original matrix values or input data used in the completion calculation.
+    """
     from .correlation import near_corr
 
     n = len(source)
@@ -90,12 +107,17 @@ def _complete_dense_cpu(source: np.ndarray) -> np.ndarray:
     correlation = initial / std[:, None] / std[None, :]
     # The projection seeks a strictly positive definite interior point.
     if np.linalg.eigvalsh(initial)[0] < 1e-8:
-        fixed_pairs = [(int(i), int(j)) for i, j in zip(fixed_rows, fixed_cols)]
+        fixed_pairs = [(int(i), int(j)) for i, j in zip(fixed_rows, fixed_cols, strict=False)]
         initial = asnumpy(near_corr(correlation, pattern=fixed_pairs))
         initial *= std[:, None] * std[None, :]
     base = initial.copy()
 
     def residuals(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Evaluate the matrix completion residuals at the trial coefficients.
+
+        Args:
+            x: Trial coefficients used to reconstruct missing correlation entries.
+        """
         matrix = base.copy()
         matrix[rows, cols] = x
         matrix[cols, rows] = x
@@ -118,7 +140,12 @@ def _complete_dense_cpu(source: np.ndarray) -> np.ndarray:
 
 
 def _complete(matrix: t.Any, method: str) -> t.Any:
-    """Run the toolkit-compatible completion and validate the result."""
+    """Run the toolkit-compatible completion and validate the result.
+
+    Args:
+        matrix: Matrix to validate, complete or use in the correlation calculation.
+        method: Algorithm used to complete the missing correlation entries.
+    """
     source = _prepare(matrix)
     if method not in ("auto", "sparse", "dense"):
         raise ValueError("method must be 'auto', 'sparse', or 'dense'.")
@@ -140,17 +167,29 @@ def complete_corr(incomplete_matrix: t.Any, method: str = "auto") -> t.Any:
     are NaN. Methods 'sparse', 'dense', and 'auto' preserve the toolkit API.
     The interior-point equations are solved by SciPy on CPU, with the
     output transferred back to PAL's configured NumPy or CuPy backend.
+
+    Args:
+        incomplete_matrix: Correlation matrix containing missing entries.
+        method: Algorithm used to complete the missing correlation entries.
     """
     return _complete(incomplete_matrix, method.lower())
 
 
 def complete_corr_sparse(incomplete_matrix: t.Any) -> t.Any:
-    """Complete a sparse matrix through a precision-matrix formulation."""
+    """Complete a sparse matrix through a precision-matrix formulation.
+
+    Args:
+        incomplete_matrix: Correlation matrix containing missing entries.
+    """
     return _complete(incomplete_matrix, "sparse")
 
 
 def complete_corr_dense(incomplete_matrix: t.Any) -> t.Any:
-    """Complete a dense matrix through covariance-matrix optimisation."""
+    """Complete a dense matrix through covariance-matrix optimisation.
+
+    Args:
+        incomplete_matrix: Correlation matrix containing missing entries.
+    """
     return _complete(incomplete_matrix, "dense")
 
 

@@ -17,7 +17,11 @@ from .correlation import is_psd
 
 
 def get_adjacency_matrx(incomplete_matrix: t.Any) -> t.Any:
-    """Return the symmetric mask of observed entries (lower triangle wins)."""
+    """Return the symmetric mask of observed entries (lower triangle wins).
+
+    Args:
+        incomplete_matrix: Correlation matrix containing missing entries.
+    """
     matrix = xp.asarray(incomplete_matrix)
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
         raise ValueError("Matrix must be square.")
@@ -28,12 +32,20 @@ def get_adjacency_matrx(incomplete_matrix: t.Any) -> t.Any:
 
 
 def get_adjacency_matrix(incomplete_matrix: t.Any) -> t.Any:
-    """Correctly spelled alias for get_adjacency_matrx."""
+    """Correctly spelled alias for get_adjacency_matrx.
+
+    Args:
+        incomplete_matrix: Correlation matrix containing missing entries.
+    """
     return get_adjacency_matrx(incomplete_matrix)
 
 
 def get_edges_from_adjacency_matrix(adj_matrix: t.Any) -> list[list[int]]:
-    """Return undirected edges between distinct observed variables."""
+    """Return undirected edges between distinct observed variables.
+
+    Args:
+        adj_matrix: Adjacency matrix representing the graph edges.
+    """
     mask = asnumpy(adj_matrix).astype(bool, copy=False)
     if mask.ndim != 2 or mask.shape[0] != mask.shape[1]:
         raise ValueError("Adjacency matrix must be square.")
@@ -41,15 +53,30 @@ def get_edges_from_adjacency_matrix(adj_matrix: t.Any) -> list[list[int]]:
 
 
 def get_edges_from_incomplete_matrix(incomplete_matrix: t.Any) -> list[list[int]]:
-    """Return edges connecting pairs with specified correlations."""
+    """Return edges connecting pairs with specified correlations.
+
+    Args:
+        incomplete_matrix: Correlation matrix containing missing entries.
+    """
     return get_edges_from_adjacency_matrix(get_adjacency_matrx(incomplete_matrix))
 
 
 def _maximal_cliques(adjacency: dict[int, set[int]]) -> list[list[int]]:
-    """Bron-Kerbosch enumeration with pivoting and deterministic ordering."""
+    """Bron-Kerbosch enumeration with pivoting and deterministic ordering.
+
+    Args:
+        adjacency: Mapping of each node to its neighbours.
+    """
     result: list[list[int]] = []
 
     def visit(clique: set[int], candidates: set[int], excluded: set[int]) -> None:
+        """Explore an extension of the current clique or variable subtree.
+
+        Args:
+            candidates: Nodes that can extend the current clique.
+            clique: Current set of mutually adjacent nodes.
+            excluded: Nodes already explored for the current clique.
+        """
         if not candidates and not excluded:
             result.append(sorted(clique))
             return
@@ -67,6 +94,12 @@ def _maximal_cliques(adjacency: dict[int, set[int]]) -> list[list[int]]:
 
 
 def _graph_from_edges(edges: t.Iterable[t.Sequence[int]], nodes: t.Iterable[int] = ()) -> dict[int, set[int]]:
+    """Build an adjacency mapping from the known graph edges.
+
+    Args:
+        edges: Pairs of nodes joined by known graph edges.
+        nodes: Nodes included in the graph.
+    """
     result = {int(node): set() for node in nodes}
     for i, j in edges:
         a, b = int(i), int(j)
@@ -79,19 +112,31 @@ def _graph_from_edges(edges: t.Iterable[t.Sequence[int]], nodes: t.Iterable[int]
 
 
 def get_all_cliques(incomplete_matrix: t.Any) -> t.Iterator[list[int]]:
-    """Iterate maximal cliques of the observed-correlation graph."""
+    """Iterate maximal cliques of the observed-correlation graph.
+
+    Args:
+        incomplete_matrix: Correlation matrix containing missing entries.
+    """
     n = int(xp.asarray(incomplete_matrix).shape[0])
     graph = _graph_from_edges(get_edges_from_incomplete_matrix(incomplete_matrix), range(n))
     return iter(_maximal_cliques(graph))
 
 
 def get_big_cliques_from_edges(edges: list[list[int]]) -> list[list[int]]:
-    """Return maximal cliques of at least three nodes."""
+    """Return maximal cliques of at least three nodes.
+
+    Args:
+        edges: Pairs of nodes joined by known graph edges.
+    """
     return [clique for clique in _maximal_cliques(_graph_from_edges(edges)) if len(clique) > 2]
 
 
 def check_incomplete_matrix_is_chordal(incomplete_matrix: t.Any) -> bool:
-    """Check graph chordality by maximum-cardinality search."""
+    """Check graph chordality by maximum-cardinality search.
+
+    Args:
+        incomplete_matrix: Correlation matrix containing missing entries.
+    """
     n = int(xp.asarray(incomplete_matrix).shape[0])
     graph = _graph_from_edges(get_edges_from_incomplete_matrix(incomplete_matrix), range(n))
     unvisited = set(graph)
@@ -120,6 +165,10 @@ def find_non_pd_submatrix(matrix: t.Any, max_iter: int = 1000) -> tuple[t.Any, t
     remove vertices without restoring positive definiteness. The reduction
     is deterministic and bounded by max_iter. Returns (None, None) if the
     input is positive definite.
+
+    Args:
+        matrix: Matrix to validate, complete or use in the correlation calculation.
+        max_iter: Maximum number of search or optimisation iterations.
     """
     raw = asnumpy(matrix, dtype=float)
     if raw.ndim != 2 or raw.shape[0] != raw.shape[1] or not np.all(np.isfinite(raw)):
@@ -150,7 +199,11 @@ def find_non_pd_submatrix(matrix: t.Any, max_iter: int = 1000) -> tuple[t.Any, t
 def check_all_cliques_in_correlation_matrix(
     incomplete_matrix: t.Any,
 ) -> tuple[bool, t.Any, t.Any]:
-    """Find a non-PD observed clique or confirm clique-level feasibility."""
+    """Find a non-PD observed clique or confirm clique-level feasibility.
+
+    Args:
+        incomplete_matrix: Correlation matrix containing missing entries.
+    """
     raw = xp.asarray(incomplete_matrix)
     for clique in get_all_cliques(incomplete_matrix):
         if len(clique) <= 2:

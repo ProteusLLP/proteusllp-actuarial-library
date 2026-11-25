@@ -54,6 +54,6 @@ def test_incompatible_axes_do_not_merge_groups(family, method):
     groups = [v.coupled_variable_group for v in (shape, scale, argument)]
     with pytest.raises(ValueError):
         getattr(family(shape, scale, 0.0), method)(argument)
-    for value, group in zip((shape, scale, argument), groups):
+    for value, group in zip((shape, scale, argument), groups, strict=False):
         assert value.coupled_variable_group is group
     assert shape.coupled_variable_group is not scale.coupled_variable_group

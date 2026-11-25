@@ -35,6 +35,10 @@ def asnumpy(value: t.Any, dtype: t.Any = None) -> npt.NDArray[t.Any]:
 
     This is the explicit device-to-host boundary used by ``__array__`` and by
     integrations which do not support CuPy arrays.
+
+    Args:
+        dtype: Requested array data type.
+        value: Input value to convert or inspect.
     """
     if _USE_GPU and isinstance(value, xp.ndarray):
         result = t.cast(t.Any, xp).asnumpy(value)
@@ -50,6 +54,9 @@ def to_backend(value: t.Any) -> t.Any:
     ``__array_function__``. Before calling the original NumPy operation, PAL
     uses this helper to ensure that mixed NumPy/CuPy operands all live on the
     same device.
+
+    Args:
+        value: Input value to convert or inspect.
     """
     if isinstance(value, np.ndarray):
         return xp.asarray(value)
@@ -65,7 +72,11 @@ def to_backend(value: t.Any) -> t.Any:
 
 
 def scalar_or_array(value: t.Any) -> t.Any:
-    """Convert zero-dimensional backend results to Python scalar values."""
+    """Convert zero-dimensional backend results to Python scalar values.
+
+    Args:
+        value: Input value to convert or inspect.
+    """
     if getattr(value, "ndim", None) == 0:
         return value.item()
     return value
@@ -77,6 +88,9 @@ def create_random_generator(seed: int) -> t.Any:
     CuPy's newer ``Generator`` API does not yet expose every distribution used
     by PAL, whereas ``RandomState`` does. NumPy continues to use its modern
     ``Generator`` API on the CPU.
+
+    Args:
+        seed: Seed used to initialize reproducible random draws.
     """
     if _USE_GPU:
         return xp.random.RandomState(seed)
