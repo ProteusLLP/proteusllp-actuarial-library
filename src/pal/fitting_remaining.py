@@ -484,6 +484,7 @@ def _fit_mbbefd(
     left = np.array([np.log(initial_g - 1), -0.3])
     right = np.array([np.log(initial_g - 1), 0.3])
     initial, alternative = (left, right) if objective(left) <= objective(right) else (right, left)
+
     def decode(raw: np.ndarray) -> dict[str, float]:
         """Decode MBBEFD optimiser coordinates.
 
@@ -501,9 +502,7 @@ def _fit_mbbefd(
         """
         return _initial_coordinates({"g": natural["g"] - 1, "b": natural["b"]}, ("g", "b"))
 
-    start, alternative = _override_initial(
-        initial, alternative, initial_parameters, decode, encode, ("g", "b"), objective
-    )
+    start, alternative = _override_initial(initial, alternative, initial_parameters, decode, encode, ("g", "b"), objective)
     best = _minimize(objective, start, optimizer, optimizer_options, 4000, alternative=alternative)
     if best.fun >= 1e100:
         raise RuntimeError("No finite MBBEFD likelihood found")

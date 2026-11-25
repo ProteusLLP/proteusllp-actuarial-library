@@ -486,7 +486,9 @@ def fit_distribution(
     if initial_parameters is not None and family in (_distributions.Pareto, _distributions.Exponential):
         raise ValueError(f"{family.__name__} uses an analytical fit and does not require initial_parameters")
     if free_location:
-        return _fit_gpd_free_location(distribution, x, c, w, threshold, optimizer, optimizer_options, initial_parameters)
+        return _fit_gpd_free_location(
+            distribution, x, c, w, threshold, optimizer, optimizer_options, initial_parameters
+        )
     if family is _distributions.Exponential:
         return _fit_exponential(distribution, x, c, w, threshold)
     if family is _distributions.GeneralizedBetaPrime:
@@ -986,6 +988,7 @@ def _fit_gpd_free_location(
     largest = float(np.max(x)) - base_loc
     initial = np.array([_gpd_shape_coordinate(xi0, sigma0, largest), np.log(sigma0), np.log(distance)])
     alternative = np.array([0.0, np.log(start_scale), np.log(distance)])
+
     def encode(params: dict[str, float]) -> np.ndarray:
         """Encode free-location GPD estimates.
 
