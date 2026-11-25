@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from scipy import integrate, stats
 
+from pal._lev import _SEVERITY_LEV_FORMULAS
 from pal.distributions import (
     GEV,
     GPD,
@@ -38,6 +39,7 @@ from pal.distributions import (
     Weibull,
     WeightedDistribution,
 )
+from pal.fitting import _other_families, _supported_families
 
 
 @pytest.mark.parametrize(
@@ -235,3 +237,8 @@ def test_large_lev_batch_is_monotone_and_matches_scalar(model):
 )
 def test_mbbefd_lev_extreme_scale(g, b, limit, expected):
     assert MBBEFD(g=g, b=b).lev(limit) == pytest.approx(expected, rel=5e-10, abs=0)
+
+
+def test_severity_lev_dispatch_covers_supported_families():
+    """Every positive severity family has a formula; GEV uses a separate path."""
+    assert set(_SEVERITY_LEV_FORMULAS) == set((*_supported_families(), *_other_families())) - {GEV}

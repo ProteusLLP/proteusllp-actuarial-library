@@ -177,16 +177,20 @@ def _remaining_lev(family: type[DistributionBase], p: dict[str, float], d: np.nd
     return None
 
 
-def _burr_family_lev(family: type[DistributionBase], p: dict[str, float], x: np.ndarray) -> np.ndarray:
-    """Use a shared incomplete-beta lower moment for all Burr/GB2 families."""
-    if family is dist.GeneralizedBetaPrime:
-        a, b, alpha, beta = (p[name] for name in ("a", "b", "p", "q"))
-    elif family in (dist.InverseBurr, dist.InverseParalogistic):
-        a, b, alpha, beta = p.get("power", p["shape"]), p["scale"], p["shape"], 1.0
-    else:
-        a = p.get("power", p["shape"])
-        b, alpha = p["scale"], 1.0
-        beta = 1.0 if family is dist.LogLogistic else p["shape"]
+def _gb2_lev(x: np.ndarray, a: float, b: float, p: float, q: float) -> np.ndarray:
+    """Use incomplete-beta lower moments for GB2 and its special cases.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        a: Positive power of the scaled loss.
+        b: Positive loss scale.
+        p: Lower-tail beta shape.
+        q: Upper-tail beta shape.
+
+    Returns:
+        Capped expectations, with NaN marking unresolved analytical values.
+    """
+    alpha, beta = p, q
     shift = 1 / a
     log_x = np.log(x)
     power = a * (log_x - np.log(b))
@@ -214,100 +218,278 @@ def _burr_family_lev(family: type[DistributionBase], p: dict[str, float], x: np.
     return np.where(x == 0, 0.0, value)
 
 
+def _burr_lev(x: np.ndarray, power: float, shape: float, scale: float) -> np.ndarray:
+    """Evaluate Burr XII as a special case of GB2.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        power: Positive exponent of the scaled loss.
+        shape: Positive Burr shape.
+        scale: Positive loss scale.
+    """
+    return _gb2_lev(x, power, scale, 1.0, shape)
+
+
+def _inverse_burr_lev(x: np.ndarray, power: float, shape: float, scale: float) -> np.ndarray:
+    """Evaluate Burr III as a special case of GB2.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        power: Positive exponent of the scaled loss.
+        shape: Positive inverse Burr shape.
+        scale: Positive loss scale.
+    """
+    return _gb2_lev(x, power, scale, shape, 1.0)
+
+
+def _loglogistic_lev(x: np.ndarray, shape: float, scale: float) -> np.ndarray:
+    """Evaluate the log-logistic capped expectation.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        shape: Positive log-logistic tail index.
+        scale: Positive loss scale.
+    """
+    return _gb2_lev(x, shape, scale, 1.0, 1.0)
+
+
+def _paralogistic_lev(x: np.ndarray, shape: float, scale: float) -> np.ndarray:
+    """Evaluate the paralogistic capped expectation.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        shape: Positive common Burr power and shape.
+        scale: Positive loss scale.
+    """
+    return _burr_lev(x, shape, shape, scale)
+
+
+def _inverse_paralogistic_lev(x: np.ndarray, shape: float, scale: float) -> np.ndarray:
+    """Evaluate the inverse paralogistic capped expectation.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        shape: Positive common inverse Burr power and shape.
+        scale: Positive loss scale.
+    """
+    return _inverse_burr_lev(x, shape, shape, scale)
+
+
+def _exponential_lev(x: np.ndarray, scale: float) -> np.ndarray:
+    """Evaluate the exponential capped expectation as a zero-shape GPD.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        scale: Positive exponential mean.
+    """
+    return _gpd_lev(x, 0.0, scale)
+
+
+def _gamma_lev(x: np.ndarray, alpha: float, theta: float) -> np.ndarray:
+    """Evaluate the gamma capped expectation using incomplete gamma probabilities.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        alpha: Positive gamma shape.
+        theta: Positive gamma scale.
+    """
+    log_z = np.log(x) - np.log(theta)
+    log_sf = _gamma_logsf_coordinate(alpha, log_z)
+    value = np.exp(np.log(alpha) + np.log(theta) + _log_gamma_lower_probability(alpha + 1, log_z))
+    return value + np.exp(np.log(x) + log_sf)
+
+
+def _lognormal_lev(x: np.ndarray, mu: float, sigma: float) -> np.ndarray:
+    """Evaluate the lognormal capped expectation without an overflowing mean.
+
+    Args:
+        x: Nonnegative limits.
+        mu: Mean of log loss.
+        sigma: Positive standard deviation of log loss.
+    """
+    z = _lognormal_coordinate(x, mu, sigma)
+    log_x = np.log(x)
+    shifted = z - sigma
+    log_moment = np.empty_like(x)
+    left = shifted <= 0
+    # The normal exponential tilt cancels analytically, including when
+    # the unconditional mean is outside the floating-point range.
+    log_moment[left] = log_x[left] - z[left] ** 2 / 2 + np.log(0.5 * special.erfcx(-shifted[left] / np.sqrt(2)))
+    log_moment[~left] = mu + sigma**2 / 2 + special.log_ndtr(shifted[~left])
+    return np.exp(log_moment) + np.exp(log_x + special.log_ndtr(-z))
+
+
+def _weibull_lev(x: np.ndarray, shape: float, scale: float) -> np.ndarray:
+    """Evaluate the Weibull survival integral using the incomplete gamma function.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        shape: Positive Weibull shape.
+        scale: Positive loss scale.
+    """
+    a = 1 / shape
+    log_z = shape * (np.log(x) - np.log(scale))
+    value = np.exp(np.log(scale) + special.gammaln(1 + a) + _log_gamma_lower_probability(a, log_z))
+    if a > 1e7:
+        value[:] = np.nan
+    return value
+
+
+def _gig_lev(x: np.ndarray, p: float, chi: float, psi: float) -> np.ndarray:
+    """Evaluate GIG capped moments using the shared log-coordinate moment kernel.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        p: GIG index controlling the power of loss in the density.
+        chi: Positive inverse-loss coefficient.
+        psi: Positive loss coefficient.
+    """
+    _, logsf, log_moment, _ = _gig_log_moments(x, p, chi, psi)
+    return np.exp(log_moment) + np.exp(np.log(x) + logsf)
+
+
+def _inverse_generalized_gamma_lev(
+    x: np.ndarray,
+    alpha: float,
+    scale: float,
+    power: float,
+    boundary_logsf: t.Callable[[np.ndarray], np.ndarray],
+) -> np.ndarray:
+    """Evaluate capped inverse-generalized-gamma moments.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        alpha: Positive shape of the underlying unit-scale gamma variable.
+        scale: Positive loss scale.
+        power: Positive power of the inverse transformation.
+        boundary_logsf: Log-survival kernel at the infinite-mean boundary,
+            accepting the log of the underlying gamma coordinate.
+
+    Returns:
+        Capped expectations, with NaN marking cases requiring survival integration.
+    """
+    k = 1 / power
+    log_z = power * (np.log(scale) - np.log(x))
+    z = np.exp(log_z)
+    if alpha > k:
+        logmean = np.log(scale) + special.gammaln(alpha - k) - special.gammaln(alpha)
+        value = np.exp(logmean + _gamma_logsf_coordinate(alpha - k, log_z))
+        return value + np.exp(np.log(x) + _log_gamma_lower_probability(alpha, log_z))
+    if alpha == k:
+        e1 = np.where(log_z < -36, -np.euler_gamma - log_z, special.exp1(z))
+        log_sf = boundary_logsf(log_z)
+        return np.exp(np.log(scale) - special.gammaln(alpha) + np.log(e1)) + np.exp(np.log(x) + log_sf)
+    return np.full_like(x, np.nan)
+
+
+def _inverse_gamma_lev(x: np.ndarray, alpha: float, theta: float) -> np.ndarray:
+    """Evaluate the inverse gamma capped expectation.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        alpha: Positive inverse gamma shape.
+        theta: Positive inverse gamma scale.
+    """
+    return _inverse_generalized_gamma_lev(x, alpha, theta, 1.0, lambda log_z: _log_gamma_lower_probability(alpha, log_z))
+
+
+def _inverse_weibull_lev(x: np.ndarray, shape: float, scale: float) -> np.ndarray:
+    """Evaluate the inverse Weibull capped expectation.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        shape: Positive inverse Weibull tail index.
+        scale: Positive loss scale.
+    """
+    return _inverse_generalized_gamma_lev(x, 1.0, scale, shape, lambda log_z: _log_survival_from_log_hazard(log_z, np))
+
+
+def _inverse_exponential_lev(x: np.ndarray, scale: float) -> np.ndarray:
+    """Evaluate the inverse exponential capped expectation.
+
+    Args:
+        x: Nonnegative limits relative to the location.
+        scale: Positive loss scale.
+    """
+    return _inverse_weibull_lev(x, 1.0, scale)
+
+
+def _loggamma_lev(x: np.ndarray, alpha: float, beta: float) -> np.ndarray:
+    """Evaluate the log-gamma capped expectation, including infinite means.
+
+    Args:
+        x: Nonnegative limits; the distribution has lower support one.
+        alpha: Positive shape of the gamma-distributed log loss.
+        beta: Positive scale of the gamma-distributed log loss.
+    """
+    z = np.log(np.maximum(x, 1)) / beta
+    if beta < 1:
+        moment = np.exp(-alpha * np.log1p(-beta) + np.log(special.gammainc(alpha, (1 - beta) * z)))
+    elif beta == 1:
+        moment = np.exp(alpha * np.log(z) - special.gammaln(alpha + 1))
+    else:
+        moment = np.exp(
+            alpha * np.log(z) - special.gammaln(alpha + 1) + np.log(special.hyp1f1(alpha, alpha + 1, (beta - 1) * z))
+        )
+    return np.where(x <= 1, x, moment + x * special.gammaincc(alpha, z))
+
+
+def _inverse_gaussian_lev(x: np.ndarray, mu: float, lambda_: float) -> np.ndarray:
+    """Evaluate inverse Gaussian capped moments using stable normal-tail differences.
+
+    Args:
+        x: Nonnegative limits.
+        mu: Positive inverse Gaussian mean.
+        lambda_: Positive inverse Gaussian shape.
+    """
+    value = np.zeros_like(x)
+    pos = x > 0
+    xp = x[pos]
+    a, b, root, log_a, log_b = _inverse_gaussian_log_tails(xp, mu, lambda_)
+    log_lower_a = special.log_ndtr(a)
+    gap = 2 * np.sqrt(lambda_) * np.sqrt(xp) / mu
+    log_moment = np.log(mu) + _normal_tail_difference(-a, b, gap, log_lower_a, log_b)
+    log_sf = _normal_tail_difference(a, b, 2 * root, log_a, log_b)
+    value[pos] = np.exp(log_moment) + np.exp(np.log(xp) + log_sf)
+    return value
+
+
+_SEVERITY_LEV_FORMULAS: dict[type[DistributionBase], t.Callable[..., np.ndarray]] = {
+    dist.Pareto: _pareto_lev,
+    dist.GPD: _gpd_lev,
+    dist.Exponential: _exponential_lev,
+    dist.Gamma: _gamma_lev,
+    dist.LogNormal: _lognormal_lev,
+    dist.Weibull: _weibull_lev,
+    dist.GeneralizedInverseGaussian: _gig_lev,
+    dist.GeneralizedBetaPrime: _gb2_lev,
+    dist.Burr: _burr_lev,
+    dist.LogLogistic: _loglogistic_lev,
+    dist.Paralogistic: _paralogistic_lev,
+    dist.InverseBurr: _inverse_burr_lev,
+    dist.InverseParalogistic: _inverse_paralogistic_lev,
+    dist.InverseGamma: _inverse_gamma_lev,
+    dist.InverseWeibull: _inverse_weibull_lev,
+    dist.InverseExponential: _inverse_exponential_lev,
+    dist.LogGamma: _loggamma_lev,
+    dist.InverseGaussian: _inverse_gaussian_lev,
+}
+
+
 def _severity_lev(family: type[DistributionBase], p: dict[str, float], d: np.ndarray) -> np.ndarray:
+    """Dispatch vectorised capped severity moments and apply the location shift.
+
+    Args:
+        family: PAL severity distribution class.
+        p: Natural distribution parameters, including location where applicable.
+        d: Policy limits in original loss units.
+    """
+    formula = _SEVERITY_LEV_FORMULAS.get(family)
+    if formula is None:
+        return np.full_like(d, np.nan)
     loc = p.get("loc", 0.0)
     x = np.maximum(d - loc, 0)
-    if family is dist.Pareto:
-        return _pareto_lev(d, p["shape"], p["scale"])
-    if family is dist.GPD:
-        value = _gpd_lev(x, p["shape"], p["scale"])
-    elif family is dist.Exponential:
-        value = _gpd_lev(x, 0.0, p["scale"])
-    elif family is dist.Gamma:
-        a, theta = p["alpha"], p["theta"]
-        log_z = np.log(x) - np.log(theta)
-        log_sf = _positive_log_survival_array(family, p, np.log(x))
-        if log_sf is None:
-            raise RuntimeError("Missing gamma survival kernel")
-        value = np.exp(np.log(a) + np.log(theta) + _log_gamma_lower_probability(a + 1, log_z))
-        value += np.exp(np.log(x) + log_sf)
-    elif family is dist.LogNormal:
-        mu, sigma = p["mu"], p["sigma"]
-        z = _lognormal_coordinate(x, mu, sigma)
-        log_x = np.log(x)
-        shifted = z - sigma
-        log_moment = np.empty_like(x)
-        left = shifted <= 0
-        # The normal exponential tilt cancels analytically, including when
-        # the unconditional mean is outside the floating-point range.
-        log_moment[left] = log_x[left] - z[left] ** 2 / 2 + np.log(0.5 * special.erfcx(-shifted[left] / np.sqrt(2)))
-        log_moment[~left] = mu + sigma**2 / 2 + special.log_ndtr(shifted[~left])
-        value = np.exp(log_moment) + np.exp(log_x + special.log_ndtr(-z))
-    elif family is dist.Weibull:
-        a, scale = 1 / p["shape"], p["scale"]
-        log_z = p["shape"] * (np.log(x) - np.log(scale))
-        value = np.exp(np.log(scale) + special.gammaln(1 + a) + _log_gamma_lower_probability(a, log_z))
-        if a > 1e7:
-            value[:] = np.nan
-    elif family is dist.GeneralizedInverseGaussian:
-        _, logsf, log_moment, _ = _gig_log_moments(x, p["p"], p["chi"], p["psi"])
-        value = np.exp(log_moment) + np.exp(np.log(x) + logsf)
-    elif family in (
-        dist.GeneralizedBetaPrime,
-        dist.Burr,
-        dist.LogLogistic,
-        dist.Paralogistic,
-        dist.InverseBurr,
-        dist.InverseParalogistic,
-    ):
-        value = _burr_family_lev(family, p, x)
-    elif family in (dist.InverseGamma, dist.InverseWeibull, dist.InverseExponential):
-        if family is dist.InverseGamma:
-            a, scale, power = p["alpha"], p["theta"], 1.0
-        else:
-            a, scale, power = 1.0, p["scale"], p.get("shape", 1.0)
-        k = 1 / power
-        log_z = power * (np.log(scale) - np.log(x))
-        z = np.exp(log_z)
-        if a > k:
-            logmean = np.log(scale) + special.gammaln(a - k) - special.gammaln(a)
-            value = np.exp(logmean + _gamma_logsf_coordinate(a - k, log_z))
-            value += np.exp(np.log(x) + _log_gamma_lower_probability(a, log_z))
-        elif a == k:
-            e1 = np.where(log_z < -36, -np.euler_gamma - log_z, special.exp1(z))
-            log_sf = _positive_log_survival_array(family, p, np.log(x))
-            if log_sf is None:
-                raise RuntimeError("Missing inverse gamma survival kernel")
-            value = np.exp(np.log(scale) - special.gammaln(a) + np.log(e1)) + np.exp(np.log(x) + log_sf)
-        else:
-            value = np.full_like(x, np.nan)
-    elif family is dist.LogGamma:
-        alpha, beta = p["alpha"], p["beta"]
-        z = np.log(np.maximum(x, 1)) / beta
-        if beta < 1:
-            moment = np.exp(-alpha * np.log1p(-beta) + np.log(special.gammainc(alpha, (1 - beta) * z)))
-        elif beta == 1:
-            moment = np.exp(alpha * np.log(z) - special.gammaln(alpha + 1))
-        else:
-            moment = np.exp(
-                alpha * np.log(z)
-                - special.gammaln(alpha + 1)
-                + np.log(special.hyp1f1(alpha, alpha + 1, (beta - 1) * z))
-            )
-        return np.where(d <= 1, d, moment + x * special.gammaincc(alpha, z))
-    elif family is dist.InverseGaussian:
-        mu, lam = p["mu"], p["lambda_"]
-        value = np.zeros_like(x)
-        pos = x > 0
-        xp = x[pos]
-        a, b, root, log_a, log_b = _inverse_gaussian_log_tails(xp, mu, lam)
-        log_lower_a = special.log_ndtr(a)
-        gap = 2 * np.sqrt(lam) * np.sqrt(xp) / mu
-        log_moment = np.log(mu) + _normal_tail_difference(-a, b, gap, log_lower_a, log_b)
-        log_sf = _normal_tail_difference(a, b, 2 * root, log_a, log_b)
-        value[pos] = np.exp(log_moment) + np.exp(np.log(xp) + log_sf)
-    else:
-        return np.full_like(d, np.nan)
+    value = formula(x, **{name: value for name, value in p.items() if name != "loc"})
     return np.where(d <= loc, d, loc + value)
 
 
