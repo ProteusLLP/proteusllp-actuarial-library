@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing as t
+
 import numpy as np
 
 
@@ -109,3 +111,104 @@ def _gpd_shape_coordinate(shape: float, scale: float, largest: float) -> float:
         largest: Largest observed excess.
     """
     return shape if shape >= 0 else shape / (1 + shape * largest / scale)
+
+
+def _initial_coordinates(
+    params: dict[str, float],
+    names: tuple[str, ...],
+    *,
+    linear: tuple[str, ...] = (),
+    square_root: tuple[str, ...] = (),
+) -> np.ndarray:
+    """Encode ordinary natural parameters in the optimiser's coordinates.
+
+    Args:
+        params: Natural parameter values.
+        names: Ordered names of free parameters.
+        linear: Parameters that are not log transformed.
+        square_root: Nonnegative parameters encoded by their square roots.
+    """
+    values = []
+    for name in names:
+        value = params[name]
+        if name in linear:
+            values.append(value)
+        elif name in square_root:
+            if value < 0:
+                raise ValueError(f"initial_parameters[{name!r}] must be nonnegative")
+            values.append(float(np.sqrt(value)))
+        else:
+            if value <= 0:
+                raise ValueError(f"initial_parameters[{name!r}] must be positive")
+            values.append(float(np.log(value)))
+    return np.asarray(values)
+
+
+def _shape_coordinate(shape: float, scale: float, left: float, right: float) -> float:
+    """Invert the support-safe shape transformation.
+
+    Args:
+        shape: Natural extreme-value shape.
+        scale: Positive natural scale.
+        left: Distance from location to the smallest observation.
+        right: Distance from location to the largest observation.
+
+    Raises:
+        ValueError: If scale or shape violates the sample support.
+    """
+    if scale <= 0:
+        raise ValueError("initial scale must be positive")
+    distance = max(0.0, left if shape >= 0 else right)
+    denominator = 1 - abs(shape) * distance / scale
+    if denominator <= 0:
+        raise ValueError("initial shape and scale do not support all recorded observations")
+    return shape / denominator
+
+
+def _override_initial(
+    automatic: np.ndarray,
+    alternative: np.ndarray | None,
+    supplied: t.Mapping[str, float] | None,
+    decode: t.Callable[[np.ndarray], dict[str, float]],
+    encode: t.Callable[[dict[str, float]], np.ndarray],
+    free_names: tuple[str, ...],
+    objective: t.Callable[[np.ndarray], float],
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Overlay natural user estimates and validate the resulting likelihood.
+
+    Args:
+        automatic: Automatically calculated optimiser coordinates.
+        alternative: Default recovery coordinates, if any.
+        supplied: Optional partial mapping of natural parameter estimates.
+        decode: Convert automatic coordinates to natural parameters.
+        encode: Convert natural parameters to optimiser coordinates.
+        free_names: Names of parameters estimated by the numerical fit.
+        objective: Negative log-likelihood in optimiser coordinates.
+
+    Returns:
+        Primary and recovery coordinates. The automatic start becomes the
+        recovery start when user estimates are supplied.
+    """
+    if supplied is None:
+        return automatic, alternative
+    if not isinstance(supplied, t.Mapping):
+        raise TypeError("initial_parameters must be a mapping of parameter names to finite numbers")
+    natural = decode(automatic)
+    for name, value in supplied.items():
+        if name not in natural:
+            raise ValueError(f"Unknown initial parameter {name!r}")
+        if not np.isfinite(value):
+            raise ValueError(f"initial_parameters[{name!r}] must be finite")
+        if name not in free_names and value != natural[name]:
+            raise ValueError(f"initial_parameters cannot change fixed parameter {name!r}")
+        natural[name] = float(value)
+    if not supplied:
+        return automatic, alternative
+    try:
+        start = encode(natural)
+        valid = np.all(np.isfinite(start)) and np.isfinite(value := objective(start)) and value < 1e100
+    except (ArithmeticError, ValueError) as exc:
+        raise ValueError(f"Invalid initial_parameters: {exc}") from exc
+    if not valid:
+        raise ValueError("initial_parameters do not give a finite likelihood for the observed sample")
+    return start, automatic

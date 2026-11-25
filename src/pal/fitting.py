@@ -13,7 +13,15 @@ from enum import Enum
 import numpy as np
 from scipy import optimize, special, stats
 
-from ._fitting_initial import _gpd_initial, _gpd_shape_coordinate, _log_location_scale, _support_shape
+from ._fitting_initial import (
+    _gpd_initial,
+    _gpd_shape_coordinate,
+    _initial_coordinates,
+    _log_location_scale,
+    _override_initial,
+    _shape_coordinate,
+    _support_shape,
+)
 from ._gig import _gig_log_probabilities
 from ._severity_probability import _burr_terms, _inverse_weibull_terms, _StableSeverityReference
 
@@ -406,6 +414,7 @@ def fit_distribution(
     free_location: bool = False,
     optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
     optimizer_options: t.Mapping[str, t.Any] | None = None,
+    initial_parameters: t.Mapping[str, float] | None = None,
     uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
 ) -> FitResult[_T]:
     """Fit a supported PAL distribution by maximum likelihood.
@@ -423,6 +432,8 @@ def fit_distribution(
             for GPD; the location defaults to the reporting threshold.
         optimizer: Numerical method for non-analytical fits.
         optimizer_options: Options passed to the selected SciPy optimizer.
+        initial_parameters: Optional natural starting estimates for a numerical fit. Unspecified parameters
+            use automatic estimates; fixed parameters cannot be changed.
         uncertainty_method: Optional joint parameter uncertainty method; defaults to None.
 
     Returns:
@@ -448,6 +459,7 @@ def fit_distribution(
             free_location=free_location,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
         return _with_uncertainty(
             fitted,
@@ -471,14 +483,16 @@ def fit_distribution(
     if free_location and threshold > 0:
         raise ValueError("The GPD location is not identifiable from a left-truncated sample")
     x, c, w = _prepare(observations, threshold, censored, weights, allow_any_real=family is _distributions.GEV)
+    if initial_parameters is not None and family in (_distributions.Pareto, _distributions.Exponential):
+        raise ValueError(f"{family.__name__} uses an analytical fit and does not require initial_parameters")
     if free_location:
-        return _fit_gpd_free_location(distribution, x, c, w, threshold, optimizer, optimizer_options)
+        return _fit_gpd_free_location(distribution, x, c, w, threshold, optimizer, optimizer_options, initial_parameters)
     if family is _distributions.Exponential:
         return _fit_exponential(distribution, x, c, w, threshold)
     if family is _distributions.GeneralizedBetaPrime:
-        return _fit_gb2(distribution, x, c, w, threshold, optimizer, optimizer_options)
+        return _fit_gb2(distribution, x, c, w, threshold, optimizer, optimizer_options, initial_parameters)
     if family in _other_families():
-        return _fit_other(distribution, x, c, w, threshold, optimizer, optimizer_options)
+        return _fit_other(distribution, x, c, w, threshold, optimizer, optimizer_options, initial_parameters)
     total = float(np.sum(w))
     mean = float(np.average(x, weights=w))
     variance = float(np.average((x - mean) ** 2, weights=w))
@@ -525,7 +539,33 @@ def fit_distribution(
                 ll = _log_likelihood(family, transform(p), x, c, w, threshold)
             return -ll if np.isfinite(ll) else 1e100
 
-        best = _minimize(objective, np.asarray(initial), optimizer, optimizer_options, 5000, alternative=alternative)
+        if family is _distributions.GPD:
+            free_names = ("shape", "scale")
+
+            def encode(params: dict[str, float]) -> np.ndarray:
+                """Encode natural GPD estimates.
+
+                Args:
+                    params: Natural GPD parameters.
+                """
+                shape = _shape_coordinate(params["shape"], params["scale"], 0.0, largest)
+                return np.array([shape, np.log(params["scale"])])
+
+        else:
+            free_names = ("mu", "sigma") if family is _distributions.LogNormal else ("alpha", "theta")
+
+            def encode(params: dict[str, float]) -> np.ndarray:
+                """Encode ordinary severity estimates.
+
+                Args:
+                    params: Natural severity parameters.
+                """
+                return _initial_coordinates(params, free_names, linear=("mu",))
+
+        start, alternative = _override_initial(
+            np.asarray(initial), alternative, initial_parameters, transform, encode, free_names, objective
+        )
+        best = _minimize(objective, start, optimizer, optimizer_options, 5000, alternative=alternative)
         if not np.isfinite(best.fun) or best.fun >= 1e100:
             raise RuntimeError(f"Unable to obtain a finite {family.__name__} fit")
         parameters = transform(best.x)
@@ -661,6 +701,7 @@ def _fit_other(
     threshold: float,
     optimizer: OptimizerMethod | str,
     optimizer_options: t.Mapping[str, t.Any] | None,
+    initial_parameters: t.Mapping[str, float] | None,
 ) -> FitResult[_T]:
     """Fit additional two- and three-parameter severity distributions."""
     from . import distributions as _distributions
@@ -803,7 +844,23 @@ def _fit_other(
             val = loglik(make_params(raw))
         return -val if np.isfinite(val) else 1e100
 
-    best = _minimize(objective, np.asarray(initial), optimizer, optimizer_options, 5000, alternative=alternative)
+    def encode(params: dict[str, float]) -> np.ndarray:
+        """Encode natural estimates, including support-safe GEV coordinates.
+
+        Args:
+            params: Natural distribution parameters.
+        """
+        if family is _distributions.GEV:
+            loc, scale = params["loc"], params["scale"]
+            shape = _shape_coordinate(params["shape"], scale, loc - smallest, largest - loc)
+            return np.array([shape, np.log(scale), (loc - median) / spread])
+        linear = ("p",) if family is _distributions.GeneralizedInverseGaussian else ()
+        return _initial_coordinates(params, names, linear=linear)
+
+    start, alternative = _override_initial(
+        np.asarray(initial), alternative, initial_parameters, make_params, encode, names, objective
+    )
+    best = _minimize(objective, start, optimizer, optimizer_options, 5000, alternative=alternative)
     if best.fun >= 1e100 or not np.isfinite(best.fun):
         raise RuntimeError(f"Unable to obtain finite {family.__name__} likelihood")
     pars = make_params(best.x)
@@ -901,6 +958,7 @@ def _fit_gpd_free_location(
     threshold: float,
     optimizer: OptimizerMethod | str,
     optimizer_options: t.Mapping[str, t.Any] | None,
+    initial_parameters: t.Mapping[str, float] | None,
 ) -> FitResult[_T]:
     """Estimate GPD shape, scale and location subject to support constraints."""
     smallest = float(np.min(x))
@@ -928,7 +986,22 @@ def _fit_gpd_free_location(
     largest = float(np.max(x)) - base_loc
     initial = np.array([_gpd_shape_coordinate(xi0, sigma0, largest), np.log(sigma0), np.log(distance)])
     alternative = np.array([0.0, np.log(start_scale), np.log(distance)])
-    best = _minimize(objective, initial, optimizer, optimizer_options, 5000, alternative=alternative)
+    def encode(params: dict[str, float]) -> np.ndarray:
+        """Encode free-location GPD estimates.
+
+        Args:
+            params: Natural GPD shape, scale and location.
+        """
+        loc, scale = params["loc"], params["scale"]
+        if loc >= max_loc:
+            raise ValueError("initial GPD location must be below the smallest observation")
+        shape = _shape_coordinate(params["shape"], scale, 0.0, float(np.max(x)) - loc)
+        return np.array([shape, np.log(scale), np.log(max_loc - loc)])
+
+    start, alternative = _override_initial(
+        initial, alternative, initial_parameters, transform, encode, ("shape", "scale", "loc"), objective
+    )
+    best = _minimize(objective, start, optimizer, optimizer_options, 5000, alternative=alternative)
     if best.fun >= 1e100 or not np.isfinite(best.fun):
         raise RuntimeError("Unable to obtain a finite three-parameter GPD fit")
     params = transform(best.x)
@@ -1052,6 +1125,7 @@ def _fit_gb2(
     threshold: float,
     optimizer: OptimizerMethod | str,
     optimizer_options: t.Mapping[str, t.Any] | None,
+    initial_parameters: t.Mapping[str, float] | None,
 ) -> FitResult[_T]:
     """Fit the four-parameter GB2 distribution in log-parameter coordinates."""
     center, iqr = _log_location_scale(x, censored, weights)
@@ -1085,7 +1159,11 @@ def _fit_gb2(
             ll = likelihood(transform(v))
         return -ll if np.isfinite(ll) else 1e100
 
-    best = _minimize(objective, initial, optimizer, optimizer_options, 6000, alternative=alternative)
+    names = ("a", "b", "p", "q")
+    start, alternative = _override_initial(
+        initial, alternative, initial_parameters, transform, lambda p: _initial_coordinates(p, names), names, objective
+    )
+    best = _minimize(objective, start, optimizer, optimizer_options, 6000, alternative=alternative)
     if not np.isfinite(best.fun) or best.fun >= 1e100:
         raise RuntimeError("No finite generalised beta prime fit")
     pars = transform(best.x)

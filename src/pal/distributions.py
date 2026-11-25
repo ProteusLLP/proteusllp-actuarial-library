@@ -597,8 +597,12 @@ class GPD(DistributionBase):
         free_location: bool = False,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
     ) -> FitResult[GPD]:
-        """Fit a GPD with the location fixed at threshold or estimated."""
+        """Fit a GPD with the location fixed at threshold or estimated.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -609,6 +613,7 @@ class GPD(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -690,11 +695,15 @@ class Burr(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Burr]:
-        """Estimate distribution parameters by maximum likelihood."""
+        """Estimate distribution parameters by maximum likelihood.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -704,6 +713,7 @@ class Burr(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -814,11 +824,15 @@ class GeneralizedBetaPrime(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[GeneralizedBetaPrime]:
-        """Fit positive severity observations by maximum likelihood."""
+        """Fit positive severity observations by maximum likelihood.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -828,6 +842,7 @@ class GeneralizedBetaPrime(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -914,13 +929,17 @@ class Beta(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
         loc: float = 0.0,
         scale: float = 1.0,
     ) -> FitResult[Beta]:
-        """Estimate distribution parameters from observed values."""
+        """Estimate distribution parameters from observed values.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_remaining(
             cls,
             observations,
@@ -932,6 +951,7 @@ class Beta(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1067,9 +1087,13 @@ class MBBEFD(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[MBBEFD]:
-        """Estimate distribution parameters from observed values."""
+        """Estimate distribution parameters from observed values.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_remaining(
             cls,
             observations,
@@ -1077,6 +1101,7 @@ class MBBEFD(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1293,11 +1318,15 @@ class LogLogistic(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[LogLogistic]:
-        """Estimate distribution parameters by maximum likelihood."""
+        """Estimate distribution parameters by maximum likelihood.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -1307,6 +1336,7 @@ class LogLogistic(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1392,11 +1422,15 @@ class Normal(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
     ) -> FitResult[Normal]:
-        """Estimate distribution parameters from observed values."""
+        """Estimate distribution parameters from observed values.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_remaining(
             cls,
             observations,
@@ -1406,6 +1440,7 @@ class Normal(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1460,11 +1495,15 @@ class Logistic(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
     ) -> FitResult[Logistic]:
-        """Estimate distribution parameters from observed values."""
+        """Estimate distribution parameters from observed values.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_remaining(
             cls,
             observations,
@@ -1474,6 +1513,7 @@ class Logistic(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1529,11 +1569,15 @@ class LogNormal(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[LogNormal]:
-        """Fit this distribution by maximum likelihood, with truncation and censoring."""
+        """Fit this distribution by maximum likelihood, with truncation and censoring.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -1543,6 +1587,7 @@ class LogNormal(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1596,11 +1641,15 @@ class Gamma(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Gamma]:
-        """Fit this distribution by maximum likelihood, with truncation and censoring."""
+        """Fit this distribution by maximum likelihood, with truncation and censoring.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -1610,6 +1659,7 @@ class Gamma(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1703,11 +1753,15 @@ class NonCentralChiSquared(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
     ) -> FitResult[NonCentralChiSquared]:
-        """Estimate distribution parameters from observed values."""
+        """Estimate distribution parameters from observed values.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_remaining(
             cls,
             observations,
@@ -1717,6 +1771,7 @@ class NonCentralChiSquared(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1802,11 +1857,15 @@ class InverseGamma(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseGamma]:
-        """Estimate distribution parameters by maximum likelihood."""
+        """Estimate distribution parameters by maximum likelihood.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -1816,6 +1875,7 @@ class InverseGamma(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1943,11 +2003,15 @@ class Paralogistic(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Paralogistic]:
-        """Estimate distribution parameters by maximum likelihood."""
+        """Estimate distribution parameters by maximum likelihood.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -1957,6 +2021,7 @@ class Paralogistic(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2041,11 +2106,15 @@ class InverseBurr(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseBurr]:
-        """Estimate distribution parameters by maximum likelihood."""
+        """Estimate distribution parameters by maximum likelihood.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -2055,6 +2124,7 @@ class InverseBurr(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2149,11 +2219,15 @@ class InverseParalogistic(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseParalogistic]:
-        """Fit the distribution using right-censored, left-truncated observations."""
+        """Fit the distribution using right-censored, left-truncated observations.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -2163,6 +2237,7 @@ class InverseParalogistic(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2246,11 +2321,15 @@ class Weibull(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[Weibull]:
-        """Estimate distribution parameters by maximum likelihood."""
+        """Estimate distribution parameters by maximum likelihood.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -2260,6 +2339,7 @@ class Weibull(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2331,11 +2411,15 @@ class InverseWeibull(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseWeibull]:
-        """Estimate distribution parameters by maximum likelihood."""
+        """Estimate distribution parameters by maximum likelihood.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -2345,6 +2429,7 @@ class InverseWeibull(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2417,11 +2502,15 @@ class LogGamma(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[LogGamma]:
-        """Estimate a log-gamma distribution by maximum likelihood."""
+        """Estimate a log-gamma distribution by maximum likelihood.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -2431,6 +2520,7 @@ class LogGamma(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2499,11 +2589,15 @@ class GEV(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[GEV]:
-        """Fit parameters by maximum likelihood with truncation and censoring."""
+        """Fit parameters by maximum likelihood with truncation and censoring.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -2513,6 +2607,7 @@ class GEV(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2602,11 +2697,15 @@ class StudentsT(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
     ) -> FitResult[StudentsT]:
-        """Estimate distribution parameters from observed values."""
+        """Estimate distribution parameters from observed values.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_remaining(
             cls,
             observations,
@@ -2616,6 +2715,7 @@ class StudentsT(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2708,11 +2808,15 @@ class InverseGaussian(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseGaussian]:
-        """Estimate distribution parameters by maximum likelihood."""
+        """Estimate distribution parameters by maximum likelihood.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -2722,6 +2826,7 @@ class InverseGaussian(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2859,11 +2964,15 @@ class GeneralizedInverseGaussian(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[GeneralizedInverseGaussian]:
-        """Fit parameters by maximum likelihood with truncation and censoring."""
+        """Fit parameters by maximum likelihood with truncation and censoring.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -2873,6 +2982,7 @@ class GeneralizedInverseGaussian(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -3252,11 +3362,15 @@ class InverseExponential(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[InverseExponential]:
-        """Fit the distribution using right-censored, left-truncated observations."""
+        """Fit the distribution using right-censored, left-truncated observations.
+
+        Supply initial_parameters as optional starting values in natural distribution parameters.
+        """
         return fit_distribution(
             cls,
             observations,
@@ -3266,6 +3380,7 @@ class InverseExponential(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
