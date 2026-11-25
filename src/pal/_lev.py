@@ -434,7 +434,9 @@ def _inverse_gamma_lev(x: np.ndarray, alpha: float, theta: float) -> np.ndarray:
         alpha: Positive inverse gamma shape.
         theta: Positive inverse gamma scale.
     """
-    return _inverse_generalized_gamma_lev(x, alpha, theta, 1.0, lambda log_z: _log_gamma_lower_probability(alpha, log_z))
+    return _inverse_generalized_gamma_lev(
+        x, alpha, theta, 1.0, lambda log_z: _log_gamma_lower_probability(alpha, log_z)
+    )
 
 
 def _inverse_weibull_lev(x: np.ndarray, shape: float, scale: float) -> np.ndarray:
