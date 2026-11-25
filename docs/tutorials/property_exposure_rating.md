@@ -2,7 +2,7 @@
 
 This tutorial starts with a classical analytical property exposure-rating calculation and then shows what simulation adds. For ordinary occurrence-only layers, the analytical MBBEFD calculation gives the expected loss directly. Simulation becomes useful when the contract contains annual aggregate features, or when the same loss model is also needed as an input to a wider capital model.
 
-The complete runnable example is `examples/example_property_exposure_rating.py`, with sample data in `examples/data/property_exposures.csv`.
+The complete runnable example is `pal.examples.example_property_exposure_rating`, with sample data included in the PAL package.
 
 ## 1. Exposure data
 
@@ -20,8 +20,6 @@ The sample schedule contains one row per insured risk:
 Claim frequency is deliberately **not** an input. It is implied by premium, loss ratio and the policy severity model. `maximum_loss` is separate from the policy limit, so it can represent the full property exposure, including business interruption or other additional cover, even where the contractual limit is lower.
 
 ```python
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -30,12 +28,11 @@ from pal import set_random_seed
 from pal.contracts import XoLTower
 from pal.distributions import MBBEFD, Poisson
 from pal.empirical import Empirical
+from pal.examples.example_property_exposure_rating import DATA_PATH
 from pal.frequency_severity import FreqSevSims, FrequencySeverityModel
 from pal.variables import ProteusVariable, StochasticScalar
 
 N_SIMS = 100_000
-DATA_PATH = Path("examples/data/property_exposures.csv")
-
 exposure_df = pd.read_csv(DATA_PATH)
 exposure_df.head()
 ```

@@ -6,9 +6,9 @@ from pathlib import Path
 
 def test_example_modules_discoverable() -> None:
     """Every executable example has an importable module in PAL."""
-    root = Path(__file__).resolve().parents[1] / "examples"
+    root = Path(__file__).resolve().parents[1] / "src" / "pal" / "examples"
     for example in root.glob("*.py"):
-        if example.name != "typecheck_exports.py":
+        if example.name != "__init__.py":
             assert util.find_spec(f"pal.examples.{example.stem}") is not None
 
 
@@ -31,3 +31,11 @@ def test_odp_and_property_example_imports() -> None:
 
     assert ODPModel.__name__ == "ODPModel"
     assert DATA_PATH.is_file()
+
+
+def test_examples_do_not_duplicate_packaged_python_implementations() -> None:
+    """Keep executable Python examples in one canonical package location."""
+    checkout = Path(__file__).resolve().parents[1]
+    packaged = {item.name for item in (checkout / "src" / "pal" / "examples").glob("*.py")}
+    standalone = {item.name for item in (checkout / "examples").glob("*.py")}
+    assert not (packaged & standalone)

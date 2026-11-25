@@ -23,7 +23,7 @@ help:
 
 # Static analysis targets
 .PHONY: lint
-lint:
+lint: docstrings
 	ruff check src/pal tests examples
 
 .PHONY: lint-fix
@@ -40,11 +40,12 @@ format-check:
 
 .PHONY: typecheck
 typecheck:
-	pyright
+	python scripts/typecheck_documented_imports.py
 
 .PHONY: security
 security:
-	bandit -r src/pal
+	# Bandit does not automatically read [tool.bandit] from pyproject.toml.
+	bandit -r src/pal -s B101
 
 .PHONY: deadcode
 deadcode:
@@ -53,6 +54,10 @@ deadcode:
 .PHONY: static-analysis
 static-analysis: lint format-check typecheck security deadcode
 	@echo "All static analysis checks completed"
+
+.PHONY: docstrings
+docstrings:
+	python scripts/check_docstrings.py
 
 # Test targets
 .PHONY: test

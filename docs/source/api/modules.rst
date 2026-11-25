@@ -11,6 +11,7 @@ This section contains the complete API reference for the Proteus Actuarial Libra
    distributions
    frequency_severity
    copulas
+   correlation
    contracts
    config
    stats

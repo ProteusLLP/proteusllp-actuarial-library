@@ -126,6 +126,26 @@ Set `PAL_USE_GPU=1` before importing/running PAL when GPU execution is required.
 
 Avoid converting PAL/CuPy data to NumPy merely to perform an operation that PAL already supports, because that can introduce expensive device-to-host transfers.
 
+## Find a tested actuarial recipe
+
+Use PAL's built-in cookbook when starting a modelling task. Recipe source is
+shipped with the installed Python package and can be retrieved without
+internet access or a source checkout:
+
+```python
+from pal import api
+
+matches = api.recipes("price excess of loss layer")
+code = api.recipe(matches[0]["id"])["code"]
+print(code)
+```
+
+The search results include relevant caveats (such as how policy limits,
+parameter uncertainty and simulation coupling should be handled). The full recipe source is available in the generated `llms-full.txt` file,
+and through the runtime API. An optional [PAL coding-agent skill](https://github.com/ProteusLLP/proteusllp-actuarial-library/tree/main/skills/pal-modeling)
+provides an agent-independent workflow for discovering and validating PAL
+modelling code.
+
 ## How to discover an unfamiliar API
 
 Prefer PAL's runtime discovery helpers before guessing a class or parameter name:

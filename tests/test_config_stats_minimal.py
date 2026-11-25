@@ -5,6 +5,8 @@ import pytest
 
 from pal import config
 from pal._maths import create_random_generator, xp
+from pal.config import SamplingMethod, set_sampling_method
+from pal.qmc import RandomizedQMCGenerator
 from pal.stats import tvar
 from pal.types import Config
 
@@ -25,6 +27,42 @@ def test_set_default_n_sims():
     finally:
         # Restore original
         config.n_sims = original
+
+
+@pytest.mark.parametrize(
+    ("method", "expected"),
+    [
+        ("mc", SamplingMethod.MC),
+        ("pseudo", SamplingMethod.MC),
+        ("rqmc", SamplingMethod.RQMC),
+        (SamplingMethod.MC, SamplingMethod.MC),
+        (SamplingMethod.RQMC, SamplingMethod.RQMC),
+    ],
+)
+def test_set_sampling_method_accepts_literals_and_enum(method, expected):
+    """String names and enum members select the same generators."""
+    original = (config.seed, config.sampling_method, config.qmc_dimensions, config.rng)
+    try:
+        set_sampling_method(method, dimensions=8)
+        assert config.sampling_method is expected
+        assert isinstance(config.rng, RandomizedQMCGenerator) is (expected is SamplingMethod.RQMC)
+    finally:
+        config.seed, config.sampling_method, config.qmc_dimensions, config.rng = original
+
+
+@pytest.mark.parametrize("method", ["", "invalid", "MC", "random"])
+def test_set_sampling_method_rejects_invalid_literals(method):
+    """Invalid strings fail without modifying sampling configuration."""
+    original = (config.seed, config.sampling_method, config.qmc_dimensions, config.rng)
+    with pytest.raises(ValueError, match="method must be"):
+        set_sampling_method(method)
+    assert (config.seed, config.sampling_method, config.qmc_dimensions, config.rng) == original
+
+
+def test_sampling_method_enum_descriptions():
+    """Both sampling methods provide understandable descriptions."""
+    assert "Monte Carlo" in SamplingMethod.MC.description
+    assert "Sobol" in SamplingMethod.RQMC.description
 
 
 def test_config_initializes_rng_from_seed():
