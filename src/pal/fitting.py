@@ -156,8 +156,8 @@ def _minimize_multistart(
         for start in starts
     ]
     best = min(candidates, key=lambda result: float(result.fun))
-    best["optimizer_used"] = method.value
-    best["optimizer_fallback"] = False
+    optimizer_used = method.value
+    optimizer_fallback = False
     if method is OptimizerMethod.L_BFGS_B and best.fun < 1e100:
         gradient = np.asarray(best.jac)
         stationary = np.all(np.isfinite(gradient)) and np.max(np.abs(gradient)) <= max(1e-4, 1e-7 * abs(best.fun))
@@ -167,8 +167,13 @@ def _minimize_multistart(
             )
             if polished.fun <= best.fun:
                 best = polished
-                best["optimizer_used"] = OptimizerMethod.NELDER_MEAD.value
-            best["optimizer_fallback"] = True
+                optimizer_used = OptimizerMethod.NELDER_MEAD.value
+            optimizer_fallback = True
+    # OptimizeResult is a dict subclass at runtime; SciPy's stubs do not
+    # expose its mapping interface for custom diagnostic entries.
+    diagnostics = t.cast(dict[str, t.Any], best)
+    diagnostics["optimizer_used"] = optimizer_used
+    diagnostics["optimizer_fallback"] = optimizer_fallback
     return best
 
 
