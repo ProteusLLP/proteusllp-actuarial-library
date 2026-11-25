@@ -43,7 +43,7 @@ annual_loss = events.aggregate()
 
 simulated_var = annual_loss.percentile([100 * level for level in CONFIDENCE_LEVELS])
 rows = []
-for confidence_level, simulated in zip(CONFIDENCE_LEVELS, simulated_var):
+for confidence_level, simulated in zip(CONFIDENCE_LEVELS, simulated_var, strict=True):
     approximation = bocker_kluppelberg_var(
         alpha=ALPHA,
         theta=THETA,
