@@ -206,7 +206,8 @@ def _override_initial(
         return automatic, alternative
     try:
         start = encode(natural)
-        valid = np.all(np.isfinite(start)) and np.isfinite(value := objective(start)) and value < 1e100
+        value = objective(start) if np.all(np.isfinite(start)) else np.inf
+        valid = np.isfinite(value) and value < 1e100
     except (ArithmeticError, ValueError) as exc:
         raise ValueError(f"Invalid initial_parameters: {exc}") from exc
     if not valid:
