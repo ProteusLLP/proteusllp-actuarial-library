@@ -106,12 +106,16 @@ def _log_f(log_s: t.Any, p: float) -> tuple[t.Any, t.Any, t.Any]:
     if p < 1e-7:
         log_value = 2.0 * np.log(a) - _LOG_TWO
         log_first = np.log(a) - log_delta
-        ratio = 1.0 + 2.0 / np.expm1(2.0 * a) - 1.0 / a
+        ratio = 1.0 + 2.0 * np.exp(-2.0 * a) / -np.expm1(-2.0 * a) - 1.0 / a
     else:
         pa = p * a
         log_value = _log_cosh_minus_one(pa) - 2.0 * np.log(p)
         log_first = pa - _LOG_TWO + np.log(-np.expm1(-2.0 * pa)) - np.log(p) - log_delta
-        ratio = (1.0 - p) + 2.0 / np.expm1(2.0 * a) - 2.0 * p / np.expm1(2.0 * pa)
+        ratio = (
+            (1.0 - p)
+            + 2.0 * np.exp(-2.0 * a) / -np.expm1(-2.0 * a)
+            - 2.0 * p * np.exp(-2.0 * pa) / -np.expm1(-2.0 * pa)
+        )
 
     log_second_magnitude = log_first + np.log(np.maximum(ratio, np.finfo(np.float64).tiny)) - log_delta
 
