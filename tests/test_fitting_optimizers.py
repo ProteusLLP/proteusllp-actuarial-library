@@ -5,6 +5,7 @@ import pytest
 from scipy import stats
 
 from pal import distributions as d
+from pal import fitting
 from pal.fitting import _minimize_multistart
 
 
@@ -75,3 +76,50 @@ def test_large_loss_scaling_preserves_gamma_likelihood():
     assert scaled.parameters["alpha"] == pytest.approx(original.parameters["alpha"], rel=1e-5)
     assert scaled.parameters["theta"] / 1e7 == pytest.approx(original.parameters["theta"], rel=1e-5)
     assert scaled.log_likelihood + len(x) * np.log(1e7) == pytest.approx(original.log_likelihood, abs=1e-6)
+
+
+def test_gb2_uncensored_fit_does_not_evaluate_survival(monkeypatch):
+    """The density-only likelihood must never call the costly incomplete beta."""
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Uncensored, untruncated likelihood evaluated survival")
+
+    monkeypatch.setattr(fitting, "_gb2_log_regularized_beta", unexpected)
+    x = stats.betaprime(2.2, 3.1, scale=10).ppf((np.arange(100) + 0.5) / 100)
+    result = d.GeneralizedBetaPrime.fit(x, optimizer_options={"maxiter": 80})
+    assert np.isfinite(result.log_likelihood)
+
+
+@pytest.mark.parametrize(
+    "family,rv",
+    [
+        (d.GeneralizedBetaPrime, stats.betaprime(2.2, 3.1, scale=10)),
+        (d.GeneralizedInverseGaussian, stats.geninvgauss(0.7, 2.1, scale=10)),
+    ],
+)
+def test_fitting_repeated_censor_limits_matches_independent_likelihood(family, rv):
+    """Conditional likelihood uses each censored observation's full weight."""
+    threshold = 5.0
+    uncapped = rv.isf(rv.sf(threshold) * (1 - (np.arange(100) + 0.5) / 100))
+    cap = float(np.quantile(uncapped, 0.8))
+    x = np.minimum(uncapped, cap)
+    c = uncapped >= cap
+    weights = 1 + np.arange(x.size) % 3
+    result = family.fit(x, threshold=threshold, censored=c, weights=weights, optimizer_options={"maxiter": 150})
+    p = result.parameters
+    if family is d.GeneralizedBetaPrime:
+        ratio = x / p["b"]
+        transformed = ratio ** p["a"]
+        log_density = stats.betaprime.logpdf(transformed, p["p"], p["q"])
+        log_density += np.log(p["a"] / p["b"]) + (p["a"] - 1) * np.log(ratio)
+        log_sf = stats.betaprime.logsf(transformed[c], p["p"], p["q"])
+        log_base = stats.betaprime.logsf((threshold / p["b"]) ** p["a"], p["p"], p["q"])
+    else:
+        fitted = stats.geninvgauss(
+            p["p"], np.sqrt(p["chi"] * p["psi"]), scale=np.sqrt(p["chi"] / p["psi"]), loc=p["loc"]
+        )
+        log_density = fitted.logpdf(x)
+        log_sf = fitted.logsf(x[c])
+        log_base = fitted.logsf(threshold)
+    expected = np.dot(weights[~c], log_density[~c] - log_base) + np.dot(weights[c], log_sf - log_base)
+    assert result.log_likelihood == pytest.approx(expected, rel=1e-9, abs=1e-7)

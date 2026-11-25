@@ -13,6 +13,7 @@ from enum import Enum
 import numpy as np
 from scipy import optimize, special, stats
 
+from ._gig import _gig_log_probabilities
 from ._severity_probability import _burr_terms, _inverse_weibull_terms, _StableSeverityReference
 
 if t.TYPE_CHECKING:
@@ -857,6 +858,18 @@ def _fit_other(
                 )
                 - base
             )
+        elif family is _distributions.GeneralizedInverseGaussian:
+            frozen = _frozen_distribution(family, pars)
+            terms = np.empty_like(x)
+            terms[~censored] = frozen.logpdf(x[~censored])
+            # Evaluate the reporting threshold and distinct censoring limits
+            # together. SciPy's generic survival integrates each point anew.
+            points = np.concatenate((np.array([threshold]), x[censored]))
+            root_chi, root_psi = np.sqrt(pars["chi"]), np.sqrt(pars["psi"])
+            _, survival = _gig_log_probabilities(points / (root_chi / root_psi), pars["p"], root_chi * root_psi)
+            base = float(survival[0])
+            terms[censored] = survival[1:]
+            terms -= base
         else:
             frozen = _frozen_distribution(family, pars)
             base = float(frozen.logsf(threshold)) if threshold > 0 else 0.0
@@ -1128,21 +1141,47 @@ def _gb2_log_regularized_beta(alpha: float, beta: float, log_z: np.ndarray) -> n
     return result
 
 
+def _gb2_logpdf(log_x: np.ndarray, pars: dict[str, float]) -> np.ndarray:
+    """Evaluate the GB2 log density without calculating survival.
+
+    Args:
+        log_x: Natural logarithms of positive losses.
+        pars: Natural GB2 parameters a, b, p and q.
+
+    Returns:
+        Log densities in the original loss units.
+    """
+    a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
+    log_ratio = log_x - np.log(b)
+    log_power = a * log_ratio
+    log_pdf = np.log(a) - np.log(b) - special.betaln(p, q) + (a * p - 1) * log_ratio
+    return log_pdf - (p + q) * np.logaddexp(0.0, log_power)
+
+
+def _gb2_logsf(log_x: np.ndarray, pars: dict[str, float]) -> np.ndarray:
+    """Evaluate the GB2 log survival without calculating density.
+
+    Args:
+        log_x: Natural logarithms of positive losses.
+        pars: Natural GB2 parameters a, b, p and q.
+
+    Returns:
+        Log survival probabilities, including representable logs of underflowed probabilities.
+    """
+    a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
+    log_survival_argument = -np.logaddexp(0.0, a * (log_x - np.log(b)))
+    return _gb2_log_regularized_beta(q, p, log_survival_argument)
+
+
 def _gb2_terms(x: np.ndarray, pars: dict[str, float]) -> tuple[np.ndarray, np.ndarray]:
     """Log-density and log-survival for the generalised beta prime family.
 
     Args:
-        x: Loss values at which to evaluate the calculation.
-        pars: Distribution parameter values in the family's natural coordinates.
+        x: Positive losses in original loss units.
+        pars: Natural GB2 parameters a, b, p and q.
     """
-    a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
-    log_ratio = np.log(x) - np.log(b)
-    log_power = a * log_ratio
-    log_pdf = np.log(a) - np.log(b) - special.betaln(p, q) + (a * p - 1) * log_ratio
-    log_pdf -= (p + q) * np.logaddexp(0.0, log_power)
-    log_survival_argument = -np.logaddexp(0.0, log_power)
-    log_sf = _gb2_log_regularized_beta(q, p, log_survival_argument)
-    return log_pdf, log_sf
+    log_x = np.log(x)
+    return _gb2_logpdf(log_x, pars), _gb2_logsf(log_x, pars)
 
 
 def _fit_gb2(
@@ -1181,20 +1220,27 @@ def _fit_gb2(
         """
         return dict(zip(("a", "b", "p", "q"), (float(np.exp(v)) for v in params), strict=False))
 
+    log_x = np.log(x)
+    log_observed = log_x[~censored]
+    observed_weights = weights[~censored]
+    # Policy-limit censoring usually repeats the same loss value. Compress
+    # those terms once before optimisation, retaining their total weights.
+    log_capped, inverse = np.unique(log_x[censored], return_inverse=True)
+    capped_weights = np.bincount(inverse, weights=weights[censored], minlength=log_capped.size)
+    log_threshold = np.array([np.log(threshold)]) if threshold > 0 else np.empty(0)
+    survival_points = np.concatenate((log_threshold, log_capped))
+
     def likelihood(params: dict[str, float]) -> float:
         """Evaluate the likelihood at the supplied natural parameters.
 
         Args:
             params: Distribution parameter values in the family's natural coordinates.
         """
-        pdf, sf = _gb2_terms(x, params)
-        if threshold > 0:
-            _, log_sf_thresh = _gb2_terms(np.array([threshold]), params)
-            truncation = float(log_sf_thresh[0])
-        else:
-            truncation = 0.0
-        terms = np.where(censored, sf, pdf) - truncation
-        ll = float(np.sum(weights * terms))
+        density = _gb2_logpdf(log_observed, params)
+        survival = _gb2_logsf(survival_points, params) if survival_points.size else np.empty(0)
+        truncation = float(survival[0]) if log_threshold.size else 0.0
+        ll = float(np.dot(observed_weights, density - truncation))
+        ll += float(np.dot(capped_weights, survival[log_threshold.size :] - truncation))
         return ll if np.isfinite(ll) else -np.inf
 
     def objective(v: np.ndarray) -> float:
