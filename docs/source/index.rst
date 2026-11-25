@@ -146,6 +146,7 @@ A small model, end to end
    :caption: Examples
    :hidden:
 
+   tutorials/operational_risk_lda
    tutorials/xol_reinsurance
    tutorials/property_exposure_rating
    tutorials/reinstatement_pricing
