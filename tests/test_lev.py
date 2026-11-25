@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from scipy import integrate, stats
 
-from pal._lev import _SEVERITY_LEV_FORMULAS
+from pal._lev import _REMAINING_LEV_FORMULAS, _SEVERITY_LEV_FORMULAS
 from pal.distributions import (
     GEV,
     GPD,
@@ -241,4 +241,33 @@ def test_mbbefd_lev_extreme_scale(g, b, limit, expected):
 
 def test_severity_lev_dispatch_covers_supported_families():
     """Every positive severity family has a formula; GEV uses a separate path."""
-    assert set(_SEVERITY_LEV_FORMULAS) == set((*_supported_families(), *_other_families())) - {GEV}
+    assert set(_SEVERITY_LEV_FORMULAS) == {*_supported_families(), *_other_families()} - {GEV}
+
+
+def test_remaining_lev_dispatch_covers_numeric_families():
+    """All remaining numeric univariate families have a registered formula."""
+    assert set(_REMAINING_LEV_FORMULAS) == {
+        Poisson,
+        Binomial,
+        Bernoulli,
+        NegBinomial,
+        HyperGeometric,
+        Uniform,
+        Beta,
+        Normal,
+        Logistic,
+        StudentsT,
+        NonCentralChiSquared,
+        MBBEFD,
+    }
+    assert not (_REMAINING_LEV_FORMULAS.keys() & _SEVERITY_LEV_FORMULAS.keys())
+
+
+@pytest.mark.parametrize(
+    "model",
+    [Poisson(mean=0), Binomial(n=0, p=0.4), Bernoulli(p=0), HyperGeometric(ngood=0, nbad=12, n_draws=5)],
+)
+def test_count_lev_degenerate_zero(model):
+    """A zero count has zero capped loss for every nonnegative limit."""
+    limits = np.array([[3.0, -1.0], [0.0, 0.5]])
+    np.testing.assert_array_equal(model.lev(limits), np.minimum(limits, 0))
