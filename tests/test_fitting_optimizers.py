@@ -6,7 +6,8 @@ from scipy import stats
 
 from pal import distributions as d
 from pal import fitting
-from pal.fitting import _minimize_multistart
+from pal._fitting_initial import _conditional_quantiles, _gpd_initial, _support_shape
+from pal.fitting import _minimize
 
 
 @pytest.mark.parametrize(
@@ -57,14 +58,15 @@ def test_analytic_estimators_are_not_replaced():
     assert result.parameters["scale"] == pytest.approx(3)
 
 
-def test_multistart_retains_better_finite_solution():
+def test_minimize_recovers_from_infeasible_initial_value():
     def objective(x):
         # A narrow feasible region tests the invalid-likelihood penalty path.
         if x[0] < 0 or x[0] > 1:
             return np.inf
         return (x[0] - 0.7) ** 2
 
-    result = _minimize_multistart(objective, [np.array([0.1]), np.array([0.9])], "L-BFGS-B", None, 100)
+    result = _minimize(objective, np.array([-1.0]), "L-BFGS-B", None, 100, alternative=np.array([0.9]))
+    assert result.optimizer_fallback
     assert result.fun < 1e-10
     assert result.x[0] == pytest.approx(0.7, abs=1e-5)
 
@@ -123,3 +125,53 @@ def test_fitting_repeated_censor_limits_matches_independent_likelihood(family, r
         log_base = fitted.logsf(threshold)
     expected = np.dot(weights[~c], log_density[~c] - log_base) + np.dot(weights[c], log_sf - log_base)
     assert result.log_likelihood == pytest.approx(expected, rel=1e-9, abs=1e-7)
+
+
+def test_successful_fit_uses_one_optimizer_call(monkeypatch):
+    """A regular fit must not optimise from the recovery start."""
+    actual = fitting.optimize.minimize
+    calls = []
+
+    def tracked(*args, **kwargs):
+        calls.append(kwargs["method"])
+        return actual(*args, **kwargs)
+
+    monkeypatch.setattr(fitting.optimize, "minimize", tracked)
+    result = _minimize(
+        lambda x: float((x[0] - 2) ** 2), np.array([1.0]), "L-BFGS-B", None, 100, alternative=np.array([3.0])
+    )
+    assert result.success
+    assert calls == ["L-BFGS-B"]
+
+
+@pytest.mark.parametrize("shape", [-0.6, -0.3, 0.0, 0.3, 0.7, 1.0])
+def test_gpd_feasible_quantile_initialization(shape):
+    """Support-safe starts recover a range of censored GPD shapes."""
+    rv = stats.genpareto(shape, scale=10)
+    raw = rv.ppf((np.arange(1000) + 0.5) / 1000)
+    cap = float(rv.ppf(0.85))
+    c = raw >= cap
+    x = np.minimum(raw, cap)
+    w = np.ones_like(x)
+    xi, scale = _gpd_initial(x, c, w)
+    assert np.all(1 + xi * x / scale > 0)
+    result = d.GPD.fit(x, censored=c)
+    assert result.converged
+    assert result.parameters["shape"] == pytest.approx(shape, abs=0.025)
+    assert result.parameters["scale"] == pytest.approx(10, rel=0.025)
+
+
+def test_conditional_quantiles_respect_censoring():
+    """Censoring must not turn an unidentified upper quantile into a policy limit."""
+    x = np.array([1.0, 2.0, 3.0, 3.0])
+    c = np.array([False, False, True, True])
+    result = _conditional_quantiles(x, c, np.ones_like(x), np.array([0.25, 0.9]))
+    assert np.isfinite(result[0])
+    assert np.isnan(result[1])
+
+
+@pytest.mark.parametrize("raw", [-1000.0, -1.0, 0.0, 1.0, 1000.0])
+def test_support_shape_is_feasible(raw):
+    shape = _support_shape(raw, 2.0, 5.0, 10.0)
+    assert 1 - shape * 5 / 2 > 0
+    assert 1 + shape * 10 / 2 > 0

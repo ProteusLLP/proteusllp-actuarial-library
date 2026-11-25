@@ -13,6 +13,7 @@ from enum import Enum
 import numpy as np
 from scipy import optimize, special, stats
 
+from ._fitting_initial import _gpd_initial, _gpd_shape_coordinate, _log_location_scale, _support_shape
 from ._gig import _gig_log_probabilities
 from ._severity_probability import _burr_terms, _inverse_weibull_terms, _StableSeverityReference
 
@@ -115,19 +116,27 @@ class FitResult(t.Generic[_T]):
         return asymptotic_parameter_uncertainty(self, observations, censored=censored, weights=weights)
 
 
-def _minimize_multistart(
+def _minimize(
     objective: t.Callable[[np.ndarray], float],
-    starts: t.Iterable[np.ndarray],
+    initial: np.ndarray,
     optimizer: OptimizerMethod | str,
     options: t.Mapping[str, t.Any] | None,
     maxiter: int,
+    *,
+    alternative: np.ndarray | None = None,
 ) -> optimize.OptimizeResult:
-    """Run all starts and safeguard gradient-based fits at support boundaries.
+    """Optimise once from a statistical estimate, with failure-driven recovery.
 
-    Finite differences use the unconstrained coordinates of each family.
-    A nonstationary or unsuccessful L-BFGS-B solution is polished with
-    Nelder-Mead; the better finite likelihood is retained. Analytical and
-    profile estimators are unaffected by the optimizer selection.
+    Args:
+        objective: Function returning the negative log-likelihood.
+        initial: Initial parameter vector in unconstrained coordinates.
+        optimizer: Numerical optimiser for the primary fit.
+        options: Options passed to the primary optimiser.
+        maxiter: Default iteration budget for each attempt.
+        alternative: Optional recovery start, used only when the primary fit fails.
+
+    Returns:
+        Best finite optimisation result and diagnostics describing any recovery.
     """
     method = OptimizerMethod(optimizer)
     simplex_options = {"maxiter": maxiter, "xatol": 1e-7, "fatol": 1e-7}
@@ -139,41 +148,73 @@ def _minimize_multistart(
     settings = {**defaults, **(options or {})}
 
     def safe_objective(raw: np.ndarray) -> float:
+        """Return a finite penalty for invalid parameter proposals.
+
+        Args:
+            raw: Trial vector in unconstrained coordinates.
+        """
         try:
             value = objective(raw)
         except (ArithmeticError, ValueError):
             return 1e100
         return float(value) if np.isfinite(value) else 1e100
 
-    candidates = [
-        optimize.minimize(
+    def run(start: np.ndarray, selected: OptimizerMethod) -> optimize.OptimizeResult:
+        """Execute one numerical optimisation.
+
+        Args:
+            start: Feasible starting parameter vector.
+            selected: Method to execute.
+        """
+        chosen_options = settings if selected is method else simplex_options
+        return optimize.minimize(
             safe_objective,
             start,
-            method=method.value,
-            jac="3-point" if method is OptimizerMethod.L_BFGS_B else None,
-            options=t.cast(t.Any, settings),
+            method=selected.value,
+            jac="3-point" if selected is OptimizerMethod.L_BFGS_B else None,
+            options=t.cast(t.Any, chosen_options),
         )
-        for start in starts
-    ]
-    best = min(candidates, key=lambda result: float(result.fun))
-    optimizer_used = method.value
-    optimizer_fallback = False
-    if method is OptimizerMethod.L_BFGS_B and best.fun < 1e100:
-        gradient = np.asarray(best.jac)
-        stationary = np.all(np.isfinite(gradient)) and np.max(np.abs(gradient)) <= max(1e-4, 1e-7 * abs(best.fun))
-        if not best.success or not stationary:
-            polished = optimize.minimize(
-                safe_objective, best.x, method="Nelder-Mead", options=t.cast(t.Any, simplex_options)
-            )
+
+    def acceptable(result: optimize.OptimizeResult, selected: OptimizerMethod) -> bool:
+        """Check objective validity, convergence and gradient stationarity.
+
+        Args:
+            result: Result of one numerical optimisation.
+            selected: Method that produced the result.
+        """
+        if not result.success or not np.isfinite(result.fun) or result.fun >= 1e100:
+            return False
+        if selected is OptimizerMethod.NELDER_MEAD:
+            return True
+        gradient = np.asarray(result.jac)
+        return bool(
+            np.all(np.isfinite(gradient)) and np.max(np.abs(gradient)) <= max(1e-4, 1e-7 * abs(result.fun))
+        )
+
+    fallback = False
+    if safe_objective(initial) >= 1e100 and alternative is not None:
+        initial, alternative = alternative, None
+        fallback = True
+    best = run(initial, method)
+    used = method
+    if not acceptable(best, used):
+        fallback = True
+        if method is OptimizerMethod.L_BFGS_B and best.fun < 1e100:
+            polished = run(best.x, OptimizerMethod.NELDER_MEAD)
             if polished.fun <= best.fun:
-                best = polished
-                optimizer_used = OptimizerMethod.NELDER_MEAD.value
-            optimizer_fallback = True
-    # OptimizeResult is a dict subclass at runtime; SciPy's stubs do not
-    # expose its mapping interface for custom diagnostic entries.
+                best, used = polished, OptimizerMethod.NELDER_MEAD
+        if not acceptable(best, used) and alternative is not None and safe_objective(alternative) < 1e100:
+            retry = run(alternative, method)
+            if retry.fun <= best.fun:
+                best, used = retry, method
+            if method is OptimizerMethod.L_BFGS_B and not acceptable(best, used) and best.fun < 1e100:
+                polished = run(best.x, OptimizerMethod.NELDER_MEAD)
+                if polished.fun <= best.fun:
+                    best, used = polished, OptimizerMethod.NELDER_MEAD
+    # OptimizeResult is a dict at runtime, but its stubs omit custom entries.
     diagnostics = t.cast(dict[str, t.Any], best)
-    diagnostics["optimizer_used"] = optimizer_used
-    diagnostics["optimizer_fallback"] = optimizer_fallback
+    diagnostics["optimizer_used"] = used.value
+    diagnostics["optimizer_fallback"] = fallback
     return best
 
 
@@ -457,46 +498,36 @@ def fit_distribution(
             logs = np.log(x)
             mu0 = float(np.average(logs, weights=w))
             sigma0 = float(np.sqrt(np.average((logs - mu0) ** 2, weights=w)))
-            starts = [[mu0, np.log(max(sigma0, 0.01))]]
+            initial = [mu0, np.log(max(sigma0, 0.01))]
+            alternative = None
 
             def transform(p: np.ndarray) -> dict[str, float]:
                 return {"mu": float(p[0]), "sigma": float(np.exp(p[1]))}
         elif family is _distributions.Gamma:
             alpha0 = max(min(mean * mean / max(variance, np.finfo(float).tiny), 1e4), 0.05)
-            starts = [
-                [np.log(alpha0), np.log(mean / alpha0)],
-                [0.0, np.log(mean)],
-                [np.log(2.0), np.log(mean / 2.0)],
-            ]
+            initial = [np.log(alpha0), np.log(mean / alpha0)]
+            alternative = np.array([0.0, np.log(mean)])
 
             def transform(p: np.ndarray) -> dict[str, float]:
                 return {"alpha": float(np.exp(p[0])), "theta": float(np.exp(p[1]))}
         else:
             exceedances = x - threshold
-            mean_exc = float(np.average(exceedances, weights=w))
-            if mean_exc <= 0:
-                raise ValueError("GPD scale is not identifiable for these observations")
-            var_exc = float(np.average((exceedances - mean_exc) ** 2, weights=w))
-            ratio = mean_exc * mean_exc / var_exc if var_exc > 0 else 1.0
-            xi0 = float(np.clip(0.5 * (1 - ratio), -0.45, 2.0))
-            starts = [
-                [xi0, np.log(mean_exc)],
-                [0.0, np.log(mean_exc)],
-                [0.5, np.log(mean_exc)],
-                [-0.2, np.log(mean_exc * 1.5)],
-            ]
+            largest = float(np.max(exceedances))
+            xi0, sigma0 = _gpd_initial(exceedances, c, w)
+            initial = [_gpd_shape_coordinate(xi0, sigma0, largest), np.log(sigma0)]
+            alternative = np.array([0.0, np.log(float(np.dot(w, exceedances)) / np.sum(w[~c]))])
 
             def transform(p: np.ndarray) -> dict[str, float]:
-                return {"shape": float(p[0]), "scale": float(np.exp(p[1])), "loc": threshold}
+                scale = float(np.exp(p[1]))
+                shape = _support_shape(float(p[0]), scale, 0.0, largest) if scale > 0 else np.nan
+                return {"shape": shape, "scale": scale, "loc": threshold}
 
         def objective(p: np.ndarray) -> float:
             with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
                 ll = _log_likelihood(family, transform(p), x, c, w, threshold)
             return -ll if np.isfinite(ll) else 1e100
 
-        best = _minimize_multistart(
-            objective, (np.asarray(start, dtype=float) for start in starts), optimizer, optimizer_options, 5000
-        )
+        best = _minimize(objective, np.asarray(initial), optimizer, optimizer_options, 5000, alternative=alternative)
         if not np.isfinite(best.fun) or best.fun >= 1e100:
             raise RuntimeError(f"Unable to obtain a finite {family.__name__} fit")
         parameters = transform(best.x)
@@ -666,14 +697,21 @@ def _fit_other(
     else:
         names = ("shape", "scale")
 
-    starts: list[list[float]]
+    alternative: np.ndarray | None = None
+    # Standardise the GEV location coordinate to the scale of the data.
+    spread = max(float(np.sqrt(variance)), np.finfo(float).eps * max(abs(median), 1.0))
+    smallest, largest = float(np.min(x)), float(np.max(x))
     if family is _distributions.GeneralizedInverseGaussian:
-        starts = [[-0.5, np.log(scale), np.log(1.0 / scale)], [0.5, np.log(scale), np.log(1.0 / scale)]]
+        lam = max(mean**3 / max(variance, np.finfo(float).tiny), np.finfo(float).tiny)
+        initial = [-0.5, np.log(lam), np.log(lam) - 2 * np.log(mean)]
+        alternative = np.array([0.5, np.log(scale), -np.log(scale)])
     elif family is _distributions.GEV:
-        spread = max(float(np.std(x)), 0.01)
-        starts = [[0.0, np.log(spread), median], [0.2, np.log(spread), median], [-0.2, np.log(spread), median]]
+        gumbel_scale = spread * np.sqrt(6) / np.pi
+        gumbel_loc = mean - np.euler_gamma * gumbel_scale
+        initial = [0.0, np.log(gumbel_scale), (gumbel_loc - median) / spread]
+        alternative = np.array([0.0, np.log(spread), 0.0])
     elif family in (_distributions.Exponential, _distributions.InverseExponential):
-        starts = [[np.log(max(mean, 1e-10))]]
+        initial = [np.log(max(mean, 1e-10))]
     elif family is _distributions.LogGamma:
         if np.any(x < 1.0):
             raise ValueError("log-gamma observations must be at least one")
@@ -682,28 +720,42 @@ def _fit_other(
         log_var = float(np.average((logs - log_mean) ** 2, weights=weights))
         alpha = max(log_mean**2 / max(log_var, np.finfo(float).tiny), 0.1)
         beta = max(log_var / max(log_mean, np.finfo(float).tiny), 0.01)
-        starts = [[np.log(alpha), np.log(beta)], [0.0, 0.0], [np.log(2.0), np.log(beta)]]
+        initial = [np.log(alpha), np.log(beta)]
+        alternative = np.zeros(2)
     elif family is _distributions.InverseGaussian:
         lam = max(mean**3 / max(variance, np.finfo(float).tiny), np.finfo(float).tiny)
-        starts = [[np.log(mean), np.log(lam)], [np.log(mean), np.log(mean)]]
-    elif family in (_distributions.Burr, _distributions.InverseBurr):
-        starts = [
-            [np.log(1.5), np.log(1.5), np.log(scale)],
-            [0.0, 0.0, np.log(scale)],
-            [np.log(2.5), 0.0, np.log(scale)],
-            [0.0, np.log(2.5), np.log(scale)],
-        ]
+        initial = [np.log(mean), np.log(lam)]
+        alternative = np.array([np.log(mean), np.log(mean)])
     elif family is _distributions.InverseGamma:
         alpha = max(mean * mean / max(variance, np.finfo(float).tiny) + 2.0, 1.5)
-        starts = [[np.log(alpha), np.log(max(mean * (alpha - 1.0), 1e-12))], [0.0, np.log(scale)]]
+        initial = [np.log(alpha), np.log(max(mean * (alpha - 1.0), 1e-12))]
+        alternative = np.array([0.0, np.log(scale)])
     else:
-        starts = [[np.log(1.0), np.log(scale)], [np.log(2.0), np.log(scale)], [np.log(0.75), np.log(scale)]]
+        center, iqr = _log_location_scale(x, censored, weights)
+        logistic_shape = float(np.clip(2 * np.log(3) / iqr, 0.05, 100.0))
+        if family in (_distributions.Burr, _distributions.InverseBurr):
+            initial = [np.log(logistic_shape), 0.0, center]
+            alternative = np.array([np.log(1.5), np.log(1.5), np.log(scale)])
+        elif family in (_distributions.Weibull, _distributions.InverseWeibull):
+            logs = np.log(x)
+            log_mean = float(np.average(logs, weights=weights))
+            log_std = float(np.sqrt(np.average((logs - log_mean) ** 2, weights=weights)))
+            shape = float(np.clip(np.pi / (np.sqrt(6) * max(log_std, 1e-4)), 0.05, 100.0))
+            sign = 1 if family is _distributions.Weibull else -1
+            initial = [np.log(shape), log_mean + sign * np.euler_gamma / shape]
+            alternative = np.array([0.0, np.log(scale)])
+        else:
+            initial = [np.log(logistic_shape), center]
+            alternative = np.array([0.0, np.log(scale)])
 
     def make_params(raw: np.ndarray) -> dict[str, float]:
         if family is _distributions.GeneralizedInverseGaussian:
             return {"p": float(raw[0]), "chi": float(np.exp(raw[1])), "psi": float(np.exp(raw[2])), "loc": 0.0}
         if family is _distributions.GEV:
-            return {"shape": float(raw[0]), "scale": float(np.exp(raw[1])), "loc": float(raw[2])}
+            gev_scale = float(np.exp(raw[1]))
+            loc = float(median + spread * raw[2])
+            shape = _support_shape(float(raw[0]), gev_scale, loc - smallest, largest - loc) if gev_scale > 0 else np.nan
+            return {"shape": shape, "scale": gev_scale, "loc": loc}
         pars: dict[str, float] = dict(zip(names, (float(np.exp(value)) for value in raw), strict=False))
         if family not in (_distributions.InverseGaussian, _distributions.LogGamma):
             pars["loc"] = 0.0
@@ -753,9 +805,7 @@ def _fit_other(
             val = loglik(make_params(raw))
         return -val if np.isfinite(val) else 1e100
 
-    best = _minimize_multistart(
-        objective, (np.asarray(start, dtype=float) for start in starts), optimizer, optimizer_options, 5000
-    )
+    best = _minimize(objective, np.asarray(initial), optimizer, optimizer_options, 5000, alternative=alternative)
     if best.fun >= 1e100 or not np.isfinite(best.fun):
         raise RuntimeError(f"Unable to obtain finite {family.__name__} likelihood")
     pars = make_params(best.x)
@@ -865,11 +915,10 @@ def _fit_gpd_free_location(
     def transform(raw: np.ndarray) -> dict[str, float]:
         # Keeping the location below the smallest observation avoids invalid
         # density evaluations. The truncation correction is retained.
-        return {
-            "shape": float(raw[0]),
-            "scale": float(np.exp(raw[1])),
-            "loc": float(max_loc - np.exp(raw[2])),
-        }
+        scale = float(np.exp(raw[1]))
+        loc = float(max_loc - np.exp(raw[2]))
+        shape = _support_shape(float(raw[0]), scale, 0.0, float(np.max(x)) - loc) if scale > 0 else np.nan
+        return {"shape": shape, "scale": scale, "loc": loc}
 
     def objective(raw: np.ndarray) -> float:
         with np.errstate(over="ignore", divide="ignore", invalid="ignore", under="ignore"):
@@ -877,14 +926,10 @@ def _fit_gpd_free_location(
         return -ll if np.isfinite(ll) else 1e100
 
     distance = max(max_loc - base_loc, delta)
-    starts = [
-        [0.0, np.log(start_scale), np.log(distance)],
-        [0.3, np.log(start_scale), np.log(distance)],
-        [-0.2, np.log(start_scale), np.log(distance)],
-    ]
-    best = _minimize_multistart(
-        objective, (np.asarray(start, dtype=float) for start in starts), optimizer, optimizer_options, 5000
-    )
+    xi0, sigma0 = _gpd_initial(x - base_loc, c, w)
+    initial = np.array([_gpd_shape_coordinate(xi0, sigma0, float(np.max(x)) - base_loc), np.log(sigma0), np.log(distance)])
+    alternative = np.array([0.0, np.log(start_scale), np.log(distance)])
+    best = _minimize(objective, initial, optimizer, optimizer_options, 5000, alternative=alternative)
     if best.fun >= 1e100 or not np.isfinite(best.fun):
         raise RuntimeError("Unable to obtain a finite three-parameter GPD fit")
     params = transform(best.x)
@@ -1010,13 +1055,10 @@ def _fit_gb2(
     optimizer_options: t.Mapping[str, t.Any] | None,
 ) -> FitResult[_T]:
     """Fit the four-parameter GB2 distribution in log-parameter coordinates."""
-    base_scale = float(np.median(x))
-    starts = (
-        (1.0, base_scale, 1.0, 2.0),
-        (2.0, base_scale, 1.0, 1.0),
-        (1.0, base_scale, 2.0, 3.0),
-        (0.7, base_scale, 2.0, 2.0),
-    )
+    center, iqr = _log_location_scale(x, censored, weights)
+    shape = float(np.clip(2 * np.log(3) / iqr, 0.05, 100.0))
+    initial = np.array([np.log(shape), center, 0.0, 0.0])
+    alternative = np.array([0.0, np.log(float(np.median(x))), 0.0, np.log(2.0)])
 
     def transform(params: np.ndarray) -> dict[str, float]:
         return dict(zip(("a", "b", "p", "q"), (float(np.exp(v)) for v in params), strict=False))
@@ -1044,7 +1086,7 @@ def _fit_gb2(
             ll = likelihood(transform(v))
         return -ll if np.isfinite(ll) else 1e100
 
-    best = _minimize_multistart(objective, (np.log(start) for start in starts), optimizer, optimizer_options, 6000)
+    best = _minimize(objective, initial, optimizer, optimizer_options, 6000, alternative=alternative)
     if not np.isfinite(best.fun) or best.fun >= 1e100:
         raise RuntimeError("No finite generalised beta prime fit")
     pars = transform(best.x)
