@@ -53,6 +53,12 @@ def _cpu_parallel_inverse(inverse: t.Callable[..., np.ndarray], uniforms: np.nda
     slices = tuple((start, min(n, start + chunk_size)) for start in range(0, n, chunk_size))
 
     def evaluate(start: int, end: int) -> tuple[int, int, np.ndarray]:
+        """Evaluate a contiguous chunk of quantiles.
+
+        Args:
+            start: Inclusive start of the chunk.
+            end: Exclusive end of the chunk.
+        """
         params = tuple(arg if arg.ndim == 0 else arg[0] if arg.size == 1 else arg[start:end] for arg in arguments)
         return start, end, np.asarray(inverse(*params, uniforms[start:end]))
 
