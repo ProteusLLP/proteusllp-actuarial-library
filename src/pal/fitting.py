@@ -113,6 +113,7 @@ class FitResult(t.Generic[_T]):
         warnings: Diagnostics for potentially limiting or extreme estimates.
         optimizer: Numerical optimiser that produced the result, if applicable.
         optimizer_fallback: Whether L-BFGS-B required a simplex fallback.
+        threshold_specified: Whether a left-truncation threshold was supplied, including zero.
     """
 
     distribution: _T
@@ -130,6 +131,7 @@ class FitResult(t.Generic[_T]):
     warnings: tuple[str, ...] = field(default=(), kw_only=True)
     optimizer: str | None = field(default=None, kw_only=True)
     optimizer_fallback: bool = field(default=False, kw_only=True)
+    threshold_specified: bool = field(default=False, kw_only=True)
 
     def __post_init__(self) -> None:
         """Preserve compatibility with callers constructing older FitResult objects."""
@@ -704,6 +706,7 @@ def fit_distribution(
         n_observations=len(x),
         n_censored=int(np.sum(c)),
         threshold=threshold,
+        threshold_specified=threshold > 0,
         method=_FitMethod.ANALYTIC.value if family is _distributions.Pareto else _FitMethod.MLE.value,
     )
 
@@ -1026,6 +1029,7 @@ def _fit_other(
         n_observations=len(x),
         n_censored=int(np.sum(censored)),
         threshold=threshold,
+        threshold_specified=threshold > 0,
     )
 
 
@@ -1185,6 +1189,7 @@ def _fit_gpd_free_location(
         n_observations=len(x),
         n_censored=int(np.sum(c)),
         threshold=threshold,
+        threshold_specified=threshold > 0,
     )
 
 
@@ -1226,6 +1231,7 @@ def _fit_exponential(
         n_observations=len(x),
         n_censored=int(np.sum(censored)),
         threshold=threshold,
+        threshold_specified=threshold > 0,
         method=_FitMethod.ANALYTIC.value,
     )
 
@@ -1394,4 +1400,5 @@ def _fit_gb2(
         n_observations=len(x),
         n_censored=int(np.sum(censored)),
         threshold=threshold,
+        threshold_specified=threshold > 0,
     )
