@@ -293,6 +293,7 @@ def asymptotic_parameter_uncertainty(
 
     if not fit.converged:
         raise ValueError("Parameter uncertainty requires a converged maximum-likelihood fit")
+    threshold_specified = threshold_specified or fit.threshold_specified
     family = type(fit.distribution)
     params = fit.parameters
     names = _parameter_names(family, params, fit.threshold)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import typing as t
+from dataclasses import replace
 
 import numpy as np
 from scipy import integrate, optimize, special, stats
@@ -179,7 +180,10 @@ def fit_remaining(
 
     family = distribution
     if family in _continuous_families():
-        return _fit_continuous(distribution, observations, weights, censored, threshold, options)
+        return replace(
+            _fit_continuous(distribution, observations, weights, censored, threshold, options),
+            threshold_specified=threshold is not None,
+        )
     if censored is not None or threshold is not None:
         raise ValueError(f"{family.__name__} fitting does not support truncation or censoring")
     if family in _discrete_families():
