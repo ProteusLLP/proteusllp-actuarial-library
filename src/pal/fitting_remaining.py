@@ -635,7 +635,9 @@ def _fit_mbbefd(
         """
         return _initial_coordinates({"g": natural["g"] - 1, "b": natural["b"]}, ("g", "b"))
 
-    start, alternative = _override_initial(initial, alternative, initial_parameters, decode, encode, ("g", "b"), objective)
+    start, alternative = _override_initial(
+        initial, alternative, initial_parameters, decode, encode, ("g", "b"), objective
+    )
     best = _minimize(objective, start, optimizer, optimizer_options, 4000, alternative=alternative)
     if best.fun >= 1e100:
         raise RuntimeError("No finite MBBEFD likelihood found")
