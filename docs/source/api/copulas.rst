@@ -36,6 +36,7 @@ Archimedean copulas
    pal.copulas.GumbelCopula
    pal.copulas.FrankCopula
    pal.copulas.JoeCopula
+   pal.copulas.FRA1Copula
 
 Extreme-value and other copulas
 -------------------------------
