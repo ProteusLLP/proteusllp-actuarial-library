@@ -110,7 +110,7 @@ def test_freqsevsims_membership_in_coupling_group() -> None:
 def test_coupled_variables():
     """Test that coupled variables use identity comparison correctly."""
     x = FreqSevSims([0, 0, 1, 2, 4], [10, 21, 30, 40, 50], 6)
-    y = FreqSevSims([0, 1, 1, 3, 5], [12, 22, 32, 42, 52], 6)
+    y = FreqSevSims([0, 0, 1, 2, 4], [12, 22, 32, 42, 52], 6)
 
     # Performing an operation should merge coupling groups
     z = x + y
@@ -130,7 +130,7 @@ def test_coupled_variables():
     assert x.coupled_variable_group is z2.coupled_variable_group
     assert len(x.coupled_variable_group) == 4
 
-    y2 = FreqSevSims([0, 1, 1, 3, 5], [12, 22, 32, 42, 52], 6)
+    y2 = FreqSevSims([0, 0, 1, 2, 4], [12, 22, 32, 42, 52], 6)
 
     assert y2.coupled_variable_group is not y.coupled_variable_group
     z3 = x + y2

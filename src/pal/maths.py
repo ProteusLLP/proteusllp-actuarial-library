@@ -14,16 +14,25 @@ import typing as t
 # third party
 import numpy as np
 
+from ._maths import asnumpy as asnumpy
 from ._maths import xp
 
 
 def exp(x: t.Any) -> t.Any:
-    """Exponential function that preserves custom PAL types."""
+    """Exponential function that preserves custom PAL types.
+
+    Args:
+        x: Numerical input or first operand, including PAL stochastic values.
+    """
     return np.exp(x)
 
 
 def sum(x: t.Any) -> t.Any:
-    """Sum function that works with PAL types."""
+    """Sum function that works with PAL types.
+
+    Args:
+        x: Numerical input or first operand, including PAL stochastic values.
+    """
     return np.sum(x)
 
 
@@ -33,37 +42,67 @@ def mean(x: t.Any) -> t.Any:
     All PAL types implement the numpy array protocol, so this just
     delegates to numpy's mean function which will dispatch to the
     appropriate __array_function__ or __array__ method.
+
+    Args:
+        x: Numerical input or first operand, including PAL stochastic values.
     """
     return np.mean(x)  # type: ignore[reportUnknownVariableType]
 
 
 def std(x: t.Any) -> t.Any:
-    """Standard deviation function that works with PAL types."""
+    """Standard deviation function that works with PAL types.
+
+    Args:
+        x: Numerical input or first operand, including PAL stochastic values.
+    """
     return np.std(x)
 
 
 def var(x: t.Any) -> t.Any:
-    """Variance function that works with PAL types."""
+    """Variance function that works with PAL types.
+
+    Args:
+        x: Numerical input or first operand, including PAL stochastic values.
+    """
     return np.var(x)
 
 
 def percentile(x: t.Any, q: t.Any) -> t.Any:
-    """Percentile function that works with PAL types."""
+    """Percentile function that works with PAL types.
+
+    Args:
+        q: Probability level of the quantile.
+        x: Numerical input or first operand, including PAL stochastic values.
+    """
     return np.percentile(x, q)  # type: ignore[reportUnknownVariableType]
 
 
 def min(x: t.Any) -> t.Any:
-    """Min function that works with PAL types."""
+    """Min function that works with PAL types.
+
+    Args:
+        x: Numerical input or first operand, including PAL stochastic values.
+    """
     return np.min(x)
 
 
 def max(x: t.Any) -> t.Any:
-    """Max function that works with PAL types."""
+    """Max function that works with PAL types.
+
+    Args:
+        x: Numerical input or first operand, including PAL stochastic values.
+    """
     return np.max(x)
 
 
 def where(condition: t.Any, x: t.Any, y: t.Any) -> t.Any:
-    """Conditional selection that preserves PAL types."""
+    """Conditional selection that preserves PAL types.
+
+    Args:
+        condition: Boolean condition selecting between the two alternatives.
+        x: Numerical input or first operand, including PAL stochastic values.
+        y: Second operand or alternative value.
+    """
     return np.where(condition, x, y)  # pyright: ignore[reportUnknownVariableType]
 
 
@@ -100,12 +139,22 @@ def safe_divide(
 
 
 def minimum(x: t.Any, y: t.Any) -> t.Any:
-    """Element-wise minimum that preserves PAL types."""
+    """Element-wise minimum that preserves PAL types.
+
+    Args:
+        x: Numerical input or first operand, including PAL stochastic values.
+        y: Second operand or alternative value.
+    """
     return np.minimum(x, y)
 
 
 def maximum(x: t.Any, y: t.Any) -> t.Any:
-    """Element-wise maximum that preserves PAL types."""
+    """Element-wise maximum that preserves PAL types.
+
+    Args:
+        x: Numerical input or first operand, including PAL stochastic values.
+        y: Second operand or alternative value.
+    """
     return np.maximum(x, y)
 
 
@@ -114,6 +163,9 @@ def cumsum(x: t.Any) -> t.Any:
 
     When given a list of StochasticScalar objects, stacks their values
     into a 2D array and computes cumsum along axis 0.
+
+    Args:
+        x: Numerical input or first operand, including PAL stochastic values.
     """
     if isinstance(x, list) and len(x) > 0 and hasattr(x[0], "values"):  # type: ignore[reportUnknownMemberType]
         return np.cumsum(  # type: ignore[reportUnknownVariableType]
@@ -124,10 +176,18 @@ def cumsum(x: t.Any) -> t.Any:
 
 
 def floor(x: t.Any) -> t.Any:
-    """Floor function that preserves PAL types."""
+    """Floor function that preserves PAL types.
+
+    Args:
+        x: Numerical input or first operand, including PAL stochastic values.
+    """
     return np.floor(x)
 
 
 def all(x: t.Any) -> bool:
-    """Check if all elements are True."""
+    """Check if all elements are True.
+
+    Args:
+        x: Numerical input or first operand, including PAL stochastic values.
+    """
     return bool(np.all(x))

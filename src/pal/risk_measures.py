@@ -46,7 +46,12 @@ class RiskMeasureResult:
         value: float,
         weights: StochasticScalar,
     ) -> None:
-        """Initialise a RiskMeasureResult."""
+        """Initialise a RiskMeasureResult.
+
+        Args:
+            value: Value to encode, decode or evaluate.
+            weights: Weights used to aggregate simulated risk contributions.
+        """
         self._value = value
         self._weights = weights
 
@@ -81,6 +86,7 @@ class RiskMeasureResult:
         return np.mean(variable * self._weights)  # type: ignore[arg-type]
 
     def __repr__(self) -> str:
+        """Return a developer-facing representation of the risk measure result."""
         return f"RiskMeasureResult(value={self._value:.6f})"
 
 

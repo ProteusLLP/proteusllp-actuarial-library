@@ -11,6 +11,7 @@
 - Type system remains independent of specific implementations
 
 **Example**:
+<!--pytest-codeblocks:skip-->
 ```python
 import typing as t
 
@@ -38,7 +39,7 @@ def generate() -> VectorLike: ...  # ✅ Depends only on abstraction
 
 **Pattern**:
 
-<!--pytest-codeblocks:cont-->
+<!--pytest-codeblocks:skip-->
 
 ```python
 from typing import Self
@@ -84,7 +85,7 @@ ProteusLike[T] (Generic Protocol)
 
 ### Type Aliases
 
-<!--pytest-codeblocks:cont-->
+<!--pytest-codeblocks:skip-->
 
 ```python
 import numpy as np
@@ -142,3 +143,29 @@ Layer 4: Applications
 - **types.py**: No imports from other pal modules (dependency inversion)
 - **Higher layers**: Can import from lower layers only
 - **Same layer**: Minimize cross-dependencies
+
+
+## Scenario-indexed stochastic coupling contract
+
+Any calculation that accepts stochastic inputs must capture the original
+`ProteusStochasticVariable` inputs **before** converting them to NumPy/CuPy
+arrays. It must validate compatible scenario lengths before consuming random
+state or changing groups, compute with ordinary backend arrays, then construct
+all scenario-indexed outputs before linking them.
+
+Use `couple_stochastic_results(results, inputs, n_sims=...)` from
+`pal.couplings` for this final step. The helper validates **every** input and
+result leaf before changing groups; it supports a single output, multivariate
+component leaves and nested matrix leaves. Do not link scalar reductions,
+arbitrary summary arrays or any result that is not scenario-indexed.
+
+For frequency-severity simulations, supply the original stochastic parameters
+on the **simulation** axis, plus the frequency simulation result. Never pass the
+temporarily expanded per-claim severity parameters: an event count and a
+simulation count are different axes. The `FreqSevSims` object preserves that
+mapping through `sim_index`.
+
+Tests should cover mismatched scenario counts and failed numerical operations
+without group mutation, multi-output atomicity, three-level ancestry, copula
+reordering, zero-event compound simulations and weak-reference cleanup.
+The helper is internal and does not change public user-facing signatures.

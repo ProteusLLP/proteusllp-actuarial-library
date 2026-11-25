@@ -12,6 +12,7 @@ import typing as t
 
 from ._compat import override
 from ._maths import scalar_or_array, xp
+from .couplings import couple_stochastic_results
 from .distributions import DiscreteDistributionBase, ReturnType
 from .stochastic_scalar import StochasticScalar
 from .types import DistributionParameter, RandomGenerator
@@ -109,17 +110,26 @@ class Empirical(DiscreteDistributionBase):
         super().__init__()
 
     def _wrap_result(self, result: t.Any, argument: DistributionParameter) -> ReturnType:
-        """Preserve coupling from a stochastic CDF or inverse-CDF argument."""
+        """Preserve coupling from a stochastic CDF or inverse-CDF argument.
+
+        Args:
+            argument: Evaluation input used to preserve stochastic simulation alignment.
+            result: Calculated result to wrap with its stochastic metadata.
+        """
         if not isinstance(argument, StochasticScalar):
             return scalar_or_array(result)
 
         wrapped = StochasticScalar(result)
-        wrapped.coupled_variable_group.merge(argument.coupled_variable_group)
+        couple_stochastic_results((wrapped,), (argument,))
         return wrapped
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute the weighted empirical cumulative distribution function."""
+        """Compute the weighted empirical cumulative distribution function.
+
+        Args:
+            x: Evaluation point for the empirical CDF.
+        """
         values = xp.asarray(x.values if isinstance(x, StochasticScalar) else x)
         indices = xp.searchsorted(self._samples, values, side="right")
         cumulative = xp.concatenate((xp.zeros(1, dtype=float), self._cumulative_weights))
@@ -129,7 +139,11 @@ class Empirical(DiscreteDistributionBase):
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:
-        """Compute the generalized inverse empirical CDF."""
+        """Compute the generalized inverse empirical CDF.
+
+        Args:
+            u: Cumulative probability at which to evaluate the quantile.
+        """
         probabilities = xp.asarray(u.values if isinstance(u, StochasticScalar) else u)
         invalid = (probabilities < 0) | (probabilities > 1) | xp.isnan(probabilities)
         safe_probabilities = xp.where(invalid, 0.0, probabilities)
@@ -140,7 +154,12 @@ class Empirical(DiscreteDistributionBase):
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
-        """Resample observations with replacement using the empirical weights."""
+        """Resample observations with replacement using the empirical weights.
+
+        Args:
+            n_sims: Number of simulations represented by the data or requested draws.
+            rng: Random number generator supplying the draws.
+        """
         if n_sims < 1:
             raise ValueError(f"n_sims must be >= 1, got {n_sims}")
 

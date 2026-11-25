@@ -708,6 +708,11 @@ _BETA_INVERSE_KERNEL = cp.ElementwiseKernel(
 
 
 def _coerce_device_array(value: t.Any) -> t.Any:
+    """Promote device arrays to double precision.
+
+    Args:
+        value: Scalar or device array to pass to the beta kernels.
+    """
     if isinstance(value, cp.ndarray) and value.dtype != cp.float64:
         return value.astype(cp.float64)
     return value
@@ -715,7 +720,12 @@ def _coerce_device_array(value: t.Any) -> t.Any:
 
 @functools.lru_cache(maxsize=256)
 def _scalar_log_beta(a: float, b: float) -> float:
-    """Cache normalisation for host scalar shapes without reading device arrays."""
+    """Cache normalisation for host scalar shapes without reading device arrays.
+
+    Args:
+        a: First positive beta shape parameter.
+        b: Second positive beta shape parameter.
+    """
     return float(betaln(a, b))
 
 
@@ -725,6 +735,10 @@ def _scalar_kernels(a: float, b: float) -> tuple[t.Any, ...]:
 
     Compilation is cached for repeated distribution parameters. Device shape
     arrays continue through the fused kernels without host inspection.
+
+    Args:
+        a: First positive beta shape parameter.
+        b: Second positive beta shape parameter.
     """
     key = hashlib.sha256(f"{a.hex()},{b.hex()}".encode()).hexdigest()[:16]
     constants = f"const double a={a:.17e}, b={b:.17e}, log_beta={_scalar_log_beta(a, b):.17e};"
@@ -741,7 +755,13 @@ def _scalar_kernels(a: float, b: float) -> tuple[t.Any, ...]:
 
 
 def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
-    """Evaluate the regularized incomplete beta function on the GPU."""
+    """Evaluate the regularized incomplete beta function on the GPU.
+
+    Args:
+        a: First positive beta shape parameter, scalar or device array.
+        b: Second positive beta shape parameter, scalar or device array.
+        x: Evaluation points in the interval from zero to one.
+    """
     a = _coerce_device_array(a)
     b = _coerce_device_array(b)
     x = _coerce_device_array(x)
@@ -761,7 +781,13 @@ def betainc(a: t.Any, b: t.Any, x: t.Any) -> t.Any:
 
 
 def betaincinv(a: t.Any, b: t.Any, p: t.Any) -> t.Any:
-    """Evaluate the inverse regularized incomplete beta function on the GPU."""
+    """Evaluate the inverse regularized incomplete beta function on the GPU.
+
+    Args:
+        a: First positive beta shape parameter, scalar or device array.
+        b: Second positive beta shape parameter, scalar or device array.
+        p: Cumulative probabilities in the interval from zero to one.
+    """
     a = _coerce_device_array(a)
     b = _coerce_device_array(b)
     p = _coerce_device_array(p)

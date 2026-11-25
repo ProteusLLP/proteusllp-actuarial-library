@@ -1,0 +1,157 @@
+[
+  {
+    "id": "PAL-001",
+    "prompt": "Fit a Gamma distribution to 500 observed claim sizes and report the probability of a loss above a specified threshold.",
+    "required_behaviour": [
+      "Correct Gamma shape and scale parameterisation",
+      "MLE using fitted PAL distribution",
+      "Tail probability is between zero and one"
+    ],
+    "failure_modes": [
+      "Using SciPy parameter names without checking PAL",
+      "Treating plug-in predictions as parameter-uncertainty adjusted"
+    ]
+  },
+  {
+    "id": "PAL-002",
+    "prompt": "You have a large-loss listing where claims below £75,000 are unreported and amounts at a £300,000 policy limit are capped. Fit an underlying severity model.",
+    "required_behaviour": [
+      "Uses reporting threshold as left truncation",
+      "Uses limit-hit records as right censoring",
+      "Fits pre-limit severity with MLE"
+    ],
+    "failure_modes": [
+      "Treating capped payments as exact ultimate losses",
+      "Extrapolating below reporting threshold without additional information"
+    ]
+  },
+  {
+    "id": "PAL-003",
+    "prompt": "Generate annual aggregate loss and maximum single loss from Poisson claim counts and LogNormal individual severities for 1,024 years.",
+    "required_behaviour": [
+      "Claim counts and severities represented as frequency-severity model",
+      "Uses aggregate and occurrence semantics correctly",
+      "One result per simulation"
+    ],
+    "failure_modes": [
+      "Mixing up claim index and simulation index"
+    ]
+  },
+  {
+    "id": "PAL-004",
+    "prompt": "Price the expected annual recovery of a £2m excess of £1m occurrence reinsurance layer using simulated claims.",
+    "required_behaviour": [
+      "XoL applies per event",
+      "Annual recoveries aggregate by simulation",
+      "Reports expected technical recovery"
+    ],
+    "failure_modes": [
+      "Applying occurrence limit to annual aggregate instead of individual claims",
+      "Calling expected recovery a quoted commercial premium"
+    ]
+  },
+  {
+    "id": "PAL-005",
+    "prompt": "Simulate two correlated insurance lines with a Gaussian copula, and include expenses calculated from one line before the copula is applied.",
+    "required_behaviour": [
+      "Correct two-dimensional correlation matrix",
+      "Coupling group carries expense-derived values through reordering",
+      "Marginal values unchanged"
+    ],
+    "failure_modes": [
+      "Reordering a raw array without its expense component",
+      "Incorrectly interpreting a copula as a linear correlation of arbitrary transformed values"
+    ]
+  },
+  {
+    "id": "PAL-006",
+    "prompt": "Apply a stochastic annual inflation rate to the claims in a frequency-severity simulation, then calculate annual inflated losses.",
+    "required_behaviour": [
+      "One inflation draw per simulation",
+      "All claims in same simulation share inflation",
+      "Coupling group preserved"
+    ],
+    "failure_modes": [
+      "Drawing inflation independently per claim",
+      "Using wrong broadcast dimension"
+    ]
+  },
+  {
+    "id": "PAL-007",
+    "prompt": "Compare Monte Carlo with randomized quasi-Monte Carlo for a standard Normal distribution, and restore the usual sampling configuration afterwards.",
+    "required_behaviour": [
+      "Uses documented sampling-method enum",
+      "Uses reproducible seed and power-of-two sample size",
+      "Restores MC sampling state"
+    ],
+    "failure_modes": [
+      "Claiming within-scramble points are IID",
+      "Claiming RQMC always improves precision"
+    ]
+  },
+  {
+    "id": "PAL-008",
+    "prompt": "Calculate the 99.5th percentile of aggregate annual loss from a frequency-severity model, distinguishing VaR from expected loss.",
+    "required_behaviour": [
+      "Aggregate per simulation before percentile",
+      "Correct 99.5 percentage convention",
+      "Reports mean and percentile separately"
+    ],
+    "failure_modes": [
+      "Using claim-level percentile as annual aggregate VaR",
+      "Using 0.995 when API expects 99.5"
+    ]
+  },
+  {
+    "id": "PAL-009",
+    "prompt": "Fit a Generalised Pareto tail model to reported large losses with a policy limit, and estimate a high attachment loss probability.",
+    "required_behaviour": [
+      "Checks GPD shape/scale/location parameterisation",
+      "Handles truncation and censoring",
+      "States tail extrapolation limitations"
+    ],
+    "failure_modes": [
+      "Ignoring censored values",
+      "Inventing confidence guarantees from a fitted MLE"
+    ]
+  },
+  {
+    "id": "PAL-010",
+    "prompt": "Model a three-layer excess-of-loss reinsurance programme, including annual aggregate recoveries and reinstatement premiums.",
+    "required_behaviour": [
+      "Uses supported reinsurance tower classes",
+      "Sets occurrence attachments and limits correctly",
+      "Handles reinstatement premium separately"
+    ],
+    "failure_modes": [
+      "Treating reinstatements as free additional cover",
+      "Incorrectly mixing per-event and aggregate amounts"
+    ]
+  },
+  {
+    "id": "PAL-011",
+    "prompt": "Derive a simulated gross, ceded and net loss from a frequency-severity model and an occurrence layer, then check the scenario-wise accounting identity.",
+    "required_behaviour": [
+      "Preserves stochastic coupling across gross and ceded outputs",
+      "Net equals gross less ceded in each simulation",
+      "Allows reproducible test assertions"
+    ],
+    "failure_modes": [
+      "Pairing unrelated scenarios",
+      "Dropping coupling metadata through raw array reconstruction"
+    ]
+  },
+  {
+    "id": "PAL-012",
+    "prompt": "Create a stochastic severity parameter driven by an economic factor, generate aggregate claims, and apply a copula to another risk factor.",
+    "required_behaviour": [
+      "Parameters use simulation-level stochastic values",
+      "Generated results retain parameter ancestry",
+      "Copula reordering propagates to dependent quantities"
+    ],
+    "failure_modes": [
+      "Drawing stochastic parameters independently per claim",
+      "Breaking coupling in chained distribution calls"
+    ]
+  }
+]

@@ -10,6 +10,7 @@ Proteus Actuarial Library documentation
      <div class="pal-actions">
        <a class="pal-button pal-button-primary" href="tutorials/getting_started.html">Get started <span aria-hidden="true">→</span></a>
        <a class="pal-button pal-button-secondary" href="api/modules.html">Explore the API</a>
+       <a class="pal-button pal-button-secondary" href="https://www.proteusllp.com/">Proteus Consulting</a>
      </div>
      <div class="pal-install" aria-label="Install PAL"><code>pip install proteusllp-actuarial-library</code></div>
    </section>
@@ -86,6 +87,13 @@ Why PAL
 
       Frequency–severity models, reinsurance contracts, risk measures and capital allocation are first-class concepts.
 
+About Proteus Consulting
+------------------------
+
+PAL is developed and maintained by `Proteus Consulting LLP <https://www.proteusllp.com/>`_. Proteus is a Cambridge-based actuarial consulting and software firm specialising in insurance and reinsurance risk modelling, including economic and regulatory capital, reinsurance pricing, catastrophe accumulation, investment risk and portfolio optimisation.
+
+Our open-source libraries support transparent, extensible modelling in Python. For more information about Proteus, its consulting services and software, visit the `Proteus homepage <https://www.proteusllp.com/>`_.
+
 A small model, end to end
 -------------------------
 
@@ -127,8 +135,11 @@ A small model, end to end
    tutorials/README
    tutorials/getting_started
    tutorials/distributions_guide
+   tutorials/distribution_fitting
    tutorials/frequency_severity_modelling
+   tutorials/data_io
    tutorials/coupling_groups_and_copulas
+   tutorials/randomized_qmc
 
 .. toctree::
    :maxdepth: 2

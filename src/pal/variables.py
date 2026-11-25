@@ -12,10 +12,9 @@ Key features:
 - Correlation analysis and upsampling capabilities
 - Export functionality for analysis and reporting
 
-NOTE: The serialization/deserialization methods (from_csv, from_dict, from_series)
-      are currently incomplete and have significant limitations. A comprehensive
-      codec system is planned to address these issues.
-      See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
+NOTE: CSV, Parquet and DataFrame round-trips support nested value hierarchies.
+      Legacy from_dict and from_series are still limited; see issue #170 for
+      further serialization work.
 
 The ProteusVariable is designed for actuarial applications such as:
 - Multi-factor risk modeling (e.g., frequency, severity, inflation)
@@ -56,7 +55,6 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import plotly.graph_objects as go  # type: ignore
-import plotly.io as pio  # type: ignore
 import scipy.stats
 from plotly.subplots import make_subplots  # type: ignore
 
@@ -65,12 +63,10 @@ from . import maths as pnp
 # local imports
 from ._compat import Self
 from ._maths import asnumpy, xp
-from .couplings import ProteusStochasticVariable
+from .couplings import ProteusStochasticVariable, couple_stochastic_results
 from .frequency_severity import FreqSevSims
 from .stochastic_scalar import StochasticScalar
 from .types import VectorLike
-
-pio.templates.default = "none"
 
 T = t.TypeVar("T")
 
@@ -80,6 +76,11 @@ __all__ = [
 
 
 def _format_number(val: int | float) -> str:
+    """Format a numerical value for display.
+
+    Args:
+        val: Value to format or assign.
+    """
     if isinstance(val, int) or abs(val) >= 100:
         return f"{val:,.0f}"
     if abs(val) >= 1:
@@ -88,25 +89,32 @@ def _format_number(val: int | float) -> str:
 
 
 def _resample_freqsev(value: FreqSevSims, indices: StochasticScalar) -> FreqSevSims:
-    """Select complete frequency-severity simulations using positional indices."""
+    """Select complete frequency-severity simulations using positional indices.
+
+    Args:
+        indices: Selected simulation positions.
+        value: Value to convert, compare or assign.
+    """
     source_counts = xp.bincount(value.sim_index, minlength=value.n_sims)
     source_starts = xp.cumsum(source_counts) - source_counts
 
     target_indices = indices.values.astype(int)
+    # A copula can relabel events without placing them back in simulation order.
+    source_order = xp.argsort(value.sim_index, kind="stable")
     target_counts = source_counts[target_indices]
     target_starts = source_starts[target_indices]
 
     new_sim_index = xp.repeat(xp.arange(indices.n_sims, dtype=int), target_counts)
     target_event_starts = xp.cumsum(target_counts) - target_counts
     within_target_offsets = xp.arange(new_sim_index.size, dtype=int) - xp.repeat(target_event_starts, target_counts)
-    source_positions = xp.repeat(target_starts, target_counts) + within_target_offsets
+    source_positions = source_order[xp.repeat(target_starts, target_counts) + within_target_offsets]
 
     result = FreqSevSims(
         sim_index=new_sim_index,
-        values=value.values[source_positions],
+        values=value.values[asnumpy(source_positions) if isinstance(value.values, np.ndarray) else source_positions],
         n_sims=indices.n_sims,
     )
-    result.coupled_variable_group.merge(indices.coupled_variable_group)
+    couple_stochastic_results((result,), (indices,))
     return result
 
 
@@ -117,6 +125,13 @@ class ProteusVariable(t.Generic[T]):
         the same type (homogeneous container). Each instance must contain either all
         scalars, all vectors (like StochasticScalar), or all nested ProteusVariable
         instances.
+
+    Attributes:
+        dim_name: Name of the outer dimension of the variable.
+        dimensions: Ordered keys identifying the entries of the variable.
+        n_sims: Number of simulations represented by the object.
+        values: Stored values in simulation or dimension order.
+
 
     Notes:
                 - All values in a single instance must be the same type.
@@ -180,10 +195,8 @@ class ProteusVariable(t.Generic[T]):
             TypeError: If values is not a mapping type.
         """
         self.dim_name: str = dim_name
-        # TODO: Clarify whether the values dict is intended to be mutable during the
-        # variable's lifetime, or if it should be treated as immutable after
-        # initialization. Consider using a frozen dict if immutability is desired.
-        # See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/20
+        # The mapping mutability contract is tracked in
+        # https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/20.
         self.values = values
         self.dimensions = [dim_name]
         self._dimension_set = set(self.dimensions)
@@ -296,6 +309,12 @@ class ProteusVariable(t.Generic[T]):
             raise NotImplementedError(f"Method {method} not implemented for ProteusVariable.")
 
         def recursive_apply(*items: t.Any, **kwargs: t.Any) -> t.Any:
+            """Apply the NumPy operation recursively to matching variable entries.
+
+            Args:
+                *items: Named dimension entries used to construct the variable.
+                **kwargs: Keyword arguments supplied by the caller or NumPy dispatch.
+            """
             # If none of the items is a ProteusVariable (i.e. a container), then
             # assume they are leaf nodes (e.g., numbers or stochastic types) and
             # simply call ufunc.
@@ -447,15 +466,10 @@ class ProteusVariable(t.Generic[T]):
                 # Reduction of vector-like values: return a single StochasticScalar
                 result = StochasticScalar(temp)
 
-                # Merge coupling groups from all original values
-                for value in self.values.values():
-                    if hasattr(value, "coupled_variable_group"):
-                        # Type ignore: we know that this attribute exists because we've
-                        # done a runtime check above.
-                        result.coupled_variable_group.merge(
-                            value.coupled_variable_group  # type: ignore[attr-defined]
-                        )
-
+                stochastic_inputs = (
+                    value for value in self.values.values() if isinstance(value, ProteusStochasticVariable)
+                )
+                couple_stochastic_results((result,), stochastic_inputs)
                 return result
 
             # Other 1D results: distribute evenly across keys
@@ -483,6 +497,7 @@ class ProteusVariable(t.Generic[T]):
         )
 
     def __bool__(self) -> bool:
+        """Evaluate the truth value according to the variable's semantics."""
         raise ValueError(
             "ProteusVariable does not have a single truth value. Use explicit checks on its values instead."
         )
@@ -495,6 +510,9 @@ class ProteusVariable(t.Generic[T]):
         """Check if value is in the container.
 
         Required for Sequence protocol compatibility.
+
+        Args:
+            value: Value to convert, compare or assign.
         """
         return value in self.values.values()
 
@@ -506,6 +524,7 @@ class ProteusVariable(t.Generic[T]):
         return reversed(list(self.values.values()))
 
     def __repr__(self) -> str:
+        """Return a developer-facing representation of the object."""
         lines = [f"ProteusVariable ({self.dim_name}):"]
         max_key_len = max(len(k) for k in self.values)
         for key, val in self.values.items():
@@ -520,33 +539,83 @@ class ProteusVariable(t.Generic[T]):
 
     # Arithmetic operations
     def __add__(self, other: t.Any) -> Self:
+        """Add the other operand to this object.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: a + b))
 
     def __radd__(self, other: t.Any) -> Self:
+        """Add this object to the left operand.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return self.__add__(other)
 
     def __sub__(self, other: t.Any) -> Self:
+        """Subtract the other operand from this object.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: a - b))
 
     def __rsub__(self, other: t.Any) -> Self:
+        """Subtract this object from the left operand.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: b - a))
 
     def __mul__(self, other: t.Any) -> Self:
+        """Multiply this object by the other operand.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: a * b))
 
     def __rmul__(self, other: t.Any) -> Self:
+        """Multiply the left operand by this object.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return self.__mul__(other)
 
     def __truediv__(self, other: t.Any) -> Self:
+        """Divide this object by the other operand.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: a / b))
 
     def __rtruediv__(self, other: t.Any) -> Self:
+        """Divide the left operand by this object.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: b / a))
 
     def __pow__(self, other: t.Any) -> Self:
+        """Raise this object to the other operand's power.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: a**b))
 
     def __rpow__(self, other: t.Any) -> Self:
+        """Raise the left operand to this object's power.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: b**a))
 
     def __neg__(self) -> Self:
@@ -555,39 +624,235 @@ class ProteusVariable(t.Generic[T]):
 
     # Comparison operations
     def __lt__(self, other: t.Any) -> Self:
+        """Compare whether this object is less than the other operand.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: a < b))
 
     def __rlt__(self, other: t.Any) -> Self:
+        """Perform the reflected less-than comparison.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return self.__ge__(other)
 
     def __le__(self, other: t.Any) -> Self:
+        """Compare whether this object is less than or equal to the other operand.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: a <= b))
 
     def __rle__(self, other: t.Any) -> Self:
+        """Perform the reflected less-than-or-equal comparison.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return self.__gt__(other)
 
     def __gt__(self, other: t.Any) -> Self:
+        """Compare whether this object is greater than the other operand.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: a > b))
 
     def __rgt__(self, other: t.Any) -> Self:
+        """Perform the reflected greater-than comparison.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return self.__le__(other)
 
     def __ge__(self, other: t.Any) -> Self:
+        """Compare whether this object is greater than or equal to the other operand.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: a >= b))
 
     def __rge__(self, other: t.Any) -> Self:
+        """Perform the reflected greater-than-or-equal comparison.
+
+        Args:
+            other: Scalar or variable operand to combine with this variable.
+        """
         return self.__lt__(other)
 
     # Equality operations
     def __eq__(self, other: object) -> Self:  # type: ignore[override]
+        """Compare the operands for equality at corresponding entries.
+
+        Args:
+            other: Scalar or variable operand to compare with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: a == b))
 
     def __ne__(self, other: object) -> Self:  # type: ignore[override]
+        """Compare the operands for inequality at corresponding entries.
+
+        Args:
+            other: Scalar or variable operand to compare with this variable.
+        """
         return t.cast(Self, self._binary_operation(other, lambda a, b: a != b))
 
-    def __getitem__(self, key: int | str) -> T:
-        # FIXME: This assumes that the ordering of the values never changes. At the
-        # moment, this is not true. The values are stored in mutable container!
+    def _stochastic_getitem(self, selector: StochasticScalar | FreqSevSims) -> StochasticScalar | FreqSevSims:
+        """Select a container entry separately for each simulation or event.
+
+        String selectors refer to named entries. Integer selectors refer to
+        entry positions, as for ordinary indexing.
+
+        Args:
+            selector: Stochastic selector identifying the dimension entry for each simulation or event.
+        """
+        if not self.values:
+            raise ValueError("Cannot select from an empty ProteusVariable")
+
+        labels = selector.values
+        keys = list(self.values)
+        if labels.dtype.kind in "iu":
+            # Keep numeric selectors on the active array backend, and check
+            # unsigned values before any narrowing cast could wrap them.
+            if labels.dtype.kind == "u":
+                invalid = labels >= len(keys)
+            else:
+                invalid = (labels < -len(keys)) | (labels >= len(keys))
+            if bool(xp.any(invalid)):
+                raise IndexError("Stochastic ProteusVariable index is out of range")
+            positions = labels.astype(xp.intp) % len(keys)
+        elif labels.dtype.kind in "US":
+            host_labels = asnumpy(labels)
+            lookup = {name: i for i, name in enumerate(keys)}
+            missing = set(np.unique(host_labels)) - lookup.keys()
+            if missing:
+                raise KeyError(f"Unknown {self.dim_name} keys: {sorted(missing)!r}")
+            positions = xp.asarray(
+                np.fromiter((lookup[name] for name in host_labels), dtype=np.intp, count=len(host_labels))
+            )
+        else:
+            raise TypeError("Stochastic ProteusVariable keys must contain strings or integers")
+
+        leaves = t.cast(list[t.Any], list(self.values.values()))
+        is_event_values = all(isinstance(x, FreqSevSims) for x in leaves)
+        if any(isinstance(x, ProteusVariable) for x in leaves):
+            raise TypeError("Stochastic selection of nested ProteusVariables is not supported")
+        if is_event_values and isinstance(selector, FreqSevSims):
+            for value in leaves:
+                if value.n_sims != selector.n_sims or not bool(xp.array_equal(value.sim_index, selector.sim_index)):
+                    raise ValueError("Event selectors require matching event indices")
+        elif not is_event_values and any(isinstance(x, FreqSevSims) for x in leaves):
+            raise TypeError("ProteusVariable entries must have a common stochastic type")
+
+        if isinstance(selector, StochasticScalar) and is_event_values:
+            event_indices: list[t.Any] = []
+            event_values: list[t.Any] = []
+            for i, value in enumerate(leaves):
+                if value.n_sims != selector.n_sims:
+                    raise ValueError("Simulation counts do not match")
+                mask = positions[value.sim_index] == i
+                if not bool(xp.any(mask)):
+                    continue
+                event_indices.append(value.sim_index[mask])
+                event_values.append(value.values[asnumpy(mask) if isinstance(value.values, np.ndarray) else mask])
+            first = leaves[0]
+            if event_indices:
+                indices = xp.concatenate(event_indices)
+                event_dtype = np.result_type(*(x.dtype for x in event_values))
+                if event_dtype.kind in "USMm":
+                    values = np.concatenate([asnumpy(x) for x in event_values]).astype(event_dtype, copy=False)
+                elif event_dtype.kind in "biufc":
+                    values = xp.concatenate([xp.asarray(x) for x in event_values]).astype(event_dtype, copy=False)
+                else:
+                    raise TypeError("Selected event values must have compatible dtypes")
+                order = xp.argsort(indices, kind="stable")
+                values = values[asnumpy(order) if isinstance(values, np.ndarray) else order]
+                indices = indices[order]
+            else:
+                indices = xp.asarray([], dtype=int)
+                values = first.values[:0]
+            result: StochasticScalar | FreqSevSims = FreqSevSims(indices, values, selector.n_sims)
+        else:
+            # Select one leaf at each scenario or event, retaining the input shape.
+            first = leaves[0]
+            selected_indices = [i for i in range(len(leaves)) if bool(xp.any(positions == i))]
+            dtypes = [
+                value.values.dtype if isinstance(value, ProteusStochasticVariable) else np.asarray(value).dtype
+                for value in (leaves[i] for i in selected_indices)
+            ]
+            if not dtypes:
+                first = leaves[0]
+                dtypes = [
+                    first.values.dtype if isinstance(first, ProteusStochasticVariable) else np.asarray(first).dtype
+                ]
+            try:
+                dtype = np.result_type(*dtypes)
+            except TypeError as exc:
+                raise TypeError("Stochastic lookup values must have compatible dtypes") from exc
+            if dtype.kind == "O":
+                raise TypeError("Stochastic lookup values must have compatible dtypes")
+            use_host = dtype.kind in "USMm"
+            chosen = (np if use_host else xp).empty(len(positions), dtype=dtype)
+            for i, value in enumerate(leaves):
+                mask = positions == i
+                if not bool(xp.any(mask)):
+                    continue
+                target = asnumpy(mask) if use_host else mask
+                if isinstance(value, FreqSevSims):
+                    source = value.values
+                    selected = source[asnumpy(mask) if isinstance(source, np.ndarray) else mask]
+                elif isinstance(value, StochasticScalar):
+                    if value.n_sims == 1:
+                        selected = value.values[0]
+                    elif value.n_sims == selector.n_sims:
+                        if isinstance(selector, FreqSevSims):
+                            source_idx = selector.sim_index[mask]
+                            if isinstance(value.values, np.ndarray):
+                                source_idx = asnumpy(source_idx)
+                            selected = value.values[source_idx]
+                        else:
+                            selected = value.values[asnumpy(mask) if isinstance(value.values, np.ndarray) else mask]
+                    else:
+                        raise ValueError("Simulation counts do not match")
+                else:
+                    selected = value
+                if use_host and isinstance(selected, xp.ndarray):
+                    selected = asnumpy(selected)
+                chosen[target] = selected
+            if isinstance(selector, FreqSevSims):
+                result = FreqSevSims(selector.sim_index, chosen, selector.n_sims)
+            else:
+                result = StochasticScalar(chosen)
+
+        stochastic_leaves = (
+            value for value in leaves if isinstance(value, ProteusStochasticVariable) and value.n_sims == result.n_sims
+        )
+        couple_stochastic_results((result,), (selector, *stochastic_leaves))
+        return result
+
+    @t.overload
+    def __getitem__(self, key: int | str) -> T: ...
+
+    @t.overload
+    def __getitem__(self, key: StochasticScalar | FreqSevSims) -> StochasticScalar | FreqSevSims: ...
+
+    def __getitem__(self, key: int | str | StochasticScalar | FreqSevSims) -> T | StochasticScalar | FreqSevSims:
+        """Retrieve the selected entry or entries.
+
+        Args:
+            key: Key identifying a member of the variable.
+        """
+        if isinstance(key, (StochasticScalar, FreqSevSims)):
+            return self._stochastic_getitem(key)
+        # Positional access follows mutable dictionary insertion order; see
+        # https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/181.
         if isinstance(key, int):
             return list(self.values.values())[key]
         if isinstance(key, str):  # type: ignore[redundant-expr]
@@ -595,16 +860,27 @@ class ProteusVariable(t.Generic[T]):
         raise TypeError(f"Key must be an integer or string, got {type(key).__name__}.")
 
     def __setitem__(self, key: int | str, value: T) -> None:
+        """Assign a value to the selected dimension entry.
+
+        Args:
+            key: Key identifying a member of the variable.
+            value: Value to convert, compare or assign.
+        """
         if isinstance(key, int):
             dict_key = list(self.values.keys())[key]
             self.values[dict_key] = value
-        if isinstance(key, str):  # type: ignore[redundant-expr]
+        elif isinstance(key, str):
             self.values[key] = value
+        else:
+            raise TypeError(f"Key must be an integer or string, got {type(key).__name__}.")
 
     def count(self, value: T) -> int:
         """Count occurrences of value in the container.
 
         Required for Sequence protocol compatibility.
+
+        Args:
+            value: Value to convert, compare or assign.
         """
         return list(self.values.values()).count(value)
 
@@ -612,6 +888,12 @@ class ProteusVariable(t.Generic[T]):
         """Return index of first occurrence of value.
 
         Required for Sequence protocol compatibility.
+
+        Args:
+            start: First position included in the selection.
+            stop: Exclusive end position of the selection.
+            value: Value to convert, compare or assign.
+
 
         Raises:
             ValueError: If value is not found.
@@ -634,19 +916,19 @@ class ProteusVariable(t.Generic[T]):
         Returns:
             A new ProteusVariable with values at the specified simulation indices.
         """
-        # FIXME: this makes a bit of a mess of the interface. Would make sense to just
-        # make use of the __getitem__ method instead. Since ProteusVariable is
-        # SequenceLike, it should support indexing with integers and strings.
-        # For this to work, we need to be sure that the contents of values is indeed
-        # VectorLike. Remember that ProteusVariables may be nested and a ProteusVariable
-        # will not be VectorLike.
+        # The distinction between simulation and dimension indexing, including
+        # nested variables, is tracked in issue #182.
         return ProteusVariable(
             dim_name=self.dim_name,
             values={k: self._get_value_at_sim_helper(v, sim_no) for k, v in self.values.items()},
         )
 
     def upsample(self, n_sims: int) -> ProteusVariable[T]:
-        """Upsample stochastic leaves recursively while preserving coupling groups."""
+        """Upsample stochastic leaves recursively while preserving coupling groups.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+        """
         if self.n_sims == n_sims:
             return self
         return self._upsample(n_sims, {})
@@ -656,6 +938,12 @@ class ProteusVariable(t.Generic[T]):
         n_sims: int,
         group_indices: dict[int, StochasticScalar],
     ) -> ProteusVariable[T]:
+        """Expand the variable to the requested simulation count.
+
+        Args:
+            group_indices: Indices identifying the members of each group.
+            n_sims: Number of simulations on the scenario axis.
+        """
         new_values: dict[str, t.Any] = {}
 
         for key, value in self.values.items():
@@ -762,59 +1050,258 @@ class ProteusVariable(t.Generic[T]):
         except Exception as e:
             return False, f"Error validating FreqSevSims consistency: {str(e)}", None
 
+    def to_dataframe(
+        self,
+        layout: str = "auto",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        simulation_column: str = "Simulation",
+        event_column: str = "Event",
+        values_column: str = "value",
+    ) -> pd.DataFrame:
+        """Export as wide, nested MultiIndex, or long-form tabular data.
+
+        Auto selects MultiIndex for regular nested stochastic variables and
+        long form for claim lists or other heterogeneous data.
+        Use pal.serialization.save for object persistence and coupling.
+
+        Args:
+            dimension_columns: Columns defining the hierarchy of variable dimensions.
+            event_column: Column identifying individual events within a simulation.
+            layout: Plotly layout settings for the figure.
+            simulation_column: Column identifying the simulation index.
+            values_column: Column containing the variable values.
+        """
+        from .data_interchange import to_dataframe
+
+        return to_dataframe(
+            self,
+            layout=layout,
+            dimension_columns=dimension_columns,
+            simulation_column=simulation_column,
+            event_column=event_column,
+            values_column=values_column,
+        )
+
+    @classmethod
+    def from_dataframe(
+        cls,
+        data: pd.DataFrame,
+        dim_name: str | None = None,
+        values_column: str = "value",
+        simulation_column: str | None = "Simulation",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        event_column: str = "Event",
+        n_sims: int | None = None,
+        couple: bool = True,
+    ) -> ProteusVariable[t.Any]:
+        """Read tables; couple leaves sharing the imported scenario IDs by default.
+
+        Args:
+            couple: Whether to couple restored stochastic leaves.
+            data: Input data used to construct the variable.
+            dim_name: Name of the dimension used for the result.
+            dimension_columns: Columns defining the hierarchy of variable dimensions.
+            event_column: Column identifying individual events within a simulation.
+            n_sims: Number of simulations on the scenario axis.
+            simulation_column: Column identifying the simulation index.
+            values_column: Column containing the variable values.
+        """
+        from .data_interchange import from_dataframe
+
+        return from_dataframe(
+            data,
+            dim_name,
+            values_column,
+            simulation_column,
+            dimension_columns=dimension_columns,
+            event_column=event_column,
+            n_sims=n_sims,
+            couple=couple,
+        )
+
+    def to_csv(
+        self,
+        file_name: str | os.PathLike[str] | t.IO[t.Any],
+        layout: str = "auto",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        simulation_column: str = "Simulation",
+        event_column: str = "Event",
+        values_column: str = "value",
+        storage_options: t.Mapping[str, t.Any] | None = None,
+    ) -> None:
+        """Export ordinary CSV to a local path, cloud URI or file-like object.
+
+        Args:
+            dimension_columns: Columns defining the hierarchy of variable dimensions.
+            event_column: Column identifying individual events within a simulation.
+            file_name: File path or supported storage URL.
+            layout: Plotly layout settings for the figure.
+            simulation_column: Column identifying the simulation index.
+            storage_options: Options passed to the storage filesystem.
+            values_column: Column containing the variable values.
+        """
+        from .storage import open_file
+
+        frame = self.to_dataframe(
+            layout=layout,
+            dimension_columns=dimension_columns,
+            simulation_column=simulation_column,
+            event_column=event_column,
+            values_column=values_column,
+        )
+        with open_file(file_name, "wb", storage_options=storage_options) as output:
+            frame.to_csv(output, index=isinstance(frame.columns, pd.MultiIndex), encoding="utf-8")
+
     @classmethod
     def from_csv(
         cls,
-        file_name: str,
-        dim_name: str,
-        values_column: str,
-        simulation_column: str = "Simulation",
-    ) -> ProteusVariable[StochasticScalar]:
-        """Import a ProteusVariable from a CSV file.
+        file_name: str | os.PathLike[str] | t.IO[t.Any],
+        dim_name: str | None = None,
+        values_column: str = "value",
+        simulation_column: str | None = "Simulation",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        event_column: str = "Event",
+        n_sims: int | None = None,
+        header_rows: int | None = None,
+        storage_options: t.Mapping[str, t.Any] | None = None,
+        couple: bool = True,
+    ) -> ProteusVariable[t.Any]:
+        """Import CSV from any filesystem, including PAL's MultiIndex headers.
 
-        This method currently has significant limitations and will be replaced
-        with a more comprehensive serialization system.
-
-        Current Limitations:
-        - Only supports one-dimensional variables
-        - Always creates StochasticScalar values regardless of intended type
-        - Cannot preserve generic type information through deserialization
-        - No support for nested ProteusVariable structures
+        header_rows overrides automatic detection for external pandas CSV.
+        Existing positional arguments for one-dimensional imports are retained.
 
         Args:
-            file_name: Path to the CSV file to read
-            dim_name: Name of the dimension column in the CSV
-            values_column: Name of the column containing the values
-            simulation_column: Name of the column containing simulation indices
-
-        Returns:
-            ProteusVariable with StochasticScalar values loaded from the CSV
-
-        TODO: Implement comprehensive codec system for proper serialization
-              See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
+            couple: Whether to couple restored stochastic leaves.
+            dim_name: Name of the dimension used for the result.
+            dimension_columns: Columns defining the hierarchy of variable dimensions.
+            event_column: Column identifying individual events within a simulation.
+            file_name: File path or supported storage URL.
+            header_rows: Number of header rows describing the variable dimensions.
+            n_sims: Number of simulations on the scenario axis.
+            simulation_column: Column identifying the simulation index.
+            storage_options: Options passed to the storage filesystem.
+            values_column: Column containing the variable values.
         """
-        # Type ignore: pandas-stubs has complex overloads causing Pyright to report
-        # the function signature as "partially unknown" despite correct usage
-        df: pd.DataFrame = pd.read_csv(file_name)  # type: ignore[misc]
-        pivoted_df = df.pivot(index=simulation_column, columns=dim_name, values=values_column)
-        count = df[dim_name].value_counts()
-        # Type ignore: pandas-stubs overloads cause "partially unknown" warnings
-        pivoted_df.sort_index(inplace=True)  # type: ignore[misc]
+        import csv
 
-        # classmethods can't preserve generic type parameters so we need a type ignore
-        # here. When data is loaded, the contents of the ProteusVariable will be
-        # whatever was present in the CSV file. It may be necessary to separate these
-        # factory functions from ProteusVariable completely.
-        result = cls(
+        from .storage import open_file
+
+        with open_file(file_name, "rb", storage_options=storage_options) as input_file:
+            if header_rows is None and simulation_column is not None:
+                # Read only the first few records; do not load large claim lists
+                # or download remote files merely to identify header rows.
+                reader = csv.reader(
+                    line.decode("utf-8-sig") if isinstance(line, bytes) else line for line in input_file
+                )
+                rows = [row for _, row in zip(range(33), reader, strict=False)]
+                for i in range(2, len(rows)):
+                    row = rows[i]
+                    if (
+                        row
+                        and row[0] == simulation_column
+                        and all(not cell for cell in row[1:])
+                        and all(rows[k] and rows[k][0] for k in range(i))
+                    ):
+                        header_rows = i
+                        break
+                input_file.seek(0)
+            if header_rows is not None:
+                if header_rows < 2:
+                    raise ValueError("MultiIndex CSV requires at least two header rows")
+                frame: pd.DataFrame = pd.read_csv(input_file, header=list(range(header_rows)), index_col=0)
+            else:
+                frame = pd.read_csv(input_file)
+        return cls.from_dataframe(
+            frame,
             dim_name,
-            {
-                str(label): StochasticScalar(pivoted_df[label].values[: count[label]])  # type: ignore[misc]
-                for label in df[dim_name].unique()  # type: ignore[misc]
-            },
+            values_column,
+            simulation_column,
+            dimension_columns=dimension_columns,
+            event_column=event_column,
+            n_sims=n_sims,
+            couple=couple,
         )
-        result.n_sims = max(count)
 
-        return result  # type: ignore
+    def to_parquet(
+        self,
+        file_name: str | os.PathLike[str] | t.IO[t.Any],
+        layout: str = "auto",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        simulation_column: str = "Simulation",
+        event_column: str = "Event",
+        values_column: str = "value",
+        storage_options: t.Mapping[str, t.Any] | None = None,
+    ) -> None:
+        """Export ordinary Parquet to a local path, cloud URI or binary stream.
+
+        Args:
+            dimension_columns: Columns defining the hierarchy of variable dimensions.
+            event_column: Column identifying individual events within a simulation.
+            file_name: File path or supported storage URL.
+            layout: Plotly layout settings for the figure.
+            simulation_column: Column identifying the simulation index.
+            storage_options: Options passed to the storage filesystem.
+            values_column: Column containing the variable values.
+        """
+        from .storage import open_file
+
+        frame = self.to_dataframe(
+            layout=layout,
+            dimension_columns=dimension_columns,
+            simulation_column=simulation_column,
+            event_column=event_column,
+            values_column=values_column,
+        )
+        with open_file(file_name, "wb", storage_options=storage_options) as output:
+            frame.to_parquet(output, index=isinstance(frame.columns, pd.MultiIndex))
+
+    @classmethod
+    def from_parquet(
+        cls,
+        file_name: str | os.PathLike[str] | t.IO[t.Any],
+        dim_name: str | None = None,
+        values_column: str = "value",
+        simulation_column: str | None = "Simulation",
+        *,
+        dimension_columns: t.Sequence[str] | None = None,
+        event_column: str = "Event",
+        n_sims: int | None = None,
+        storage_options: t.Mapping[str, t.Any] | None = None,
+        couple: bool = True,
+    ) -> ProteusVariable[t.Any]:
+        """Read ordinary Parquet, including nested pandas MultiIndex columns.
+
+        Args:
+            couple: Whether to couple restored stochastic leaves.
+            dim_name: Name of the dimension used for the result.
+            dimension_columns: Columns defining the hierarchy of variable dimensions.
+            event_column: Column identifying individual events within a simulation.
+            file_name: File path or supported storage URL.
+            n_sims: Number of simulations on the scenario axis.
+            simulation_column: Column identifying the simulation index.
+            storage_options: Options passed to the storage filesystem.
+            values_column: Column containing the variable values.
+        """
+        from .storage import open_file
+
+        with open_file(file_name, "rb", storage_options=storage_options) as input_file:
+            frame: pd.DataFrame = pd.read_parquet(input_file)
+        return cls.from_dataframe(
+            frame,
+            dim_name,
+            values_column,
+            simulation_column,
+            dimension_columns=dimension_columns,
+            event_column=event_column,
+            n_sims=n_sims,
+            couple=couple,
+        )
 
     @classmethod
     def from_dict(
@@ -838,8 +1325,8 @@ class ProteusVariable(t.Generic[T]):
         Returns:
             ProteusVariable with StochasticScalar values created from the data
 
-        TODO: Implement comprehensive codec system for proper serialization
-              See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
+        For type-preserving object persistence, see
+        https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/170.
         """
         # Type ignore: Classmethods can't preserve generic type parameters.
         # This always creates StochasticScalar values regardless of T.
@@ -870,8 +1357,8 @@ class ProteusVariable(t.Generic[T]):
         Returns:
             ProteusVariable with scalar values from the Series
 
-        TODO: Implement comprehensive codec system for proper serialization
-              See: https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/22
+        For type-preserving object persistence, see
+        https://github.com/ProteusLLP/proteusllp-actuarial-library/issues/170.
         """
         # Type ignore: Classmethods can't preserve generic type parameters.
         # The values type depends on the Series content, not the generic T.
@@ -884,7 +1371,11 @@ class ProteusVariable(t.Generic[T]):
         return result  # type: ignore
 
     def correlation_matrix(self, correlation_type: str = "spearman") -> npt.NDArray[np.float64]:
-        """Compute correlation matrix between variables."""
+        """Compute correlation matrix between variables.
+
+        Args:
+            correlation_type: Correlation statistic to calculate.
+        """
         # validate type
         correlation_type = correlation_type.lower()
         if correlation_type not in ["linear", "spearman", "kendall"]:
@@ -1106,6 +1597,11 @@ class ProteusVariable(t.Generic[T]):
         inner_color = (28, 45, 145)
 
         def band_color(index: int) -> str:
+            """Construct the fill color for a percentile band.
+
+            Args:
+                index: Index or slice selecting entries.
+            """
             band_center = index + 0.5
             center = pair_count / 2
             distance_from_center = abs(band_center - center)
@@ -1113,11 +1609,16 @@ class ProteusVariable(t.Generic[T]):
             fraction = 1 - max(distance_from_center - 0.5, 0) / max(outer_distance - 0.5, 1)
             channels = [
                 round(outer_channel + fraction * (inner_channel - outer_channel))
-                for outer_channel, inner_channel in zip(outer_color, inner_color)
+                for outer_channel, inner_channel in zip(outer_color, inner_color, strict=False)
             ]
             return "#" + "".join(f"{channel:02X}" for channel in channels)
 
         def transparent_band_color(color: str) -> str:
+            """Construct a translucent fill color for a percentile band.
+
+            Args:
+                color: Plot color to use for the selected series or band.
+            """
             return f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.56)"
 
         for band_index in range(pair_count):
@@ -1195,7 +1696,12 @@ class ProteusVariable(t.Generic[T]):
             99.5,
         ),
     ) -> go.Figure:
-        """Show and return a percentile fan plot for the contained variables."""
+        """Show and return a percentile fan plot for the contained variables.
+
+        Args:
+            percentiles: Percentile levels to display in the fan plot.
+            title: Title of the plot.
+        """
         fig = self.percentile_fan_plot(title=title, percentiles=percentiles)
         if os.getenv("PAL_SUPPRESS_PLOTS", "").lower() != "true":
             # Type ignore: plotly-stubs has incomplete type information
@@ -1299,7 +1805,13 @@ class ProteusVariable(t.Generic[T]):
         return items
 
     def _pair_scatter(self, use_ranks: bool, frames: bool, title: str | None) -> go.Figure:
-        """Build a pairwise rank or value scatter figure."""
+        """Build a pairwise rank or value scatter figure.
+
+        Args:
+            frames: Data frames to combine into the result.
+            title: Title of the plot.
+            use_ranks: Whether to plot or calculate using ranks rather than raw values.
+        """
         items = self._stochastic_scalar_items()
         if len(items) < 2:
             raise ValueError("Pairwise scatter plots require at least two variables.")
@@ -1307,9 +1819,20 @@ class ProteusVariable(t.Generic[T]):
         pairs = list(itertools.combinations(range(len(items)), 2))
 
         def axis_title(label: str) -> str:
+            """Construct the axis title for the selected component.
+
+            Args:
+                label: Label used to identify a plotted or indexed item.
+            """
             return f"Rank - {label}" if use_ranks else label
 
         def scatter_trace(i: int, j: int) -> go.Scattergl:
+            """Construct a scatter trace for the selected component pair.
+
+            Args:
+                i: Index of the first plotted component.
+                j: Index of the second plotted component.
+            """
             label_x, value_x = items[i]
             label_y, value_y = items[j]
             x = value_x.ranks if use_ranks else value_x
@@ -1395,6 +1918,12 @@ class ProteusVariable(t.Generic[T]):
         other: object,
         operation: t.Callable[[t.Any, t.Any], t.Any],
     ) -> t.Any:
+        """Apply the binary operation recursively to aligned dimension entries.
+
+        Args:
+            operation: Binary operation to apply to matching leaves.
+            other: Scalar or variable operand to combine with this variable.
+        """
         if isinstance(other, ProteusVariable):
             if self.dimensions != other.dimensions:
                 raise ValueError("Dimensions of the two variables do not match.")
@@ -1417,7 +1946,12 @@ class ProteusVariable(t.Generic[T]):
         x: T,
         sim_no: int | StochasticScalar,
     ) -> T | StochasticScalar:
-        """Helper method to get value at simulation for a single element."""
+        """Helper method to get value at simulation for a single element.
+
+        Args:
+            sim_no: Index of the simulation to extract.
+            x: Input value or array to evaluate.
+        """
         if isinstance(x, ProteusVariable):
             # Type ignore: Private helper method with runtime type checks ensures
             # correct return type based on isinstance branching - static analyzer cannot
@@ -1434,7 +1968,9 @@ class ProteusVariable(t.Generic[T]):
                 # Extract all values and return a new StochasticScalar with those
                 # indices
                 indices = sim_no.values.astype(int)
-                return StochasticScalar(x.values[indices])
+                if isinstance(x, FreqSevSims):
+                    return _resample_freqsev(x, sim_no)
+                return StochasticScalar(x.values[asnumpy(indices) if isinstance(x.values, np.ndarray) else indices])
 
             # Handle the main case: extract value at specific simulation index
             if isinstance(sim_no, int):  # type: ignore[redundant-expr]

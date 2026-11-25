@@ -17,7 +17,6 @@ classifiers = [
     "Intended Audience :: Financial and Insurance Industry",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -25,17 +24,25 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: 3.15",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24,<3.0",
     "scipy>=1.10,<2.0",
     "plotly>=5.0",
     "pandas>=2.0",
+    "fsspec>=2023.6.0",
     "typing_extensions>=4.0; python_version < '3.12'",
 ]
 
 [project.optional-dependencies]
-gpu = ["cupy-cuda12x"]
+parquet = [
+    "pyarrow>=14.0,<21; python_version < '3.11'",
+    "pyarrow>=14.0; python_version >= '3.11'",
+]
+s3 = ["s3fs>=2023.6.0"]
+azure = ["adlfs>=2023.6.0"]
+cloud = ["s3fs>=2023.6.0", "adlfs>=2023.6.0"]
+gpu = ["cupy-cuda12x", "nvmath-python>=1.0; python_version >= '3.10' and python_version < '3.15'"]
 docs = [
     "sphinx>=8.2.3",
     "furo>=2024.8.6",
@@ -77,7 +84,7 @@ build-backend = "setuptools.build_meta"
 # Static analysis tool configurations
 [tool.ruff]
 line-length = 120
-target-version = "py39"
+target-version = "py310"
 src = ["src"]
 exclude = ["src/pal/_version.py"]
 
@@ -105,7 +112,7 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "D103"] # Allow assert and skip test function docstrings
 "examples/*" = ["D"]       # Skip docstrings in examples
-"src/pal/examples/*" = ["D"]  # Packaged copies of the runnable examples
+"src/pal/examples/*" = ["D", "S101"]  # Runnable examples use assertions for quick validation
 "src/pal/__init__.py" = ["F403"] # Allow star imports in package init
 
 
