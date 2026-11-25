@@ -228,9 +228,7 @@ def _minimize(
         if selected is OptimizerMethod.NELDER_MEAD:
             return True
         gradient = np.asarray(result.jac)
-        return bool(
-            np.all(np.isfinite(gradient)) and np.max(np.abs(gradient)) <= max(1e-4, 1e-7 * abs(result.fun))
-        )
+        return bool(np.all(np.isfinite(gradient)) and np.max(np.abs(gradient)) <= max(1e-4, 1e-7 * abs(result.fun)))
 
     fallback = False
     if safe_objective(initial) >= 1e100 and alternative is not None:
@@ -1085,7 +1083,8 @@ def _fit_gpd_free_location(
 
     distance = max(max_loc - base_loc, delta)
     xi0, sigma0 = _gpd_initial(x - base_loc, c, w)
-    initial = np.array([_gpd_shape_coordinate(xi0, sigma0, float(np.max(x)) - base_loc), np.log(sigma0), np.log(distance)])
+    largest = float(np.max(x)) - base_loc
+    initial = np.array([_gpd_shape_coordinate(xi0, sigma0, largest), np.log(sigma0), np.log(distance)])
     alternative = np.array([0.0, np.log(start_scale), np.log(distance)])
     best = _minimize(objective, initial, optimizer, optimizer_options, 5000, alternative=alternative)
     if best.fun >= 1e100 or not np.isfinite(best.fun):
