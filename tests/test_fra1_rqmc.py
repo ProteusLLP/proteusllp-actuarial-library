@@ -24,7 +24,7 @@ def test_fra1_rqmc_joint_law(dimension, eta, theta, dimensions):
     assert values.shape == (dimension, n)
     assert np.all(np.isfinite(values))
     assert np.all((values >= 0) & (values <= 1))
-    for sample, other in zip(samples, repeated):
+    for sample, other in zip(samples, repeated, strict=True):
         assert isinstance(sample.values, xp.ndarray)
         assert sample.coupled_variable_group is samples[0].coupled_variable_group
         np.testing.assert_array_equal(asnumpy(sample.values), asnumpy(other.values))
