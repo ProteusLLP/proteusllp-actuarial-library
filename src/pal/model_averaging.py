@@ -23,11 +23,22 @@ from .stochastic_scalar import StochasticScalar
 
 
 def _raw(value: t.Any) -> t.Any:
+    """Extract the underlying value from a stochastic input.
+
+    Args:
+        value: Value to inspect or evaluate.
+    """
     return value.values if isinstance(value, StochasticScalar) else value
 
 
 def _model_indices(weights: np.ndarray, n_sims: int, rng: t.Any) -> StochasticScalar:
-    """Draw one categorical model per simulation using PAL MC/RQMC uniforms."""
+    """Draw one categorical model per simulation using PAL MC/RQMC uniforms.
+
+    Args:
+        n_sims: Number of simulations to generate.
+        rng: Random number generator supplying the simulation draws.
+        weights: Component weights or observation weights, according to the operation.
+    """
     uniform = to_backend(_inverse_transform_uniforms(rng, n_sims))
     cumulative = to_backend(np.cumsum(weights)[:-1])
     return StochasticScalar(xp.searchsorted(cumulative, uniform, side="right"))
@@ -40,6 +51,10 @@ class WeightedDistribution(DistributionBase):
     scenario-specific model choice, each call to generate draws a model for
     each future observation. With sample_models, the chosen family is held
     fixed for each scenario, including across repeated generate calls.
+
+    Attributes:
+        distributions: Component distributions in the same order as the model weights.
+        weights: Normalized probabilities assigned to the component distributions.
     """
 
     def __init__(
@@ -49,7 +64,13 @@ class WeightedDistribution(DistributionBase):
         *,
         model_indices: StochasticScalar | None = None,
     ) -> None:
-        """Validate and normalise candidate models and weights."""
+        """Validate and normalise candidate models and weights.
+
+        Args:
+            distributions: Component distributions used in the mixture.
+            model_indices: Component index selected for each simulation.
+            weights: Component weights or observation weights, according to the operation.
+        """
         members = tuple(distributions)
         probabilities = np.asarray(weights, dtype=float)
         if not members or any(not isinstance(d, DistributionBase) for d in members):
@@ -98,6 +119,14 @@ class WeightedDistribution(DistributionBase):
         Shared fitting options include weights, censored and threshold when
         supported by each candidate. per_family_options supplies any differing
         family-specific fitting options, such as a Binomial trial count.
+
+        Args:
+            families: Candidate distribution classes to fit.
+            fit_options: Shared fitting options supplied to every candidate.
+            model_weights: User-specified model probabilities; omitted weights use information criteria.
+            observations: Observed values used to estimate the distribution parameters.
+            per_family_options: Fitting options overriding shared settings for individual candidates.
+            uncertainty_method: Optional method for estimating joint parameter uncertainty.
         """
         candidates = tuple(families)
         if not candidates or len(set(candidates)) != len(candidates):
@@ -149,7 +178,11 @@ class WeightedDistribution(DistributionBase):
         )
 
     def lev(self, limit: float | np.ndarray) -> float | np.ndarray:
-        """Return the probability-weighted limited expected value of the mixture."""
+        """Return the probability-weighted limited expected value of the mixture.
+
+        Args:
+            limit: Policy limit or array of limits in the same units as the loss.
+        """
         if self._sources():
             raise ValueError("lev requires fixed component parameters and model weights")
         result = np.zeros(np.asarray(limit).shape, dtype=float)
@@ -164,6 +197,11 @@ class WeightedDistribution(DistributionBase):
         return t.cast(StochasticScalar | None, self._params.get("model_indices"))
 
     def _sources(self, extra: t.Any = None) -> tuple[StochasticScalar, ...]:
+        """Collect the stochastic parameter sources used by the mixture.
+
+        Args:
+            extra: Additional stochastic inputs participating in the coupling operation.
+        """
         sources = [p for p in self._params.values() if isinstance(p, StochasticScalar)]
         if isinstance(extra, StochasticScalar):
             sources.append(extra)
@@ -188,7 +226,12 @@ class WeightedDistribution(DistributionBase):
         return tuple(result)
 
     def _evaluate_selected(self, method: str, argument: t.Any) -> t.Any:
-        """Evaluate the distribution selected on each aligned scenario path."""
+        """Evaluate the distribution selected on each aligned scenario path.
+
+        Args:
+            argument: Probability-function input used to preserve simulation coupling.
+            method: Sampling method used for the random draws.
+        """
         if self.model_indices is None:
             raise RuntimeError("No scenario model has been selected")
         sources = self._sources(argument)
@@ -205,7 +248,11 @@ class WeightedDistribution(DistributionBase):
         return result
 
     def cdf(self, x: t.Any) -> t.Any:
-        """Model-averaged CDF, or conditional CDF after choosing models."""
+        """Model-averaged CDF, or conditional CDF after choosing models.
+
+        Args:
+            x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
+        """
         if self.model_indices is not None:
             return self._evaluate_selected("cdf", x)
         sources = self._sources(x)
@@ -222,7 +269,11 @@ class WeightedDistribution(DistributionBase):
         return scalar_or_array(result)
 
     def invcdf(self, u: t.Any) -> t.Any:
-        """Mixture quantile via bracketed bisection, with GPU-compatible arrays."""
+        """Mixture quantile via bracketed bisection, with GPU-compatible arrays.
+
+        Args:
+            u: Cumulative probability in the interval from zero to one.
+        """
         if self.model_indices is not None:
             return self._evaluate_selected("invcdf", u)
         sources = self._sources(u)
@@ -281,7 +332,12 @@ class WeightedDistribution(DistributionBase):
         return scalar_or_array(result)
 
     def sample_models(self, n_sims: int | None = None, rng: t.Any = None) -> WeightedDistribution:
-        """Choose a common model per scenario for reuse across future losses."""
+        """Choose a common model per scenario for reuse across future losses.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator supplying the simulation draws.
+        """
         if n_sims is None:
             n_sims = config.n_sims
         if not isinstance(n_sims, int) or isinstance(n_sims, bool) or n_sims < 1:
@@ -296,7 +352,12 @@ class WeightedDistribution(DistributionBase):
         return WeightedDistribution(self.distributions, self.weights, model_indices=choices)
 
     def generate(self, n_sims: int | None = None, rng: t.Any = None) -> StochasticScalar:
-        """Draw one loss per scenario, retaining model/parameter coupling."""
+        """Draw one loss per scenario, retaining model/parameter coupling.
+
+        Args:
+            n_sims: Number of simulations; None uses the configured simulation count.
+            rng: Random number generator; omitted values use the configured generator.
+        """
         if n_sims is None:
             n_sims = config.n_sims
         if not isinstance(n_sims, int) or isinstance(n_sims, bool) or n_sims < 1:
@@ -318,7 +379,13 @@ class WeightedDistribution(DistributionBase):
 
 @dataclass(frozen=True)
 class ModelAveragingResult:
-    """Candidate MLE fits, normalised AICc weights, and the point-estimate mixture."""
+    """Candidate MLE fits, normalised AICc weights, and the point-estimate mixture.
+
+    Attributes:
+        distribution: Weighted distribution constructed from the fitted candidates.
+        fits: Individual candidate fits and their likelihood diagnostics.
+        weights: Normalized probabilities assigned to the component distributions.
+    """
 
     distribution: WeightedDistribution
     fits: tuple[FitResult[t.Any], ...]
@@ -326,10 +393,12 @@ class ModelAveragingResult:
 
     @property
     def aicc(self) -> dict[type[DistributionBase], float]:
+        """Return the corrected Akaike information criteria of the candidate fits."""
         return {type(f.distribution): f.aicc for f in self.fits}
 
     @property
     def model_weights(self) -> dict[type[DistributionBase], float]:
+        """Return the model probabilities associated with the candidate fits."""
         return {type(f.distribution): float(w) for f, w in zip(self.fits, self.weights, strict=False)}
 
     def sample_distribution(self, n_sims: int | None = None, rng: t.Any = None) -> WeightedDistribution:
@@ -338,6 +407,10 @@ class ModelAveragingResult:
         Model identity and parameter draws are retained for repeated generation
         on the returned distribution. If a fit had no parameter uncertainty,
         that candidate retains its fixed maximum-likelihood parameters.
+
+        Args:
+            n_sims: Number of simulations to generate.
+            rng: Random number generator supplying the simulation draws.
         """
         if n_sims is None:
             n_sims = config.n_sims

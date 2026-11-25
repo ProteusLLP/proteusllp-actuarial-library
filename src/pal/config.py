@@ -54,6 +54,10 @@ def set_sampling_method(method: SamplingMethod | Literal["mc", "pseudo", "rqmc"]
 
     In RQMC mode, PAL allocates Sobol coordinates automatically and recycles
     them in independently scrambled, shuffled blocks.
+
+    Args:
+        dimensions: Number of Sobol dimensions available to randomized quasi-Monte Carlo.
+        method: Sampling method used for the random draws.
     """
     try:
         selected = SamplingMethod.MC if method == "mc" else SamplingMethod(method)

@@ -57,10 +57,22 @@ def modules() -> list[str]:
 
 
 def _module(name: str) -> t.Any:
+    """Resolve the PAL module used for API inspection.
+
+    Args:
+        name: Name of the module, member or API object to resolve.
+    """
     return importlib.import_module(f"pal.{name}")
 
 
 def _is_public_member(module_name: str, name: str, obj: t.Any) -> bool:
+    """Determine whether the member should appear in the public API index.
+
+    Args:
+        module_name: Qualified name of the PAL module to inspect.
+        name: Name of the module, member or API object to resolve.
+        obj: Python object to inspect for API metadata.
+    """
     if name.startswith("_"):
         return False
 
@@ -79,6 +91,11 @@ def _is_public_member(module_name: str, name: str, obj: t.Any) -> bool:
 
 
 def _kind(obj: t.Any) -> str:
+    """Determine the kind of Python API object.
+
+    Args:
+        obj: Python object to inspect for API metadata.
+    """
     if inspect.isclass(obj):
         return "class"
     if inspect.isfunction(obj):
@@ -87,6 +104,11 @@ def _kind(obj: t.Any) -> str:
 
 
 def _safe_signature(obj: t.Any) -> str | None:
+    """Return the callable signature when inspection is supported.
+
+    Args:
+        obj: Python object to inspect for API metadata.
+    """
     try:
         return str(inspect.signature(obj))
     except (TypeError, ValueError):
@@ -94,6 +116,11 @@ def _safe_signature(obj: t.Any) -> str | None:
 
 
 def _summary(obj: t.Any) -> str:
+    """Extract the first descriptive paragraph of the object's docstring.
+
+    Args:
+        obj: Python object to inspect for API metadata.
+    """
     doc = inspect.getdoc(obj) or ""
     if not doc:
         return ""
@@ -101,6 +128,13 @@ def _summary(obj: t.Any) -> str:
 
 
 def _entry(module_name: str, name: str, obj: t.Any) -> dict[str, t.Any]:
+    """Construct a searchable description of the selected public API object.
+
+    Args:
+        module_name: Qualified name of the PAL module to inspect.
+        name: Name of the module, member or API object to resolve.
+        obj: Python object to inspect for API metadata.
+    """
     return {
         "name": name,
         "qualified_name": f"pal.{module_name}.{name}",
@@ -139,6 +173,11 @@ def catalog(module: str | None = None) -> list[dict[str, t.Any]]:
 
 
 def _resolve_name(name: str) -> tuple[str, str, t.Any]:
+    """Resolve a qualified PAL name to its Python object.
+
+    Args:
+        name: Name of the module, member or API object to resolve.
+    """
     normalised = name.removeprefix("pal.")
 
     if "." in normalised:
@@ -167,6 +206,11 @@ def _resolve_name(name: str) -> tuple[str, str, t.Any]:
 
 
 def _parameters(obj: t.Any) -> list[dict[str, t.Any]]:
+    """Extract parameter metadata from a callable signature.
+
+    Args:
+        obj: Python object to inspect for API metadata.
+    """
     try:
         signature = inspect.signature(obj)
     except (TypeError, ValueError):
@@ -188,6 +232,11 @@ def _parameters(obj: t.Any) -> list[dict[str, t.Any]]:
 
 
 def _methods(obj: t.Any) -> list[dict[str, t.Any]]:
+    """Collect public methods exposed by the API object.
+
+    Args:
+        obj: Python object to inspect for API metadata.
+    """
     if not inspect.isclass(obj):
         return []
 
@@ -211,6 +260,9 @@ def describe(obj_or_name: t.Any) -> dict[str, t.Any]:
     ``obj_or_name`` may be an object itself, a bare public name such as
     ``"Gamma"``, or a qualified name such as ``"distributions.Gamma"`` or
     ``"pal.distributions.Gamma"``.
+
+    Args:
+        obj_or_name: Python object or its qualified PAL name.
     """
     if isinstance(obj_or_name, str):
         module_name, name, obj = _resolve_name(obj_or_name)
@@ -310,6 +362,10 @@ def recipes(query: str | None = None, limit: int = 20) -> list[dict[str, t.Any]]
 
     Return JSON-compatible metadata, ordered by keyword relevance. An empty
     query lists all recipes. Retrieve a full, runnable source with recipe(id).
+
+    Args:
+        limit: Maximum number of matching entries to return.
+        query: Text to search in the API index.
     """
     if limit < 1:
         raise ValueError("limit must be at least 1")
@@ -335,6 +391,9 @@ def recipe(identifier: str) -> dict[str, t.Any]:
     The module is read from the installed package, so this also works in
     a wheel installation without access to GitHub or a source checkout.
     No example code is executed by the lookup.
+
+    Args:
+        identifier: Qualified API or recipe identifier.
     """
     key = identifier.strip().lower()
     for item in _RECIPE_INDEX:
@@ -351,6 +410,10 @@ def search(query: str, limit: int = 20) -> list[dict[str, t.Any]]:
 
     Results favour exact and prefix name matches, followed by textual matches in
     names, signatures, summaries, full docstrings and public method names.
+
+    Args:
+        limit: Maximum number of matching entries to return.
+        query: Text to search in the API index.
     """
     if limit < 1:
         raise ValueError("limit must be at least 1")

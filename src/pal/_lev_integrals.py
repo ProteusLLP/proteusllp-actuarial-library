@@ -11,6 +11,11 @@ from scipy import integrate, special
 
 @lru_cache(maxsize=2)
 def _rule(order: int) -> tuple[np.ndarray, np.ndarray]:
+    """Cache Legendre quadrature nodes and logarithmic weights.
+
+    Args:
+        order: Number of quadrature nodes.
+    """
     nodes, weights = special.roots_legendre(order)
     return nodes, np.log(weights)
 
@@ -18,6 +23,14 @@ def _rule(order: int) -> tuple[np.ndarray, np.ndarray]:
 def _estimate(
     log_integrand: t.Callable[[np.ndarray], np.ndarray], a: np.ndarray, b: np.ndarray, order: int
 ) -> np.ndarray:
+    """Estimate interval integrals using a specified quadrature order.
+
+    Args:
+        log_integrand: Vectorised logarithm of the nonnegative integrand.
+        a: Lower endpoints of log-coordinate intervals.
+        b: Upper endpoints of log-coordinate intervals.
+        order: Number of Legendre quadrature nodes.
+    """
     nodes, log_weights = _rule(order)
     half = (b - a) / 2
     points = a[:, None] + half[:, None] * (1 + nodes)
@@ -30,7 +43,13 @@ def _adaptive_intervals(
     starts: np.ndarray,
     stops: np.ndarray,
 ) -> np.ndarray:
-    """Integrate intervals in bounded batches, refining only unconverged pieces."""
+    """Integrate intervals in bounded batches, refining only unconverged pieces.
+
+    Args:
+        log_integrand: Vectorised function returning the log of a nonnegative integrand.
+        starts: Lower endpoints of the log-coordinate intervals.
+        stops: Upper endpoints of the intervals.
+    """
     output = np.zeros_like(starts)
     # Long gaps are split before quadrature so that an interior transition
     # cannot be overlooked by both low- and high-order rules.
@@ -87,11 +106,22 @@ def _positive_survival_integrals(
     log_limits: np.ndarray,
     log_scale: float,
 ) -> np.ndarray:
-    """Integrate survival from zero to sorted positive limits in one sweep."""
+    """Integrate survival from zero to sorted positive limits in one sweep.
+
+    Args:
+        log_survival: Vectorised log-survival function evaluated in log-loss coordinates.
+        log_limits: Sorted logarithms of positive policy limits.
+        log_scale: Logarithm of the characteristic loss scale.
+    """
     if not log_limits.size:
         return np.empty_like(log_limits)
 
     def log_integrand(t_: np.ndarray) -> np.ndarray:
+        """Evaluate the log integrand including the coordinate Jacobian.
+
+        Args:
+            t_: Log-loss or transformed integration coordinate.
+        """
         return t_ + log_survival(t_)
 
     lower = max(-800.0, min(float(log_limits[0]), log_scale) - 40)

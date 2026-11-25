@@ -38,13 +38,23 @@ Method = t.Literal["higham", "spectral"]
 
 
 def _positive_semidefinite_projection(matrix: t.Any, eigenvalue_floor: float) -> t.Any:
-    """Project a symmetric matrix onto matrices with bounded eigenvalues."""
+    """Project a symmetric matrix onto matrices with bounded eigenvalues.
+
+    Args:
+        eigenvalue_floor: Lower bound imposed on the matrix eigenvalues.
+        matrix: Matrix to validate, complete or use in the correlation calculation.
+    """
     eigenvalues, eigenvectors = xp.linalg.eigh((matrix + matrix.T) * 0.5)
     return (eigenvectors * xp.maximum(eigenvalues, eigenvalue_floor)) @ eigenvectors.T
 
 
 def _spectral_repair(matrix: t.Any, minimum_eigenvalue: float) -> t.Any:
-    """Clip eigenvalues, rescale the diagonal, and optionally shrink to identity."""
+    """Clip eigenvalues, rescale the diagonal, and optionally shrink to identity.
+
+    Args:
+        matrix: Matrix to validate, complete or use in the correlation calculation.
+        minimum_eigenvalue: Minimum permissible eigenvalue of the repaired correlation matrix.
+    """
     # A positive floor avoids division by zero for negative-definite input.
     positive = _positive_semidefinite_projection(matrix, float(xp.finfo(xp.float64).eps))
     scaling = xp.sqrt(xp.diag(positive))
@@ -224,7 +234,11 @@ def near_corr(
 
 
 def is_psd(matrix: npt.ArrayLike) -> bool:
-    """Test whether a finite symmetric matrix is positive semidefinite."""
+    """Test whether a finite symmetric matrix is positive semidefinite.
+
+    Args:
+        matrix: Matrix to validate, complete or use in the correlation calculation.
+    """
     values = xp.asarray(matrix, dtype=float)
     if values.ndim != 2 or values.shape[0] != values.shape[1] or values.shape[0] == 0:
         return False

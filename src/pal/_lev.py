@@ -32,12 +32,22 @@ if t.TYPE_CHECKING:
 
 
 def _log_expm1_positive(x: np.ndarray) -> np.ndarray:
-    """Return log(expm1(x)) without overflowing its intermediate value."""
+    """Return log(expm1(x)) without overflowing its intermediate value.
+
+    Args:
+        x: Loss values at which to evaluate the calculation.
+    """
     return np.where(x > 40, x + np.log1p(-np.exp(-x)), np.log(np.expm1(x)))
 
 
 def _scaled_power_integral(log_scale: float, exponent: float, t_: np.ndarray) -> np.ndarray:
-    """Evaluate scale times the exponential integral in stable log units."""
+    """Evaluate scale times the exponential integral in stable log units.
+
+    Args:
+        log_scale: Logarithm of the characteristic loss scale.
+        exponent: Exponent controlling the power integral.
+        t_: Log-loss or transformed integration coordinate.
+    """
     if exponent == 0:
         return np.exp(log_scale + np.log(t_))
     v = exponent * t_
@@ -50,6 +60,13 @@ def _scaled_power_integral(log_scale: float, exponent: float, t_: np.ndarray) ->
 
 
 def _pareto_lev(d: np.ndarray, shape: float, scale: float) -> np.ndarray:
+    """Calculate the capped expectation for a Type I Pareto loss.
+
+    Args:
+        d: Policy limits in loss units.
+        shape: Positive Pareto tail index.
+        scale: Minimum loss of the Pareto distribution.
+    """
     x = np.maximum(d, scale)
     log_ratio = np.log(x) - np.log(scale)
     near = x <= 2 * scale
@@ -58,6 +75,13 @@ def _pareto_lev(d: np.ndarray, shape: float, scale: float) -> np.ndarray:
 
 
 def _gpd_lev(d: np.ndarray, shape: float, scale: float) -> np.ndarray:
+    """Calculate the capped expectation of an unshifted GPD.
+
+    Args:
+        d: Policy limits relative to the location.
+        shape: GPD tail shape, including zero and negative values.
+        scale: Positive GPD scale.
+    """
     x = np.maximum(d, 0)
     if shape < 0:
         x = np.minimum(x, -scale / shape)
@@ -622,7 +646,13 @@ def _severity_lev(family: type[DistributionBase], p: dict[str, float], d: np.nda
 
 
 def _positive_fallback(family: type[DistributionBase], p: dict[str, float], d: np.ndarray) -> np.ndarray:
-    """Recover unresolved positive severities by a sorted forward sweep."""
+    """Recover unresolved positive severities by a sorted forward sweep.
+
+    Args:
+        family: PAL distribution class selecting the mathematical parameterisation.
+        p: Natural distribution parameter values.
+        d: Policy limits in original loss units.
+    """
     loc = p.get("loc", 0.0)
     x = np.maximum(d - loc, 0)
     out = d.copy()
@@ -630,6 +660,11 @@ def _positive_fallback(family: type[DistributionBase], p: dict[str, float], d: n
     rv = None if family in (dist.LogGamma, dist.GeneralizedBetaPrime) else _frozen_distribution(family, p)
 
     def log_survival(t_: np.ndarray) -> np.ndarray:
+        """Evaluate log survival at transformed loss coordinates.
+
+        Args:
+            t_: Log-loss or transformed integration coordinate.
+        """
         value = _positive_log_survival_array(family, p, t_)
         if value is not None:
             return value
@@ -655,7 +690,11 @@ def _positive_fallback(family: type[DistributionBase], p: dict[str, float], d: n
 
 
 def _gev_mean(shape: float) -> float:
-    """Standardized GEV mean, with a stable Gumbel limit."""
+    """Standardized GEV mean, with a stable Gumbel limit.
+
+    Args:
+        shape: Shape parameter of the distribution, under PAL's parameterisation.
+    """
     if abs(shape) < 1e-5:
         gamma = np.euler_gamma
         second = (gamma**2 + np.pi**2 / 6) / 2
@@ -665,7 +704,12 @@ def _gev_mean(shape: float) -> float:
 
 
 def _gev_lev(p: dict[str, float], d: np.ndarray) -> np.ndarray:
-    """Vectorized GEV LEV, using a forward integral only for difficult shapes."""
+    """Vectorized GEV LEV, using a forward integral only for difficult shapes.
+
+    Args:
+        p: Natural distribution parameter values.
+        d: Policy limits in original loss units.
+    """
     xi, loc, scale = p["shape"], p["loc"], p["scale"]
     z = (d - loc) / scale
     if xi == 0:
@@ -677,6 +721,11 @@ def _gev_lev(p: dict[str, float], d: np.ndarray) -> np.ndarray:
         out = d.copy()
 
         def log_survival(t_: np.ndarray) -> np.ndarray:
+            """Evaluate log survival at transformed loss coordinates.
+
+            Args:
+                t_: Log-loss or transformed integration coordinate.
+            """
             log_y = -(t_ + np.log(xi) - np.log(scale)) / xi
             return _log_survival_from_log_hazard(log_y, np)
 
@@ -732,6 +781,11 @@ def _gev_lev(p: dict[str, float], d: np.ndarray) -> np.ndarray:
             anchor = np.expm1(-xi * np.log(40)) / xi
 
             def log_cdf(t_: np.ndarray) -> np.ndarray:
+                """Evaluate log CDF at transformed loss coordinates.
+
+                Args:
+                    t_: Log-loss or transformed integration coordinate.
+                """
                 return -np.exp(-np.log1p(xi * t_) / xi)
 
             areas = _adaptive_intervals(log_cdf, np.r_[anchor, c[:-1]], c)
@@ -741,7 +795,12 @@ def _gev_lev(p: dict[str, float], d: np.ndarray) -> np.ndarray:
 
 
 def limited_expected_value(distribution: DistributionBase, limit: float | np.ndarray) -> float | np.ndarray:
-    """Evaluate the expected capped loss, preserving limit shape and order."""
+    """Evaluate the expected capped loss, preserving limit shape and order.
+
+    Args:
+        distribution: PAL distribution class or instance used for the calculation.
+        limit: Policy limit or array of limits; order and shape are preserved.
+    """
     family = type(distribution)
     p: dict[str, float] = {}
     for name, value in distribution._params.items():

@@ -27,23 +27,46 @@ if t.TYPE_CHECKING:
 
 @lru_cache(maxsize=1)
 def _laguerre_rule(order: int) -> tuple[np.ndarray, np.ndarray]:
-    """Cache the fixed quadrature rules used in conditional tail calculations."""
+    """Cache the fixed quadrature rules used in conditional tail calculations.
+
+    Args:
+        order: Number of nodes in the quadrature rule.
+    """
     return special.roots_laguerre(order)
 
 
 def _pareto_excess(ds: np.ndarray, shape: float, scale: float) -> np.ndarray:
-    """Evaluate Pareto residual life."""
+    """Evaluate Pareto residual life.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        shape: Shape parameter of the distribution, under PAL's parameterisation.
+        scale: Positive distribution scale, in loss units.
+    """
     return np.maximum(scale - ds, 0) + np.maximum(ds, scale) / (shape - 1)
 
 
 def _gpd_excess(ds: np.ndarray, shape: float, scale: float, loc: float) -> np.ndarray:
-    """Evaluate GPD residual life."""
+    """Evaluate GPD residual life.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        shape: Shape parameter of the distribution, under PAL's parameterisation.
+        scale: Positive distribution scale, in loss units.
+        loc: Location shift applied to the unshifted distribution.
+    """
     base = np.maximum(ds, loc)
     return base - ds + (scale + shape * (base - loc)) / (1 - shape)
 
 
 def _exponential_excess(ds: np.ndarray, scale: float, loc: float) -> np.ndarray:
-    """Evaluate exponential residual life."""
+    """Evaluate exponential residual life.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        scale: Positive distribution scale, in loss units.
+        loc: Location shift applied to the unshifted distribution.
+    """
     return np.maximum(loc - ds, 0) + scale
 
 
@@ -58,6 +81,11 @@ def _tail_fraction_pair(
     Backward recurrence propagates the divided difference analytically,
     including when both arguments round to the same value. Doubling the
     depth provides a convergence check; unresolved entries return NaN.
+
+    Args:
+        x: First positive argument of the continued fraction.
+        y: Second positive argument of the continued fraction.
+        alpha: Gamma shape; None selects the normal Mills ratio fraction.
     """
     # Normal Mills: 1/R(x) = x + C(x).
     # Upper gamma: x**alpha * exp(-x) / Gamma(alpha,x) = x+1-alpha+C(x).
@@ -89,13 +117,24 @@ def _tail_fraction_pair(
 
 
 def _gamma_far_excess(alpha: float, z: np.ndarray) -> np.ndarray:
-    """Cancel the attachment analytically using the upper-gamma fraction."""
+    """Cancel the attachment analytically using the upper-gamma fraction.
+
+    Args:
+        alpha: Gamma shape parameter.
+        z: Attachments divided by the gamma scale.
+    """
     correction, _, _ = _tail_fraction_pair(z, z, alpha)
     return 1 + correction
 
 
 def _gamma_tail_excess(alpha: float, theta: float, d: float) -> float:
-    """Integrate conditional gamma survival when the moment ratio is ill-conditioned."""
+    """Integrate conditional gamma survival when the moment ratio is ill-conditioned.
+
+    Args:
+        alpha: Gamma shape parameter.
+        theta: Gamma scale parameter.
+        d: Single positive attachment.
+    """
     z = d / theta
     if z > alpha + 1:
         candidate = float(_gamma_far_excess(alpha, np.array([z]))[0])
@@ -120,7 +159,14 @@ def _gamma_tail_excess(alpha: float, theta: float, d: float) -> float:
 
 
 def _gamma_excess(ds: np.ndarray, alpha: float, theta: float, loc: float = 0.0) -> np.ndarray:
-    """Evaluate shifted Gamma residual life using the incomplete-gamma moment ratio."""
+    """Evaluate shifted Gamma residual life using the incomplete-gamma moment ratio.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        alpha: First shape parameter of the gamma or beta family.
+        theta: Positive gamma scale parameter.
+        loc: Location shift applied to the unshifted distribution.
+    """
     x = ds - loc
     if alpha == 1:
         return theta - np.minimum(x, 0)
@@ -136,13 +182,22 @@ def _gamma_excess(ds: np.ndarray, alpha: float, theta: float, loc: float = 0.0) 
 
 
 def _positive_log_excess(log_x: np.ndarray, log_ratio: np.ndarray) -> np.ndarray:
-    """Compute x*expm1(log_ratio) without intermediate overflow."""
+    """Compute x*expm1(log_ratio) without intermediate overflow.
+
+    Args:
+        log_x: Logarithm of the positive attachment.
+        log_ratio: Logarithm of the conditional mean divided by the attachment.
+    """
     return np.exp(log_x + log_ratio + np.log(-np.expm1(-log_ratio)))
 
 
 @lru_cache(maxsize=64)
 def _lognormal_center(mu: float) -> tuple[float, float]:
-    """Return a rounded median and the correction to its logarithm."""
+    """Return a rounded median and the correction to its logarithm.
+
+    Args:
+        mu: Mean of log loss, used to compute the high-precision centring correction.
+    """
     center = float(np.exp(mu))
     # One compensated constant per log-location, not per threshold.
     with localcontext() as context:
@@ -152,7 +207,13 @@ def _lognormal_center(mu: float) -> tuple[float, float]:
 
 
 def _lognormal_coordinate(ds: np.ndarray, mu: float, sigma: float) -> np.ndarray:
-    """Resolve log(d)-mu accurately when the distribution is very concentrated."""
+    """Resolve log(d)-mu accurately when the distribution is very concentrated.
+
+    Args:
+        ds: Positive loss thresholds.
+        mu: Mean of log loss.
+        sigma: Standard deviation of log loss.
+    """
     z = (np.log(ds) - mu) / sigma
     if sigma < 1e-4 and -700 < mu < 700:
         center, correction = _lognormal_center(mu)
@@ -162,7 +223,12 @@ def _lognormal_coordinate(ds: np.ndarray, mu: float, sigma: float) -> np.ndarray
 
 
 def _lognormal_fraction_excess(z: np.ndarray, sigma: float) -> np.ndarray:
-    """Evaluate the Mills-ratio difference without subtracting close arguments."""
+    """Evaluate the Mills-ratio difference without subtracting close arguments.
+
+    Args:
+        z: Dimensionless transformed loss coordinate.
+        sigma: Positive dispersion parameter; log-scale for LogNormal.
+    """
     y = z - sigma
     _, correction, difference = _tail_fraction_pair(z, y)
     return sigma * (1 + difference) / (y + correction)
@@ -173,6 +239,10 @@ def _lognormal_series_excess(z: np.ndarray, sigma: float) -> np.ndarray:
 
     Used only for small sigma and moderate z, where the moment recurrence
     is stable and the series converges in a few terms.
+
+    Args:
+        z: Dimensionless transformed loss coordinate.
+        sigma: Positive dispersion parameter; log-scale for LogNormal.
     """
     mills = np.sqrt(np.pi / 2) * special.erfcx(z / np.sqrt(2))
     previous = np.ones_like(z)
@@ -193,7 +263,13 @@ def _lognormal_series_excess(z: np.ndarray, sigma: float) -> np.ndarray:
 
 
 def _lognormal_narrow_excess(ds: np.ndarray, z: np.ndarray, sigma: float) -> np.ndarray:
-    """Use a moment series near the mean and a continued fraction in the tail."""
+    """Use a moment series near the mean and a continued fraction in the tail.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        z: Dimensionless transformed loss coordinate.
+        sigma: Positive dispersion parameter; log-scale for LogNormal.
+    """
     result = np.empty_like(z)
     tail = z - sigma >= 4
     result[tail] = _lognormal_fraction_excess(z[tail], sigma)
@@ -202,14 +278,30 @@ def _lognormal_narrow_excess(ds: np.ndarray, z: np.ndarray, sigma: float) -> np.
 
 
 def _lognormal_tail_excess(sigma: float, d: float, z: float) -> float:
-    """Integrate a conditional normal density when two moments nearly cancel."""
+    """Integrate a conditional normal density when two moments nearly cancel.
+
+    Args:
+        sigma: Positive dispersion parameter; log-scale for LogNormal.
+        d: Attachment or policy limit in loss units.
+        z: Dimensionless transformed loss coordinate.
+    """
     width = 1 / max(1.0, z)
 
     def density(t: float) -> float:
+        """Evaluate the rescaled density integrand.
+
+        Args:
+            t: Dimensionless integration coordinate.
+        """
         u = width * t
         return float(np.exp(-z * u - 0.5 * u**2))
 
     def excess_density(t: float) -> float:
+        """Evaluate the conditional excess density integrand.
+
+        Args:
+            t: Dimensionless integration coordinate.
+        """
         # expm1 resolves arbitrarily small conditional excesses.
         u = width * t
         tilt = sigma * u
@@ -223,7 +315,13 @@ def _lognormal_tail_excess(sigma: float, d: float, z: float) -> float:
 
 
 def _lognormal_excess(ds: np.ndarray, mu: float, sigma: float) -> np.ndarray:
-    """Evaluate the normal-tail moment ratio with a cancellation-safe fallback."""
+    """Evaluate the normal-tail moment ratio with a cancellation-safe fallback.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        mu: Distribution location or mean parameter, under PAL's parameterisation.
+        sigma: Positive dispersion parameter; log-scale for LogNormal.
+    """
     log_x = np.log(ds)
     z = _lognormal_coordinate(ds, mu, sigma)
     log_ratio = sigma * (0.5 * sigma - z) + special.log_ndtr(sigma - z) - special.log_ndtr(-z)
@@ -249,7 +347,14 @@ def _lognormal_excess(ds: np.ndarray, mu: float, sigma: float) -> np.ndarray:
 
 
 def _weibull_excess(ds: np.ndarray, shape: float, scale: float, loc: float) -> np.ndarray:
-    """Evaluate the incomplete-gamma survival integral."""
+    """Evaluate the incomplete-gamma survival integral.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        shape: Shape parameter of the distribution, under PAL's parameterisation.
+        scale: Positive distribution scale, in loss units.
+        loc: Location shift applied to the unshifted distribution.
+    """
     a = 1 / shape
     if shape == 1:
         return scale + np.maximum(loc - ds, 0)
@@ -270,7 +375,15 @@ def _weibull_excess(ds: np.ndarray, shape: float, scale: float, loc: float) -> n
 
 
 def _burr_excess(ds: np.ndarray, power: float, shape: float, scale: float, loc: float) -> np.ndarray:
-    """Evaluate Burr XII residual life via the complementary incomplete beta."""
+    """Evaluate Burr XII residual life via the complementary incomplete beta.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        power: Power parameter controlling the distribution's loss transformation.
+        shape: Shape parameter of the distribution, under PAL's parameterisation.
+        scale: Positive distribution scale, in loss units.
+        loc: Location shift applied to the unshifted distribution.
+    """
     x = ds - loc
     if power == 1:
         return np.maximum(-x, 0) + (scale + np.maximum(x, 0)) / (shape - 1)
@@ -296,12 +409,26 @@ def _burr_excess(ds: np.ndarray, power: float, shape: float, scale: float, loc: 
 
 
 def _loglogistic_excess(ds: np.ndarray, shape: float, scale: float, loc: float) -> np.ndarray:
-    """Use Burr XII with second shape equal to one."""
+    """Use Burr XII with second shape equal to one.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        shape: Shape parameter of the distribution, under PAL's parameterisation.
+        scale: Positive distribution scale, in loss units.
+        loc: Location shift applied to the unshifted distribution.
+    """
     return _burr_excess(ds, shape, 1.0, scale, loc)
 
 
 def _paralogistic_excess(ds: np.ndarray, shape: float, scale: float, loc: float) -> np.ndarray:
-    """Use Burr XII with equal shape parameters."""
+    """Use Burr XII with equal shape parameters.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        shape: Shape parameter of the distribution, under PAL's parameterisation.
+        scale: Positive distribution scale, in loss units.
+        loc: Location shift applied to the unshifted distribution.
+    """
     return _burr_excess(ds, shape, shape, scale, loc)
 
 
@@ -312,7 +439,15 @@ def _beta_fraction_coefficients(
     shift: float,
     z: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return paired incomplete-beta fraction coefficients and divided difference."""
+    """Return paired incomplete-beta fraction coefficients and divided difference.
+
+    Args:
+        j: Index of the continued-fraction coefficient.
+        q: Upper-tail beta shape.
+        p: Lower-tail beta shape.
+        shift: Reciprocal of the GB2 power, representing the first-moment shift.
+        z: Complementary beta coordinate.
+    """
     total = q + p
     shifted_q = q - shift
     if j == 0:
@@ -341,6 +476,13 @@ def _beta_prime_tail_excess(x: np.ndarray, log_power: np.ndarray, a: float, p: f
     by the shape parameter and the continued-fraction denominator.
     The first moment shifts the two shape parameters in opposite
     directions; the paired recurrence avoids subtracting close fractions.
+
+    Args:
+        x: Positive location-adjusted attachments.
+        log_power: Logarithm of the powered loss-to-scale ratio.
+        a: Positive power parameter.
+        p: Lower-tail beta shape.
+        q: Upper-tail beta shape.
     """
     z = special.expit(-log_power)
     shift = 1 / a
@@ -368,7 +510,14 @@ def _beta_prime_tail_excess(x: np.ndarray, log_power: np.ndarray, a: float, p: f
 
 
 def _beta_prime_fraction_mask(log_power: np.ndarray, a: float, p: float, q: float) -> np.ndarray:
-    """Select upper tails with a well-conditioned incomplete-beta fraction."""
+    """Select upper tails with a well-conditioned incomplete-beta fraction.
+
+    Args:
+        log_power: Logarithm of the powered, scaled loss.
+        a: Positive power parameter.
+        p: Lower-tail beta shape.
+        q: Upper-tail beta shape.
+    """
     z = special.expit(-log_power)
     w = special.expit(log_power)
     rate = a * (q * w - p * z)
@@ -377,7 +526,15 @@ def _beta_prime_fraction_mask(log_power: np.ndarray, a: float, p: float, q: floa
 
 
 def _beta_prime_excess(x: np.ndarray, a: float, b: float, p: float, q: float) -> np.ndarray:
-    """Evaluate the shared GB2 and inverse-Burr truncated first moment."""
+    """Evaluate the shared GB2 and inverse-Burr truncated first moment.
+
+    Args:
+        x: Location-adjusted attachments.
+        a: Positive power of the scaled loss.
+        b: Positive loss scale.
+        p: Lower-tail beta shape parameter.
+        q: Upper-tail beta shape parameter.
+    """
     out = np.full(x.shape, np.nan, dtype=float)
     log_mean = np.log(b) + special.betaln(p + 1 / a, q - 1 / a) - special.betaln(p, q)
     positive = x > 0
@@ -430,7 +587,12 @@ def _beta_prime_excess(x: np.ndarray, a: float, b: float, p: float, q: float) ->
 
 
 def _gb2_tail_excess(pars: dict[str, float], attachment: float) -> float:
-    """GB2 mean residual life from complementary incomplete beta moments."""
+    """GB2 mean residual life from complementary incomplete beta moments.
+
+    Args:
+        pars: Distribution parameter values in the family's natural coordinates.
+        attachment: Loss threshold defining the conditional excess.
+    """
     a, b, p, q = (pars[name] for name in ("a", "b", "p", "q"))
     if a * q <= 1:
         return np.inf
@@ -471,24 +633,54 @@ def _gb2_tail_excess(pars: dict[str, float], attachment: float) -> float:
 
 
 def _gb2_excess(ds: np.ndarray, a: float, b: float, p: float, q: float) -> np.ndarray:
-    """Evaluate GB2 residual life, retaining the log-beta fallback."""
+    """Evaluate GB2 residual life, retaining the log-beta fallback.
+
+    Args:
+        ds: Loss attachments.
+        a: Positive power parameter.
+        b: Positive loss scale.
+        p: Lower-tail beta shape.
+        q: Upper-tail beta shape.
+    """
     out = _beta_prime_excess(ds, a, b, p, q)
     pars = {"a": a, "b": b, "p": p, "q": q}
     return _repair_tail(ds, out, lambda d: _gb2_tail_excess(pars, d))
 
 
 def _inverse_burr_excess(ds: np.ndarray, power: float, shape: float, scale: float, loc: float) -> np.ndarray:
-    """Use GB2 with second beta shape equal to one."""
+    """Use GB2 with second beta shape equal to one.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        power: Power parameter controlling the distribution's loss transformation.
+        shape: Shape parameter of the distribution, under PAL's parameterisation.
+        scale: Positive distribution scale, in loss units.
+        loc: Location shift applied to the unshifted distribution.
+    """
     return _beta_prime_excess(ds - loc, power, scale, shape, 1.0)
 
 
 def _inverse_paralogistic_excess(ds: np.ndarray, shape: float, scale: float, loc: float) -> np.ndarray:
-    """Use inverse Burr with equal shape parameters."""
+    """Use inverse Burr with equal shape parameters.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        shape: Shape parameter of the distribution, under PAL's parameterisation.
+        scale: Positive distribution scale, in loss units.
+        loc: Location shift applied to the unshifted distribution.
+    """
     return _inverse_burr_excess(ds, shape, shape, scale, loc)
 
 
 def _inverse_generalized_gamma_excess(x: np.ndarray, a: float, b: float, power: float) -> np.ndarray:
-    """Evaluate the shared inverse-gamma and inverse-Weibull moment ratio."""
+    """Evaluate the shared inverse-gamma and inverse-Weibull moment ratio.
+
+    Args:
+        x: Location-adjusted attachments.
+        a: Shape of the underlying gamma variable.
+        b: Positive scale of the inverse loss transformation.
+        power: Power of the inverse transformation.
+    """
     k = 1 / power
     z = np.power(b / x, power)
     log_mean = np.log(b) + special.gammaln(a - k) - special.gammaln(a)
@@ -507,12 +699,26 @@ def _inverse_generalized_gamma_excess(x: np.ndarray, a: float, b: float, power: 
 
 
 def _inverse_gamma_excess(ds: np.ndarray, alpha: float, theta: float, loc: float) -> np.ndarray:
-    """Use inverse generalized gamma with power one."""
+    """Use inverse generalized gamma with power one.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        alpha: First shape parameter of the gamma or beta family.
+        theta: Positive gamma scale parameter.
+        loc: Location shift applied to the unshifted distribution.
+    """
     return _inverse_generalized_gamma_excess(ds - loc, alpha, theta, 1.0)
 
 
 def _inverse_weibull_excess(ds: np.ndarray, shape: float, scale: float, loc: float) -> np.ndarray:
-    """Use inverse generalized gamma with gamma shape one."""
+    """Use inverse generalized gamma with gamma shape one.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        shape: Shape parameter of the distribution, under PAL's parameterisation.
+        scale: Positive distribution scale, in loss units.
+        loc: Location shift applied to the unshifted distribution.
+    """
     return _inverse_generalized_gamma_excess(ds - loc, 1.0, scale, shape)
 
 
@@ -523,7 +729,15 @@ def _inverse_gaussian_fraction(
     b: np.ndarray,
     gap: np.ndarray,
 ) -> np.ndarray:
-    """Cancel the attachment in the ratio of normal Mills functions."""
+    """Cancel the attachment in the ratio of normal Mills functions.
+
+    Args:
+        mu: Inverse-Gaussian mean.
+        x: Positive loss thresholds.
+        a: First standardized normal-tail coordinate.
+        b: Second standardized normal-tail coordinate.
+        gap: Difference between the two normal-tail coordinates, computed before rounding.
+    """
     ca = np.empty_like(a)
     cb = np.empty_like(b)
     difference = np.empty_like(a)
@@ -543,7 +757,15 @@ def _inverse_gaussian_fraction(
 def _normal_tail_difference(
     a: np.ndarray, b: np.ndarray, gap: np.ndarray, log_a: np.ndarray, log_b: np.ndarray
 ) -> np.ndarray:
-    """Resolve two exponentially tilted normal probabilities without cancellation."""
+    """Resolve two exponentially tilted normal probabilities without cancellation.
+
+    Args:
+        a: First standardized normal-tail coordinate.
+        b: Second standardized normal-tail coordinate.
+        gap: Difference between the two normal-tail coordinates, computed before rounding.
+        log_a: Logarithm of the first normal tail probability.
+        log_b: Logarithm of the exponentially tilted second normal tail probability.
+    """
     out = log_a + np.log(-np.expm1(np.minimum(log_b - log_a, 0)))
     # The ordinary expression is adequate unless the logarithms are close
     # or both tails are too far out for their difference to be represented.
@@ -570,7 +792,13 @@ def _normal_tail_difference(
 
 
 def _inverse_gaussian_excess(ds: np.ndarray, mu: float, lambda_: float) -> np.ndarray:
-    """Evaluate inverse Gaussian residual life via normal tail moments."""
+    """Evaluate inverse Gaussian residual life via normal tail moments.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        mu: Distribution location or mean parameter, under PAL's parameterisation.
+        lambda_: Positive inverse-Gaussian shape parameter.
+    """
     lam = lambda_
     out = np.full(ds.shape, np.nan, dtype=float)
     x = ds[ds > 0]
@@ -592,7 +820,12 @@ def _inverse_gaussian_excess(ds: np.ndarray, mu: float, lambda_: float) -> np.nd
 
 
 def _gev_small_tail(shape: float, y: np.ndarray) -> np.ndarray:
-    """Evaluate the normalized survival integral as a convergent small-y series."""
+    """Evaluate the normalized survival integral as a convergent small-y series.
+
+    Args:
+        shape: GEV tail shape parameter.
+        y: Small positive negative-log-CDF coordinate.
+    """
     # Integral from 0 to y of (1-exp(-t))*t**(-shape-1), divided by
     # y**(1-shape). Cancel the factor y before forming the survival ratio.
     series = 1 / (1 - shape) + y * (
@@ -605,7 +838,14 @@ def _gev_small_tail(shape: float, y: np.ndarray) -> np.ndarray:
 
 
 def _gev_excess(ds: np.ndarray, shape: float, loc: float, scale: float) -> np.ndarray:
-    """Evaluate GEV residual life, including the Gumbel and endpoint limits."""
+    """Evaluate GEV residual life, including the Gumbel and endpoint limits.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        shape: Shape parameter of the distribution, under PAL's parameterisation.
+        loc: Location shift applied to the unshifted distribution.
+        scale: Positive distribution scale, in loss units.
+    """
     xi = shape
     out = np.full(ds.shape, np.nan, dtype=float)
     z = (ds - loc) / scale
@@ -645,7 +885,15 @@ def _gev_excess(ds: np.ndarray, shape: float, loc: float, scale: float) -> np.nd
 
 
 def _gig_excess(ds: np.ndarray, p: float, chi: float, psi: float, loc: float) -> np.ndarray:
-    """Use shared GIG truncated moments, retaining scaled deep-tail evaluation."""
+    """Use shared GIG truncated moments, retaining scaled deep-tail evaluation.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        p: GIG index controlling the power of loss in the density.
+        chi: Positive inverse-loss coefficient.
+        psi: Positive loss coefficient.
+        loc: Location shift applied to the unshifted distribution.
+    """
     x = ds - loc
     if p == -0.5:
         return _inverse_gaussian_excess(x, np.sqrt(chi / psi), chi)
@@ -673,14 +921,27 @@ def _gig_excess(ds: np.ndarray, p: float, chi: float, psi: float, loc: float) ->
 
 
 def _loggamma_fraction_excess(alpha: float, beta: float, d: np.ndarray, z: np.ndarray) -> np.ndarray:
-    """Evaluate the divided difference of the upper-gamma fraction in a batch."""
+    """Evaluate the divided difference of the upper-gamma fraction in a batch.
+
+    Args:
+        alpha: First shape parameter of the gamma or beta family.
+        beta: Second shape or gamma scale parameter, according to the family.
+        d: Attachment or policy limit in loss units.
+        z: Dimensionless transformed loss coordinate.
+    """
     y = (1 - beta) * z
     _, correction, difference = _tail_fraction_pair(z, y, alpha)
     return d * (np.log(d) * (1 + difference) / (y + 1 - alpha + correction))
 
 
 def _loggamma_tail_excess(alpha: float, beta: float, d: float) -> float:
-    """Evaluate the remaining log-gamma moment ratios in log space."""
+    """Evaluate the remaining log-gamma moment ratios in log space.
+
+    Args:
+        alpha: First shape parameter of the gamma or beta family.
+        beta: Second shape or gamma scale parameter, according to the family.
+        d: Attachment or policy limit in loss units.
+    """
     z = np.log(d) / beta
     rate = 1 - beta
     log_num = -alpha * np.log1p(-beta) + float(_gamma_logsf(alpha, z * rate))
@@ -692,7 +953,13 @@ def _loggamma_tail_excess(alpha: float, beta: float, d: float) -> float:
 
 
 def _loggamma_excess(ds: np.ndarray, alpha: float, beta: float) -> np.ndarray:
-    """Evaluate the log-gamma moment ratio with stable endpoint and tail handling."""
+    """Evaluate the log-gamma moment ratio with stable endpoint and tail handling.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        alpha: First shape parameter of the gamma or beta family.
+        beta: Second shape or gamma scale parameter, according to the family.
+    """
     x = np.maximum(ds, 1)
     if alpha == 1:
         return x * (beta / (1 - beta)) + np.maximum(1 - ds, 0)
@@ -713,7 +980,13 @@ def _loggamma_excess(ds: np.ndarray, alpha: float, beta: float) -> np.ndarray:
 
 
 def _closed_form(family: type[DistributionBase], pars: dict[str, float], ds: np.ndarray) -> np.ndarray:
-    """Select the vectorised formula by distribution family."""
+    """Select the vectorised formula by distribution family.
+
+    Args:
+        family: PAL distribution class selecting the mathematical parameterisation.
+        pars: Distribution parameter values in the family's natural coordinates.
+        ds: Attachment levels, in the original loss units.
+    """
     formulas: dict[type[DistributionBase], t.Callable[..., np.ndarray]] = {
         dist.Pareto: _pareto_excess,
         dist.GPD: _gpd_excess,
@@ -802,7 +1075,12 @@ def severity_mean_excess(distribution: DistributionBase, threshold: float | np.n
 
 
 def _gamma_logsf_coordinate(alpha: float, log_z: np.ndarray) -> np.ndarray:
-    """Gamma log survival including a positive argument below float underflow."""
+    """Gamma log survival including a positive argument below float underflow.
+
+    Args:
+        alpha: Gamma shape parameter.
+        log_z: Logarithms of attachments divided by gamma scale.
+    """
     out = np.asarray(_gamma_logsf(alpha, np.exp(log_z)))
     small = log_z < -36
     out[small] = np.log(-np.expm1(_log_gamma_lower_probability(alpha, log_z[small])))
@@ -812,7 +1090,13 @@ def _gamma_logsf_coordinate(alpha: float, log_z: np.ndarray) -> np.ndarray:
 def _positive_log_survival_array(
     family: type[DistributionBase], p: dict[str, float], log_x: np.ndarray
 ) -> np.ndarray | None:
-    """Vectorized log survival in positive coordinates relative to location."""
+    """Vectorized log survival in positive coordinates relative to location.
+
+    Args:
+        family: PAL distribution class selecting the mathematical parameterisation.
+        p: Distribution parameter values in their natural coordinates.
+        log_x: Logarithm of the positive, location-adjusted loss.
+    """
     if family is dist.Pareto:
         return np.minimum(0.0, -p["shape"] * (log_x - np.log(p["scale"])))
     if family in (dist.Burr, dist.LogLogistic, dist.Paralogistic):
@@ -856,13 +1140,26 @@ def _positive_log_survival_array(
 
 
 def _positive_log_survival(family: type[DistributionBase], pars: dict[str, float], log_x: float) -> float | None:
-    """Scalar adapter for the shared log-survival kernels."""
+    """Scalar adapter for the shared log-survival kernels.
+
+    Args:
+        family: PAL distribution class selecting the mathematical parameterisation.
+        pars: Distribution parameter values in the family's natural coordinates.
+        log_x: Logarithm of the positive, location-adjusted loss.
+    """
     value = _positive_log_survival_array(family, pars, np.asarray(log_x))
     return None if value is None else float(value)
 
 
 def _log_survival(family: type[DistributionBase], pars: dict[str, float], frozen: t.Any, x: float) -> float:
-    """Prefer cancellation-free family formulas to generic survival calculations."""
+    """Prefer cancellation-free family formulas to generic survival calculations.
+
+    Args:
+        family: PAL distribution class selecting the mathematical parameterisation.
+        pars: Distribution parameter values in the family's natural coordinates.
+        frozen: Frozen reference distribution supplying probability or density evaluations.
+        x: Loss values at which to evaluate the calculation.
+    """
     shifted = x - pars.get("loc", 0.0)
     if shifted > 0:
         value = _positive_log_survival(family, pars, float(np.log(shifted)))
@@ -886,6 +1183,15 @@ def _integrate_log_interval(
 
     Scaling the increment handles concentrated distributions. Its logarithm
     converts polynomial tails to exponentially decaying integrands.
+
+    Args:
+        family: PAL distribution class selecting the mathematical parameterisation.
+        pars: Distribution parameter values in the family's natural coordinates.
+        frozen: Frozen reference distribution supplying probability or density evaluations.
+        start: Lower endpoint of the integration interval.
+        stop: Upper endpoint of the integration interval; may be infinite.
+        width: Local loss scale used to normalise integration increments.
+        log_start_sf: Log survival probability at the lower integration endpoint.
     """
     if stop == start:
         return 0.0
@@ -896,6 +1202,11 @@ def _integrate_log_interval(
     limit = float(np.logaddexp(0, np.log(stop - start) - log_width)) if np.isfinite(stop) else np.inf
 
     def integrand(u: float) -> float:
+        """Evaluate the rescaled conditional integrand.
+
+        Args:
+            u: Probability for an inverse CDF or dimensionless integration coordinate.
+        """
         if u == 0:
             return 1.0
         log_increment = log_width + u + np.log(-np.expm1(-u))
@@ -936,7 +1247,17 @@ def _integrate_unresolved(
     levels: np.ndarray,
     values: np.ndarray,
 ) -> None:
-    """Integrate unresolved thresholds backwards, reusing conditional tail areas."""
+    """Integrate unresolved thresholds backwards, reusing conditional tail areas.
+
+    Args:
+        family: PAL distribution class selecting the mathematical parameterisation.
+        pars: Distribution parameter values in the family's natural coordinates.
+        frozen: Frozen reference distribution supplying probability or density evaluations.
+        lower: Lower endpoint of the distribution's support.
+        upper: Upper endpoint of the distribution's support.
+        levels: Sorted distinct attachment levels.
+        values: Mean excess results, updated in place for unresolved attachments.
+    """
     previous_start: float | None = None
     previous_excess = 0.0
     previous_log_sf = 0.0
@@ -991,6 +1312,14 @@ def _integrate_unresolved(
                 local_scale: float = local_scale,
                 log_start_sf: float = log_start_sf,
             ) -> float:
+                """Evaluate the conditional excess density in scaled coordinates.
+
+                Args:
+                    u: Probability for an inverse CDF or dimensionless integration coordinate.
+                    start: Lower endpoint of the integration interval.
+                    local_scale: Local tail scale used to normalise integration increments.
+                    log_start_sf: Log survival probability at the lower integration endpoint.
+                """
                 x = start + local_scale * u
                 return float(u * np.exp(float(frozen.logpdf(x)) - log_start_sf))
 
@@ -1012,7 +1341,13 @@ def _integrate_unresolved(
 
 
 def _repair_tail(ds: np.ndarray, out: np.ndarray, fallback: t.Callable[[float], float]) -> np.ndarray:
-    """Evaluate only unresolved entries with a more robust scalar expression."""
+    """Evaluate only unresolved entries with a more robust scalar expression.
+
+    Args:
+        ds: Attachment levels, in the original loss units.
+        out: Partially evaluated result array, updated where a fallback is needed.
+        fallback: Scalar evaluator for unresolved attachment values.
+    """
     for i in np.flatnonzero(np.isnan(out) | (out <= 0)):
         try:
             out[i] = fallback(float(ds[i]))

@@ -59,7 +59,13 @@ def _input(
     *,
     dtype: t.Any = float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Validate aligned one-dimensional samples and non-negative weights."""
+    """Validate aligned one-dimensional samples and non-negative weights.
+
+    Args:
+        observations: Observed values used in the likelihood or empirical estimate.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        dtype: Data type used when converting the observations.
+    """
     values = np.asarray(observations, dtype=dtype)
     if values.ndim != 1 or values.size == 0:
         raise ValueError("observations must be a nonempty one-dimensional sequence")
@@ -86,7 +92,21 @@ def _result(
     optimizer: str | None = None,
     optimizer_fallback: bool = False,
 ) -> FitResult[_T]:
-    """Construct consistent log-likelihood and information criterion diagnostics."""
+    """Construct consistent log-likelihood and information criterion diagnostics.
+
+    Args:
+        distribution: Fitted PAL distribution instance.
+        params: Distribution parameter values in the family's natural coordinates.
+        ll: Maximised weighted log-likelihood.
+        w: Observation weights aligned with the observations.
+        k: Number of independently estimated parameters.
+        n_censored: Number of right-censored observations.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+        method: Label identifying the estimator.
+        converged: Whether numerical optimisation reported convergence.
+        optimizer: Actual optimiser used; None for an analytical estimator.
+        optimizer_fallback: Whether the gradient-based optimiser required a fallback.
+    """
     from .fitting import FitResult
 
     aic = 2.0 * k - 2.0 * ll
@@ -127,6 +147,15 @@ def fit_remaining(
     Normal, logistic, Student's t, beta and noncentral chi-squared permit
     right censoring and left truncation. Other families use complete samples.
     Binomial and hypergeometric require known experiment sizes.
+
+    Args:
+        distribution: PAL distribution class or instance used for the calculation.
+        observations: Observed values used in the likelihood or empirical estimate.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        censored: Indicators that observations are right-censored at their recorded values.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+        uncertainty_method: Method for estimating joint parameter uncertainty; none retains point estimates.
+        **options: Method-specific fitting or optimiser options.
     """
     if UncertaintyMethod(uncertainty_method) is not UncertaintyMethod.NONE:
         fitted = fit_remaining(
@@ -172,7 +201,16 @@ def _fit_continuous(
     threshold: float | None,
     options: dict[str, t.Any],
 ) -> FitResult[_T]:
-    """Estimate a continuous family's parameters with a full likelihood."""
+    """Estimate a continuous family's parameters with a full likelihood.
+
+    Args:
+        cls: PAL distribution class to instantiate at the estimated parameters.
+        observations: Observed values used in the likelihood or empirical estimate.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        censored: Indicators that observations are right-censored at their recorded values.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
+        options: Method-specific fitting or optimiser options.
+    """
     from . import distributions as _distributions
 
     family = cls
@@ -235,9 +273,19 @@ def _fit_continuous(
         names = ("alpha", "beta")
 
         def params(raw: np.ndarray) -> dict[str, float]:
+            """Convert optimisation coordinates to natural distribution parameters.
+
+            Args:
+                raw: Trial parameters in unconstrained optimisation coordinates.
+            """
             return {"alpha": float(np.exp(raw[0])), "beta": float(np.exp(raw[1])), "scale": scale, "loc": loc}
 
         def frozen(p: dict[str, float]) -> t.Any:
+            """Construct the reference distribution from natural parameters.
+
+            Args:
+                p: Distribution parameter values in their natural coordinates.
+            """
             return stats.beta(a=p["alpha"], b=p["beta"], loc=loc, scale=scale)
 
     elif family in (_distributions.Normal, _distributions.Logistic):
@@ -248,9 +296,19 @@ def _fit_continuous(
         names = ("mu", "sigma")
 
         def params(raw: np.ndarray) -> dict[str, float]:
+            """Convert optimisation coordinates to natural distribution parameters.
+
+            Args:
+                raw: Trial parameters in unconstrained optimisation coordinates.
+            """
             return {"mu": float(raw[0]), "sigma": float(np.exp(raw[1]))}
 
         def frozen(p: dict[str, float]) -> t.Any:
+            """Construct the reference distribution from natural parameters.
+
+            Args:
+                p: Distribution parameter values in their natural coordinates.
+            """
             rv = stats.norm if family is _distributions.Normal else stats.logistic
             return rv(loc=p["mu"], scale=p["sigma"])
 
@@ -264,9 +322,19 @@ def _fit_continuous(
         names = ("nu", "mu", "sigma")
 
         def params(raw: np.ndarray) -> dict[str, float]:
+            """Convert optimisation coordinates to natural distribution parameters.
+
+            Args:
+                raw: Trial parameters in unconstrained optimisation coordinates.
+            """
             return {"nu": float(np.exp(raw[0])), "mu": float(raw[1]), "sigma": float(np.exp(raw[2]))}
 
         def frozen(p: dict[str, float]) -> t.Any:
+            """Construct the reference distribution from natural parameters.
+
+            Args:
+                p: Distribution parameter values in their natural coordinates.
+            """
             return stats.t(df=p["nu"], loc=p["mu"], scale=p["sigma"])
 
     else:
@@ -279,12 +347,27 @@ def _fit_continuous(
         names = ("df", "nonc")
 
         def params(raw: np.ndarray) -> dict[str, float]:
+            """Convert optimisation coordinates to natural distribution parameters.
+
+            Args:
+                raw: Trial parameters in unconstrained optimisation coordinates.
+            """
             return {"df": float(np.exp(raw[0])), "nonc": float(raw[1] ** 2)}
 
         def frozen(p: dict[str, float]) -> t.Any:
+            """Construct the reference distribution from natural parameters.
+
+            Args:
+                p: Distribution parameter values in their natural coordinates.
+            """
             return stats.ncx2(df=p["df"], nc=p["nonc"])
 
     def log_likelihood(p: dict[str, float]) -> float:
+        """Evaluate the weighted log-likelihood at natural parameters.
+
+        Args:
+            p: Distribution parameter values in their natural coordinates.
+        """
         rv = frozen(p)
         value = np.zeros(len(x), dtype=float)
         if np.any(~c):
@@ -297,6 +380,11 @@ def _fit_continuous(
         return ll if np.isfinite(ll) else -np.inf
 
     def objective(raw: np.ndarray) -> float:
+        """Evaluate the negative log-likelihood in trial coordinates.
+
+        Args:
+            raw: Trial parameters in unconstrained optimisation coordinates.
+        """
         with np.errstate(all="ignore"):
             ll = log_likelihood(params(raw))
         return -ll if np.isfinite(ll) else 1e100
@@ -332,7 +420,12 @@ def _counts(
     observations: t.Sequence[t.Any] | np.ndarray,
     weights: t.Sequence[float] | np.ndarray | None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Require nonnegative integer observations including possible zero counts."""
+    """Require nonnegative integer observations including possible zero counts.
+
+    Args:
+        observations: Observed values used in the likelihood or empirical estimate.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+    """
     x, w = _input(observations, weights)
     if not np.all(np.isfinite(x)) or np.any(x < 0) or np.any(x != np.floor(x)):
         raise ValueError("count observations must be nonnegative integers")
@@ -345,7 +438,14 @@ def _fit_discrete(
     weights: t.Sequence[float] | np.ndarray | None,
     options: dict[str, t.Any],
 ) -> FitResult[_T]:
-    """Fit counting distributions with required fixed experiment parameters."""
+    """Fit counting distributions with required fixed experiment parameters.
+
+    Args:
+        cls: PAL distribution class to instantiate at the estimated parameters.
+        observations: Observed values used in the likelihood or empirical estimate.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        options: Method-specific fitting or optimiser options.
+    """
     from . import distributions as _distributions
 
     family = cls
@@ -375,6 +475,11 @@ def _fit_discrete(
             raise ValueError("negative binomial finite-size MLE requires overdispersed counts")
 
         def profile(log_n: float) -> float:
+            """Evaluate the negative binomial profile likelihood.
+
+            Args:
+                log_n: Logarithm of the candidate negative binomial size.
+            """
             n_value = float(np.exp(log_n))
             p_value = n_value / (n_value + mu)
             return -float(np.dot(w, stats.nbinom.logpmf(x, n_value, p_value)))
@@ -409,6 +514,11 @@ def _fit_discrete(
             raise ValueError("No feasible population success count for observations")
 
         def negll(successes: int) -> float:
+            """Evaluate the negative likelihood for the candidate population count.
+
+            Args:
+                successes: Candidate number of successful items in the population.
+            """
             return -float(np.dot(w, stats.hypergeom.logpmf(x, population, successes, draws)))
 
         # For fixed population and sample size the log-likelihood is
@@ -440,7 +550,14 @@ def _fit_mbbefd(
     weights: t.Sequence[float] | np.ndarray | None,
     options: dict[str, t.Any],
 ) -> FitResult[_T]:
-    """Fit MBBEFD including the point mass at the policy limit."""
+    """Fit MBBEFD including the point mass at the policy limit.
+
+    Args:
+        cls: PAL distribution class to instantiate at the estimated parameters.
+        observations: Observed values used in the likelihood or empirical estimate.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        options: Method-specific fitting or optimiser options.
+    """
     optimizer = options.pop("optimizer", OptimizerMethod.L_BFGS_B)
     optimizer_options = options.pop("optimizer_options", None)
     initial_parameters = options.pop("initial_parameters", None)
@@ -456,9 +573,20 @@ def _fit_mbbefd(
     w_inner, w_atom = w[~atom], float(np.sum(w[atom]))
 
     def params(raw: np.ndarray) -> tuple[float, float]:
+        """Convert optimisation coordinates to natural distribution parameters.
+
+        Args:
+            raw: Trial parameters in unconstrained optimisation coordinates.
+        """
         return 1.0 + float(np.exp(raw[0])), float(np.exp(raw[1]))
 
     def likelihood(g: float, b: float) -> float:
+        """Evaluate the likelihood at the supplied natural parameters.
+
+        Args:
+            g: MBBEFD inverse probability of a total loss.
+            b: Scale or second transformed coordinate, according to the kernel.
+        """
         logb = float(np.log(b))
         if abs(logb) < 1e-7:
             density = (g - 1) / (1 + (g - 1) * interior) ** 2
@@ -473,6 +601,11 @@ def _fit_mbbefd(
         return float(np.dot(w_inner, np.log(density)) - w_atom * np.log(g))
 
     def objective(raw: np.ndarray) -> float:
+        """Evaluate the negative log-likelihood in trial coordinates.
+
+        Args:
+            raw: Trial parameters in unconstrained optimisation coordinates.
+        """
         with np.errstate(all="ignore"):
             value = likelihood(*params(raw))
         return -value if np.isfinite(value) else 1e100
@@ -528,7 +661,14 @@ def _fit_uniform(
     weights: t.Sequence[float] | np.ndarray | None,
     options: dict[str, t.Any],
 ) -> FitResult[_T]:
-    """Fit unknown endpoints for numeric or calendar/date uniform samples."""
+    """Fit unknown endpoints for numeric or calendar/date uniform samples.
+
+    Args:
+        cls: PAL distribution class to instantiate at the estimated parameters.
+        observations: Observed values used in the likelihood or empirical estimate.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        options: Method-specific fitting or optimiser options.
+    """
     if options:
         raise TypeError(f"Unexpected Uniform fit options: {sorted(options)}")
     raw = np.asarray(observations)
@@ -571,7 +711,14 @@ def _fit_categorical(
     weights: t.Sequence[float] | np.ndarray | None,
     options: dict[str, t.Any],
 ) -> FitResult[_T]:
-    """Estimate multinomial category probabilities and preserve label order."""
+    """Estimate multinomial category probabilities and preserve label order.
+
+    Args:
+        cls: PAL distribution class to instantiate at the estimated parameters.
+        observations: Observed values used in the likelihood or empirical estimate.
+        weights: Nonnegative observation weights; zero-weight observations are excluded.
+        options: Method-specific fitting or optimiser options.
+    """
     observed, w = _input(observations, weights, dtype=object)
     given = options.pop("values", None)
     if options:
@@ -611,6 +758,11 @@ def _count_tail_excess(
 
     The first mass is scaled to one, so neither tail probability nor PMF
     need be representable. Only invoked when the ordinary moment ratio fails.
+
+    Args:
+        k: First count in the conditional tail.
+        d: Attachment in count units.
+        ratio: Function giving the ratio of successive count probabilities.
     """
     first = k + 1
     if first <= k:
@@ -631,7 +783,13 @@ def _count_tail_excess(
 
 
 def _mbbefd_excess(g: float, b: float, d: np.ndarray) -> np.ndarray:
-    """Evaluate residual life using the remaining interval, not 1 minus LEV."""
+    """Evaluate residual life using the remaining interval, not 1 minus LEV.
+
+    Args:
+        g: MBBEFD inverse probability of a total loss.
+        b: Scale or second transformed coordinate, according to the kernel.
+        d: Attachment or policy limit in loss units.
+    """
     if not np.isfinite(g) or not np.isfinite(b) or g < 1 or b < 0:
         raise ValueError("Invalid MBBEFD parameters")
     out = np.full(d.shape, np.nan)
@@ -675,7 +833,14 @@ def _mbbefd_excess(g: float, b: float, d: np.ndarray) -> np.ndarray:
 
 
 def _student_t_excess(nu: float, mu: float, sigma: float, d: np.ndarray) -> np.ndarray:
-    """Evaluate Student t moments, cancelling small beta-tail probabilities."""
+    """Evaluate Student t moments, cancelling small beta-tail probabilities.
+
+    Args:
+        nu: Degrees of freedom of Student's t distribution.
+        mu: Distribution location or mean parameter, under PAL's parameterisation.
+        sigma: Positive dispersion parameter; log-scale for LogNormal.
+        d: Attachment or policy limit in loss units.
+    """
     if nu <= 1:
         return np.full(d.shape, np.inf)
     z = (d - mu) / sigma
@@ -697,7 +862,13 @@ def _student_t_excess(nu: float, mu: float, sigma: float, d: np.ndarray) -> np.n
 
 
 def _ncx2_tail_excess(df: float, nonc: float, d: float) -> float:
-    """Integrate a conditional noncentral chi-square density on tail-width units."""
+    """Integrate a conditional noncentral chi-square density on tail-width units.
+
+    Args:
+        df: Degrees of freedom of the noncentral chi-squared distribution.
+        nonc: Noncentrality parameter of the noncentral chi-squared distribution.
+        d: Attachment or policy limit in loss units.
+    """
     rv = stats.ncx2(df, nonc)
     order = df / 2 - 1
     root = np.sqrt(nonc) * np.sqrt(d)
@@ -706,6 +877,11 @@ def _ncx2_tail_excess(df: float, nonc: float, d: float) -> float:
     width = 2 / max(0.1, 1 - np.sqrt(nonc / d) - max(df / 2 - 1, 0) * 2 / d)
 
     def density(t: float) -> float:
+        """Evaluate the rescaled density integrand.
+
+        Args:
+            t: Dimensionless integration coordinate.
+        """
         u = width * t
         log_ratio = np.log1p(u / d)
         root_delta = root * np.expm1(0.5 * log_ratio)
@@ -733,7 +909,13 @@ def _ncx2_tail_excess(df: float, nonc: float, d: float) -> float:
 
 
 def _ncx2_excess(df: float, nonc: float, d: np.ndarray) -> np.ndarray:
-    """Evaluate shifted noncentral chi-square moments, recovering deep tails."""
+    """Evaluate shifted noncentral chi-square moments, recovering deep tails.
+
+    Args:
+        df: Degrees of freedom of the noncentral chi-squared distribution.
+        nonc: Noncentrality parameter of the noncentral chi-squared distribution.
+        d: Attachment or policy limit in loss units.
+    """
     if nonc == 0:
         from ._mean_excess import _gamma_excess
 
@@ -759,6 +941,10 @@ def mean_excess_remaining(
     Returns NaN when an attachment is at or above a finite upper endpoint.
     Numeric support is required; dates and categories do not have a loss
     magnitude interpretation.
+
+    Args:
+        distribution: PAL distribution class or instance used for the calculation.
+        threshold: Reporting threshold for fitting, or attachment for mean excess.
     """
     from . import distributions as _distributions
 
@@ -838,6 +1024,11 @@ def mean_excess_remaining(
                 upper = np.inf if lam > 0 else 0.0
 
                 def ratio_fn(j: float) -> float:
+                    """Return the ratio of consecutive count probabilities.
+
+                    Args:
+                        j: Index of the continued-fraction coefficient.
+                    """
                     return lam / (j + 1)
 
             elif family in (_distributions.Binomial, _distributions.Bernoulli):
@@ -848,6 +1039,11 @@ def mean_excess_remaining(
                 upper = float(n) if p > 0 else 0.0
 
                 def ratio_fn(j: float) -> float:
+                    """Return the ratio of consecutive count probabilities.
+
+                    Args:
+                        j: Index of the continued-fraction coefficient.
+                    """
                     return (n - j) / (j + 1) * p / (1 - p) if j < n and p < 1 else 0.0
 
             elif family is _distributions.NegBinomial:
@@ -857,6 +1053,11 @@ def mean_excess_remaining(
                 upper = np.inf if p < 1 else 0.0
 
                 def ratio_fn(j: float) -> float:
+                    """Return the ratio of consecutive count probabilities.
+
+                    Args:
+                        j: Index of the continued-fraction coefficient.
+                    """
                     return (j + n) / (j + 1) * (1 - p)
 
             else:
@@ -871,6 +1072,11 @@ def mean_excess_remaining(
                 upper = float(min(good, draws))
 
                 def ratio_fn(j: float) -> float:
+                    """Return the ratio of consecutive count probabilities.
+
+                    Args:
+                        j: Index of the continued-fraction coefficient.
+                    """
                     return (good - j) * (draws - j) / ((j + 1) * (bad - draws + j + 1)) if j < upper else 0.0
 
             out = np.where(sf > 0, moment / sf - d, np.nan)

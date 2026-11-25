@@ -26,7 +26,12 @@ _SCHEMA = "pal-columnar-parquet-v1"
 
 
 def _arrow_values(values: np.ndarray, pa: t.Any) -> t.Any:
-    """Create an Arrow array directly from numeric storage where possible."""
+    """Create an Arrow array directly from numeric storage where possible.
+
+    Args:
+        pa: PyArrow module used to construct or read Arrow columns.
+        values: Values to encode or decode in their stored order.
+    """
     if values.dtype.kind == "M":
         values = values.view(np.int64)
     elif values.dtype.kind in "US":
@@ -35,7 +40,12 @@ def _arrow_values(values: np.ndarray, pa: t.Any) -> t.Any:
 
 
 def _list_column(values: np.ndarray, pa: t.Any) -> t.Any:
-    """Store one typed vector as a LargeList rather than repeated rows."""
+    """Store one typed vector as a LargeList rather than repeated rows.
+
+    Args:
+        pa: PyArrow module used to construct or read Arrow columns.
+        values: Values to encode or decode in their stored order.
+    """
     offsets = pa.array([0, len(values)], type=pa.int64())
     return pa.LargeListArray.from_arrays(offsets, _arrow_values(values, pa))
 
@@ -46,6 +56,10 @@ def write_parquet(variable: ProteusVariable[t.Any], path: str | os.PathLike[str]
     Each leaf has a typed vector; claim-level leaves additionally store their
     simulation indices. This avoids materialising a long-form DataFrame.
     Install the optional parquet extra to supply PyArrow.
+
+    Args:
+        path: Ordered dimension keys identifying the variable leaf.
+        variable: PAL variable to convert or serialize.
     """
     try:
         import pyarrow as pa  # pyright: ignore[reportMissingImports]  # Optional parquet extra
@@ -59,6 +73,12 @@ def write_parquet(variable: ProteusVariable[t.Any], path: str | os.PathLike[str]
     group_ids: dict[int, int] = {}
 
     def visit(value: t.Any, parts: list[tuple[str, str]]) -> None:
+        """Traverse the variable hierarchy and serialize its leaves.
+
+        Args:
+            parts: Dimension path components identifying the nested variable.
+            value: Value to encode, decode or evaluate.
+        """
         if isinstance(value, ProteusVariable):
             if not value.values:
                 raise ValueError("Empty ProteusVariable dimensions cannot be serialized")
@@ -115,6 +135,14 @@ def write_parquet(variable: ProteusVariable[t.Any], path: str | os.PathLike[str]
 
 
 def _read_column(table: t.Any, name: str, dtype: str, pa: t.Any) -> np.ndarray:
+    """Read and decode the stored Arrow column.
+
+    Args:
+        dtype: Data type of the stored values.
+        name: Name of the Arrow column.
+        pa: PyArrow module used to construct or read Arrow columns.
+        table: Arrow table containing serialized variable data.
+    """
     if name not in table.column_names:
         raise ValueError(f"Missing PAL column {name!r}")
     column = table.column(name)
@@ -133,6 +161,12 @@ def _read_column(table: t.Any, name: str, dtype: str, pa: t.Any) -> np.ndarray:
 
 
 def _rebuild(leaves: list[tuple[tuple[tuple[str, str], ...], t.Any]], level: int) -> ProteusVariable[t.Any]:
+    """Reconstruct the variable hierarchy from its serialized leaves.
+
+    Args:
+        leaves: Serialized leaf variables and their dimension paths.
+        level: Current depth in the nested variable hierarchy.
+    """
     dimensions = {path[level][0] for path, _ in leaves if len(path) > level}
     if len(dimensions) != 1 or any(len(path) <= level for path, _ in leaves):
         raise ValueError("Inconsistent PAL variable dimension structure")
@@ -158,7 +192,14 @@ def read_parquet(
     values_column: str = "value",
     simulation_column: str | None = "Simulation",
 ) -> ProteusVariable[t.Any]:
-    """Read compact PAL Parquet or any earlier PAL/conventional Parquet table."""
+    """Read compact PAL Parquet or any earlier PAL/conventional Parquet table.
+
+    Args:
+        dim_name: Name of the dimension indexing the restored entries.
+        path: Ordered dimension keys identifying the variable leaf.
+        simulation_column: Name of the column containing simulation indices.
+        values_column: Name of the column containing variable values.
+    """
     try:
         import pyarrow as pa  # pyright: ignore[reportMissingImports]  # Optional parquet extra
         import pyarrow.parquet as pq  # pyright: ignore[reportMissingImports]  # Optional parquet extra

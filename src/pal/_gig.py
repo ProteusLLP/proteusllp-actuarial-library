@@ -9,7 +9,12 @@ from scipy import integrate, special
 
 
 def _weighted_remainder(coefficient: float, delta: float) -> float:
-    """Evaluate coefficient times exp(delta) minus its linear Taylor polynomial."""
+    """Evaluate coefficient times exp(delta) minus its linear Taylor polynomial.
+
+    Args:
+        coefficient: Nonnegative coefficient multiplying the exponential remainder.
+        delta: Displacement from the expansion point.
+    """
     if coefficient == 0:
         return 0.0
     if abs(delta) < 1e-3:
@@ -21,9 +26,22 @@ def _weighted_remainder(coefficient: float, delta: float) -> float:
 
 
 class _LogDensity:
-    """Unnormalised log-coordinate density, scaled to one at its mode."""
+    """Unnormalised log-coordinate density, scaled to one at its mode.
+
+    Attributes:
+        mode: Mode in log-loss coordinates.
+        log_half: Logarithm of half the standardized GIG shape.
+        a0: Positive exponential coefficient evaluated at the mode.
+        b0: Negative-direction exponential coefficient evaluated at the mode.
+    """
 
     def __init__(self, p: float, b: float) -> None:
+        """Initialize the numerical evaluator.
+
+        Args:
+            p: GIG index controlling the power of loss in the density.
+            b: Positive standardized GIG shape.
+        """
         ratio = p / b
         self.mode = (
             math.asinh(ratio)
@@ -35,7 +53,13 @@ class _LogDensity:
         self.b0 = math.exp(self.log_half - self.mode)
 
     def log_mass(self, near: float, far: float, direction: float) -> float:
-        """Integrate one interval in the direction away from the log-density mode."""
+        """Integrate one interval in the direction away from the log-density mode.
+
+        Args:
+            near: Interval endpoint nearer the mode of the log-density.
+            far: Interval endpoint farther from the mode of the log-density.
+            direction: Direction of integration away from the mode, either -1 or +1.
+        """
         if near == far:
             return -math.inf
         log_a = self.log_half + near
@@ -56,6 +80,11 @@ class _LogDensity:
         length = abs(far - near) / width
 
         def log_density(u: float) -> float:
+            """Evaluate the local log density at the integration coordinate.
+
+            Args:
+                u: Probability for an inverse CDF or dimensionless integration coordinate.
+            """
             delta = direction * width * u
             return -slope * width * u - _weighted_remainder(a, delta) - _weighted_remainder(b, -delta)
 
@@ -77,6 +106,11 @@ def _gig_log_probabilities(x: np.ndarray, p: float, b: float) -> tuple[np.ndarra
     towards the mode from either tail. Normalise using the sum of both half
     integrals; this avoids extreme Bessel normalisers. Small probabilities
     are always accumulated directly rather than by subtracting from one.
+
+    Args:
+        x: Standardized positive loss thresholds.
+        p: GIG index controlling the power of loss in the density.
+        b: Positive standardized GIG shape.
     """
     values = np.asarray(x, dtype=float)
     logcdf = np.full(values.shape, np.nan)
@@ -126,7 +160,14 @@ def _gig_log_probabilities(x: np.ndarray, p: float, b: float) -> tuple[np.ndarra
 def _gig_log_moments(
     x: np.ndarray, p: float, chi: float, psi: float
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Return lower/upper probability and lower/upper first moment in log units."""
+    """Return lower/upper probability and lower/upper first moment in log units.
+
+    Args:
+        x: Positive losses in original units.
+        p: GIG index controlling the power of loss in the density.
+        chi: Positive inverse-loss coefficient of the GIG density.
+        psi: Positive loss coefficient of the GIG density.
+    """
     b = np.sqrt(chi) * np.sqrt(psi)
     scale = np.sqrt(chi) / np.sqrt(psi)
     lower, upper = _gig_log_probabilities(x / scale, p, b)

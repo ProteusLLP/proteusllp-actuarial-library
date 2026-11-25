@@ -152,7 +152,12 @@ class HyperExponential(DistributionBase):
         return weights, rates
 
     def _wrap_result(self, result: t.Any, argument: DistributionParameter) -> ReturnType:
-        """Preserve coupling from the argument and all stochastic parameters."""
+        """Preserve coupling from the argument and all stochastic parameters.
+
+        Args:
+            argument: Evaluation input used to preserve stochastic simulation alignment.
+            result: Calculated result to wrap with its stochastic metadata.
+        """
         candidates = (argument, self._params["loc"], *self._component_inputs())
         stochastic_inputs = [value for value in candidates if isinstance(value, StochasticScalar)]
         if not stochastic_inputs:
@@ -164,13 +169,23 @@ class HyperExponential(DistributionBase):
 
     @staticmethod
     def _mixture_cdf(values: t.Any, weights: t.Any, rates: t.Any) -> t.Any:
-        """Evaluate the zero-location CDF for non-negative values."""
+        """Evaluate the zero-location CDF for non-negative values.
+
+        Args:
+            rates: Positive rate parameters of the exponential mixture.
+            values: Values to convert or process in their existing order.
+            weights: Mixture probabilities assigned to the exponential components.
+        """
         component_cdfs = -xp.expm1(-values[..., None] * rates)
         return xp.sum(weights * component_cdfs, axis=-1)
 
     @override
     def cdf(self, x: DistributionParameter) -> ReturnType:
-        """Compute the cumulative distribution function."""
+        """Compute the cumulative distribution function.
+
+        Args:
+            x: Loss at which the mixture probability is evaluated.
+        """
         weights, rates = self._validated_component_parameters()
         values = xp.asarray(x.values if isinstance(x, StochasticScalar) else x)
         loc = self._params["loc"]
@@ -188,6 +203,9 @@ class HyperExponential(DistributionBase):
         A general hyperexponential quantile has no closed form. The upper
         bracket follows from the slowest exponential component, so no heuristic
         root-search bound is required.
+
+        Args:
+            u: Cumulative probability at which to evaluate the quantile.
         """
         weights, rates = self._validated_component_parameters()
         probabilities = xp.asarray(u.values if isinstance(u, StochasticScalar) else u)
@@ -223,7 +241,12 @@ class HyperExponential(DistributionBase):
         n_sims: int | None = None,
         rng: RandomGenerator | None = None,
     ) -> StochasticScalar:
-        """Generate samples and preserve component-parameter coupling."""
+        """Generate samples and preserve component-parameter coupling.
+
+        Args:
+            n_sims: Number of simulations represented by the data or requested draws.
+            rng: Random number generator supplying the draws.
+        """
         sources = tuple(
             value
             for value in (*self._params.values(), *self._component_inputs())
@@ -236,7 +259,12 @@ class HyperExponential(DistributionBase):
 
     @override
     def _generate(self, n_sims: int, rng: RandomGenerator) -> StochasticScalar:
-        """Generate directly by first drawing the mixture component."""
+        """Generate directly by first drawing the mixture component.
+
+        Args:
+            n_sims: Number of simulations represented by the data or requested draws.
+            rng: Random number generator supplying the draws.
+        """
         if n_sims < 1:
             raise ValueError(f"n_sims must be >= 1, got {n_sims}")
 

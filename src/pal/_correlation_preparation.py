@@ -29,6 +29,13 @@ def prepare_correlation_matrix(
     Higham's nearest-correlation algorithm is the default. An adjustment
     emits a UserWarning; valid correlation matrices are left unchanged
     and do not emit a warning. Set repair="none" to reject invalid inputs.
+
+    Args:
+        matrix: Matrix to validate, complete or use in the correlation calculation.
+        name: Name identifying the input or output quantity.
+        pattern: Optional pattern of fixed, missing or weighted matrix entries.
+        repair: Correlation repair mode to use for invalid input.
+        weights: Weights applied to the correlation repair objective.
     """
     if repair not in ("higham", "none"):
         raise ValueError("repair must be 'higham' or 'none'.")
