@@ -175,3 +175,57 @@ def test_support_shape_is_feasible(raw):
     shape = _support_shape(raw, 2.0, 5.0, 10.0)
     assert 1 - shape * 5 / 2 > 0
     assert 1 + shape * 10 / 2 > 0
+
+
+@pytest.mark.parametrize(
+    ("family", "rv", "initial_parameters", "options"),
+    [
+        (d.Gamma, stats.gamma(2, scale=3), {"alpha": 1.5, "theta": 4}, {}),
+        (d.LogNormal, stats.lognorm(0.8, scale=10), {"mu": 2.0}, {}),
+        (d.Burr, stats.burr12(1.5, 2, scale=10), {"power": 1.0, "shape": 2.0, "scale": 8}, {}),
+        (d.GPD, stats.genpareto(-0.3, loc=3, scale=5), {"shape": -0.2, "scale": 5, "loc": 3}, {"threshold": 3}),
+        (d.GEV, stats.genextreme(0.1, loc=10, scale=2), {"shape": 0.0, "scale": 3, "loc": 9}, {}),
+        (d.Beta, stats.beta(2, 3), {"alpha": 1.0, "beta": 2.0, "loc": 0, "scale": 1}, {}),
+        (d.StudentsT, stats.t(5, loc=2, scale=3), {"nu": 4, "mu": 2, "sigma": 3}, {}),
+        (d.NonCentralChiSquared, stats.ncx2(4, 3), {"df": 3, "nonc": 2}, {}),
+        (d.GeneralizedBetaPrime, stats.betaprime(2, 3, scale=10), {"a": 1, "b": 8, "p": 2, "q": 3}, {}),
+    ],
+)
+def test_user_initial_parameters(family, rv, initial_parameters, options):
+    """Natural starting parameters reach the same likelihood as automatic fitting."""
+    x = rv.ppf((np.arange(300) + 0.5) / 300)
+    automatic = family.fit(x, **options)
+    custom = family.fit(x, initial_parameters=initial_parameters, **options)
+    assert custom.converged
+    assert custom.log_likelihood >= automatic.log_likelihood - 0.002
+
+
+def test_initial_parameters_are_primary_optimizer_start(monkeypatch):
+    """The user's estimate, rather than the statistical estimate, is used first."""
+    actual = fitting.optimize.minimize
+    starts = []
+
+    def tracked(objective, x0, *args, **kwargs):
+        starts.append(np.array(x0))
+        return actual(objective, x0, *args, **kwargs)
+
+    monkeypatch.setattr(fitting.optimize, "minimize", tracked)
+    x = stats.gamma(2.5, scale=3).ppf((np.arange(100) + 0.5) / 100)
+    d.Gamma.fit(x, initial_parameters={"alpha": 1.7, "theta": 4})
+    np.testing.assert_allclose(starts[0], np.log([1.7, 4]))
+
+
+@pytest.mark.parametrize(
+    "initial_parameters",
+    [{"unknown": 1}, {"alpha": -1}, {"theta": np.inf}],
+)
+def test_invalid_initial_parameters_raise(initial_parameters):
+    with pytest.raises(ValueError, match="initial"):
+        d.Gamma.fit([1, 2, 3, 4], initial_parameters=initial_parameters)
+
+
+def test_initial_parameters_cannot_change_fixed_support():
+    with pytest.raises(ValueError, match="fixed parameter"):
+        d.GPD.fit([2, 3, 4, 5], threshold=1, initial_parameters={"loc": 0})
+    with pytest.raises(ValueError, match="support"):
+        d.GPD.fit([2, 3, 4, 5], threshold=1, initial_parameters={"shape": -2, "scale": 1})

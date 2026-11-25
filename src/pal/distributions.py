@@ -735,6 +735,7 @@ class GPD(DistributionBase):
         free_location: bool = False,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
     ) -> FitResult[GPD]:
         """Fit a GPD with the location fixed at threshold or estimated.
 
@@ -747,6 +748,7 @@ class GPD(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -758,6 +760,7 @@ class GPD(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -867,6 +870,7 @@ class Burr(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -881,6 +885,7 @@ class Burr(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -891,6 +896,7 @@ class Burr(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1055,6 +1061,7 @@ class GeneralizedBetaPrime(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -1069,6 +1076,7 @@ class GeneralizedBetaPrime(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -1079,6 +1087,7 @@ class GeneralizedBetaPrime(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1189,6 +1198,7 @@ class Beta(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
@@ -1207,6 +1217,7 @@ class Beta(DistributionBase):
             threshold: Optional left-truncation level; None uses the complete lower support.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_remaining(
             cls,
@@ -1219,6 +1230,7 @@ class Beta(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1372,6 +1384,7 @@ class MBBEFD(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
     ) -> FitResult[MBBEFD]:
         """Estimate distribution parameters from observed values.
@@ -1382,6 +1395,7 @@ class MBBEFD(DistributionBase):
             optimizer_options: Additional options passed to the selected optimiser.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_remaining(
             cls,
@@ -1390,6 +1404,7 @@ class MBBEFD(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1623,6 +1638,7 @@ class LogLogistic(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -1637,6 +1653,7 @@ class LogLogistic(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -1647,6 +1664,7 @@ class LogLogistic(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1777,6 +1795,7 @@ class Normal(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
@@ -1791,6 +1810,7 @@ class Normal(DistributionBase):
             threshold: Optional left-truncation level; None uses the complete lower support.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_remaining(
             cls,
@@ -1801,6 +1821,7 @@ class Normal(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1867,6 +1888,7 @@ class Logistic(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
@@ -1881,6 +1903,7 @@ class Logistic(DistributionBase):
             threshold: Optional left-truncation level; None uses the complete lower support.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_remaining(
             cls,
@@ -1891,6 +1914,7 @@ class Logistic(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -1958,6 +1982,7 @@ class LogNormal(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -1972,6 +1997,7 @@ class LogNormal(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -1982,6 +2008,7 @@ class LogNormal(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2047,6 +2074,7 @@ class Gamma(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2061,6 +2089,7 @@ class Gamma(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -2071,6 +2100,7 @@ class Gamma(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2182,6 +2212,7 @@ class NonCentralChiSquared(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
@@ -2196,6 +2227,7 @@ class NonCentralChiSquared(DistributionBase):
             threshold: Optional left-truncation level; None uses the complete lower support.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_remaining(
             cls,
@@ -2206,6 +2238,7 @@ class NonCentralChiSquared(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2308,6 +2341,7 @@ class InverseGamma(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2322,6 +2356,7 @@ class InverseGamma(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -2332,6 +2367,7 @@ class InverseGamma(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2493,6 +2529,7 @@ class Paralogistic(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2507,6 +2544,7 @@ class Paralogistic(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -2517,6 +2555,7 @@ class Paralogistic(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2646,6 +2685,7 @@ class InverseBurr(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2660,6 +2700,7 @@ class InverseBurr(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -2670,6 +2711,7 @@ class InverseBurr(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2809,6 +2851,7 @@ class InverseParalogistic(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2823,6 +2866,7 @@ class InverseParalogistic(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -2833,6 +2877,7 @@ class InverseParalogistic(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -2961,6 +3006,7 @@ class Weibull(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -2975,6 +3021,7 @@ class Weibull(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -2985,6 +3032,7 @@ class Weibull(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -3084,6 +3132,7 @@ class InverseWeibull(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -3098,6 +3147,7 @@ class InverseWeibull(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -3108,6 +3158,7 @@ class InverseWeibull(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -3230,6 +3281,7 @@ class LogGamma(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -3244,6 +3296,7 @@ class LogGamma(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -3254,6 +3307,7 @@ class LogGamma(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -3348,6 +3402,7 @@ class GEV(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -3362,6 +3417,7 @@ class GEV(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -3372,6 +3428,7 @@ class GEV(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -3489,6 +3546,7 @@ class StudentsT(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         threshold: float | None = None,
@@ -3503,6 +3561,7 @@ class StudentsT(DistributionBase):
             threshold: Optional left-truncation level; None uses the complete lower support.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_remaining(
             cls,
@@ -3513,6 +3572,7 @@ class StudentsT(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -3622,6 +3682,7 @@ class InverseGaussian(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -3636,6 +3697,7 @@ class InverseGaussian(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -3646,6 +3708,7 @@ class InverseGaussian(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -3798,6 +3861,7 @@ class GeneralizedInverseGaussian(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -3812,6 +3876,7 @@ class GeneralizedInverseGaussian(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -3822,6 +3887,7 @@ class GeneralizedInverseGaussian(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:
@@ -4295,6 +4361,7 @@ class InverseExponential(DistributionBase):
         uncertainty_method: UncertaintyMethod = UncertaintyMethod.NONE,
         optimizer: OptimizerMethod | str = OptimizerMethod.L_BFGS_B,
         optimizer_options: t.Mapping[str, t.Any] | None = None,
+        initial_parameters: t.Mapping[str, float] | None = None,
         threshold: float = 0.0,
         censored: t.Sequence[bool] | np.ndarray | None = None,
         weights: t.Sequence[float] | np.ndarray | None = None,
@@ -4309,6 +4376,7 @@ class InverseExponential(DistributionBase):
             threshold: Left-truncation threshold for the conditional likelihood.
             uncertainty_method: Optional method for estimating joint parameter uncertainty.
             weights: Nonnegative observation weights; omitted weights give equal weight to each observation.
+            initial_parameters: Optional starting values in natural distribution parameters.
         """
         return fit_distribution(
             cls,
@@ -4319,6 +4387,7 @@ class InverseExponential(DistributionBase):
             uncertainty_method=uncertainty_method,
             optimizer=optimizer,
             optimizer_options=optimizer_options,
+            initial_parameters=initial_parameters,
         )
 
     def mean_excess(self, threshold: float | np.ndarray) -> float | np.ndarray:

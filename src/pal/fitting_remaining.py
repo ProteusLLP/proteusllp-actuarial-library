@@ -13,7 +13,7 @@ import typing as t
 import numpy as np
 from scipy import integrate, optimize, special, stats
 
-from ._fitting_initial import _conditional_quantiles
+from ._fitting_initial import _conditional_quantiles, _initial_coordinates, _override_initial
 from .fitting import OptimizerMethod, UncertaintyMethod, _FitMethod, _minimize, _with_uncertainty
 
 if t.TYPE_CHECKING:
@@ -234,6 +234,7 @@ def _fit_continuous(
     scale = float(options.pop("scale", 1.0)) if family is _distributions.Beta else 1.0
     optimizer = options.pop("optimizer", OptimizerMethod.L_BFGS_B)
     optimizer_options = options.pop("optimizer_options", None)
+    initial_parameters = options.pop("initial_parameters", None)
     if options:
         raise TypeError(f"Unsupported fitting options for {family.__name__}: {sorted(options)}")
     if family is _distributions.Beta:
@@ -255,6 +256,8 @@ def _fit_continuous(
         raise ValueError(f"{family.__name__} parameters cannot be fitted to a constant sample")
 
     if family is _distributions.Normal and not np.any(c) and threshold is None:
+        if initial_parameters is not None:
+            raise ValueError("An uncensored, untruncated Normal uses an analytical fit")
         estimates = {"mu": mu, "sigma": std}
         ll = float(np.sum(w * stats.norm.logpdf(x, loc=mu, scale=std)))
         return _result(cls(**estimates), estimates, ll, w, k=2, method=_FitMethod.ANALYTIC.value)
@@ -267,6 +270,7 @@ def _fit_continuous(
         initial = [np.log(max(center * common, 0.2)), np.log(max((1 - center) * common, 0.2))]
         alternative = np.zeros(2)
         k = 2
+        names = ("alpha", "beta")
 
         def params(raw: np.ndarray) -> dict[str, float]:
             """Convert optimisation coordinates to natural distribution parameters.
@@ -289,6 +293,7 @@ def _fit_continuous(
         initial = [mu, np.log(std * factor)]
         alternative = np.array([float(np.median(x)), np.log(std)])
         k = 2
+        names = ("mu", "sigma")
 
         def params(raw: np.ndarray) -> dict[str, float]:
             """Convert optimisation coordinates to natural distribution parameters.
@@ -314,6 +319,7 @@ def _fit_continuous(
         initial = [np.log(5.0), center, np.log(scale0)]
         alternative = np.array([np.log(12.0), mu, np.log(std)])
         k = 3
+        names = ("nu", "mu", "sigma")
 
         def params(raw: np.ndarray) -> dict[str, float]:
             """Convert optimisation coordinates to natural distribution parameters.
@@ -338,6 +344,7 @@ def _fit_continuous(
         initial = [np.log(max(mu - nonc, 0.01)), np.sqrt(nonc)]
         alternative = np.array([np.log(max(mu, 0.5)), 0.0])
         k = 2
+        names = ("df", "nonc")
 
         def params(raw: np.ndarray) -> dict[str, float]:
             """Convert optimisation coordinates to natural distribution parameters.
@@ -382,7 +389,16 @@ def _fit_continuous(
             ll = log_likelihood(params(raw))
         return -ll if np.isfinite(ll) else 1e100
 
-    best = _minimize(objective, np.asarray(initial), optimizer, optimizer_options, 4000, alternative=alternative)
+    start, alternative = _override_initial(
+        np.asarray(initial),
+        alternative,
+        initial_parameters,
+        params,
+        lambda p: _initial_coordinates(p, names, linear=("mu",), square_root=("nonc",)),
+        names,
+        objective,
+    )
+    best = _minimize(objective, start, optimizer, optimizer_options, 4000, alternative=alternative)
     if best.fun >= 1e100:
         raise RuntimeError(f"No finite {family.__name__} likelihood could be obtained")
     estimated = params(best.x)
@@ -544,6 +560,7 @@ def _fit_mbbefd(
     """
     optimizer = options.pop("optimizer", OptimizerMethod.L_BFGS_B)
     optimizer_options = options.pop("optimizer_options", None)
+    initial_parameters = options.pop("initial_parameters", None)
     if options:
         raise TypeError(f"Unexpected MBBEFD fit options: {sorted(options)}")
     x, w = _input(observations, weights)
@@ -600,7 +617,27 @@ def _fit_mbbefd(
     left = np.array([np.log(initial_g - 1), -0.3])
     right = np.array([np.log(initial_g - 1), 0.3])
     initial, alternative = (left, right) if objective(left) <= objective(right) else (right, left)
-    best = _minimize(objective, initial, optimizer, optimizer_options, 4000, alternative=alternative)
+    def decode(raw: np.ndarray) -> dict[str, float]:
+        """Decode MBBEFD optimiser coordinates.
+
+        Args:
+            raw: Trial optimiser coordinates.
+        """
+        g, b = params(raw)
+        return {"g": g, "b": b}
+
+    def encode(natural: dict[str, float]) -> np.ndarray:
+        """Encode natural MBBEFD estimates.
+
+        Args:
+            natural: MBBEFD g and b parameters.
+        """
+        return _initial_coordinates({"g": natural["g"] - 1, "b": natural["b"]}, ("g", "b"))
+
+    start, alternative = _override_initial(
+        initial, alternative, initial_parameters, decode, encode, ("g", "b"), objective
+    )
+    best = _minimize(objective, start, optimizer, optimizer_options, 4000, alternative=alternative)
     if best.fun >= 1e100:
         raise RuntimeError("No finite MBBEFD likelihood found")
     g, b = params(best.x)
