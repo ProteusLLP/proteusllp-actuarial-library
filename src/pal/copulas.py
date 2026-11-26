@@ -2023,6 +2023,27 @@ def _log_expm1(value: _VineArray) -> _VineArray:
     return value + np.log(-np.expm1(-value))
 
 
+_PairFamily = t.Literal[
+    "independence", "gaussian", "students_t", "clayton", "gumbel", "frank", "joe",
+    "galambos", "plackett", "husler_reiss", "extremal_t", "mm1",
+]
+_PairRotation = t.Literal[0, 90, 180, 270]
+
+
+def _student_t_ppf(probability: _VineArray, dof: float) -> _VineArray:
+    """Evaluate Student's t quantiles on the active array backend.
+
+    Args:
+        probability: Probabilities in the open unit interval.
+        dof: Positive degrees of freedom.
+    """
+    if np.__name__ == "numpy":
+        return special.stdtrit(dof, probability)
+    tail = 2 * np.minimum(probability, 1 - probability)
+    z = special.betaincinv(dof / 2, 0.5, tail)
+    return np.sign(probability - 0.5) * np.sqrt(dof * ((1 - z) / z))
+
+
 @dataclass(frozen=True)
 class PairCopula:
     """Bivariate copula specifying one edge of a simplified vine.
@@ -2032,17 +2053,18 @@ class PairCopula:
     C270(u, v) = u - C(u, 1-v).
 
     Attributes:
-        family: Independence, Gaussian, Clayton, Gumbel or Frank.
-        parameter: Gaussian correlation (-1 < rho < 1), Clayton theta >= 0,
-            Gumbel theta >= 1, or Frank theta >= 0. Independence uses zero.
-            A negative Frank association can be specified using a rotation.
+        family: Bivariate copula family. Named constructors are available for every family.
+        parameter: Primary dependence parameter in the chosen family's parameterisation.
+        parameter2: Degrees of freedom for Student's t and extremal-t, or delta for MM1.
+            Unused for single-parameter families.
         rotation: 0, 90, 180 or 270 degrees. A 180-degree rotation interchanges
             upper and lower tail dependence; 90 and 270 allow negative association.
     """
 
-    family: t.Literal["independence", "gaussian", "clayton", "gumbel", "frank"] = "independence"
+    family: _PairFamily = "independence"
     parameter: float = 0.0
-    rotation: t.Literal[0, 90, 180, 270] = 0
+    rotation: _PairRotation = 0
+    parameter2: float | None = None
 
     def __post_init__(self) -> None:
         """Validate the family, dependence parameter and rotation."""
@@ -2051,12 +2073,22 @@ class PairCopula:
             raise ValueError("Pair copula parameter must be finite")
         if self.rotation not in (0, 90, 180, 270):
             raise ValueError("Pair copula rotation must be 0, 90, 180 or 270")
-        if self.family == "gaussian":
+        second = self.parameter2
+        if self.family in ("students_t", "extremal_t", "mm1"):
+            if second is None or not math.isfinite(second) or second <= 0:
+                raise ValueError("Pair copula requires a finite positive second parameter")
+        elif second is not None:
+            raise ValueError("This pair copula does not take a second parameter")
+        if self.family in ("gaussian", "students_t", "extremal_t"):
             valid = -1 < theta < 1
         elif self.family in ("clayton", "frank"):
             valid = theta >= 0
-        elif self.family == "gumbel":
+        elif self.family in ("gumbel", "joe"):
             valid = theta >= 1
+        elif self.family in ("galambos", "plackett", "husler_reiss"):
+            valid = theta > 0
+        elif self.family == "mm1":
+            valid = second is not None and theta >= 1 and second >= 1 and math.isfinite(theta * second)
         elif self.family == "independence":
             valid = theta == 0
         else:
@@ -2064,10 +2096,132 @@ class PairCopula:
         if not valid:
             raise ValueError(f"Invalid parameter for {self.family} pair copula: {theta}")
 
+    @classmethod
+    def Independence(cls) -> PairCopula:  # noqa: N802
+        """Create an independent pair."""
+        return cls()
+
+    @classmethod
+    def Gaussian(cls, rho: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Gaussian pair.
+
+        Args:
+            rho: Linear correlation, strictly between -1 and 1.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("gaussian", rho, rotation)
+
+    @classmethod
+    def StudentsT(cls, rho: float, dof: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Student's t pair.
+
+        Args:
+            rho: Linear correlation, strictly between -1 and 1.
+            dof: Positive degrees of freedom.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("students_t", rho, rotation, dof)
+
+    @classmethod
+    def Clayton(cls, theta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Clayton pair.
+
+        Args:
+            theta: Nonnegative dependence parameter.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("clayton", theta, rotation)
+
+    @classmethod
+    def Gumbel(cls, theta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Gumbel pair.
+
+        Args:
+            theta: Dependence parameter, at least one.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("gumbel", theta, rotation)
+
+    @classmethod
+    def Frank(cls, theta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Frank pair.
+
+        Args:
+            theta: Nonnegative dependence parameter.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("frank", theta, rotation)
+
+    @classmethod
+    def Joe(cls, theta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Joe pair.
+
+        Args:
+            theta: Dependence parameter, at least one.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("joe", theta, rotation)
+
+    @classmethod
+    def Galambos(cls, theta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Galambos pair.
+
+        Args:
+            theta: Positive dependence parameter.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("galambos", theta, rotation)
+
+    @classmethod
+    def Plackett(cls, delta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Plackett pair.
+
+        Args:
+            delta: Positive odds-ratio parameter; one gives independence.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("plackett", delta, rotation)
+
+    @classmethod
+    def HuslerReiss(cls, lam: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Hüsler-Reiss pair.
+
+        Args:
+            lam: Positive Hüsler-Reiss dependence parameter.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("husler_reiss", lam, rotation)
+
+    @classmethod
+    def ExtremalT(cls, rho: float, nu: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create an extremal-t pair.
+
+        Args:
+            rho: Correlation parameter, strictly between -1 and 1.
+            nu: Positive degrees of freedom.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("extremal_t", rho, rotation, nu)
+
+    @classmethod
+    def MM1(cls, theta: float, delta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create an MM1 pair, equivalent to Gumbel with parameter theta times delta.
+
+        Args:
+            theta: Mixing parameter, at least one.
+            delta: Pair dependence parameter, at least one.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("mm1", theta, rotation, delta)
+
     @property
     def _independent(self) -> bool:
         """Whether the pair copula is at its independence limit."""
-        return self.family == "independence" or (self.parameter == (1.0 if self.family == "gumbel" else 0.0))
+        if self.family == "mm1":
+            return self.parameter == 1 and self.parameter2 == 1
+        if self.family in ("gumbel", "joe", "plackett"):
+            return self.parameter == 1
+        return self.family in ("independence", "gaussian", "clayton", "frank") and self.parameter == 0
 
     def _reflections(self, first: bool) -> tuple[bool, bool]:
         """Return reflection flags for the target and conditioning margin.
@@ -2092,16 +2246,69 @@ class PairCopula:
         reflect_target, reflect_given = self._reflections(first)
         u = _open_unit(1 - value if reflect_target else value)
         v = _open_unit(1 - given if reflect_given else given)
+        h = self._conditional_unrotated(u, v)
+        return _open_unit(1 - h if reflect_target else h)
+
+    def _conditional_unrotated(self, u: _VineArray, v: _VineArray) -> _VineArray:
+        """Evaluate the unrotated conditional distribution of u given v.
+
+        Args:
+            u: Target uniform probabilities.
+            v: Conditioning uniform probabilities.
+        """
         theta = self.parameter
         if self.family == "gaussian":
             h = special.ndtr((special.ndtri(u) - theta * special.ndtri(v)) / math.sqrt((1 - theta) * (1 + theta)))
         elif self.family == "clayton":
             log_term = _log_expm1(-theta * np.log(u)) + theta * np.log(v)
             h = np.exp(-(1 + 1 / theta) * np.logaddexp(0, log_term))
-        elif self.family == "gumbel":
+        elif self.family == "students_t":
+            dof = self._second_parameter()
+            x, y = _student_t_ppf(u, dof), _student_t_ppf(v, dof)
+            scale = np.hypot(math.sqrt(dof), y) * math.sqrt((1 - theta) * (1 + theta) / (dof + 1))
+            h = _student_t_cdf((x - theta * y) / scale, dof + 1)
+        elif self.family in ("gumbel", "mm1"):
+            if self.family == "mm1":
+                theta *= self._second_parameter()
             a, b = -np.log(u), -np.log(v)
             delta = np.logaddexp(0, theta * (np.log(a) - np.log(b))) / theta
             h = np.exp(-b * np.expm1(delta) - (theta - 1) * delta)
+        elif self.family == "joe":
+            log_a = theta * np.log1p(-u)
+            log_b = theta * np.log1p(-v)
+            log_one_minus_a = np.log(-np.expm1(log_a))
+            log_ratio = np.logaddexp(log_a - log_b, log_one_minus_a)
+            h = np.exp(log_one_minus_a - (1 - 1 / theta) * log_ratio)
+        elif self.family == "plackett":
+            # D = (S-2*delta*u)^2 + 4*delta*u*(1-u).
+            # Rationalise the lower-tail expression to avoid cancellation.
+            diff = (1 - v) + theta * v - (1 + theta) * u
+            term = 4 * theta * u * (1 - u)
+            root = np.hypot(diff, np.sqrt(term))
+            h = np.where(diff > 0, (term / root) / (2 * (root + diff)), (1 - diff / root) / 2)
+        elif self.family == "galambos":
+            a, b = -np.log(u), -np.log(v)
+            log_ratio = np.log(a) - np.log(b)
+            log_m_over_a = -np.logaddexp(0, theta * log_ratio) / theta
+            log_m_over_b = -np.logaddexp(0, -theta * log_ratio) / theta
+            h = np.exp(a * np.expm1(log_m_over_a)) * -np.expm1((theta + 1) * log_m_over_b)
+        elif self.family in ("husler_reiss", "extremal_t"):
+            a, b = -np.log(u), -np.log(v)
+            log_ratio = np.log(a) - np.log(b)
+            if self.family == "husler_reiss":
+                z = log_ratio / (2 * theta)
+                first_cdf = special.ndtr(theta + z)
+                second_cdf = special.ndtr(theta - z)
+                second_sf = special.ndtr(z - theta)
+            else:
+                nu = self._second_parameter()
+                scale = math.sqrt((nu + 1) / ((1 - theta) * (1 + theta)))
+                z1 = scale * (np.exp(np.minimum(log_ratio / nu, 700)) - theta)
+                z2 = scale * (np.exp(np.minimum(-log_ratio / nu, 700)) - theta)
+                first_cdf = _student_t_cdf(z1, nu + 1)
+                second_cdf = _student_t_cdf(z2, nu + 1)
+                second_sf = _student_t_cdf(-z2, nu + 1)
+            h = np.exp(np.minimum(0, -a * first_cdf + b * second_sf)) * second_cdf
         else:  # Frank
             log_num = -theta * v + np.log(-np.expm1(-theta * u))
             log_den = np.logaddexp(
@@ -2109,7 +2316,12 @@ class PairCopula:
                 -theta * v + np.log(-np.expm1(-theta * (1 - v))),
             )
             h = np.exp(log_num - log_den)
-        return _open_unit(1 - h if reflect_target else h)
+        return h
+
+    def _second_parameter(self) -> float:
+        """Return the validated second parameter of a two-parameter family."""
+        assert self.parameter2 is not None
+        return self.parameter2
 
     def _inverse(self, probability: _VineArray, given: _VineArray, *, first: bool) -> _VineArray:
         """Invert the conditional CDF of a margin given the other margin.
@@ -2130,7 +2342,14 @@ class PairCopula:
         elif self.family == "clayton":
             log_term = _log_expm1(-(theta / (1 + theta)) * np.log(p)) - theta * np.log(v)
             u = np.exp(-np.logaddexp(0, log_term) / theta)
-        elif self.family == "gumbel":
+        elif self.family == "students_t":
+            dof = self._second_parameter()
+            y = _student_t_ppf(v, dof)
+            scale = np.hypot(math.sqrt(dof), y) * math.sqrt((1 - theta) * (1 + theta) / (dof + 1))
+            u = _student_t_cdf(theta * y + scale * _student_t_ppf(p, dof + 1), dof)
+        elif self.family in ("gumbel", "mm1"):
+            if self.family == "mm1":
+                theta *= self._second_parameter()
             # Solve b * expm1(delta) + (theta-1)*delta = -log(p).
             # Both terms are increasing; either term alone bounds the root.
             b, target = -np.log(v), -np.log(p)
@@ -2144,10 +2363,20 @@ class PairCopula:
             delta = (lo + hi) / 2
             log_a = np.log(b) + _log_expm1(theta * delta) / theta
             u = np.exp(-np.exp(log_a))
-        else:  # Frank
+        elif self.family == "frank":
             log_den = np.logaddexp(-theta * v + np.log1p(-p), -theta + np.log(p))
             log_ratio = np.log(p) + math.log(-math.expm1(-theta)) - log_den
             u = np.logaddexp(0, log_ratio) / theta
+        else:
+            # Bisection on the logit scale retains relative resolution in both tails.
+            lo = np.full_like(p, math.log(np.finfo(float).tiny))
+            hi = np.full_like(p, -math.log(np.finfo(float).eps / 2))
+            for _ in range(60):
+                mid = (lo + hi) / 2
+                below = self._conditional_unrotated(special.expit(mid), v) < p
+                lo = np.where(below, mid, lo)
+                hi = np.where(below, hi, mid)
+            u = special.expit((lo + hi) / 2)
         return _open_unit(1 - u if reflect_target else u)
 
 
