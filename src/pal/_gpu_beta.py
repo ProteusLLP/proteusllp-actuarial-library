@@ -172,7 +172,7 @@ __device__ __forceinline__ double pal_ibeta_fast_fraction(
             previous_denominator *= scale;
         }
     }
-    return result;
+    return CUDART_NAN;
 }
 
 __device__ __forceinline__ double pal_ibeta_fraction(
@@ -193,7 +193,7 @@ __device__ __forceinline__ double pal_ibeta_fraction(
     d = 1.0 / d;
     double result = d;
 
-    for (int m = 1; m <= 256; ++m) {
+    for (int m = 1; m <= 16384; ++m) {
         const double m2 = 2.0 * m;
         double coefficient = m * (b - m) * x;
         coefficient /= (qam + m2) * (a + m2);
@@ -222,10 +222,10 @@ __device__ __forceinline__ double pal_ibeta_fraction(
         const double delta = d * c;
         result *= delta;
         if (fabs(delta - 1.0) <= 8.0 * PAL_DBL_EPSILON) {
-            break;
+            return result;
         }
     }
-    return result;
+    return CUDART_NAN;
 }
 
 __device__ __forceinline__ double pal_gamma_q(
@@ -356,6 +356,19 @@ __device__ __forceinline__ double pal_ibeta(
     if ((a == b) && (x == 0.5)) {
         return 0.5;
     }
+    if ((a == b) && (a >= 128.0) && (fabs(x - 0.5) * sqrt(a) <= 0.01)) {
+        // Integrate f(1/2+t) = f(1/2)*(1-4*t*t)^(a-1) locally.
+        // This avoids continued-fraction roundoff overwhelming the distance
+        // from 1/2 at adjacent representable inputs. The omitted term is
+        // bounded by (4e-4)^4/216 in relative integral units.
+        const double distance = x - 0.5;
+        const double square = 4.0 * distance * distance;
+        const double correction = 1.0 + (a - 1.0) * square * (
+            -1.0 / 3.0 + (a - 2.0) * square * (1.0 / 10.0 - (a - 3.0) * square / 42.0)
+        );
+        const double density = 4.0 * pal_ibeta_power_terms(a, b, 0.5, 0.5);
+        return 0.5 + density * distance * correction;
+    }
     if ((a == 0.5) && (b == 0.5)) {
         return x <= 0.5
             ? 2.0 * asin(sqrt(x)) / PAL_PI
@@ -408,7 +421,7 @@ __device__ __forceinline__ double pal_ibeta(
         result *= pal_ibeta_fraction(b, a, 1.0 - x) / b;
         result = 1.0 - result;
     }
-    return fmin(1.0, fmax(0.0, result));
+    return isfinite(result) ? fmin(1.0, fmax(0.0, result)) : CUDART_NAN;
 }
 
 // Section 2 of Temme (1992), as used by Boost for nearly symmetric large
@@ -598,6 +611,9 @@ __device__ __forceinline__ double pal_ibeta_inverse(
         // steps when the density underflows and Halley's step is unavailable.
         for (int iteration = 0; iteration < 96; ++iteration) {
             const double probability = pal_ibeta(a, b, x, log_beta);
+            if (!isfinite(probability)) {
+                return CUDART_NAN;
+            }
             const double residual = probability - p;
             if (residual < 0.0) {
                 lower = x;

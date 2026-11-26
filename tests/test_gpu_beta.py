@@ -1,5 +1,7 @@
 """GPU accuracy tests for the incomplete beta functions."""
 
+import importlib
+
 import numpy as np
 import pytest
 import scipy.special
@@ -133,3 +135,64 @@ def test_gpu_beta_arcsine_cdf_near_upper_endpoint() -> None:
     # loses precision here through sqrt(x), so it is not a reliable oracle.
     expected_upper_tail = 2.0 * np.arcsin(np.sqrt(1.0 - x)) / np.pi
     np.testing.assert_allclose(1.0 - actual, expected_upper_tail, rtol=1e-8, atol=1e-15)
+
+
+@pytest.mark.parametrize("shape", [1e6, 1e8, 1e10])
+@pytest.mark.parametrize("array_shapes", [False, True])
+def test_gpu_beta_large_symmetric_centre_neighbours(shape: float, array_shapes: bool) -> None:
+    """Resolve both adjacent floats around the exact symmetric median."""
+    values = np.array([np.nextafter(0.5, 0.0), 0.5, np.nextafter(0.5, 1.0)])
+    parameter = xp.full(values.size, shape) if array_shapes else shape
+    actual = asnumpy(betainc(parameter, parameter, xp.asarray(values)))
+    # Gamma(a+1/2)/Gamma(a) has this expansion; the next term is O(a^-3).
+    # Higher powers of the adjacent-float displacement are negligible here.
+    density = 2 * np.sqrt(shape / np.pi) * (1 - 1 / (8 * shape) + 1 / (128 * shape**2))
+    expected = 0.5 + density * (values - 0.5)
+    np.testing.assert_allclose(actual, expected, rtol=0, atol=2 * np.finfo(float).eps)
+    assert actual[0] < actual[1] < actual[2]
+    assert actual[1] == 0.5
+
+
+@pytest.mark.parametrize(("alpha", "beta"), [(1e6, 1e6), (1e8, 1e8), (1e8, 1.01e8)])
+@pytest.mark.parametrize("array_shapes", [False, True])
+def test_gpu_beta_large_shape_cdf_and_inverse(alpha: float, beta: float, array_shapes: bool) -> None:
+    """Check central and tail values against independent SciPy transforms."""
+    probability = np.array([1e-6, 0.01, 0.25, 0.49, 0.5, 0.51, 0.75, 0.99, 1 - 1e-6])
+    values = scipy.special.betaincinv(alpha, beta, probability)
+    a = xp.full(values.size, alpha) if array_shapes else alpha
+    b = xp.full(values.size, beta) if array_shapes else beta
+    actual = asnumpy(betainc(a, b, xp.asarray(values)))
+    expected = scipy.special.betainc(alpha, beta, values)
+    np.testing.assert_allclose(actual, expected, rtol=5e-9, atol=1e-11)
+    assert np.all(np.diff(actual) > 0)
+    quantiles = asnumpy(betaincinv(a, b, xp.asarray(probability)))
+    np.testing.assert_allclose(quantiles, values, rtol=0, atol=2e-13)
+
+
+@pytest.mark.parametrize("shape", [1e4, 1e6, 1e8])
+def test_gpu_beta_local_centre_series_boundary(shape: float) -> None:
+    """Both sides of the local-series switch agree with the beta CDF."""
+    distance = 0.01 / np.sqrt(shape)
+    values = 0.5 + distance * np.array([-1.0001, -0.9999, 0.9999, 1.0001])
+    actual = asnumpy(betainc(shape, shape, xp.asarray(values)))
+    expected = scipy.special.betainc(shape, shape, values)
+    np.testing.assert_allclose(actual, expected, rtol=5e-10, atol=5e-12)
+    assert np.all(np.diff(actual) > 0)
+
+
+def test_gpu_beta_fraction_exhaustion_propagates_nan() -> None:
+    """An exhausted fraction cannot become a clamped CDF or an inverse bracket."""
+    module = importlib.import_module("pal._gpu_beta")
+    preamble = module._BETA_PREAMBLE.replace("m <= 256", "m <= 1").replace("m <= 16384", "m <= 1")
+    kernel = xp.ElementwiseKernel(
+        "float64 a, float64 b, float64 x, float64 p",
+        "float64 cdf, float64 inverse",
+        "const double lb = pal_log_beta(a, b); cdf = pal_ibeta(a, b, x, lb); inverse = pal_ibeta_inverse(a, b, p, lb);",
+        "pal_beta_forced_fraction_exhaustion",
+        preamble=preamble,
+    )
+    cdf, inverse = kernel(
+        xp.asarray([3.5, 100.0]), xp.asarray([4.5, 120.0]), xp.asarray([0.4, 0.45]), xp.asarray([0.3, 0.3])
+    )
+    assert np.all(np.isnan(asnumpy(cdf)))
+    assert np.all(np.isnan(asnumpy(inverse)))
