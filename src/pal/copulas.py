@@ -19,6 +19,7 @@ from scipy.special import gamma
 from . import ProteusVariable, StochasticScalar
 
 # Local imports
+from ._beta import betainc
 from ._correlation_preparation import RepairMode, prepare_correlation_matrix
 from ._maths import asnumpy, special
 from ._maths import xp as np
@@ -108,7 +109,7 @@ def _student_t_cdf(values: t.Any, dof: float) -> t.Any:
         return special.stdtr(dof, values)
 
     absolute_values = np.abs(values)
-    tail_probability = special.betainc(dof / 2, 0.5, dof / (dof + absolute_values**2)) / 2
+    tail_probability = betainc(dof / 2, 0.5, dof / (dof + absolute_values**2)) / 2
     return np.where(values >= 0, 1 - tail_probability, tail_probability)
 
 
