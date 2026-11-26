@@ -2024,8 +2024,18 @@ def _log_expm1(value: _VineArray) -> _VineArray:
 
 
 _PairFamily = t.Literal[
-    "independence", "gaussian", "students_t", "clayton", "gumbel", "frank", "joe",
-    "galambos", "plackett", "husler_reiss", "extremal_t", "mm1",
+    "independence",
+    "gaussian",
+    "students_t",
+    "clayton",
+    "gumbel",
+    "frank",
+    "joe",
+    "galambos",
+    "plackett",
+    "husler_reiss",
+    "extremal_t",
+    "mm1",
 ]
 _PairRotation = t.Literal[0, 90, 180, 270]
 
@@ -2320,7 +2330,8 @@ class PairCopula:
 
     def _second_parameter(self) -> float:
         """Return the validated second parameter of a two-parameter family."""
-        assert self.parameter2 is not None
+        if self.parameter2 is None:
+            raise ValueError("Pair copula requires a second parameter")
         return self.parameter2
 
     def _inverse(self, probability: _VineArray, given: _VineArray, *, first: bool) -> _VineArray:
