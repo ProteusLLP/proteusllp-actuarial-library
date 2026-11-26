@@ -2391,49 +2391,292 @@ class PairCopula:
         return _open_unit(1 - u if reflect_target else u)
 
 
-class VineCopula(Copula):
-    """Simplified canonical (C-vine) or drawable (D-vine) copula.
+@dataclass(frozen=True)
+class VineEdge:
+    """An ordered pair copula and its conditioning variables in a regular vine.
 
-    The rows of pair_copulas describe successive trees, in variable order.
+    Variable indices are zero-based. The order of the two variables matters
+    for rotated pair copulas; the order of the conditioning variables does not.
+
+    Attributes:
+        first: First variable index.
+        second: Second variable index.
+        pair: Pair copula connecting the variables.
+        conditioning: Indices of the conditioning variables, empty in tree one.
+    """
+
+    first: int
+    second: int
+    pair: PairCopula
+    conditioning: tuple[int, ...] = ()
+
+    @property
+    def _nodes(self) -> tuple[frozenset[int], frozenset[int]]:
+        """The complete variable sets of the two nodes in this tree."""
+        given = frozenset(self.conditioning)
+        return given | {self.first}, given | {self.second}
+
+
+_VineKey = tuple[int, frozenset[int]]
+_VineStep = tuple[PairCopula, bool, bool, _VineKey, _VineKey, _VineKey]
+_VineStage = tuple[_VineKey, tuple[_VineStep, ...]]
+
+
+def _validate_vine_trees(trees: tuple[tuple[VineEdge, ...], ...], dimension: int) -> None:
+    """Validate regular-vine trees and the proximity condition.
+
+    Args:
+        trees: Edges in increasing tree order, possibly truncated.
+        dimension: Number of margins.
+    """
+    # Each node in tree k is an edge in tree k-1, represented by its complete
+    # variable set and the two original endpoint sets.
+    previous: dict[frozenset[int], frozenset[frozenset[int]]] = {
+        frozenset({i}): frozenset() for i in range(dimension)
+    }
+    for level, tree in enumerate(trees):
+        adjacency: dict[frozenset[int], set[frozenset[int]]] = {node: set() for node in previous}
+        following: dict[frozenset[int], frozenset[frozenset[int]]] = {}
+        for edge in tree:
+            given = frozenset(edge.conditioning)
+            if len(edge.conditioning) != level or len(given) != level:
+                raise ValueError("Each vine edge must have one conditioning variable per preceding tree")
+            if edge.first == edge.second or edge.first in given or edge.second in given:
+                raise ValueError("Conditioned variables must be distinct and outside the conditioning set")
+            if not isinstance(edge.pair, PairCopula):
+                raise TypeError("Every vine edge must contain a PairCopula")
+            left, right = edge._nodes
+            if left not in previous or right not in previous:
+                raise ValueError("Vine edge endpoints must be nodes of the preceding tree")
+            if level and not previous[left].intersection(previous[right]):
+                raise ValueError("Vine edges must satisfy the proximity condition")
+            combined = left | right
+            if right in adjacency[left] or combined in following:
+                raise ValueError("Duplicate vine edge or complete variable set")
+            adjacency[left].add(right)
+            adjacency[right].add(left)
+            following[combined] = frozenset((left, right))
+        visited: set[frozenset[int]] = set()
+        stack = [next(iter(previous))]
+        while stack:
+            node = stack.pop()
+            if node not in visited:
+                visited.add(node)
+                stack.extend(adjacency[node] - visited)
+        if len(visited) != len(previous) or len(tree) != len(previous) - 1:
+            raise ValueError("Each vine tree must be connected and acyclic")
+        previous = following
+
+
+def _vine_elimination_order(
+    trees: tuple[tuple[VineEdge, ...], ...], dimension: int
+) -> list[tuple[int, tuple[VineEdge, ...]]]:
+    """Find a sampling order by removing leaves from the highest retained tree.
+
+    Args:
+        trees: Validated regular-vine trees.
+        dimension: Number of margins.
+
+    Returns:
+        Margins in sampling order with the incident edges in increasing tree order.
+    """
+    remaining = set(range(dimension))
+    active = [list(tree) for tree in trees]
+    removed: list[tuple[int, tuple[VineEdge, ...]]] = []
+    while len(remaining) > 1:
+        highest = next(tree for tree in reversed(active) if tree)
+        degree: dict[frozenset[int], int] = {}
+        for edge in highest:
+            for node in edge._nodes:
+                degree[node] = degree.get(node, 0) + 1
+        candidates: set[int] = set()
+        for edge in highest:
+            left, right = edge._nodes
+            if degree[left] == 1:
+                candidates.add(edge.first)
+            if degree[right] == 1:
+                candidates.add(edge.second)
+        # Prefer the original reverse variable order whenever it is valid.
+        # A leaf's unique variable must be an endpoint of exactly one edge
+        # at every retained level of the reduced vine.
+        variable = max(candidates)
+        incident: list[VineEdge] = []
+        for tree in active:
+            matching = [
+                edge
+                for edge in tree
+                if variable in (edge.first, edge.second) or variable in edge.conditioning
+            ]
+            if not tree:
+                continue
+            if len(matching) != 1 or variable not in (matching[0].first, matching[0].second):
+                raise ValueError("Vine tree does not admit a valid leaf elimination")
+            edge = matching[0]
+            incident.append(edge)
+            tree.remove(edge)
+        removed.append((variable, tuple(incident)))
+        remaining.remove(variable)
+    removed.append((next(iter(remaining)), ()))
+    removed.reverse()
+    return removed
+
+
+def _compile_vine(
+    trees: tuple[tuple[VineEdge, ...], ...], dimension: int
+) -> tuple[tuple[_VineStage, ...], dict[_VineKey, int]]:
+    """Compile conditional transformations before any simulation draws.
+
+    Args:
+        trees: Validated vine trees.
+        dimension: Number of margins.
+
+    Returns:
+        Sampling stages and the number of uses of each conditional probability.
+    """
+    definitions: dict[_VineKey, tuple[PairCopula, bool, _VineKey, _VineKey]] = {}
+    for tree in trees:
+        for edge in tree:
+            given = frozenset(edge.conditioning)
+            for target, other, first in ((edge.first, edge.second, True), (edge.second, edge.first, False)):
+                definitions[target, given | {other}] = (edge.pair, first, (target, given), (other, given))
+
+    stages: list[_VineStage] = []
+    available: set[_VineKey] = set()
+    uses: dict[_VineKey, int] = {}
+
+    def ensure(key: _VineKey, steps: list[_VineStep]) -> None:
+        """Add the forward transformations needed to obtain a conditional probability.
+
+        Args:
+            key: Target variable and conditioning set.
+            steps: Operations for the current sampling stage.
+        """
+        if key in available:
+            return
+        if key not in definitions:
+            raise ValueError("Vine does not define a required conditional distribution")
+        pair, first, source, given = definitions[key]
+        ensure(source, steps)
+        ensure(given, steps)
+        steps.append((pair, first, False, source, given, key))
+        available.add(key)
+
+    for variable, incident in _vine_elimination_order(trees, dimension):
+        steps: list[_VineStep] = []
+        if incident:
+            edge = incident[-1]
+            other = edge.second if variable == edge.first else edge.first
+            draw_key = (variable, frozenset(edge.conditioning) | {other})
+        else:
+            draw_key = (variable, frozenset())
+        available.add(draw_key)
+        current = draw_key
+        for edge in reversed(incident):
+            first = variable == edge.first
+            other = edge.second if first else edge.first
+            conditioning = frozenset(edge.conditioning)
+            given = (other, conditioning)
+            output = (variable, conditioning)
+            if current != (variable, conditioning | {other}):
+                raise ValueError("Vine does not define a nested sequence of conditional distributions")
+            ensure(given, steps)
+            steps.append((edge.pair, first, True, current, given, output))
+            available.add(output)
+            current = output
+        if current[1]:
+            raise ValueError("Vine sampling stage did not reach the unconditional margin")
+        # The last value of each stage is also copied into the output matrix.
+        uses[current] = uses.get(current, 0) + 1
+        for _, _, _, source, given, _ in steps:
+            uses[source] = uses.get(source, 0) + 1
+            uses[given] = uses.get(given, 0) + 1
+        stages.append((draw_key, tuple(steps)))
+    return tuple(stages), uses
+
+
+class VineCopula(Copula):
+    """Simplified regular vine (R-vine), including canonical and drawable vines.
+
+    C-vines and D-vines can be specified compactly with rows of pair copulas.
     In a C-vine the edge at row k, column i connects k to k+i+1,
     conditional on variables 0 through k-1. In a D-vine it connects i to
-    i+k+1, conditional on the intervening variables. Each row must contain
-    one fewer edge than the preceding row. Use PairCopula() for independence,
-    including when truncating higher trees. Conditional copula parameters are
-    constant across conditioning values (the simplifying assumption).
+    i+k+1, conditional on the intervening variables. General regular vines
+    use rows of VineEdge objects specifying the two variables and their
+    conditioning set. All variable indices are zero-based.
+
+    The first tree contains d-1 edges and each subsequent tree contains one
+    fewer. Higher trees may be omitted, representing conditional independence.
+    Conditional copula parameters are constant across conditioning values
+    (the simplifying assumption).
 
     Attributes:
         dimension: Number of uniform margins.
-        structure: Either "c" or "d".
+        structure: "c", "d" or "r".
         pair_copulas: Immutable rows of pair copulas in tree order.
+        trees: Immutable rows of ordered edges in tree order.
+        truncation_level: Number of supplied trees; omitted trees are independent.
     """
 
     def __init__(
         self,
-        pair_copulas: t.Sequence[t.Sequence[PairCopula]],
+        pair_copulas: t.Sequence[t.Sequence[PairCopula | VineEdge]],
         *,
-        structure: t.Literal["c", "d"] = "c",
+        structure: t.Literal["c", "d", "r"] = "c",
     ) -> None:
-        """Construct a vine from successive rows of pair copulas.
+        """Construct a vine from successive rows of edges or pair copulas.
 
         Args:
-            pair_copulas: Rows of lengths d-1, d-2, ..., 1 for d margins.
-            structure: "c" for a canonical vine, "d" for a drawable vine.
+            pair_copulas: Rows of lengths d-1, d-2, and so on. For structure
+                "r", provide VineEdge objects; for "c" or "d", provide PairCopula
+                objects. The number of margins is inferred from the first row.
+            structure: Canonical ("c"), drawable ("d") or regular ("r") vine.
 
         Raises:
-            ValueError: If the structure or triangular row lengths are invalid.
-            TypeError: If an edge is not a PairCopula.
+            ValueError: If the structure, row lengths or vine constraints are invalid.
+            TypeError: If a compact C- or D-vine contains an invalid pair copula.
         """
-        if structure not in ("c", "d"):
-            raise ValueError("Vine structure must be 'c' or 'd'")
+        if structure not in ("c", "d", "r"):
+            raise ValueError("Vine structure must be 'c', 'd' or 'r'")
         rows = tuple(tuple(row) for row in pair_copulas)
-        if not rows or any(len(row) != len(rows) - k for k, row in enumerate(rows)):
+        if not rows or not rows[0] or len(rows) > len(rows[0]):
+            raise ValueError("Vine requires nonempty rows of lengths d-1, d-2, ..., 1")
+        if any(len(row) != len(rows[0]) - k for k, row in enumerate(rows)):
             raise ValueError("Vine requires rows of lengths d-1, d-2, ..., 1")
-        if any(not isinstance(pair, PairCopula) for row in rows for pair in row):
-            raise TypeError("Every vine edge must be a PairCopula")
-        self.dimension = len(rows) + 1
+        self.dimension = len(rows[0]) + 1
         self.structure = structure
-        self.pair_copulas = rows
+        if structure == "r":
+            if any(not isinstance(edge, VineEdge) for row in rows for edge in row):
+                raise ValueError("R-vine structure requires VineEdge objects")
+            trees = t.cast(tuple[tuple[VineEdge, ...], ...], rows)
+        else:
+            if any(not isinstance(pair, PairCopula) for row in rows for pair in row):
+                raise TypeError("Every vine edge must be a PairCopula")
+            pairs = t.cast(tuple[tuple[PairCopula, ...], ...], rows)
+            if structure == "c":
+                trees = tuple(
+                    tuple(VineEdge(k, k + i + 1, pair, tuple(range(k))) for i, pair in enumerate(row))
+                    for k, row in enumerate(pairs)
+                )
+            else:
+                trees = tuple(
+                    tuple(VineEdge(i, i + k + 1, pair, tuple(range(i + 1, i + k + 1))) for i, pair in enumerate(row))
+                    for k, row in enumerate(pairs)
+                )
+        _validate_vine_trees(trees, self.dimension)
+        self.trees = trees
+        self.pair_copulas = tuple(tuple(edge.pair for edge in tree) for tree in trees)
+        self.truncation_level = len(trees)
+        self._stages, self._uses = _compile_vine(trees, self.dimension)
+
+    @classmethod
+    def from_edges(cls, trees: t.Sequence[t.Sequence[VineEdge]]) -> VineCopula:
+        """Construct a regular vine from its edges.
+
+        Args:
+            trees: Successive trees of ordered edges, with zero-based variable
+                indices. Higher trees may be omitted to truncate the vine.
+        """
+        return cls(trees, structure="r")
 
     def generate(
         self, n_sims: int | None = None, rng: RandomGenerator | None = None
@@ -2462,27 +2705,30 @@ class VineCopula(Copula):
             )
         )
         result = np.empty_like(draws)
-        result[0] = draws[0]
-        if self.structure == "c":
-            # Root k conditional on all earlier roots is precisely draws[k].
-            for j in range(1, self.dimension):
-                value = draws[j]
-                for k in range(j - 1, -1, -1):
-                    value = self.pair_copulas[k][j - k - 1]._inverse(value, draws[k], first=False)
-                result[j] = value
-        else:
-            # left[i] = F(U_i | U_{i+1}, ..., U_{j-1}) before adding margin j.
-            left = draws.copy()
-            for j in range(1, self.dimension):
-                value = draws[j]
-                for i in range(j):
-                    pair = self.pair_copulas[j - i - 1][i]
-                    given = left[i]
-                    value = pair._inverse(value, given, first=False)
-                    if j < self.dimension - 1:
-                        left[i] = pair._conditional(given, value, first=True)
-                result[j] = value
-                left[j] = value
+        values: dict[_VineKey, _VineArray] = {}
+        uses = self._uses.copy()
+
+        def release(key: _VineKey) -> None:
+            """Free a conditional probability once its last consumer finishes.
+
+            Args:
+                key: Variable and conditioning set.
+            """
+            uses[key] -= 1
+            if not uses[key]:
+                del values[key]
+
+        for draw_key, steps in self._stages:
+            variable = draw_key[0]
+            values[draw_key] = draws[variable]
+            for pair, first, inverse, source, given, output in steps:
+                transform = pair._inverse if inverse else pair._conditional
+                values[output] = transform(values[source], values[given], first=first)
+                release(source)
+                release(given)
+            key = (variable, frozenset())
+            result[variable] = values[key]
+            release(key)
         return result
 
     def apply(self, variables: ProteusVariable[StochasticScalar] | list[StochasticScalar]) -> None:
