@@ -2048,7 +2048,7 @@ def _student_t_ppf(probability: _VineArray, dof: float) -> _VineArray:
         dof: Positive degrees of freedom.
     """
     if np.__name__ == "numpy":
-        return special.stdtrit(dof, probability)
+        return t.cast(_VineArray, special.stdtrit(dof, probability))
     tail = 2 * np.minimum(probability, 1 - probability)
     z = special.betaincinv(dof / 2, 0.5, tail)
     return np.sign(probability - 0.5) * np.sqrt(dof * ((1 - z) / z))
