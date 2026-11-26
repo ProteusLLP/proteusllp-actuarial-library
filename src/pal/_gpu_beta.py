@@ -299,7 +299,9 @@ __device__ __noinline__ double pal_ibeta_small_b_large_a(
         return 0.0;
     }
 
-    double prefix = exp(log_h + lgamma(a + b) - lgamma(a) - b * log(t));
+    // Gamma(a+b)/Gamma(a) loses digits when a is large. Cancel the
+    // Gamma(b) terms analytically and use the scaled beta normalisation.
+    double prefix = exp(-u + b * log(-lx) - pal_log_beta(a, b));
     double coefficients[30] = {1.0};
     double j = pal_gamma_q(b, u) / h;
     double sum = prefix * j;

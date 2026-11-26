@@ -196,3 +196,30 @@ def test_gpu_beta_fraction_exhaustion_propagates_nan() -> None:
     )
     assert np.all(np.isnan(asnumpy(cdf)))
     assert np.all(np.isnan(asnumpy(inverse)))
+
+
+@pytest.mark.parametrize(
+    ("alpha", "beta", "value", "reference"),
+    [
+        (92366103.92191893, 0.5485189088372648, 0.9999999989389583, 0.6959091032584171870),
+        (81403476.82167146, 0.10042480232535422, 0.9999999999995173, 0.6204241012689216945),
+        (20168264.85908924, 0.35569212770064296, 0.9999999999996713, 0.9838424233245340030),
+        (1e8, 0.01, 0.9999999999999999, 0.1626146251248396899),
+    ],
+)
+@pytest.mark.parametrize("array_shapes", [False, True])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_gpu_beta_small_second_shape_large_first_shape(
+    alpha: float, beta: float, value: float, reference: float, array_shapes: bool, reverse: bool
+) -> None:
+    """Match a 60-digit complementary hypergeometric beta reference at binary inputs."""
+    # Evaluate z**b * 2F1(b,1-a;b+1;z)/(b*B(b,a)) at z=1-x,
+    # using exact binary inputs and 60 decimal digits, then complement.
+    if reverse:
+        alpha, beta, value, reference = beta, alpha, 1 - value, 1 - reference
+    a = xp.asarray([alpha]) if array_shapes else alpha
+    b = xp.asarray([beta]) if array_shapes else beta
+    actual = asnumpy(betainc(a, b, xp.asarray([value])))[0]
+    assert actual == pytest.approx(reference, rel=2e-12, abs=5e-15)
+    inverse = asnumpy(betaincinv(a, b, xp.asarray([reference])))[0]
+    assert inverse == pytest.approx(value, rel=5e-9, abs=4 * np.spacing(value))
