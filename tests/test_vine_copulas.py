@@ -21,7 +21,7 @@ def _cdf(family, theta, u, v):
     if family == "clayton":
         return (u ** (-theta) + v ** (-theta) - 1) ** (-1 / theta)
     if family == "gumbel":
-        return math.exp(-((-math.log(u)) ** theta + (-math.log(v)) ** theta) ** (1 / theta))
+        return math.exp(-(((-math.log(u)) ** theta + (-math.log(v)) ** theta) ** (1 / theta)))
     return -math.log1p(math.expm1(-theta * u) * math.expm1(-theta * v) / math.expm1(-theta)) / theta
 
 
