@@ -2217,10 +2217,12 @@ class VineCopula(Copula):
         """
         if n_sims <= 0:
             raise ValueError("Number of simulations must be positive")
-        draws = _open_unit(np.asarray(
-            _draw_scenarios(rng, "uniform", size=(self.dimension, n_sims), scenario_axis=1),
-            dtype=float,
-        ))
+        draws = _open_unit(
+            np.asarray(
+                _draw_scenarios(rng, "uniform", size=(self.dimension, n_sims), scenario_axis=1),
+                dtype=float,
+            )
+        )
         result = np.empty_like(draws)
         result[0] = draws[0]
         if self.structure == "c":
