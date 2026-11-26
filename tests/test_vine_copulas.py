@@ -10,7 +10,7 @@ from scipy.stats import norm, t
 from pal import StochasticScalar, config, set_random_seed
 from pal._maths import asnumpy, xp
 from pal.config import set_sampling_method
-from pal.copulas import PairCopula, VineCopula
+from pal.copulas import PairCopula, VineCopula, VineEdge
 
 
 def _cdf(family, theta, u, v):
@@ -145,7 +145,7 @@ def test_invalid_structure_and_rows():
     with pytest.raises(ValueError, match="structure"):
         VineCopula([[PairCopula()]], structure="r")
     with pytest.raises(ValueError, match="rows"):
-        VineCopula([[PairCopula(), PairCopula()]])
+        VineCopula([[PairCopula(), PairCopula()], [PairCopula(), PairCopula()]])
     with pytest.raises(ValueError, match="rows"):
         VineCopula([])
     with pytest.raises(ValueError, match="rotation"):
@@ -192,8 +192,7 @@ def _extended_cdf(pair, u, v):
         return 2 * theta * u * v / (z + math.sqrt(z * z - 4 * theta * (theta - 1) * u * v))
     if pair.family == "husler_reiss":
         return math.exp(
-            -a * norm.cdf(theta + math.log(a / b) / (2 * theta))
-            - b * norm.cdf(theta + math.log(b / a) / (2 * theta))
+            -a * norm.cdf(theta + math.log(a / b) / (2 * theta)) - b * norm.cdf(theta + math.log(b / a) / (2 * theta))
         )
     if pair.family == "extremal_t":
         nu = pair.parameter2
@@ -311,3 +310,128 @@ def test_extended_pair_validation_and_independence_limits():
         PairCopula.MM1(2, 0.5)
     with pytest.raises(ValueError, match="Invalid parameter"):
         PairCopula.HuslerReiss(0)
+
+
+def _regular_trees():
+    """A six-margin vine whose first tree is neither a star nor a chain."""
+    return [
+        [(0, 1, (), 0.5), (0, 2, (), -0.3), (0, 3, (), 0.35), (3, 4, (), 0.6), (3, 5, (), 0.2)],
+        [(1, 2, (0,), 0.3), (2, 3, (0,), -0.2), (0, 4, (3,), 0.1), (4, 5, (3,), 0.25)],
+        [(1, 3, (0, 2), 0.2), (2, 4, (0, 3), 0.3), (0, 5, (3, 4), -0.2)],
+        [(1, 4, (0, 2, 3), -0.3), (2, 5, (0, 3, 4), 0.15)],
+        [(1, 5, (0, 2, 3, 4), 0.4)],
+    ]
+
+
+def _reference_correlation(trees, truncation):
+    """Recover unconditional correlations from Gaussian partial correlations."""
+    corr = np.eye(6)
+    for level, tree in enumerate(trees):
+        for a, b, conditioning, rho in tree:
+            if level >= truncation:
+                rho = 0.0
+            cond = list(conditioning)
+            if cond:
+                inv = np.linalg.inv(corr[np.ix_(cond, cond)])
+                ca, cb = corr[a, cond], corr[b, cond]
+                rho = ca @ inv @ cb + rho * np.sqrt((1 - ca @ inv @ ca) * (1 - cb @ inv @ cb))
+            corr[a, b] = corr[b, a] = rho
+    return corr
+
+
+@pytest.mark.parametrize("truncation", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("method", ["mc", "rqmc"])
+def test_regular_vine_gaussian_reference(truncation, method):
+    """General vines, including truncated ones, must reproduce Gaussian partial correlations."""
+    trees = _regular_trees()
+    # Permute labels and reverse the edge order to check that no special
+    # variable ordering or input edge ordering is needed.
+    labels = [4, 2, 5, 0, 1, 3]
+    edges = [
+        [
+            VineEdge(labels[b], labels[a], PairCopula.Gaussian(rho), tuple(labels[i] for i in cond))
+            for a, b, cond, rho in reversed(tree)
+        ]
+        for tree in trees[:truncation]
+    ]
+    vine = VineCopula.from_edges(edges)
+    assert vine.dimension == 6
+    assert vine.truncation_level == truncation
+    assert vine.structure == "r"
+    original = (config.seed, config.rng, config.sampling_method, config.qmc_dimensions)
+    try:
+        set_sampling_method(method, dimensions=16)
+        set_random_seed(915)
+        samples = list(vine.generate(16384))
+        z = np.stack([ndtri(asnumpy(samples[i].values)) for i in labels])
+        np.testing.assert_allclose(np.corrcoef(z), _reference_correlation(trees, truncation), atol=0.04)
+        for sample in samples:
+            assert sample.coupled_variable_group is samples[0].coupled_variable_group
+    finally:
+        config.seed, config.rng, config.sampling_method, config.qmc_dimensions = original
+
+
+@pytest.mark.parametrize("structure", ["c", "d"])
+def test_compact_and_regular_vine_equivalence(structure):
+    """The compact syntax and its expanded edge representation are identical."""
+    compact = VineCopula(
+        [
+            [PairCopula.Gumbel(1.5), PairCopula.Clayton(2, rotation=90), PairCopula.Frank(2)],
+            [PairCopula.StudentsT(0.3, 4), PairCopula.Joe(2, rotation=270)],
+            [PairCopula.Galambos(1.5)],
+        ],
+        structure=structure,
+    )
+    regular = VineCopula.from_edges(compact.trees)
+    a = compact.generate(1024, rng=np.random.default_rng(22))
+    b = regular.generate(1024, rng=np.random.default_rng(22))
+    for x, y in zip(a, b, strict=True):
+        np.testing.assert_array_equal(asnumpy(x.values), asnumpy(y.values))
+
+
+@pytest.mark.parametrize("structure", ["c", "d"])
+def test_compact_truncated_vine(structure):
+    """Omitted higher trees and their explicit independent pairs are equivalent in law."""
+    pairs = [[PairCopula.Gaussian(0.5), PairCopula.Gaussian(0.4), PairCopula.Gaussian(-0.3)]]
+    truncated = VineCopula(pairs, structure=structure)
+    full = VineCopula([*pairs, [PairCopula(), PairCopula()], [PairCopula()]], structure=structure)
+    assert truncated.truncation_level == 1
+    for vine in (truncated, full):
+        samples = vine.generate(16384, rng=np.random.default_rng(678))
+        corr = np.corrcoef(np.stack([ndtri(asnumpy(sample.values)) for sample in samples]))
+        expected = 0.5 * 0.4 if structure == "c" else 0.4
+        assert corr[1, 2] == pytest.approx(expected, abs=0.035)
+
+
+def test_regular_vine_rotations_keep_edge_orientation():
+    """An edge's first and second coordinates are significant for rotations."""
+    pair = PairCopula.Clayton(2, rotation=90)
+    vine = VineCopula.from_edges(
+        [[VineEdge(2, 0, pair), VineEdge(1, 2, PairCopula.Joe(2)), VineEdge(2, 3, PairCopula.Gumbel(1.5))]]
+    )
+    samples = list(vine.generate(16384, rng=np.random.default_rng(849)))
+    u, v = (asnumpy(samples[i].values) for i in (2, 0))
+    a, b = 0.2, 0.6
+    expected = b - _cdf("clayton", 2, 1 - a, b)
+    assert np.mean((u < a) & (v < b)) == pytest.approx(expected, abs=0.02)
+    for sample in samples:
+        assert np.mean(asnumpy(sample.values) < 0.5) == pytest.approx(0.5, abs=0.025)
+
+
+def test_regular_vine_validation():
+    pair = PairCopula.Independence()
+    chain = [VineEdge(0, 1, pair), VineEdge(1, 2, pair), VineEdge(2, 3, pair)]
+    with pytest.raises(ValueError, match="connected and acyclic"):
+        VineCopula.from_edges([[VineEdge(0, 1, pair), VineEdge(1, 2, pair), VineEdge(0, 2, pair)]])
+    with pytest.raises(ValueError, match="Duplicate"):
+        VineCopula.from_edges([[chain[0], chain[0], chain[2]]])
+    with pytest.raises(ValueError, match="preceding tree"):
+        VineCopula.from_edges([[VineEdge(0, 4, pair), chain[1], chain[2]]])
+    with pytest.raises(ValueError, match="preceding tree"):
+        VineCopula.from_edges([chain, [VineEdge(0, 3, pair, (1,)), VineEdge(1, 3, pair, (2,))]])
+    with pytest.raises(ValueError, match="conditioning variable"):
+        VineCopula.from_edges([chain, [VineEdge(0, 2, pair), VineEdge(1, 3, pair, (2,))]])
+    with pytest.raises(ValueError, match="distinct"):
+        VineCopula.from_edges([chain, [VineEdge(1, 2, pair, (1,)), VineEdge(1, 3, pair, (2,))]])
+    with pytest.raises(TypeError, match="PairCopula"):
+        VineCopula.from_edges([[VineEdge(0, 1, None)]])
