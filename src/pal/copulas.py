@@ -8,8 +8,10 @@ copulas.
 # Standard library imports
 from __future__ import annotations
 
+import math
 import typing as t
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 # Third-party imports
 import numpy.typing as npt
@@ -1998,3 +2000,258 @@ def apply_copula(
     first_group = variables_list[0].coupled_variable_group
     for var in variables_list[1:]:
         first_group.merge(var.coupled_variable_group)
+
+
+_VineArray = npt.NDArray[np.float64]
+
+
+def _open_unit(value: _VineArray) -> _VineArray:
+    """Keep probabilities inside the unit interval for conditional transforms.
+
+    Args:
+        value: Uniform probabilities.
+    """
+    return np.clip(value, np.finfo(float).tiny, 1.0 - np.finfo(float).eps / 2)
+
+
+def _log_expm1(value: _VineArray) -> _VineArray:
+    """Evaluate log(expm1(x)) for non-negative x without overflow.
+
+    Args:
+        value: Non-negative arguments.
+    """
+    return value + np.log(-np.expm1(-value))
+
+
+@dataclass(frozen=True)
+class PairCopula:
+    """Bivariate copula specifying one edge of a simplified vine.
+
+    Each edge can have its own family, dependence parameter and rotation.
+    The rotation convention is C90(u, v) = v - C(1-u, v) and
+    C270(u, v) = u - C(u, 1-v).
+
+    Attributes:
+        family: Independence, Gaussian, Clayton, Gumbel or Frank.
+        parameter: Gaussian correlation (-1 < rho < 1), Clayton theta >= 0,
+            Gumbel theta >= 1, or Frank theta >= 0. Independence uses zero.
+            A negative Frank association can be specified using a rotation.
+        rotation: 0, 90, 180 or 270 degrees. A 180-degree rotation interchanges
+            upper and lower tail dependence; 90 and 270 allow negative association.
+    """
+
+    family: t.Literal["independence", "gaussian", "clayton", "gumbel", "frank"] = "independence"
+    parameter: float = 0.0
+    rotation: t.Literal[0, 90, 180, 270] = 0
+
+    def __post_init__(self) -> None:
+        """Validate the family, dependence parameter and rotation."""
+        theta = self.parameter
+        if not math.isfinite(theta):
+            raise ValueError("Pair copula parameter must be finite")
+        if self.rotation not in (0, 90, 180, 270):
+            raise ValueError("Pair copula rotation must be 0, 90, 180 or 270")
+        if self.family == "gaussian":
+            valid = -1 < theta < 1
+        elif self.family in ("clayton", "frank"):
+            valid = theta >= 0
+        elif self.family == "gumbel":
+            valid = theta >= 1
+        elif self.family == "independence":
+            valid = theta == 0
+        else:
+            raise ValueError(f"Unknown pair copula family: {self.family}")
+        if not valid:
+            raise ValueError(f"Invalid parameter for {self.family} pair copula: {theta}")
+
+    @property
+    def _independent(self) -> bool:
+        """Whether the pair copula is at its independence limit."""
+        return self.family == "independence" or (
+            self.parameter == (1.0 if self.family == "gumbel" else 0.0)
+        )
+
+    def _reflections(self, first: bool) -> tuple[bool, bool]:
+        """Return reflection flags for the target and conditioning margin.
+
+        Args:
+            first: Whether the first coordinate is the target.
+        """
+        reflect_first = self.rotation in (90, 180)
+        reflect_second = self.rotation in (180, 270)
+        return (reflect_first, reflect_second) if first else (reflect_second, reflect_first)
+
+    def _conditional(self, value: _VineArray, given: _VineArray, *, first: bool) -> _VineArray:
+        """Evaluate the conditional CDF of a margin given the other margin.
+
+        Args:
+            value: Target uniform probabilities.
+            given: Conditioning uniform probabilities.
+            first: Whether the first coordinate is the target.
+        """
+        if self._independent:
+            return value
+        reflect_target, reflect_given = self._reflections(first)
+        u = _open_unit(1 - value if reflect_target else value)
+        v = _open_unit(1 - given if reflect_given else given)
+        theta = self.parameter
+        if self.family == "gaussian":
+            h = special.ndtr((special.ndtri(u) - theta * special.ndtri(v)) / math.sqrt((1 - theta) * (1 + theta)))
+        elif self.family == "clayton":
+            log_term = _log_expm1(-theta * np.log(u)) + theta * np.log(v)
+            h = np.exp(-(1 + 1 / theta) * np.logaddexp(0, log_term))
+        elif self.family == "gumbel":
+            a, b = -np.log(u), -np.log(v)
+            delta = np.logaddexp(0, theta * (np.log(a) - np.log(b))) / theta
+            h = np.exp(-b * np.expm1(delta) - (theta - 1) * delta)
+        else:  # Frank
+            log_num = -theta * v + np.log(-np.expm1(-theta * u))
+            log_den = np.logaddexp(
+                -theta * u + np.log(-np.expm1(-theta * v)),
+                -theta * v + np.log(-np.expm1(-theta * (1 - v))),
+            )
+            h = np.exp(log_num - log_den)
+        return _open_unit(1 - h if reflect_target else h)
+
+    def _inverse(self, probability: _VineArray, given: _VineArray, *, first: bool) -> _VineArray:
+        """Invert the conditional CDF of a margin given the other margin.
+
+        Args:
+            probability: Conditional uniform probabilities.
+            given: Conditioning uniform probabilities.
+            first: Whether the first coordinate is the target.
+        """
+        if self._independent:
+            return probability
+        reflect_target, reflect_given = self._reflections(first)
+        p = _open_unit(1 - probability if reflect_target else probability)
+        v = _open_unit(1 - given if reflect_given else given)
+        theta = self.parameter
+        if self.family == "gaussian":
+            u = special.ndtr(theta * special.ndtri(v) + math.sqrt((1 - theta) * (1 + theta)) * special.ndtri(p))
+        elif self.family == "clayton":
+            log_term = _log_expm1(-(theta / (1 + theta)) * np.log(p)) - theta * np.log(v)
+            u = np.exp(-np.logaddexp(0, log_term) / theta)
+        elif self.family == "gumbel":
+            # Solve b * expm1(delta) + (theta-1)*delta = -log(p).
+            # Both terms are increasing; either term alone bounds the root.
+            b, target = -np.log(v), -np.log(p)
+            lo = np.zeros_like(p)
+            hi = np.minimum(np.log1p(target / b), target / (theta - 1))
+            for _ in range(52):
+                mid = (lo + hi) / 2
+                below = b * np.expm1(mid) + (theta - 1) * mid < target
+                lo = np.where(below, mid, lo)
+                hi = np.where(below, hi, mid)
+            delta = (lo + hi) / 2
+            log_a = np.log(b) + _log_expm1(theta * delta) / theta
+            u = np.exp(-np.exp(log_a))
+        else:  # Frank
+            log_den = np.logaddexp(-theta * v + np.log1p(-p), -theta + np.log(p))
+            log_ratio = np.log(p) + math.log(-math.expm1(-theta)) - log_den
+            u = np.logaddexp(0, log_ratio) / theta
+        return _open_unit(1 - u if reflect_target else u)
+
+
+class VineCopula(Copula):
+    """Simplified canonical (C-vine) or drawable (D-vine) copula.
+
+    The rows of pair_copulas describe successive trees, in variable order.
+    In a C-vine the edge at row k, column i connects k to k+i+1,
+    conditional on variables 0 through k-1. In a D-vine it connects i to
+    i+k+1, conditional on the intervening variables. Each row must contain
+    one fewer edge than the preceding row. Use PairCopula() for independence,
+    including when truncating higher trees. Conditional copula parameters are
+    constant across conditioning values (the simplifying assumption).
+
+    Attributes:
+        dimension: Number of uniform margins.
+        structure: Either "c" or "d".
+        pair_copulas: Immutable rows of pair copulas in tree order.
+    """
+
+    def __init__(
+        self,
+        pair_copulas: t.Sequence[t.Sequence[PairCopula]],
+        *,
+        structure: t.Literal["c", "d"] = "c",
+    ) -> None:
+        """Construct a vine from successive rows of pair copulas.
+
+        Args:
+            pair_copulas: Rows of lengths d-1, d-2, ..., 1 for d margins.
+            structure: "c" for a canonical vine, "d" for a drawable vine.
+
+        Raises:
+            ValueError: If the structure or triangular row lengths are invalid.
+            TypeError: If an edge is not a PairCopula.
+        """
+        if structure not in ("c", "d"):
+            raise ValueError("Vine structure must be 'c' or 'd'")
+        rows = tuple(tuple(row) for row in pair_copulas)
+        if not rows or any(len(row) != len(rows) - k for k, row in enumerate(rows)):
+            raise ValueError("Vine requires rows of lengths d-1, d-2, ..., 1")
+        if any(not isinstance(pair, PairCopula) for row in rows for pair in row):
+            raise TypeError("Every vine edge must be a PairCopula")
+        self.dimension = len(rows) + 1
+        self.structure = structure
+        self.pair_copulas = rows
+
+    def generate(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate coupled uniform margins using the inverse Rosenblatt transform.
+
+        Args:
+            n_sims: Number of simulations; defaults to config.n_sims.
+            rng: Random generator; defaults to config.rng.
+        """
+        return self._generate_base(n_sims, rng)
+
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Draw one independent coordinate per margin and invert the vine.
+
+        Args:
+            n_sims: Number of simulations.
+            rng: Random generator supplying scenario-aligned coordinates.
+        """
+        if n_sims <= 0:
+            raise ValueError("Number of simulations must be positive")
+        draws = _open_unit(np.asarray(
+            _draw_scenarios(rng, "uniform", size=(self.dimension, n_sims), scenario_axis=1),
+            dtype=float,
+        ))
+        result = np.empty_like(draws)
+        result[0] = draws[0]
+        if self.structure == "c":
+            # Root k conditional on all earlier roots is precisely draws[k].
+            for j in range(1, self.dimension):
+                value = draws[j]
+                for k in range(j - 1, -1, -1):
+                    value = self.pair_copulas[k][j - k - 1]._inverse(value, draws[k], first=False)
+                result[j] = value
+        else:
+            # left[i] = F(U_i | U_{i+1}, ..., U_{j-1}) before adding margin j.
+            left = draws.copy()
+            for j in range(1, self.dimension):
+                value = draws[j]
+                for i in range(j):
+                    pair = self.pair_copulas[j - i - 1][i]
+                    given = left[i]
+                    value = pair._inverse(value, given, first=False)
+                    if j < self.dimension - 1:
+                        left[i] = pair._conditional(given, value, first=True)
+                result[j] = value
+                left[j] = value
+        return result
+
+    def apply(self, variables: ProteusVariable[StochasticScalar] | list[StochasticScalar]) -> None:
+        """Apply the vine to independent marginal simulations in variable order.
+
+        Args:
+            variables: Marginal variables to reorder in place. Their number must
+                equal the fixed vine dimension and their simulation counts must match.
+        """
+        if len(variables) != self.dimension:
+            raise ValueError("Number of variables and copula samples do not match.")
+        apply_copula(variables, self.generate(n_sims=list(variables)[0].n_sims))
