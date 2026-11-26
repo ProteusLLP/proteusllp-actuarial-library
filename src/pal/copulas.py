@@ -2431,9 +2431,7 @@ def _validate_vine_trees(trees: tuple[tuple[VineEdge, ...], ...], dimension: int
     """
     # Each node in tree k is an edge in tree k-1, represented by its complete
     # variable set and the two original endpoint sets.
-    previous: dict[frozenset[int], frozenset[frozenset[int]]] = {
-        frozenset({i}): frozenset() for i in range(dimension)
-    }
+    previous: dict[frozenset[int], frozenset[frozenset[int]]] = {frozenset({i}): frozenset() for i in range(dimension)}
     for level, tree in enumerate(trees):
         adjacency: dict[frozenset[int], set[frozenset[int]]] = {node: set() for node in previous}
         following: dict[frozenset[int], frozenset[frozenset[int]]] = {}
@@ -2502,11 +2500,7 @@ def _vine_elimination_order(
         variable = max(candidates)
         incident: list[VineEdge] = []
         for tree in active:
-            matching = [
-                edge
-                for edge in tree
-                if variable in (edge.first, edge.second) or variable in edge.conditioning
-            ]
+            matching = [edge for edge in tree if variable in (edge.first, edge.second) or variable in edge.conditioning]
             if not tree:
                 continue
             if len(matching) != 1 or variable not in (matching[0].first, matching[0].second):
