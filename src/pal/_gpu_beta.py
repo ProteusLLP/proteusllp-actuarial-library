@@ -287,7 +287,7 @@ __device__ __forceinline__ double pal_factorial(const int value) {
 // DiDonato-Morris BGRAT expansion, following Boost.Math's
 // beta_small_b_large_a_series implementation.
 __device__ __noinline__ double pal_ibeta_small_b_large_a(
-    const double a, const double b, const double x, const double y
+    const double a, const double b, const double x, const double y, const double log_beta
 ) {
     const double bm1 = b - 1.0;
     const double t = a + bm1 / 2.0;
@@ -301,7 +301,7 @@ __device__ __noinline__ double pal_ibeta_small_b_large_a(
 
     // Gamma(a+b)/Gamma(a) loses digits when a is large. Cancel the
     // Gamma(b) terms analytically and use the scaled beta normalisation.
-    double prefix = exp(-u + b * log(-lx) - pal_log_beta(a, b));
+    double prefix = exp(-u + b * log(-lx) - log_beta);
     double coefficients[30] = {1.0};
     double j = pal_gamma_q(b, u) / h;
     double sum = prefix * j;
@@ -384,7 +384,7 @@ __device__ __forceinline__ double pal_ibeta(
     }
 
     if ((a >= 15.0) && (b < 1.0) && (x > 0.5)) {
-        return pal_ibeta_small_b_large_a(a, b, x, 1.0 - x);
+        return pal_ibeta_small_b_large_a(a, b, x, 1.0 - x, log_beta);
     }
 
     const double switch_point = (a + 1.0) / (a + b + 2.0);
