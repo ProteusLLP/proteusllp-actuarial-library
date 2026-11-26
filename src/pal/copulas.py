@@ -2067,9 +2067,7 @@ class PairCopula:
     @property
     def _independent(self) -> bool:
         """Whether the pair copula is at its independence limit."""
-        return self.family == "independence" or (
-            self.parameter == (1.0 if self.family == "gumbel" else 0.0)
-        )
+        return self.family == "independence" or (self.parameter == (1.0 if self.family == "gumbel" else 0.0))
 
     def _reflections(self, first: bool) -> tuple[bool, bool]:
         """Return reflection flags for the target and conditioning margin.
