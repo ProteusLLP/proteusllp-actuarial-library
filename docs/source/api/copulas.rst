@@ -78,8 +78,8 @@ and conditional lower-tail dependence between the other two risks.
 
    vine = VineCopula(
        [
-           [PairCopula("gumbel", 2.0), PairCopula("gaussian", 0.4)],
-           [PairCopula("clayton", 1.5)],
+           [PairCopula.Gumbel(2.0), PairCopula.Gaussian(0.4)],
+           [PairCopula.Clayton(1.5)],
        ],
        structure="c",
    )
@@ -89,8 +89,46 @@ The result is a coupled ProteusVariable of uniform margins, in variable
 order. As with other PAL copulas, use ``vine.apply(variables)`` to reorder
 existing independent marginal simulations while preserving their values.
 Both Monte Carlo and randomised quasi-Monte Carlo sampling are supported.
-The supported pair families are independence, Gaussian, Clayton, Gumbel
-and Frank. The pair copula rotation can be 0, 90, 180 or 270 degrees.
+All PAL copula families have a bivariate representation for use in vines.
+The named constructors take the dependence parameters of the corresponding
+copula family:
+
+.. code-block:: python
+
+   from pal.copulas import PairCopula
+
+   independent = PairCopula.Independence()
+   gaussian = PairCopula.Gaussian(0.4)
+   student_t = PairCopula.StudentsT(0.4, dof=5)
+   clayton = PairCopula.Clayton(1.5)
+   gumbel = PairCopula.Gumbel(1.2)
+   frank = PairCopula.Frank(3)
+   joe = PairCopula.Joe(2)
+   galambos = PairCopula.Galambos(1.5)
+   plackett = PairCopula.Plackett(2)
+   husler_reiss = PairCopula.HuslerReiss(0.75)
+   extremal_t = PairCopula.ExtremalT(0.4, nu=3)
+   mm1 = PairCopula.MM1(theta=1.2, delta=1.5)
+
+The bivariate MM1 copula is equivalent to a Gumbel copula with the product
+of its two parameters. Student's t and extremal-t pair copulas require
+both a correlation and a positive degrees-of-freedom parameter.
+
+For each non-independent family, the rotation may be 0, 90, 180 or 270
+degrees. For programmatic model construction, the string-based constructor
+is also available. Its optional second parameter is named
+``parameter2``; it is used for the degrees of freedom or the MM1 delta.
+
+.. code-block:: python
+
+   from pal.copulas import PairCopula
+
+   assert PairCopula.Gumbel(1.2, rotation=180) == PairCopula("gumbel", 1.2, rotation=180)
+   assert PairCopula.StudentsT(0.4, 5) == PairCopula("students_t", 0.4, parameter2=5)
+
+Gaussian, Student's t, Clayton and Frank use analytical conditional
+quantile transformations. Other families use vectorised numerical
+inversion on the active CPU or GPU array backend.
 
 .. autosummary::
    :toctree: copulas
