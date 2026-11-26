@@ -59,8 +59,8 @@ and rotation. Higher trees describe dependence conditional on other risks.
 This allows different upper- and lower-tail dependence structures across a
 portfolio without requiring all risks to follow the same copula family.
 
-PAL supports canonical (C-vine) and drawable (D-vine) structures under the
-simplifying assumption that conditional copula parameters do not vary with
+PAL supports regular vines (R-vines), including canonical (C-vine) and
+drawable (D-vine) structures, under the simplifying assumption that conditional copula parameters do not vary with
 the conditioning variables. The first tree contains d-1 edges, the second
 contains d-2, and so on. An independent pair can be used to truncate the vine.
 For C-vines, the first margin is the root of the first tree. For D-vines,
@@ -130,11 +130,59 @@ Gaussian, Student's t, Clayton and Frank use analytical conditional
 quantile transformations. Other families use vectorised numerical
 inversion on the active CPU or GPU array backend.
 
+Regular vines
+~~~~~~~~~~~~~
+
+A regular vine allows branching between groups of risks instead of requiring
+a single root or a chain. Specify each edge by the two variable indices,
+the pair copula and, for higher trees, the conditioning variables.
+Indices are zero-based and results are returned in index order.
+
+For example, the first tree below connects two groups of three risks around
+risks 0 and 3. The second tree describes their remaining pairwise dependence
+conditional on the shared risk. The higher trees are omitted.
+
+.. code-block:: python
+
+   from pal.copulas import PairCopula, VineCopula, VineEdge
+
+   vine = VineCopula.from_edges(
+       [
+           [
+               VineEdge(0, 1, PairCopula.Gumbel(1.5)),
+               VineEdge(0, 2, PairCopula.Galambos(2)),
+               VineEdge(0, 3, PairCopula.Gaussian(0.4)),
+               VineEdge(3, 4, PairCopula.StudentsT(0.5, dof=4)),
+               VineEdge(3, 5, PairCopula.Clayton(1.5, rotation=180)),
+           ],
+           [
+               VineEdge(1, 2, PairCopula.Gaussian(0.2), (0,)),
+               VineEdge(2, 3, PairCopula.Gaussian(0.1), (0,)),
+               VineEdge(0, 4, PairCopula.Independence(), (3,)),
+               VineEdge(4, 5, PairCopula.Gaussian(0.3), (3,)),
+           ],
+       ]
+   )
+   uniforms = vine.generate()
+   assert vine.dimension == 6
+   assert vine.truncation_level == 2
+
+Each tree must be connected and acyclic. Two nodes in a higher tree may
+only be connected if the corresponding edges of the preceding tree share
+a node (the proximity condition). The constructor validates these
+requirements and determines a valid simulation order automatically.
+The order of edges within a tree is immaterial, but the order of the
+two variable indices in an individual edge matters for asymmetric rotations.
+
+The compact C-vine and D-vine syntax also supports truncation by omitting
+higher rows. Both forms use the same regular-vine simulation algorithm.
+
 .. autosummary::
    :toctree: copulas
    :nosignatures:
 
    pal.copulas.PairCopula
+   pal.copulas.VineEdge
    pal.copulas.VineCopula
 
 Supporting API
