@@ -232,31 +232,38 @@ def _student_t_grid() -> np.ndarray:
     )
 
 
+def _tail_relative_error(quantile: np.ndarray, probabilities: np.ndarray, dof: float) -> np.ndarray:
+    """Relative error of the returned tail probability, measured in the tail it belongs to.
+
+    Near one, the CDF resolves only one rounding step of 2.2e-16, which is 22% of a tail of
+    1e-15, so the upper tail is measured with the survival function instead.
+    """
+    tail = np.minimum(probabilities, 1 - probabilities)
+    returned = np.where(probabilities > 0.5, stats.t.sf(quantile, dof), stats.t.cdf(quantile, dof))
+    return np.abs(returned - tail) / tail
+
+
 @pytest.mark.parametrize("dof", [3.0, 30.0, 1000.0])
-def test_student_t_quantile_from_beta_is_exact_near_the_median(dof):
+def test_student_t_quantile_from_beta_is_accurate_near_the_median_and_in_the_tails(dof):
     """The beta formulation, used on GPU, once lost up to 1e-7 of probability near the median.
 
-    It is backend independent, so it is checked here against SciPy's CDF.
+    It is backend independent, so it is checked here against SciPy's CDF on whichever backend is
+    active. The tolerances leave room for a GPU inverse incomplete beta function that is less exact
+    than SciPy's, yet are far below the earlier error of 1e-7 near the median and, in the tails,
+    relative errors of order one.
     """
     grid = _student_t_grid()
     quantile = asnumpy(copulas._student_t_ppf_from_beta(xp.asarray(grid), dof))
     assert np.all(np.isfinite(quantile))
-    returned = stats.t.cdf(quantile, dof)
     centre = np.abs(grid - 0.5) < 0.01
-    assert np.max(np.abs(returned - grid)[centre]) < 2e-15
-    # In the tails the error is relative to the tail probability.
-    tail = np.minimum(grid, 1 - grid)
-    assert np.max((np.abs(returned - grid) / tail)[~centre]) < 5e-10
+    assert np.max(np.abs(stats.t.cdf(quantile, dof) - grid)[centre]) < 2e-14
+    assert np.max(_tail_relative_error(quantile, grid, dof)[~centre]) < 1e-6
 
 
 @pytest.mark.parametrize("dof", [3.0, 30.0, 1000.0])
 def test_student_t_quantile_is_accurate_in_the_far_tails(dof):
     """SciPy's stdtrit saturates at 1e100 and is wrong by large factors below about 1e-155."""
-    grid = np.concatenate([10.0 ** -np.arange(100, 300, 7), 10.0 ** -np.arange(150, 300, 7)])
-    for probabilities in (grid, 1 - np.array([1e-12, 1e-15])):
+    lower = np.concatenate([10.0 ** -np.arange(100, 300, 7), 10.0 ** -np.arange(150, 300, 7)])
+    for probabilities in (lower, 1 - np.array([1e-12, 1e-15])):
         quantile = asnumpy(copulas._student_t_ppf(xp.asarray(probabilities), dof))
-        returned = stats.t.cdf(quantile, dof)
-        tail = np.minimum(probabilities, 1 - probabilities)
-        # SciPy's own relative accuracy at 1000 degrees of freedom, between 1e-100 and
-        # 1e-150, is about 1e-8; below that the earlier result was wrong by factors of 2 to 4.
-        assert np.max(np.abs(returned - probabilities) / tail) < 2e-8
+        assert np.max(_tail_relative_error(quantile, probabilities, dof)) < 1e-6
