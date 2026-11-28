@@ -33,7 +33,7 @@ def test_xoltower_with_optional_params():
         excess=[50000, 150000],
         premium=[10000, 20000],
         name=["Layer 1", "Layer 2"],
-        reinstatement_cost=[[5000], [10000]],
+        reinstatement_cost=[[1.0, 1.0, 0.5, 0.5], [1.0, 1.0, 0.5, 0.5]],
         aggregate_deductible=[25000, 50000],
         aggregate_limit=[500000, 1000000],
         franchise=[1000, 2000],
