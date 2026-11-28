@@ -93,6 +93,22 @@ def _special_call(function: t.Callable[..., t.Any], *args: t.Any) -> t.Any:
     return scalar_or_array(result)
 
 
+def _negative_binomial_cdf(x: t.Any, n: t.Any, p: t.Any) -> t.Any:
+    """Evaluate the negative binomial CDF for real, not only integer, sizes.
+
+    SciPy's nbdtr truncates n to an integer, but fitted and parameter-uncertain
+    sizes are real. P(X <= k) = I_p(n, floor(k) + 1) for k >= 0, where I is the
+    regularised incomplete beta function.
+
+    Args:
+        x: Evaluation points on the active backend.
+        n: Positive size parameter.
+        p: Success probability.
+    """
+    count = xp.floor(x)
+    return xp.where(count >= 0, special.betainc(n, xp.maximum(count, 0) + 1, p), 0.0)
+
+
 def _discrete_count_ppf(
     function: t.Callable[..., t.Any], u: DistributionParameter, *params: DistributionParameter
 ) -> ReturnType:
@@ -408,7 +424,7 @@ class NegBinomial(DiscreteDistributionBase):
             x: Evaluation point, or stochastic evaluation points aligned with the model simulations.
         """
         n, p = self._params.values()
-        return _special_call(special.nbdtr, x, n, p)  # type: ignore[misc, arg-type]
+        return _special_call(_negative_binomial_cdf, x, n, p)
 
     @override
     def invcdf(self, u: DistributionParameter) -> ReturnType:

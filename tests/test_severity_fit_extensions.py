@@ -174,13 +174,28 @@ def test_gpd_free_location_matches_censored_likelihood() -> None:
     assert fitted.aic == pytest.approx(6 - 2 * fitted.log_likelihood)
     assert pars["loc"] < observed.min()
     ref = stats.genpareto(c=pars["shape"], loc=pars["loc"], scale=pars["scale"])
-    expected = (
-        np.sum(ref.logpdf(observed[~censored])) + np.sum(ref.logsf(observed[censored])) - len(observed) * ref.logsf(0.0)
-    )
+    # Without a threshold the fit is unconditional: there is no truncation term.
+    expected = np.sum(ref.logpdf(observed[~censored])) + np.sum(ref.logsf(observed[censored]))
     assert fitted.log_likelihood == pytest.approx(expected, abs=1e-7)
     with pytest.raises(ValueError, match="not identifiable"):
         GPD.fit(observed, threshold=3.0, censored=censored, free_location=True)
     assert fitted.distribution.cdf(15.0) == pytest.approx(ref.cdf(15.0), rel=1e-10)
+
+
+@pytest.mark.parametrize("true_loc", [1.0, 30.0, 100.0, 1000.0])
+def test_gpd_free_location_finds_location_far_above_zero(true_loc: float) -> None:
+    """The maximum likelihood must be at least the likelihood of the true parameters.
+
+    Starting the location at zero once led to a ridge with the location tending
+    to minus infinity and a log-likelihood about 900 below the truth, reported
+    as converged.
+    """
+    observed = stats.genpareto.rvs(c=0.3, loc=true_loc, scale=50.0, size=1000, random_state=np.random.default_rng(5))
+    fitted = GPD.fit(observed, free_location=True)
+    truth = np.sum(stats.genpareto.logpdf(observed, c=0.3, loc=true_loc, scale=50.0))
+    assert fitted.log_likelihood >= truth
+    assert fitted.parameters["loc"] == pytest.approx(true_loc, abs=1.0)
+    assert fitted.parameters["shape"] == pytest.approx(0.3, abs=0.15)
 
 
 def test_exponential_fit_is_exact_for_censored_truncated_observations() -> None:

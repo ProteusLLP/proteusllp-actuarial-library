@@ -278,10 +278,20 @@ class Copula(ABC):
 
         Raises:
             TypeError: If list contains non-StochasticScalar values.
-            ValueError: If variables have inconsistent simulation counts.
+            ValueError: If variables have inconsistent simulation counts, or
+                their number differs from the copula's dimension.
         """
         variables_list = list(variables)
-        self.dimension = len(variables_list)
+        # A copula built without a dimension takes it from the variables. One
+        # with a dimension must not be silently changed: for MM1, Galambos and
+        # Archimedean copulas that would sample a different model.
+        dimension = getattr(self, "dimension", None)
+        if dimension is None:
+            self.dimension = len(variables_list)
+        elif dimension != len(variables_list):
+            raise ValueError(
+                f"{type(self).__name__} has dimension {dimension} but was applied to {len(variables_list)} variables"
+            )
         # Generate the copula samples
         # Check that n_sims is available
         n_sims = variables_list[0].n_sims
@@ -300,6 +310,7 @@ class EllipticalCopula(Copula, ABC):
 
     Attributes:
         correlation_matrix: Correlation matrix specifying the elliptical or extremal-t dependence.
+        dimension: Number of uniform margins, the size of the correlation matrix.
     """
 
     _matrix: npt.NDArray[np.floating]
@@ -347,6 +358,7 @@ class EllipticalCopula(Copula, ABC):
         # of the existing mutable correlation_matrix attribute.
         self._adjusted_correlation_matrix = adjusted.copy()
         self.correlation_matrix = adjusted
+        self.dimension = int(adjusted.shape[0])
         if matrix_type == "chol" and not self.was_repaired:
             # A supplied factor already represents the requested correlations.
             self._chol = _matrix.copy()
@@ -1721,21 +1733,25 @@ class ExtremalTCopula(Copula):
         Args:
             correlation_matrix: Correlation matrix determining the pairwise
                 dependency between variables. Must be positive
-                semi-definite. Note that only the lower diagonal of this matrix is used.
+                semi-definite. Only the diagonal and lower triangle are used;
+                the upper triangle is ignored and replaced by their transpose.
             nu: Degrees of freedom parameter (must be > 0).
         """
         if nu <= 0:
             raise ValueError("Degrees of freedom nu must be in the range (0, inf)")
-        self.correlation_matrix = np.asarray(correlation_matrix)
+        matrix = np.array(correlation_matrix, dtype=float)
         # validate correlation matrix
-        if self.correlation_matrix.ndim != 2 or (self.correlation_matrix.shape[0] != self.correlation_matrix.shape[1]):
+        if matrix.ndim != 2 or (matrix.shape[0] != matrix.shape[1]):
             raise ValueError("Correlation matrix must be square")
+        # The simulation reads whole columns, so an asymmetric matrix would
+        # silently give non-uniform margins.
+        self.correlation_matrix = np.tril(matrix) + np.tril(matrix, -1).T
         if self.correlation_matrix.min() < -1.0 or self.correlation_matrix.max() > 1.0:
             raise ValueError("Correlation matrix values must be in the range [-1, 1]")
         if not np.allclose(np.diag(self.correlation_matrix), 1.0):
             raise ValueError("Correlation matrix diagonal must be all ones")
         self.nu = nu
-        self.dimension = correlation_matrix.shape[0]
+        self.dimension = self.correlation_matrix.shape[0]
 
     def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Exact simulation of the t-EV copula.
@@ -2445,10 +2461,15 @@ class PairCopula:
 
         Newton's method is applied to logit(h) - logit(p) as a function of
         logit(u). In both tails this is close to linear, so convergence is fast
-        and relative resolution is retained. Steps that leave the bracket known
-        to contain the root, or that have no usable slope, are replaced by
-        bisection. Points are frozen once converged, so later iterations only
-        evaluate the copula where a root is still being refined.
+        and relative resolution is retained. As in rtsafe (Press et al., 2007,
+        Numerical Recipes, section 9.4), a Newton step is replaced by bisection
+        when it would leave the bracket known to contain the root, has no
+        usable slope, or is more than half the step taken two iterations
+        earlier. Where logit(h) has an inflection, Newton's method can otherwise
+        alternate between the two sides of the root indefinitely. Points are
+        frozen once converged, so later iterations only evaluate the copula
+        where a root is still being refined. Any point not converged within the
+        iteration limit is finished by bisection, which always converges.
 
         Args:
             probability: Conditional uniform probabilities.
@@ -2460,6 +2481,9 @@ class PairCopula:
         x = np.clip(target, _LOGIT_LOWER, _LOGIT_UPPER)
         lo = np.full_like(x, _LOGIT_LOWER)
         hi = np.full_like(x, _LOGIT_UPPER)
+        # The last step and the one before it, initially the bracket width.
+        step = hi - lo
+        step_before = step.copy()
         active = np.arange(x.size)
         for _ in range(_INVERSION_MAX_ITERATIONS):
             x_active, p_active = x[active], p[active]
@@ -2473,8 +2497,15 @@ class PairCopula:
             slope = density * u * special.expit(-x_active) / np.where(usable, spread, 1.0)
             usable = usable & np.isfinite(slope) & (slope > 0)
             newton = x_active - (special.logit(h) - target[active]) / np.where(usable, slope, 1.0)
-            accepted = usable & (newton >= lo_active) & (newton <= hi_active)
+            accepted = (
+                usable
+                & (newton >= lo_active)
+                & (newton <= hi_active)
+                & (np.abs(newton - x_active) <= np.abs(step_before[active]) / 2)
+            )
             update = np.where(accepted, newton, (lo_active + hi_active) / 2)
+            step_before[active] = step[active]
+            step[active] = update - x_active
             # Near one, h only resolves steps of one unit in the last place, so
             # a residual at that resolution is also accepted as convergence.
             # Requiring a bracket on both sides keeps the result at the
@@ -2495,6 +2526,18 @@ class PairCopula:
             active = active[~converged]
             if active.size == 0:
                 break
+        # Each bisection halves the bracket, so this terminates well within
+        # the bound: the initial logit bracket is under 2^10 wide.
+        for _ in range(2 * _INVERSION_MAX_ITERATIONS):
+            if active.size == 0:
+                break
+            mid = (lo[active] + hi[active]) / 2
+            h, _ = self._conditional_and_density(special.expit(mid), v[active])
+            below = h < p[active]
+            lo[active] = np.where(below, mid, lo[active])
+            hi[active] = np.where(below, hi[active], mid)
+            x[active] = (lo[active] + hi[active]) / 2
+            active = active[hi[active] - lo[active] > _BISECTION_TOLERANCE]
         return special.expit(x).reshape(probability.shape)
 
     def _joe_inverse(self, probability: _VineArray, given: _VineArray) -> _VineArray:

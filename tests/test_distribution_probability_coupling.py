@@ -131,6 +131,14 @@ def test_discrete_cdf_preserves_parameter_ancestry(family: str, stochastic_argum
     assert asnumpy(result.values) == pytest.approx(expected)
 
 
+@pytest.mark.parametrize("n", [0.3, 1.0, 2.776, 40.2])
+@pytest.mark.parametrize("p", [0.05, 0.3948, 0.9])
+def test_negative_binomial_cdf_uses_real_size(n: float, p: float) -> None:
+    """Fitted sizes are real; the CDF must not truncate them as SciPy's nbdtr does."""
+    x = np.array([-1.0, -0.5, 0.0, 0.7, 1.0, 2.0, 5.0, 17.9, 100.0])
+    assert asnumpy(NegBinomial(n, p).cdf(x)) == pytest.approx(stats.nbinom.cdf(x, n, p), rel=1e-12, abs=1e-300)
+
+
 @pytest.mark.parametrize("family", ["binomial", "negative_binomial"])
 def test_discrete_cdf_rejects_incompatible_axes_without_coupling(family: str) -> None:
     n = StochasticScalar([3, 5, 8])
