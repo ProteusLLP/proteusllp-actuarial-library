@@ -9,7 +9,7 @@ import pytest
 
 from pal.contracts import XoL
 from pal.frequency_severity import FreqSevSims
-from tests._assertions import allclose
+from tests._assertions import allclose, assert_allclose, host_values
 
 
 def test_xol_no_agg():
@@ -121,7 +121,7 @@ def test_reinstatement_premium_charges_each_reinstatement_at_its_own_cost(costs,
         _mata_reinstatement_premium(min(total, aggregate_limit), limit, premium, costs, reinstatements)
         for total in totals
     ]
-    np.testing.assert_allclose(np.asarray(result.reinstatement_premium.values), expected, rtol=1e-12, atol=1e-9)
+    assert_allclose(result.reinstatement_premium, expected, rtol=1e-12, atol=1e-9)
 
 
 def test_reinstatement_premium_never_decreases_as_recoveries_increase():
@@ -130,7 +130,7 @@ def test_reinstatement_premium_never_decreases_as_recoveries_increase():
     totals = np.linspace(0, 450, 901)
     layer = XoL("Layer", limit=limit, excess=0, premium=1, aggregate_limit=400, reinstatement_cost=[1, 0.25, 0])
     claims = FreqSevSims(np.repeat(np.arange(totals.size), 5), np.repeat(totals / 5, 5), totals.size)
-    premium = np.asarray(layer.apply(claims).reinstatement_premium.values)
+    premium = host_values(layer.apply(claims).reinstatement_premium)
     assert np.all(np.diff(premium) >= -1e-12)
     assert premium[-1] == pytest.approx(1.25)
 
