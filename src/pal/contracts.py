@@ -92,6 +92,11 @@ class XoL:
             franchise (float, optional): The franchise amount. Defaults to None.
             reverse_franchise (float, optional): The reverse franchise amount.
                 Defaults to None.
+
+        Raises:
+            ValueError: If reinstatement costs are given without an aggregate limit,
+                or there are fewer costs than reinstatements, counting a partial
+                final reinstatement as one.
         """
         self.name = name
         self.limit = limit
@@ -104,6 +109,17 @@ class XoL:
         self.summary: dict[str, float] = {}
         self.num_reinstatements = aggregate_limit / limit - 1 if aggregate_limit is not None else None
         self.reinstatement_premium_cost = np.array(reinstatement_cost) if reinstatement_cost is not None else None
+        if self.reinstatement_premium_cost is not None:
+            if self.num_reinstatements is None:
+                raise ValueError(f"XoL layer {name!r} has reinstatement costs but no aggregate limit")
+            # Allow for rounding in aggregate_limit / limit, e.g. 0.3 / 0.1 - 1.
+            if len(self.reinstatement_premium_cost) < self.num_reinstatements - 1e-9 * max(
+                1.0, self.num_reinstatements
+            ):
+                raise ValueError(
+                    f"XoL layer {name!r} allows {self.num_reinstatements:g} reinstatements "
+                    f"but has {len(self.reinstatement_premium_cost)} reinstatement costs"
+                )
 
     def apply(self, claims: FreqSevSims) -> ContractResults:
         """Apply the XoL contract to a set of claims.
@@ -161,18 +177,19 @@ class XoL:
         recoveries = individual_recoveries_pre_aggregate * ratio
         results = ContractResults(recoveries)
         if self.reinstatement_premium_cost is not None and self.num_reinstatements is not None:
-            cumulative_reinstatement_cost = np.cumsum(self.reinstatement_premium_cost)
+            # Charge each fully used reinstatement in full and the partly used one,
+            # number full + 1, pro rata at its own cost. The appended zero covers
+            # an exhausted aggregate limit, where the used fraction is zero.
+            costs = self.reinstatement_premium_cost
+            cumulative_cost = StochasticScalar(np.concatenate(([0.0], np.cumsum(costs))))
+            partial_cost = StochasticScalar(np.append(costs, 0.0))
             limits_used = aggregate_recoveries / self.limit
-            reinstatements_used = np.minimum(limits_used, self.num_reinstatements)
+            reinstatements_used = np.minimum(np.maximum(limits_used, 0), max(self.num_reinstatements, 0))
             reinstatements_used_full = StochasticScalar(np.floor(reinstatements_used))
             reinstatements_used_fraction = reinstatements_used - reinstatements_used_full
-            reinstatement_number = np.maximum(reinstatements_used_full - 1, 0)
-            reinstatement_premium_proportion = StochasticScalar(  # type: ignore[assignment]
-                self.reinstatement_premium_cost
-            )[reinstatement_number] * reinstatements_used_fraction + np.where(
-                reinstatements_used_full > 0,
-                StochasticScalar(cumulative_reinstatement_cost)[reinstatement_number],  # type: ignore[assignment]
-                0,
+            reinstatement_premium_proportion = (
+                cumulative_cost[reinstatements_used_full]
+                + partial_cost[reinstatements_used_full] * reinstatements_used_fraction
             )
             reinstatement_premium = reinstatement_premium_proportion * self.premium
             results.reinstatement_premium = StochasticScalar(reinstatement_premium)
