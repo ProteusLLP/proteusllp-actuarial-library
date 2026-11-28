@@ -113,6 +113,10 @@ copula family:
 The bivariate MM1 copula is equivalent to a Gumbel copula with the product
 of its two parameters. Student's t and extremal-t pair copulas require
 both a correlation and a positive degrees-of-freedom parameter.
+The Hüsler-Reiss parameter follows ``HuslerReissCopula``: smaller values
+give stronger dependence, with upper tail dependence coefficient
+:math:`2(1 - \Phi(\lambda))`. Hüsler and Reiss (1989) parameterise the
+same family by the reciprocal of :math:`\lambda`.
 
 For each non-independent family, the rotation may be 0, 90, 180 or 270
 degrees. For programmatic model construction, the string-based constructor
@@ -126,9 +130,16 @@ is also available. Its optional second parameter is named
    assert PairCopula.Gumbel(1.2, rotation=180) == PairCopula("gumbel", 1.2, rotation=180)
    assert PairCopula.StudentsT(0.4, 5) == PairCopula("students_t", 0.4, parameter2=5)
 
-Gaussian, Student's t, Clayton and Frank use analytical conditional
-quantile transformations. Other families use vectorised numerical
-inversion on the active CPU or GPU array backend.
+Gaussian, Student's t, Clayton, Frank and Plackett use analytical conditional
+quantile transformations. Gumbel, MM1 and Joe have no closed form, but each
+reduces to a one-dimensional equation with a convex or concave left side.
+That equation is solved by Newton iteration from an upper bound, which
+converges monotonically to full double precision. Galambos, Hüsler-Reiss
+and extremal-t solve for the conditional quantile by Newton iteration,
+safeguarded by bisection. All of these run on the active CPU or GPU array
+backend and are slower to simulate than the analytical families, particularly the
+extremal-t family, whose conditional distribution requires several Student's t
+distribution function evaluations.
 
 Regular vines
 ~~~~~~~~~~~~~
@@ -176,6 +187,26 @@ two variable indices in an individual edge matters for asymmetric rotations.
 
 The compact C-vine and D-vine syntax also supports truncation by omitting
 higher rows. Both forms use the same regular-vine simulation algorithm.
+
+References for vine copulas:
+
+- Aas, K., Czado, C., Frigessi, A., & Bakken, H. (2009). Pair-copula
+  constructions of multiple dependence. *Insurance: Mathematics and
+  Economics*, 44(2), 182-198.
+- Bedford, T., & Cooke, R. M. (2001). Probability density decomposition for
+  conditionally dependent random variables modeled by vines. *Annals of
+  Mathematics and Artificial Intelligence*, 32, 245-268.
+- Bedford, T., & Cooke, R. M. (2002). Vines - a new graphical model for
+  dependent random variables. *The Annals of Statistics*, 30(4), 1031-1068.
+- Czado, C. (2019). *Analyzing Dependent Data with Vine Copulas: A Practical
+  Guide With R*. Lecture Notes in Statistics 222. Springer.
+- Dissmann, J., Brechmann, E. C., Czado, C., & Kurowicka, D. (2013).
+  Selecting and estimating regular vine copulae and application to financial
+  returns. *Computational Statistics & Data Analysis*, 59, 52-69.
+- Hüsler, J., & Reiss, R. D. (1989). Maxima of normal random vectors: between
+  independence and complete dependence. *Statistics & Probability Letters*,
+  7(4), 283-286.
+- Joe, H. (2015). *Dependence Modeling with Copulas*. Chapman and Hall.
 
 .. autosummary::
    :toctree: copulas

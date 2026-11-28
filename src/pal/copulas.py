@@ -99,6 +99,41 @@ def _backend_rng(generator: RandomGenerator | _BackendGenerator) -> RandomGenera
     return _BackendGenerator(generator)
 
 
+def _student_t_tail(values: t.Any, dof: float) -> t.Any:
+    """Evaluate the smaller Student's t tail probability, min(F(x), 1 - F(x)).
+
+    Args:
+        values: Points at which to evaluate the tail probability.
+        dof: Degrees of freedom of the Student's t distribution.
+    """
+    if np.__name__ == "numpy":
+        return special.stdtr(dof, -np.abs(values))
+    return _student_t_tail_from_beta(values, dof)
+
+
+def _student_t_tail_from_beta(values: t.Any, dof: float) -> t.Any:
+    """Evaluate the smaller Student's t tail probability from the incomplete beta function.
+
+    This is the formulation used on backends without a Student's t CDF.
+
+    Args:
+        values: Points at which to evaluate the tail probability.
+        dof: Degrees of freedom of the Student's t distribution.
+    """
+    # The tail beyond |x| is I_z(dof/2, 1/2)/2 with z = dof/(dof + x^2), but z
+    # rounds towards one near the centre. There the complementary form
+    # 1/2 - I_{1-z}(1/2, dof/2)/2 retains full precision, and the tail is at
+    # least 0.15, so the subtraction is harmless.
+    squared = values * values
+    central = squared < 1
+    beta = special.betainc(
+        np.where(central, 0.5, dof / 2),
+        np.where(central, dof / 2, 0.5),
+        np.where(central, squared, dof) / (dof + squared),
+    )
+    return np.where(central, 0.5 - beta / 2, beta / 2)
+
+
 def _student_t_cdf(values: t.Any, dof: float) -> t.Any:
     """Evaluate Student's t CDF without moving backend arrays to the host.
 
@@ -109,9 +144,19 @@ def _student_t_cdf(values: t.Any, dof: float) -> t.Any:
     if np.__name__ == "numpy":
         return special.stdtr(dof, values)
 
-    absolute_values = np.abs(values)
-    tail_probability = special.betainc(dof / 2, 0.5, dof / (dof + absolute_values**2)) / 2
+    tail_probability = _student_t_tail(values, dof)
     return np.where(values >= 0, 1 - tail_probability, tail_probability)
+
+
+def _student_t_pdf(values: t.Any, dof: float) -> t.Any:
+    """Evaluate Student's t density on the active array backend.
+
+    Args:
+        values: Points at which to evaluate the density.
+        dof: Degrees of freedom of the Student's t distribution.
+    """
+    log_normaliser = math.lgamma((dof + 1) / 2) - math.lgamma(dof / 2) - 0.5 * math.log(dof * math.pi)
+    return np.exp(log_normaliser - (dof + 1) / 2 * np.log1p(values**2 / dof))
 
 
 class Copula(ABC):
@@ -1296,6 +1341,8 @@ class HuslerReissCopula(Copula):
     Its dependence structure is characterized by a matrix :math:`\lambda_{ij}`
     which controls the strength of the upper tail dependence between each pair
     of variables. Lower values in the matrix correspond to stronger dependence.
+    Hüsler and Reiss (1989) parameterise the same family by the reciprocal of
+    :math:`\lambda_{ij}`, so that larger values give stronger dependence there.
 
     The upper tail dependence coefficient between any pair of variables
     :math:`i` and :math:`j` in the Hüsler-Reiss copula is given by:
@@ -2004,6 +2051,17 @@ def apply_copula(
 
 _VineArray = npt.NDArray[np.float64]
 
+# Conditional quantiles without a closed form are found by Newton iteration.
+# Quadratic convergence means a step below the tolerance leaves an error far
+# below double precision. Most points converge within a few steps and only
+# those still unconverged are iterated further; the limit guards against
+# pathological inputs.
+_INVERSION_MAX_ITERATIONS = 100
+_NEWTON_TOLERANCE = 1e-12
+_BISECTION_TOLERANCE = 1e-14
+_LOGIT_LOWER = math.log(np.finfo(float).tiny)
+_LOGIT_UPPER = -math.log(np.finfo(float).eps / 2)
+
 
 def _open_unit(value: _VineArray) -> _VineArray:
     """Keep probabilities inside the unit interval for conditional transforms.
@@ -2061,6 +2119,20 @@ class PairCopula:
     Each edge can have its own family, dependence parameter and rotation.
     The rotation convention is C90(u, v) = v - C(1-u, v) and
     C270(u, v) = u - C(u, 1-v).
+
+    References:
+        Aas, K., Czado, C., Frigessi, A., & Bakken, H. (2009). Pair-copula
+        constructions of multiple dependence. Insurance: Mathematics and
+        Economics, 44(2), 182-198.
+        Czado, C. (2019). Analyzing Dependent Data with Vine Copulas: A Practical
+        Guide With R. Lecture Notes in Statistics 222. Springer.
+        Hüsler, J., & Reiss, R. D. (1989). Maxima of normal random vectors: between
+        independence and complete dependence. Statistics & Probability Letters,
+        7(4), 283-286.
+        Joe, H. (2015). Dependence Modeling with Copulas. Chapman and Hall.
+        Johnson, M. E. (1987). Multivariate Statistical Simulation. Wiley.
+        Nikoloulopoulos, A. K., Joe, H., & Li, H. (2009). Extreme value properties of
+        multivariate t copulas. Extremes, 12(2), 129-148.
 
     Attributes:
         family: Bivariate copula family. Named constructors are available for every family.
@@ -2196,8 +2268,15 @@ class PairCopula:
     def HuslerReiss(cls, lam: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
         """Create a Hüsler-Reiss pair.
 
+        The copula is C(u, v) = exp{-a Φ(λ + log(a/b)/(2λ)) - b Φ(λ + log(b/a)/(2λ))}
+        with a = -log(u) and b = -log(v), as for HuslerReissCopula. Smaller
+        values of λ give stronger dependence: the upper tail dependence
+        coefficient is 2(1 - Φ(λ)), approaching comonotonicity as λ tends to
+        zero and independence as λ grows. Hüsler and Reiss (1989) parameterise
+        the same family by the reciprocal of λ.
+
         Args:
-            lam: Positive Hüsler-Reiss dependence parameter.
+            lam: Positive Hüsler-Reiss parameter λ; smaller values give stronger dependence.
             rotation: Pair copula rotation in degrees.
         """
         return cls("husler_reiss", lam, rotation)
@@ -2296,29 +2375,9 @@ class PairCopula:
             term = 4 * theta * u * (1 - u)
             root = np.hypot(diff, np.sqrt(term))
             h = np.where(diff > 0, (term / root) / (2 * (root + diff)), (1 - diff / root) / 2)
-        elif self.family == "galambos":
-            a, b = -np.log(u), -np.log(v)
-            log_ratio = np.log(a) - np.log(b)
-            log_m_over_a = -np.logaddexp(0, theta * log_ratio) / theta
-            log_m_over_b = -np.logaddexp(0, -theta * log_ratio) / theta
-            h = np.exp(a * np.expm1(log_m_over_a)) * -np.expm1((theta + 1) * log_m_over_b)
-        elif self.family in ("husler_reiss", "extremal_t"):
-            a, b = -np.log(u), -np.log(v)
-            log_ratio = np.log(a) - np.log(b)
-            if self.family == "husler_reiss":
-                z = log_ratio / (2 * theta)
-                first_cdf = special.ndtr(theta + z)
-                second_cdf = special.ndtr(theta - z)
-                second_sf = special.ndtr(z - theta)
-            else:
-                nu = self._second_parameter()
-                scale = math.sqrt((nu + 1) / ((1 - theta) * (1 + theta)))
-                z1 = scale * (np.exp(np.minimum(log_ratio / nu, 700)) - theta)
-                z2 = scale * (np.exp(np.minimum(-log_ratio / nu, 700)) - theta)
-                first_cdf = _student_t_cdf(z1, nu + 1)
-                second_cdf = _student_t_cdf(z2, nu + 1)
-                second_sf = _student_t_cdf(-z2, nu + 1)
-            h = np.exp(np.minimum(0, -a * first_cdf + b * second_sf)) * second_cdf
+        elif self.family in ("galambos", "husler_reiss", "extremal_t"):
+            log_scale, _, partial_b, _ = self._extreme_value_terms(u, v)
+            h = np.exp(log_scale) * partial_b
         else:  # Frank
             log_num = -theta * v + np.log(-np.expm1(-theta * u))
             log_den = np.logaddexp(
@@ -2327,6 +2386,178 @@ class PairCopula:
             )
             h = np.exp(log_num - log_den)
         return h
+
+    def _extreme_value_terms(self, u: _VineArray, v: _VineArray) -> tuple[_VineArray, ...]:
+        """Evaluate the exponent-function terms of an extreme-value pair copula.
+
+        Writing C(u, v) = exp(-V(a, b)) with a = -log(u) and b = -log(v), the
+        conditional CDF of u given v is exp(b - V) V_b and the copula density
+        is exp(b - V) (V_a V_b - V_ab) / u.
+
+        Args:
+            u: Target uniform probabilities.
+            v: Conditioning uniform probabilities.
+
+        Returns:
+            The terms b - V, V_a, V_b and -V_ab.
+        """
+        theta = self.parameter
+        a, b = -np.log(u), -np.log(v)
+        log_ratio = np.log(a) - np.log(b)
+        if self.family == "galambos":
+            # V = a + b - m with m = (a^-theta + b^-theta)^(-1/theta).
+            log_m_over_a = -np.logaddexp(0, theta * log_ratio) / theta
+            log_m_over_b = -np.logaddexp(0, -theta * log_ratio) / theta
+            log_scale = a * np.expm1(log_m_over_a)
+            partial_a = -np.expm1((theta + 1) * log_m_over_a)
+            partial_b = -np.expm1((theta + 1) * log_m_over_b)
+            cross = (theta + 1) * np.exp(theta * log_m_over_a + (theta + 1) * log_m_over_b - np.log(a))
+        elif self.family == "husler_reiss":
+            z = log_ratio / (2 * theta)
+            partial_a = special.ndtr(theta + z)
+            partial_b = special.ndtr(theta - z)
+            log_scale = np.minimum(0, -a * partial_a + b * special.ndtr(z - theta))
+            cross = np.exp(-((theta - z) ** 2) / 2) / (2 * theta * math.sqrt(2 * math.pi) * a)
+        else:  # Extremal-t
+            nu = self._second_parameter()
+            scale = math.sqrt((nu + 1) / ((1 - theta) * (1 + theta)))
+            b_over_a = np.exp(np.minimum(-log_ratio / nu, 700))
+            z1 = scale * (np.exp(np.minimum(log_ratio / nu, 700)) - theta)
+            z2 = scale * (b_over_a - theta)
+            partial_a = _student_t_cdf(z1, nu + 1)
+            # One tail evaluation gives V_b and its complement, each accurately.
+            tail = _student_t_tail(z2, nu + 1)
+            partial_b = np.where(z2 >= 0, 1 - tail, tail)
+            log_scale = np.minimum(0, -a * partial_a + b * np.where(z2 >= 0, tail, 1 - tail))
+            cross = _student_t_pdf(z2, nu + 1) * scale * b_over_a / (nu * a)
+        return log_scale, partial_a, partial_b, cross
+
+    def _conditional_and_density(self, u: _VineArray, v: _VineArray) -> tuple[_VineArray, _VineArray]:
+        """Evaluate the unrotated conditional CDF and copula density together.
+
+        Args:
+            u: Target uniform probabilities.
+            v: Conditioning uniform probabilities.
+        """
+        log_scale, partial_a, partial_b, cross = self._extreme_value_terms(u, v)
+        scale = np.exp(log_scale)
+        return scale * partial_b, scale * (partial_a * partial_b + cross) / u
+
+    def _solve_conditional(self, probability: _VineArray, given: _VineArray) -> _VineArray:
+        """Invert the unrotated conditional CDF by safeguarded Newton iteration.
+
+        Newton's method is applied to logit(h) - logit(p) as a function of
+        logit(u). In both tails this is close to linear, so convergence is fast
+        and relative resolution is retained. Steps that leave the bracket known
+        to contain the root, or that have no usable slope, are replaced by
+        bisection. Points are frozen once converged, so later iterations only
+        evaluate the copula where a root is still being refined.
+
+        Args:
+            probability: Conditional uniform probabilities.
+            given: Conditioning uniform probabilities.
+        """
+        p = probability.ravel()
+        v = given.ravel()
+        target = special.logit(p)
+        x = np.clip(target, _LOGIT_LOWER, _LOGIT_UPPER)
+        lo = np.full_like(x, _LOGIT_LOWER)
+        hi = np.full_like(x, _LOGIT_UPPER)
+        active = np.arange(x.size)
+        for _ in range(_INVERSION_MAX_ITERATIONS):
+            x_active, p_active = x[active], p[active]
+            u = special.expit(x_active)
+            h, density = self._conditional_and_density(u, v[active])
+            below = h < p_active
+            lo_active = np.where(below, x_active, lo[active])
+            hi_active = np.where(below, hi[active], x_active)
+            spread = h * (1 - h)
+            usable = spread > 0
+            slope = density * u * special.expit(-x_active) / np.where(usable, spread, 1.0)
+            usable = usable & np.isfinite(slope) & (slope > 0)
+            newton = x_active - (special.logit(h) - target[active]) / np.where(usable, slope, 1.0)
+            accepted = usable & (newton >= lo_active) & (newton <= hi_active)
+            update = np.where(accepted, newton, (lo_active + hi_active) / 2)
+            # Near one, h only resolves steps of one unit in the last place, so
+            # a residual at that resolution is also accepted as convergence.
+            # Requiring a bracket on both sides keeps the result at the
+            # crossing point where h is flat and rounds to p over a wide range.
+            resolved = (
+                (np.abs(h - p_active) <= np.finfo(float).eps * p_active)
+                & (lo_active > _LOGIT_LOWER)
+                & (hi_active < _LOGIT_UPPER)
+            )
+            converged = resolved | np.where(
+                accepted,
+                np.abs(update - x_active) <= _NEWTON_TOLERANCE,
+                hi_active - lo_active <= _BISECTION_TOLERANCE,
+            )
+            x[active] = np.where(resolved, x_active, update)
+            lo[active] = lo_active
+            hi[active] = hi_active
+            active = active[~converged]
+            if active.size == 0:
+                break
+        return special.expit(x).reshape(probability.shape)
+
+    def _joe_inverse(self, probability: _VineArray, given: _VineArray) -> _VineArray:
+        """Invert the unrotated Joe conditional CDF by monotone Newton iteration.
+
+        With A = (1-u)^theta, B = (1-v)^theta and c = (1-B)/B, the conditional
+        CDF is (1-A)(1+cA)^(-k), where k = 1 - 1/theta. In s = log(A), the
+        equation f(s) = log(1 - e^s) - k log1p(c e^s) - log(p) = 0 has a
+        concave, decreasing left side. A Newton step from any point therefore
+        lands at or above the root, and iteration from there decreases
+        monotonically to it. Each of the first two terms is at most zero, so
+        dropping either one gives an upper bound on the root. When A is close
+        to one, -s is approximately p (1+c)^k, and a Newton step from that
+        approximation gives a third, much closer, upper bound. The iteration
+        starts from the smallest bound. Working in s keeps relative precision
+        in u near zero, where -s is small, and in 1-u near one, where s is
+        large and negative.
+
+        Args:
+            probability: Conditional uniform probabilities.
+            given: Conditioning uniform probabilities.
+        """
+        theta = self.parameter
+        k = 1 - 1 / theta
+        log_p = np.log(probability).ravel()
+        log_c = _log_expm1(-theta * np.log1p(-given)).ravel()
+
+        def newton_step(s: _VineArray, log_p: _VineArray, log_c: _VineArray) -> _VineArray:
+            """Return f(s)/f'(s) for the Joe quantile equation.
+
+            Args:
+                s: Logarithms of A = (1-u)^theta.
+                log_p: Logarithms of the conditional probabilities.
+                log_c: Logarithms of c = (1-B)/B.
+            """
+            # Share exponentials between f and f': log1p(e^z) and expit(z) are
+            # both formed from exp(-|z|). log(1 - e^s) switches from log(-expm1)
+            # to log1p(-exp) below -log(2) to keep relative precision (Mächler,
+            # 2012, Accurately Computing log(1 - exp(-|a|)), Rmpfr vignette).
+            z = s + log_c
+            exp_s, expm1_s, tail = np.exp(s), np.expm1(s), np.exp(-np.abs(z))
+            log_one_minus = np.where(s > -math.log(2), np.log(-expm1_s), np.log1p(-exp_s))
+            residual = log_one_minus - k * (np.maximum(z, 0) + np.log1p(tail)) - log_p
+            logistic = np.where(z >= 0, 1, tail) / (1 + tail)
+            return residual / (exp_s / expm1_s - k * logistic)
+
+        near_one = -np.exp(np.minimum(log_p + k * np.logaddexp(0, log_c), 0))
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            refined = near_one - newton_step(near_one, log_p, log_c)
+        flat = np.minimum(np.log1p(-probability.ravel()), _log_expm1(-log_p / k) - log_c)
+        flat = np.where(np.isfinite(refined) & (refined < 0), np.minimum(flat, refined), flat)
+        active = np.arange(flat.size)
+        for _ in range(_INVERSION_MAX_ITERATIONS):
+            s_active = flat[active]
+            step = newton_step(s_active, log_p[active], log_c[active])
+            flat[active] = s_active - step
+            active = active[np.abs(step) > _NEWTON_TOLERANCE * np.abs(s_active)]
+            if active.size == 0:
+                break
+        return -np.expm1(flat / theta).reshape(probability.shape)
 
     def _second_parameter(self) -> float:
         """Return the validated second parameter of a two-parameter family."""
@@ -2363,31 +2594,41 @@ class PairCopula:
                 theta *= self._second_parameter()
             # Solve b * expm1(delta) + (theta-1)*delta = -log(p).
             # Both terms are increasing; either term alone bounds the root.
-            b, target = -np.log(v), -np.log(p)
-            lo = np.zeros_like(p)
-            hi = np.minimum(np.log1p(target / b), target / (theta - 1))
-            for _ in range(52):
-                mid = (lo + hi) / 2
-                below = b * np.expm1(mid) + (theta - 1) * mid < target
-                lo = np.where(below, mid, lo)
-                hi = np.where(below, hi, mid)
-            delta = (lo + hi) / 2
-            log_a = np.log(b) + _log_expm1(theta * delta) / theta
+            # The left side is also convex, so Newton iteration from this
+            # upper bound decreases monotonically to the root.
+            # Converged points are frozen so later iterations only refine the rest.
+            b, target = -np.log(v).ravel(), -np.log(p).ravel()
+            delta = np.minimum(np.log1p(target / b), target / (theta - 1))
+            active = np.arange(delta.size)
+            for _ in range(_INVERSION_MAX_ITERATIONS):
+                b_active, delta_active = b[active], delta[active]
+                step = (b_active * np.expm1(delta_active) + (theta - 1) * delta_active - target[active]) / (
+                    b_active * np.exp(delta_active) + theta - 1
+                )
+                delta[active] = delta_active - step
+                active = active[np.abs(step) > _NEWTON_TOLERANCE * delta_active]
+                if active.size == 0:
+                    break
+            log_a = (np.log(b) + _log_expm1(theta * delta) / theta).reshape(p.shape)
             u = np.exp(-np.exp(log_a))
+        elif self.family == "joe":
+            u = self._joe_inverse(p, v)
         elif self.family == "frank":
             log_den = np.logaddexp(-theta * v + np.log1p(-p), -theta + np.log(p))
             log_ratio = np.log(p) + math.log(-math.expm1(-theta)) - log_den
             u = np.logaddexp(0, log_ratio) / theta
+        elif self.family == "plackett":
+            # Quadratic solution of Johnson (1987). The two roots of the
+            # quadratic are rationalised differently so that neither branch
+            # subtracts nearly equal terms.
+            a = p * (1 - p)
+            q = 1 - 2 * p
+            s = 1 - v + theta * v
+            c = 2 * a * (v * theta**2 + 1 - v) + theta * (1 - 2 * a)
+            d = math.sqrt(theta) * np.sqrt(theta + 4 * a * v * (1 - v) * (1 - theta) ** 2)
+            u = np.where(q >= 0, 2 * a * s**2 / (c + q * d), (c - q * d) / (2 * (theta + a * (theta - 1) ** 2)))
         else:
-            # Bisection on the logit scale retains relative resolution in both tails.
-            lo = np.full_like(p, math.log(np.finfo(float).tiny))
-            hi = np.full_like(p, -math.log(np.finfo(float).eps / 2))
-            for _ in range(60):
-                mid = (lo + hi) / 2
-                below = self._conditional_unrotated(special.expit(mid), v) < p
-                lo = np.where(below, mid, lo)
-                hi = np.where(below, hi, mid)
-            u = special.expit((lo + hi) / 2)
+            u = self._solve_conditional(p, v)
         return _open_unit(1 - u if reflect_target else u)
 
 
@@ -2397,6 +2638,14 @@ class VineEdge:
 
     Variable indices are zero-based. The order of the two variables matters
     for rotated pair copulas; the order of the conditioning variables does not.
+
+    The two variables form the conditioned set and the conditioning variables
+    the conditioning set of the edge, in the terminology of Bedford and Cooke
+    (2002).
+
+    References:
+        Bedford, T., & Cooke, R. M. (2002). Vines - a new graphical model for
+        dependent random variables. The Annals of Statistics, 30(4), 1031-1068.
 
     Attributes:
         first: First variable index.
@@ -2603,6 +2852,25 @@ class VineCopula(Copula):
     Conditional copula parameters are constant across conditioning values
     (the simplifying assumption).
 
+    Samples are generated by the inverse Rosenblatt transform, applying the
+    conditional quantile functions of the pair copulas tree by tree, as
+    described for regular vines by Dissmann et al. (2013) and Czado (2019).
+
+    References:
+        Aas, K., Czado, C., Frigessi, A., & Bakken, H. (2009). Pair-copula
+        constructions of multiple dependence. Insurance: Mathematics and
+        Economics, 44(2), 182-198.
+        Bedford, T., & Cooke, R. M. (2001). Probability density decomposition for
+        conditionally dependent random variables modeled by vines. Annals of
+        Mathematics and Artificial Intelligence, 32, 245-268.
+        Bedford, T., & Cooke, R. M. (2002). Vines - a new graphical model for
+        dependent random variables. The Annals of Statistics, 30(4), 1031-1068.
+        Czado, C. (2019). Analyzing Dependent Data with Vine Copulas: A Practical
+        Guide With R. Lecture Notes in Statistics 222. Springer.
+        Dissmann, J., Brechmann, E. C., Czado, C., & Kurowicka, D. (2013). Selecting
+        and estimating regular vine copulae and application to financial returns.
+        Computational Statistics & Data Analysis, 59, 52-69.
+
     Attributes:
         dimension: Number of uniform margins.
         structure: "c", "d" or "r".
@@ -2669,6 +2937,14 @@ class VineCopula(Copula):
         Args:
             trees: Successive trees of ordered edges, with zero-based variable
                 indices. Higher trees may be omitted to truncate the vine.
+
+        Returns:
+            Regular vine with the given edges.
+
+        Raises:
+            ValueError: If the trees are not connected and acyclic, violate the
+                proximity condition or do not define a valid simulation order.
+            TypeError: If an edge does not contain a PairCopula.
         """
         return cls(trees, structure="r")
 

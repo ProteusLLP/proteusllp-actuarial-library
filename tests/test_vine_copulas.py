@@ -10,7 +10,13 @@ from scipy.stats import norm, t
 from pal import StochasticScalar, config, set_random_seed
 from pal._maths import asnumpy, xp
 from pal.config import set_sampling_method
-from pal.copulas import PairCopula, VineCopula, VineEdge
+from pal.copulas import (
+    _INVERSION_MAX_ITERATIONS,
+    PairCopula,
+    VineCopula,
+    VineEdge,
+    _student_t_tail_from_beta,
+)
 
 
 def _cdf(family, theta, u, v):
@@ -259,6 +265,20 @@ def test_extended_pair_simulation(method, pair):
         config.seed, config.rng, config.sampling_method, config.qmc_dimensions = original
 
 
+@pytest.mark.parametrize("dof", [1.5, 4.0, 31.0, 1001.0])
+def test_student_t_tail_from_beta_keeps_relative_precision(dof):
+    """The incomplete-beta Student's t tail matches SciPy near the centre and far into the tails.
+
+    This formulation is used on backends without a native Student's t CDF.
+    Near the centre the naive argument dof/(dof + x^2) rounds towards one, so
+    the comparison includes very small |x| as well as extreme tails.
+    """
+    x = np.concatenate([[0.0], np.logspace(-12, 0, 40), np.linspace(1, 60, 200), np.logspace(2, 150, 40)])
+    for values in (x, -x):
+        tail = asnumpy(_student_t_tail_from_beta(xp.asarray(values), dof))
+        np.testing.assert_allclose(tail, t.cdf(-np.abs(values), dof), rtol=2e-13, atol=1e-300)
+
+
 @pytest.mark.parametrize("rho,dof", [(0.0, 3), (0.6, 5), (-0.5, 2)])
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
 def test_students_t_conditional_reference(rho, dof, rotation):
@@ -310,6 +330,78 @@ def test_extended_pair_validation_and_independence_limits():
         PairCopula.MM1(2, 0.5)
     with pytest.raises(ValueError, match="Invalid parameter"):
         PairCopula.HuslerReiss(0)
+
+
+def _strong_pairs():
+    """Strongly dependent pairs whose conditional quantiles lack a simple closed form."""
+    return [
+        PairCopula.Gumbel(30),
+        PairCopula.MM1(3, 4),
+        PairCopula.Joe(20),
+        PairCopula.Galambos(10),
+        PairCopula.HuslerReiss(0.1),
+        PairCopula.HuslerReiss(4),
+        PairCopula.ExtremalT(0.9, 2),
+        PairCopula.ExtremalT(-0.8, 10),
+        PairCopula.Plackett(0.002),
+        PairCopula.Plackett(500),
+    ]
+
+
+@pytest.mark.parametrize(
+    "pair",
+    [
+        *_strong_pairs(),
+        PairCopula.Gumbel(1.0001),
+        PairCopula.Gumbel(1.5),
+        PairCopula.Joe(1.0001),
+        PairCopula.Joe(1.5),
+        PairCopula.Joe(1e4),
+    ],
+)
+def test_conditional_quantiles_are_representable_roots_in_both_tails(pair):
+    """Each conditional quantile is within two units in the last place of the exact root.
+
+    The conditional CDF is increasing, so the target probability must lie
+    between its values at the neighbouring representable arguments. Near one,
+    adjacent representable arguments can change the conditional CDF
+    substantially under strong dependence, so a residual tolerance alone would
+    be either too loose in the body or unattainable in the corners. Weak and
+    extreme Gumbel and Joe parameters exercise both regimes of their
+    dedicated Newton starting bounds.
+    """
+    grid = np.array([1e-12, 1e-6, 0.01, 0.3, 0.7, 0.99, 1 - 1e-6])
+    given = np.array([1e-10, 1e-4, 0.05, 0.5, 0.95, 1 - 1e-4, 1 - 1e-10])
+    p, v = (values.ravel() for values in np.meshgrid(grid, given))
+    slack = 1e-12 * p
+    for first in (True, False):
+        u = asnumpy(pair._inverse(xp.asarray(p), xp.asarray(v), first=first))
+        lower = np.nextafter(np.nextafter(u, 0), 0)
+        upper = np.nextafter(np.nextafter(u, 1), 1)
+        h_lower = asnumpy(pair._conditional(xp.asarray(lower), xp.asarray(v), first=first))
+        h_upper = asnumpy(pair._conditional(xp.asarray(upper), xp.asarray(v), first=first))
+        assert np.all(h_lower <= p + slack)
+        assert np.all(h_upper >= p - slack)
+
+
+@pytest.mark.parametrize(
+    "pair",
+    [PairCopula.Galambos(1.5), PairCopula.HuslerReiss(0.05), PairCopula.ExtremalT(0.6, 3)],
+)
+def test_newton_inversion_converges_well_within_iteration_limit(pair, monkeypatch):
+    """Every point must converge, not merely most points, so the safeguard limit is never reached."""
+    evaluations = 0
+    original = PairCopula._conditional_and_density
+
+    def counted(self, u, v):
+        nonlocal evaluations
+        evaluations += 1
+        return original(self, u, v)
+
+    monkeypatch.setattr(PairCopula, "_conditional_and_density", counted)
+    rng = np.random.default_rng(12)
+    pair._inverse(xp.asarray(rng.uniform(size=20000)), xp.asarray(rng.uniform(size=20000)), first=True)
+    assert evaluations < _INVERSION_MAX_ITERATIONS / 2
 
 
 def _regular_trees():
@@ -369,6 +461,48 @@ def test_regular_vine_gaussian_reference(truncation, method):
             assert sample.coupled_variable_group is samples[0].coupled_variable_group
     finally:
         config.seed, config.rng, config.sampling_method, config.qmc_dimensions = original
+
+
+@pytest.mark.parametrize("rotation", [0, 180])
+@pytest.mark.parametrize("method", ["mc", "rqmc"])
+def test_regular_clayton_vine_reproduces_multivariate_clayton(rotation, method):
+    """Clayton pairs with parameter theta/(1 + k theta) in tree k+1 form the Clayton copula.
+
+    The multivariate Clayton copula is a simplified vine for every regular-vine
+    structure (Stöber, Joe and Czado, 2013, J. Multivariate Anal. 119, 101-118),
+    so its closed-form CDF checks conditioning and edge orientation in the
+    higher trees independently of the Gaussian case. Rotating every pair by 180
+    degrees gives the distribution of one minus a Clayton vector.
+    """
+    theta = 2.0
+    labels = [4, 2, 5, 0, 1, 3]
+    edges = [
+        [
+            VineEdge(
+                labels[a],
+                labels[b],
+                PairCopula.Clayton(theta / (1 + level * theta), rotation=rotation),
+                tuple(labels[i] for i in cond),
+            )
+            for a, b, cond, _ in tree
+        ]
+        for level, tree in enumerate(_regular_trees())
+    ]
+    n_sims = 2**15
+    original = (config.seed, config.rng, config.sampling_method, config.qmc_dimensions)
+    try:
+        set_sampling_method(method, dimensions=16)
+        set_random_seed(2013)
+        samples = np.stack([asnumpy(sample.values) for sample in VineCopula.from_edges(edges).generate(n_sims)])
+    finally:
+        config.seed, config.rng, config.sampling_method, config.qmc_dimensions = original
+    if rotation == 180:
+        samples = 1 - samples
+    for point in ([0.5] * 6, [0.2, 0.9, 0.5, 0.7, 0.3, 0.8], [0.1] * 6):
+        expected = (sum(u ** (-theta) for u in point) - len(point) + 1) ** (-1 / theta)
+        empirical = np.mean(np.all(samples < np.array(point)[:, None], axis=0))
+        standard_error = math.sqrt(expected * (1 - expected) / n_sims)
+        assert empirical == pytest.approx(expected, abs=4 * standard_error)
 
 
 @pytest.mark.parametrize("structure", ["c", "d"])
