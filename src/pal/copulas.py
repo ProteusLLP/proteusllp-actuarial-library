@@ -8,12 +8,15 @@ copulas.
 # Standard library imports
 from __future__ import annotations
 
+import math
 import typing as t
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 # Third-party imports
 import numpy.typing as npt
 import scipy.stats
+from numpy import errstate
 from scipy.special import gamma
 
 from . import ProteusVariable, StochasticScalar
@@ -97,6 +100,41 @@ def _backend_rng(generator: RandomGenerator | _BackendGenerator) -> RandomGenera
     return _BackendGenerator(generator)
 
 
+def _student_t_tail(values: t.Any, dof: float) -> t.Any:
+    """Evaluate the smaller Student's t tail probability, min(F(x), 1 - F(x)).
+
+    Args:
+        values: Points at which to evaluate the tail probability.
+        dof: Degrees of freedom of the Student's t distribution.
+    """
+    if np.__name__ == "numpy":
+        return special.stdtr(dof, -np.abs(values))
+    return _student_t_tail_from_beta(values, dof)
+
+
+def _student_t_tail_from_beta(values: t.Any, dof: float) -> t.Any:
+    """Evaluate the smaller Student's t tail probability from the incomplete beta function.
+
+    This is the formulation used on backends without a Student's t CDF.
+
+    Args:
+        values: Points at which to evaluate the tail probability.
+        dof: Degrees of freedom of the Student's t distribution.
+    """
+    # The tail beyond |x| is I_z(dof/2, 1/2)/2 with z = dof/(dof + x^2), but z
+    # rounds towards one near the centre. There the complementary form
+    # 1/2 - I_{1-z}(1/2, dof/2)/2 retains full precision, and the tail is at
+    # least 0.15, so the subtraction is harmless.
+    squared = values * values
+    central = squared < 1
+    beta = special.betainc(
+        np.where(central, 0.5, dof / 2),
+        np.where(central, dof / 2, 0.5),
+        np.where(central, squared, dof) / (dof + squared),
+    )
+    return np.where(central, 0.5 - beta / 2, beta / 2)
+
+
 def _student_t_cdf(values: t.Any, dof: float) -> t.Any:
     """Evaluate Student's t CDF without moving backend arrays to the host.
 
@@ -107,9 +145,19 @@ def _student_t_cdf(values: t.Any, dof: float) -> t.Any:
     if np.__name__ == "numpy":
         return special.stdtr(dof, values)
 
-    absolute_values = np.abs(values)
-    tail_probability = special.betainc(dof / 2, 0.5, dof / (dof + absolute_values**2)) / 2
+    tail_probability = _student_t_tail(values, dof)
     return np.where(values >= 0, 1 - tail_probability, tail_probability)
+
+
+def _student_t_pdf(values: t.Any, dof: float) -> t.Any:
+    """Evaluate Student's t density on the active array backend.
+
+    Args:
+        values: Points at which to evaluate the density.
+        dof: Degrees of freedom of the Student's t distribution.
+    """
+    log_normaliser = math.lgamma((dof + 1) / 2) - math.lgamma(dof / 2) - 0.5 * math.log(dof * math.pi)
+    return np.exp(log_normaliser - (dof + 1) / 2 * np.log1p(values**2 / dof))
 
 
 class Copula(ABC):
@@ -1294,6 +1342,8 @@ class HuslerReissCopula(Copula):
     Its dependence structure is characterized by a matrix :math:`\lambda_{ij}`
     which controls the strength of the upper tail dependence between each pair
     of variables. Lower values in the matrix correspond to stronger dependence.
+    Hüsler and Reiss (1989) parameterise the same family by the reciprocal of
+    :math:`\lambda_{ij}`, so that larger values give stronger dependence there.
 
     The upper tail dependence coefficient between any pair of variables
     :math:`i` and :math:`j` in the Hüsler-Reiss copula is given by:
@@ -1998,3 +2048,967 @@ def apply_copula(
     first_group = variables_list[0].coupled_variable_group
     for var in variables_list[1:]:
         first_group.merge(var.coupled_variable_group)
+
+
+_VineArray = npt.NDArray[np.float64]
+
+# Conditional quantiles without a closed form are found by Newton iteration.
+# Quadratic convergence means a step below the tolerance leaves an error far
+# below double precision. Most points converge within a few steps and only
+# those still unconverged are iterated further; the limit guards against
+# pathological inputs.
+_INVERSION_MAX_ITERATIONS = 100
+_NEWTON_TOLERANCE = 1e-12
+_BISECTION_TOLERANCE = 1e-14
+_LOGIT_LOWER = math.log(np.finfo(float).tiny)
+_LOGIT_UPPER = -math.log(np.finfo(float).eps / 2)
+
+
+def _open_unit(value: _VineArray) -> _VineArray:
+    """Keep probabilities inside the unit interval for conditional transforms.
+
+    Args:
+        value: Uniform probabilities.
+    """
+    return np.clip(value, np.finfo(float).tiny, 1.0 - np.finfo(float).eps / 2)
+
+
+def _log_expm1(value: _VineArray) -> _VineArray:
+    """Evaluate log(expm1(x)) for non-negative x without overflow.
+
+    Args:
+        value: Non-negative arguments.
+    """
+    return value + np.log(-np.expm1(-value))
+
+
+_PairFamily = t.Literal[
+    "independence",
+    "gaussian",
+    "students_t",
+    "clayton",
+    "gumbel",
+    "frank",
+    "joe",
+    "galambos",
+    "plackett",
+    "husler_reiss",
+    "extremal_t",
+    "mm1",
+]
+_PairRotation = t.Literal[0, 90, 180, 270]
+
+
+def _student_t_ppf(probability: _VineArray, dof: float) -> _VineArray:
+    """Evaluate Student's t quantiles on the active array backend.
+
+    Args:
+        probability: Probabilities in the open unit interval.
+        dof: Positive degrees of freedom.
+    """
+    if np.__name__ == "numpy":
+        return t.cast(_VineArray, special.stdtrit(dof, probability))
+    tail = 2 * np.minimum(probability, 1 - probability)
+    z = special.betaincinv(dof / 2, 0.5, tail)
+    return np.sign(probability - 0.5) * np.sqrt(dof * ((1 - z) / z))
+
+
+@dataclass(frozen=True)
+class PairCopula:
+    """Bivariate copula specifying one edge of a simplified vine.
+
+    Each edge can have its own family, dependence parameter and rotation.
+    The rotation convention is C90(u, v) = v - C(1-u, v) and
+    C270(u, v) = u - C(u, 1-v).
+
+    References:
+        Aas, K., Czado, C., Frigessi, A., & Bakken, H. (2009). Pair-copula
+        constructions of multiple dependence. Insurance: Mathematics and
+        Economics, 44(2), 182-198.
+        Czado, C. (2019). Analyzing Dependent Data with Vine Copulas: A Practical
+        Guide With R. Lecture Notes in Statistics 222. Springer.
+        Hüsler, J., & Reiss, R. D. (1989). Maxima of normal random vectors: between
+        independence and complete dependence. Statistics & Probability Letters,
+        7(4), 283-286.
+        Joe, H. (2015). Dependence Modeling with Copulas. Chapman and Hall.
+        Johnson, M. E. (1987). Multivariate Statistical Simulation. Wiley.
+        Nikoloulopoulos, A. K., Joe, H., & Li, H. (2009). Extreme value properties of
+        multivariate t copulas. Extremes, 12(2), 129-148.
+
+    Attributes:
+        family: Bivariate copula family. Named constructors are available for every family.
+        parameter: Primary dependence parameter in the chosen family's parameterisation.
+        parameter2: Degrees of freedom for Student's t and extremal-t, or delta for MM1.
+            Unused for single-parameter families.
+        rotation: 0, 90, 180 or 270 degrees. A 180-degree rotation interchanges
+            upper and lower tail dependence; 90 and 270 allow negative association.
+    """
+
+    family: _PairFamily = "independence"
+    parameter: float = 0.0
+    rotation: _PairRotation = 0
+    parameter2: float | None = None
+
+    def __post_init__(self) -> None:
+        """Validate the family, dependence parameter and rotation."""
+        theta = self.parameter
+        if not math.isfinite(theta):
+            raise ValueError("Pair copula parameter must be finite")
+        if self.rotation not in (0, 90, 180, 270):
+            raise ValueError("Pair copula rotation must be 0, 90, 180 or 270")
+        second = self.parameter2
+        if self.family in ("students_t", "extremal_t", "mm1"):
+            if second is None or not math.isfinite(second) or second <= 0:
+                raise ValueError("Pair copula requires a finite positive second parameter")
+        elif second is not None:
+            raise ValueError("This pair copula does not take a second parameter")
+        if self.family in ("gaussian", "students_t", "extremal_t"):
+            valid = -1 < theta < 1
+        elif self.family in ("clayton", "frank"):
+            valid = theta >= 0
+        elif self.family in ("gumbel", "joe"):
+            valid = theta >= 1
+        elif self.family in ("galambos", "plackett", "husler_reiss"):
+            valid = theta > 0
+        elif self.family == "mm1":
+            valid = second is not None and theta >= 1 and second >= 1 and math.isfinite(theta * second)
+        elif self.family == "independence":
+            valid = theta == 0
+        else:
+            raise ValueError(f"Unknown pair copula family: {self.family}")
+        if not valid:
+            raise ValueError(f"Invalid parameter for {self.family} pair copula: {theta}")
+
+    @classmethod
+    def Independence(cls) -> PairCopula:  # noqa: N802
+        """Create an independent pair."""
+        return cls()
+
+    @classmethod
+    def Gaussian(cls, rho: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Gaussian pair.
+
+        Args:
+            rho: Linear correlation, strictly between -1 and 1.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("gaussian", rho, rotation)
+
+    @classmethod
+    def StudentsT(cls, rho: float, dof: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Student's t pair.
+
+        Args:
+            rho: Linear correlation, strictly between -1 and 1.
+            dof: Positive degrees of freedom.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("students_t", rho, rotation, dof)
+
+    @classmethod
+    def Clayton(cls, theta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Clayton pair.
+
+        Args:
+            theta: Nonnegative dependence parameter.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("clayton", theta, rotation)
+
+    @classmethod
+    def Gumbel(cls, theta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Gumbel pair.
+
+        Args:
+            theta: Dependence parameter, at least one.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("gumbel", theta, rotation)
+
+    @classmethod
+    def Frank(cls, theta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Frank pair.
+
+        Args:
+            theta: Nonnegative dependence parameter.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("frank", theta, rotation)
+
+    @classmethod
+    def Joe(cls, theta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Joe pair.
+
+        Args:
+            theta: Dependence parameter, at least one.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("joe", theta, rotation)
+
+    @classmethod
+    def Galambos(cls, theta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Galambos pair.
+
+        Args:
+            theta: Positive dependence parameter.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("galambos", theta, rotation)
+
+    @classmethod
+    def Plackett(cls, delta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Plackett pair.
+
+        Args:
+            delta: Positive odds-ratio parameter; one gives independence.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("plackett", delta, rotation)
+
+    @classmethod
+    def HuslerReiss(cls, lam: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create a Hüsler-Reiss pair.
+
+        The copula is C(u, v) = exp{-a Φ(λ + log(a/b)/(2λ)) - b Φ(λ + log(b/a)/(2λ))}
+        with a = -log(u) and b = -log(v), as for HuslerReissCopula. Smaller
+        values of λ give stronger dependence: the upper tail dependence
+        coefficient is 2(1 - Φ(λ)), approaching comonotonicity as λ tends to
+        zero and independence as λ grows. Hüsler and Reiss (1989) parameterise
+        the same family by the reciprocal of λ.
+
+        Args:
+            lam: Positive Hüsler-Reiss parameter λ; smaller values give stronger dependence.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("husler_reiss", lam, rotation)
+
+    @classmethod
+    def ExtremalT(cls, rho: float, nu: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create an extremal-t pair.
+
+        Args:
+            rho: Correlation parameter, strictly between -1 and 1.
+            nu: Positive degrees of freedom.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("extremal_t", rho, rotation, nu)
+
+    @classmethod
+    def MM1(cls, theta: float, delta: float, *, rotation: _PairRotation = 0) -> PairCopula:  # noqa: N802
+        """Create an MM1 pair, equivalent to Gumbel with parameter theta times delta.
+
+        Args:
+            theta: Mixing parameter, at least one.
+            delta: Pair dependence parameter, at least one.
+            rotation: Pair copula rotation in degrees.
+        """
+        return cls("mm1", theta, rotation, delta)
+
+    @property
+    def _independent(self) -> bool:
+        """Whether the pair copula is at its independence limit."""
+        if self.family == "mm1":
+            return self.parameter == 1 and self.parameter2 == 1
+        if self.family in ("gumbel", "joe", "plackett"):
+            return self.parameter == 1
+        return self.family in ("independence", "gaussian", "clayton", "frank") and self.parameter == 0
+
+    def _reflections(self, first: bool) -> tuple[bool, bool]:
+        """Return reflection flags for the target and conditioning margin.
+
+        Args:
+            first: Whether the first coordinate is the target.
+        """
+        reflect_first = self.rotation in (90, 180)
+        reflect_second = self.rotation in (180, 270)
+        return (reflect_first, reflect_second) if first else (reflect_second, reflect_first)
+
+    def _conditional(self, value: _VineArray, given: _VineArray, *, first: bool) -> _VineArray:
+        """Evaluate the conditional CDF of a margin given the other margin.
+
+        Args:
+            value: Target uniform probabilities.
+            given: Conditioning uniform probabilities.
+            first: Whether the first coordinate is the target.
+        """
+        if self._independent:
+            return value
+        reflect_target, reflect_given = self._reflections(first)
+        u = _open_unit(1 - value if reflect_target else value)
+        v = _open_unit(1 - given if reflect_given else given)
+        h = self._conditional_unrotated(u, v)
+        return _open_unit(1 - h if reflect_target else h)
+
+    def _conditional_unrotated(self, u: _VineArray, v: _VineArray) -> _VineArray:
+        """Evaluate the unrotated conditional distribution of u given v.
+
+        Args:
+            u: Target uniform probabilities.
+            v: Conditioning uniform probabilities.
+        """
+        theta = self.parameter
+        if self.family == "gaussian":
+            h = special.ndtr((special.ndtri(u) - theta * special.ndtri(v)) / math.sqrt((1 - theta) * (1 + theta)))
+        elif self.family == "clayton":
+            log_term = _log_expm1(-theta * np.log(u)) + theta * np.log(v)
+            h = np.exp(-(1 + 1 / theta) * np.logaddexp(0, log_term))
+        elif self.family == "students_t":
+            dof = self._second_parameter()
+            x, y = _student_t_ppf(u, dof), _student_t_ppf(v, dof)
+            scale = np.hypot(math.sqrt(dof), y) * math.sqrt((1 - theta) * (1 + theta) / (dof + 1))
+            h = _student_t_cdf((x - theta * y) / scale, dof + 1)
+        elif self.family in ("gumbel", "mm1"):
+            if self.family == "mm1":
+                theta *= self._second_parameter()
+            a, b = -np.log(u), -np.log(v)
+            delta = np.logaddexp(0, theta * (np.log(a) - np.log(b))) / theta
+            h = np.exp(-b * np.expm1(delta) - (theta - 1) * delta)
+        elif self.family == "joe":
+            log_a = theta * np.log1p(-u)
+            log_b = theta * np.log1p(-v)
+            log_one_minus_a = np.log(-np.expm1(log_a))
+            log_ratio = np.logaddexp(log_a - log_b, log_one_minus_a)
+            h = np.exp(log_one_minus_a - (1 - 1 / theta) * log_ratio)
+        elif self.family == "plackett":
+            # D = (S-2*delta*u)^2 + 4*delta*u*(1-u).
+            # Rationalise the lower-tail expression to avoid cancellation.
+            diff = (1 - v) + theta * v - (1 + theta) * u
+            term = 4 * theta * u * (1 - u)
+            root = np.hypot(diff, np.sqrt(term))
+            h = np.where(diff > 0, (term / root) / (2 * (root + diff)), (1 - diff / root) / 2)
+        elif self.family in ("galambos", "husler_reiss", "extremal_t"):
+            log_scale, _, partial_b, _ = self._extreme_value_terms(u, v)
+            h = np.exp(log_scale) * partial_b
+        else:  # Frank
+            log_num = -theta * v + np.log(-np.expm1(-theta * u))
+            log_den = np.logaddexp(
+                -theta * u + np.log(-np.expm1(-theta * v)),
+                -theta * v + np.log(-np.expm1(-theta * (1 - v))),
+            )
+            h = np.exp(log_num - log_den)
+        return h
+
+    def _extreme_value_terms(self, u: _VineArray, v: _VineArray) -> tuple[_VineArray, ...]:
+        """Evaluate the exponent-function terms of an extreme-value pair copula.
+
+        Writing C(u, v) = exp(-V(a, b)) with a = -log(u) and b = -log(v), the
+        conditional CDF of u given v is exp(b - V) V_b and the copula density
+        is exp(b - V) (V_a V_b - V_ab) / u.
+
+        Args:
+            u: Target uniform probabilities.
+            v: Conditioning uniform probabilities.
+
+        Returns:
+            The terms b - V, V_a, V_b and -V_ab.
+        """
+        theta = self.parameter
+        a, b = -np.log(u), -np.log(v)
+        log_ratio = np.log(a) - np.log(b)
+        if self.family == "galambos":
+            # V = a + b - m with m = (a^-theta + b^-theta)^(-1/theta).
+            log_m_over_a = -np.logaddexp(0, theta * log_ratio) / theta
+            log_m_over_b = -np.logaddexp(0, -theta * log_ratio) / theta
+            log_scale = a * np.expm1(log_m_over_a)
+            partial_a = -np.expm1((theta + 1) * log_m_over_a)
+            partial_b = -np.expm1((theta + 1) * log_m_over_b)
+            cross = (theta + 1) * np.exp(theta * log_m_over_a + (theta + 1) * log_m_over_b - np.log(a))
+        elif self.family == "husler_reiss":
+            z = log_ratio / (2 * theta)
+            partial_a = special.ndtr(theta + z)
+            partial_b = special.ndtr(theta - z)
+            log_scale = np.minimum(0, -a * partial_a + b * special.ndtr(z - theta))
+            cross = np.exp(-((theta - z) ** 2) / 2) / (2 * theta * math.sqrt(2 * math.pi) * a)
+        else:  # Extremal-t
+            nu = self._second_parameter()
+            scale = math.sqrt((nu + 1) / ((1 - theta) * (1 + theta)))
+            b_over_a = np.exp(np.minimum(-log_ratio / nu, 700))
+            z1 = scale * (np.exp(np.minimum(log_ratio / nu, 700)) - theta)
+            z2 = scale * (b_over_a - theta)
+            partial_a = _student_t_cdf(z1, nu + 1)
+            # One tail evaluation gives V_b and its complement, each accurately.
+            tail = _student_t_tail(z2, nu + 1)
+            partial_b = np.where(z2 >= 0, 1 - tail, tail)
+            log_scale = np.minimum(0, -a * partial_a + b * np.where(z2 >= 0, tail, 1 - tail))
+            cross = _student_t_pdf(z2, nu + 1) * scale * b_over_a / (nu * a)
+        return log_scale, partial_a, partial_b, cross
+
+    def _conditional_and_density(self, u: _VineArray, v: _VineArray) -> tuple[_VineArray, _VineArray]:
+        """Evaluate the unrotated conditional CDF and copula density together.
+
+        Args:
+            u: Target uniform probabilities.
+            v: Conditioning uniform probabilities.
+        """
+        log_scale, partial_a, partial_b, cross = self._extreme_value_terms(u, v)
+        scale = np.exp(log_scale)
+        return scale * partial_b, scale * (partial_a * partial_b + cross) / u
+
+    def _solve_conditional(self, probability: _VineArray, given: _VineArray) -> _VineArray:
+        """Invert the unrotated conditional CDF by safeguarded Newton iteration.
+
+        Newton's method is applied to logit(h) - logit(p) as a function of
+        logit(u). In both tails this is close to linear, so convergence is fast
+        and relative resolution is retained. Steps that leave the bracket known
+        to contain the root, or that have no usable slope, are replaced by
+        bisection. Points are frozen once converged, so later iterations only
+        evaluate the copula where a root is still being refined.
+
+        Args:
+            probability: Conditional uniform probabilities.
+            given: Conditioning uniform probabilities.
+        """
+        p = probability.ravel()
+        v = given.ravel()
+        target = special.logit(p)
+        x = np.clip(target, _LOGIT_LOWER, _LOGIT_UPPER)
+        lo = np.full_like(x, _LOGIT_LOWER)
+        hi = np.full_like(x, _LOGIT_UPPER)
+        active = np.arange(x.size)
+        for _ in range(_INVERSION_MAX_ITERATIONS):
+            x_active, p_active = x[active], p[active]
+            u = special.expit(x_active)
+            h, density = self._conditional_and_density(u, v[active])
+            below = h < p_active
+            lo_active = np.where(below, x_active, lo[active])
+            hi_active = np.where(below, hi[active], x_active)
+            spread = h * (1 - h)
+            usable = spread > 0
+            slope = density * u * special.expit(-x_active) / np.where(usable, spread, 1.0)
+            usable = usable & np.isfinite(slope) & (slope > 0)
+            newton = x_active - (special.logit(h) - target[active]) / np.where(usable, slope, 1.0)
+            accepted = usable & (newton >= lo_active) & (newton <= hi_active)
+            update = np.where(accepted, newton, (lo_active + hi_active) / 2)
+            # Near one, h only resolves steps of one unit in the last place, so
+            # a residual at that resolution is also accepted as convergence.
+            # Requiring a bracket on both sides keeps the result at the
+            # crossing point where h is flat and rounds to p over a wide range.
+            resolved = (
+                (np.abs(h - p_active) <= np.finfo(float).eps * p_active)
+                & (lo_active > _LOGIT_LOWER)
+                & (hi_active < _LOGIT_UPPER)
+            )
+            converged = resolved | np.where(
+                accepted,
+                np.abs(update - x_active) <= _NEWTON_TOLERANCE,
+                hi_active - lo_active <= _BISECTION_TOLERANCE,
+            )
+            x[active] = np.where(resolved, x_active, update)
+            lo[active] = lo_active
+            hi[active] = hi_active
+            active = active[~converged]
+            if active.size == 0:
+                break
+        return special.expit(x).reshape(probability.shape)
+
+    def _joe_inverse(self, probability: _VineArray, given: _VineArray) -> _VineArray:
+        """Invert the unrotated Joe conditional CDF by monotone Newton iteration.
+
+        With A = (1-u)^theta, B = (1-v)^theta and c = (1-B)/B, the conditional
+        CDF is (1-A)(1+cA)^(-k), where k = 1 - 1/theta. In s = log(A), the
+        equation f(s) = log(1 - e^s) - k log1p(c e^s) - log(p) = 0 has a
+        concave, decreasing left side. A Newton step from any point therefore
+        lands at or above the root, and iteration from there decreases
+        monotonically to it. Each of the first two terms is at most zero, so
+        dropping either one gives an upper bound on the root. When A is close
+        to one, -s is approximately p (1+c)^k, and a Newton step from that
+        approximation gives a third, much closer, upper bound. The iteration
+        starts from the smallest bound. Working in s keeps relative precision
+        in u near zero, where -s is small, and in 1-u near one, where s is
+        large and negative.
+
+        Args:
+            probability: Conditional uniform probabilities.
+            given: Conditioning uniform probabilities.
+        """
+        theta = self.parameter
+        k = 1 - 1 / theta
+        log_p = np.log(probability).ravel()
+        log_c = _log_expm1(-theta * np.log1p(-given)).ravel()
+
+        def newton_step(s: _VineArray, log_p: _VineArray, log_c: _VineArray) -> _VineArray:
+            """Return f(s)/f'(s) for the Joe quantile equation.
+
+            Args:
+                s: Logarithms of A = (1-u)^theta.
+                log_p: Logarithms of the conditional probabilities.
+                log_c: Logarithms of c = (1-B)/B.
+            """
+            # Share exponentials between f and f': log1p(e^z) and expit(z) are
+            # both formed from exp(-|z|). log(1 - e^s) switches from log(-expm1)
+            # to log1p(-exp) below -log(2) to keep relative precision (Mächler,
+            # 2012, Accurately Computing log(1 - exp(-|a|)), Rmpfr vignette).
+            z = s + log_c
+            exp_s, expm1_s, tail = np.exp(s), np.expm1(s), np.exp(-np.abs(z))
+            log_one_minus = np.where(s > -math.log(2), np.log(-expm1_s), np.log1p(-exp_s))
+            residual = log_one_minus - k * (np.maximum(z, 0) + np.log1p(tail)) - log_p
+            logistic = np.where(z >= 0, 1, tail) / (1 + tail)
+            return residual / (exp_s / expm1_s - k * logistic)
+
+        near_one = -np.exp(np.minimum(log_p + k * np.logaddexp(0, log_c), 0))
+        with errstate(divide="ignore", invalid="ignore", over="ignore"):
+            refined = near_one - newton_step(near_one, log_p, log_c)
+        flat = np.minimum(np.log1p(-probability.ravel()), _log_expm1(-log_p / k) - log_c)
+        flat = np.where(np.isfinite(refined) & (refined < 0), np.minimum(flat, refined), flat)
+        active = np.arange(flat.size)
+        for _ in range(_INVERSION_MAX_ITERATIONS):
+            s_active = flat[active]
+            step = newton_step(s_active, log_p[active], log_c[active])
+            flat[active] = s_active - step
+            active = active[np.abs(step) > _NEWTON_TOLERANCE * np.abs(s_active)]
+            if active.size == 0:
+                break
+        return -np.expm1(flat / theta).reshape(probability.shape)
+
+    def _second_parameter(self) -> float:
+        """Return the validated second parameter of a two-parameter family."""
+        if self.parameter2 is None:
+            raise ValueError("Pair copula requires a second parameter")
+        return self.parameter2
+
+    def _inverse(self, probability: _VineArray, given: _VineArray, *, first: bool) -> _VineArray:
+        """Invert the conditional CDF of a margin given the other margin.
+
+        Args:
+            probability: Conditional uniform probabilities.
+            given: Conditioning uniform probabilities.
+            first: Whether the first coordinate is the target.
+        """
+        if self._independent:
+            return probability
+        reflect_target, reflect_given = self._reflections(first)
+        p = _open_unit(1 - probability if reflect_target else probability)
+        v = _open_unit(1 - given if reflect_given else given)
+        theta = self.parameter
+        if self.family == "gaussian":
+            u = special.ndtr(theta * special.ndtri(v) + math.sqrt((1 - theta) * (1 + theta)) * special.ndtri(p))
+        elif self.family == "clayton":
+            log_term = _log_expm1(-(theta / (1 + theta)) * np.log(p)) - theta * np.log(v)
+            u = np.exp(-np.logaddexp(0, log_term) / theta)
+        elif self.family == "students_t":
+            dof = self._second_parameter()
+            y = _student_t_ppf(v, dof)
+            scale = np.hypot(math.sqrt(dof), y) * math.sqrt((1 - theta) * (1 + theta) / (dof + 1))
+            u = _student_t_cdf(theta * y + scale * _student_t_ppf(p, dof + 1), dof)
+        elif self.family in ("gumbel", "mm1"):
+            if self.family == "mm1":
+                theta *= self._second_parameter()
+            # Solve b * expm1(delta) + (theta-1)*delta = -log(p).
+            # Both terms are increasing; either term alone bounds the root.
+            # The left side is also convex, so Newton iteration from this
+            # upper bound decreases monotonically to the root.
+            # Converged points are frozen so later iterations only refine the rest.
+            b, target = -np.log(v).ravel(), -np.log(p).ravel()
+            delta = np.minimum(np.log1p(target / b), target / (theta - 1))
+            active = np.arange(delta.size)
+            for _ in range(_INVERSION_MAX_ITERATIONS):
+                b_active, delta_active = b[active], delta[active]
+                step = (b_active * np.expm1(delta_active) + (theta - 1) * delta_active - target[active]) / (
+                    b_active * np.exp(delta_active) + theta - 1
+                )
+                delta[active] = delta_active - step
+                active = active[np.abs(step) > _NEWTON_TOLERANCE * delta_active]
+                if active.size == 0:
+                    break
+            log_a = (np.log(b) + _log_expm1(theta * delta) / theta).reshape(p.shape)
+            u = np.exp(-np.exp(log_a))
+        elif self.family == "joe":
+            u = self._joe_inverse(p, v)
+        elif self.family == "frank":
+            log_den = np.logaddexp(-theta * v + np.log1p(-p), -theta + np.log(p))
+            log_ratio = np.log(p) + math.log(-math.expm1(-theta)) - log_den
+            u = np.logaddexp(0, log_ratio) / theta
+        elif self.family == "plackett":
+            # Quadratic solution of Johnson (1987). The two roots of the
+            # quadratic are rationalised differently so that neither branch
+            # subtracts nearly equal terms.
+            a = p * (1 - p)
+            q = 1 - 2 * p
+            s = 1 - v + theta * v
+            c = 2 * a * (v * theta**2 + 1 - v) + theta * (1 - 2 * a)
+            d = math.sqrt(theta) * np.sqrt(theta + 4 * a * v * (1 - v) * (1 - theta) ** 2)
+            u = np.where(q >= 0, 2 * a * s**2 / (c + q * d), (c - q * d) / (2 * (theta + a * (theta - 1) ** 2)))
+        else:
+            u = self._solve_conditional(p, v)
+        return _open_unit(1 - u if reflect_target else u)
+
+
+@dataclass(frozen=True)
+class VineEdge:
+    """An ordered pair copula and its conditioning variables in a regular vine.
+
+    Variable indices are zero-based. The order of the two variables matters
+    for rotated pair copulas; the order of the conditioning variables does not.
+
+    The two variables form the conditioned set and the conditioning variables
+    the conditioning set of the edge, in the terminology of Bedford and Cooke
+    (2002).
+
+    References:
+        Bedford, T., & Cooke, R. M. (2002). Vines - a new graphical model for
+        dependent random variables. The Annals of Statistics, 30(4), 1031-1068.
+
+    Attributes:
+        first: First variable index.
+        second: Second variable index.
+        pair: Pair copula connecting the variables.
+        conditioning: Indices of the conditioning variables, empty in tree one.
+    """
+
+    first: int
+    second: int
+    pair: PairCopula
+    conditioning: tuple[int, ...] = ()
+
+    @property
+    def _nodes(self) -> tuple[frozenset[int], frozenset[int]]:
+        """The complete variable sets of the two nodes in this tree."""
+        given = frozenset(self.conditioning)
+        return given | {self.first}, given | {self.second}
+
+
+_VineKey = tuple[int, frozenset[int]]
+_VineStep = tuple[PairCopula, bool, bool, _VineKey, _VineKey, _VineKey]
+_VineStage = tuple[_VineKey, tuple[_VineStep, ...]]
+
+
+def _validate_vine_trees(trees: tuple[tuple[VineEdge, ...], ...], dimension: int) -> None:
+    """Validate regular-vine trees and the proximity condition.
+
+    Args:
+        trees: Edges in increasing tree order, possibly truncated.
+        dimension: Number of margins.
+    """
+    # Each node in tree k is an edge in tree k-1, represented by its complete
+    # variable set and the two original endpoint sets.
+    previous: dict[frozenset[int], frozenset[frozenset[int]]] = {frozenset({i}): frozenset() for i in range(dimension)}
+    for level, tree in enumerate(trees):
+        adjacency: dict[frozenset[int], set[frozenset[int]]] = {node: set() for node in previous}
+        following: dict[frozenset[int], frozenset[frozenset[int]]] = {}
+        for edge in tree:
+            given = frozenset(edge.conditioning)
+            if len(edge.conditioning) != level or len(given) != level:
+                raise ValueError("Each vine edge must have one conditioning variable per preceding tree")
+            if edge.first == edge.second or edge.first in given or edge.second in given:
+                raise ValueError("Conditioned variables must be distinct and outside the conditioning set")
+            if not isinstance(edge.pair, PairCopula):
+                raise TypeError("Every vine edge must contain a PairCopula")
+            left, right = edge._nodes
+            if left not in previous or right not in previous:
+                raise ValueError("Vine edge endpoints must be nodes of the preceding tree")
+            if level and not previous[left].intersection(previous[right]):
+                raise ValueError("Vine edges must satisfy the proximity condition")
+            combined = left | right
+            if right in adjacency[left] or combined in following:
+                raise ValueError("Duplicate vine edge or complete variable set")
+            adjacency[left].add(right)
+            adjacency[right].add(left)
+            following[combined] = frozenset((left, right))
+        visited: set[frozenset[int]] = set()
+        stack = [next(iter(previous))]
+        while stack:
+            node = stack.pop()
+            if node not in visited:
+                visited.add(node)
+                stack.extend(adjacency[node] - visited)
+        if len(visited) != len(previous) or len(tree) != len(previous) - 1:
+            raise ValueError("Each vine tree must be connected and acyclic")
+        previous = following
+
+
+def _vine_elimination_order(
+    trees: tuple[tuple[VineEdge, ...], ...], dimension: int
+) -> list[tuple[int, tuple[VineEdge, ...]]]:
+    """Find a sampling order by removing leaves from the highest retained tree.
+
+    Args:
+        trees: Validated regular-vine trees.
+        dimension: Number of margins.
+
+    Returns:
+        Margins in sampling order with the incident edges in increasing tree order.
+    """
+    remaining = set(range(dimension))
+    active = [list(tree) for tree in trees]
+    removed: list[tuple[int, tuple[VineEdge, ...]]] = []
+    while len(remaining) > 1:
+        highest = next(tree for tree in reversed(active) if tree)
+        degree: dict[frozenset[int], int] = {}
+        for edge in highest:
+            for node in edge._nodes:
+                degree[node] = degree.get(node, 0) + 1
+        candidates: set[int] = set()
+        for edge in highest:
+            left, right = edge._nodes
+            if degree[left] == 1:
+                candidates.add(edge.first)
+            if degree[right] == 1:
+                candidates.add(edge.second)
+        # Prefer the original reverse variable order whenever it is valid.
+        # A leaf's unique variable must be an endpoint of exactly one edge
+        # at every retained level of the reduced vine.
+        variable = max(candidates)
+        incident: list[VineEdge] = []
+        for tree in active:
+            matching = [edge for edge in tree if variable in (edge.first, edge.second) or variable in edge.conditioning]
+            if not tree:
+                continue
+            if len(matching) != 1 or variable not in (matching[0].first, matching[0].second):
+                raise ValueError("Vine tree does not admit a valid leaf elimination")
+            edge = matching[0]
+            incident.append(edge)
+            tree.remove(edge)
+        removed.append((variable, tuple(incident)))
+        remaining.remove(variable)
+    removed.append((next(iter(remaining)), ()))
+    removed.reverse()
+    return removed
+
+
+def _compile_vine(
+    trees: tuple[tuple[VineEdge, ...], ...], dimension: int
+) -> tuple[tuple[_VineStage, ...], dict[_VineKey, int]]:
+    """Compile conditional transformations before any simulation draws.
+
+    Args:
+        trees: Validated vine trees.
+        dimension: Number of margins.
+
+    Returns:
+        Sampling stages and the number of uses of each conditional probability.
+    """
+    definitions: dict[_VineKey, tuple[PairCopula, bool, _VineKey, _VineKey]] = {}
+    for tree in trees:
+        for edge in tree:
+            given = frozenset(edge.conditioning)
+            for target, other, first in ((edge.first, edge.second, True), (edge.second, edge.first, False)):
+                definitions[target, given | {other}] = (edge.pair, first, (target, given), (other, given))
+
+    stages: list[_VineStage] = []
+    available: set[_VineKey] = set()
+    uses: dict[_VineKey, int] = {}
+
+    def ensure(key: _VineKey, steps: list[_VineStep]) -> None:
+        """Add the forward transformations needed to obtain a conditional probability.
+
+        Args:
+            key: Target variable and conditioning set.
+            steps: Operations for the current sampling stage.
+        """
+        if key in available:
+            return
+        if key not in definitions:
+            raise ValueError("Vine does not define a required conditional distribution")
+        pair, first, source, given = definitions[key]
+        ensure(source, steps)
+        ensure(given, steps)
+        steps.append((pair, first, False, source, given, key))
+        available.add(key)
+
+    for variable, incident in _vine_elimination_order(trees, dimension):
+        steps: list[_VineStep] = []
+        if incident:
+            edge = incident[-1]
+            other = edge.second if variable == edge.first else edge.first
+            draw_key = (variable, frozenset(edge.conditioning) | {other})
+        else:
+            draw_key = (variable, frozenset())
+        available.add(draw_key)
+        current = draw_key
+        for edge in reversed(incident):
+            first = variable == edge.first
+            other = edge.second if first else edge.first
+            conditioning = frozenset(edge.conditioning)
+            given = (other, conditioning)
+            output = (variable, conditioning)
+            if current != (variable, conditioning | {other}):
+                raise ValueError("Vine does not define a nested sequence of conditional distributions")
+            ensure(given, steps)
+            steps.append((edge.pair, first, True, current, given, output))
+            available.add(output)
+            current = output
+        if current[1]:
+            raise ValueError("Vine sampling stage did not reach the unconditional margin")
+        # The last value of each stage is also copied into the output matrix.
+        uses[current] = uses.get(current, 0) + 1
+        for _, _, _, source, given, _ in steps:
+            uses[source] = uses.get(source, 0) + 1
+            uses[given] = uses.get(given, 0) + 1
+        stages.append((draw_key, tuple(steps)))
+    return tuple(stages), uses
+
+
+class VineCopula(Copula):
+    """Simplified regular vine (R-vine), including canonical and drawable vines.
+
+    C-vines and D-vines can be specified compactly with rows of pair copulas.
+    In a C-vine the edge at row k, column i connects k to k+i+1,
+    conditional on variables 0 through k-1. In a D-vine it connects i to
+    i+k+1, conditional on the intervening variables. General regular vines
+    use rows of VineEdge objects specifying the two variables and their
+    conditioning set. All variable indices are zero-based.
+
+    The first tree contains d-1 edges and each subsequent tree contains one
+    fewer. Higher trees may be omitted, representing conditional independence.
+    Conditional copula parameters are constant across conditioning values
+    (the simplifying assumption).
+
+    Samples are generated by the inverse Rosenblatt transform, applying the
+    conditional quantile functions of the pair copulas tree by tree, as
+    described for regular vines by Dissmann et al. (2013) and Czado (2019).
+
+    References:
+        Aas, K., Czado, C., Frigessi, A., & Bakken, H. (2009). Pair-copula
+        constructions of multiple dependence. Insurance: Mathematics and
+        Economics, 44(2), 182-198.
+        Bedford, T., & Cooke, R. M. (2001). Probability density decomposition for
+        conditionally dependent random variables modeled by vines. Annals of
+        Mathematics and Artificial Intelligence, 32, 245-268.
+        Bedford, T., & Cooke, R. M. (2002). Vines - a new graphical model for
+        dependent random variables. The Annals of Statistics, 30(4), 1031-1068.
+        Czado, C. (2019). Analyzing Dependent Data with Vine Copulas: A Practical
+        Guide With R. Lecture Notes in Statistics 222. Springer.
+        Dissmann, J., Brechmann, E. C., Czado, C., & Kurowicka, D. (2013). Selecting
+        and estimating regular vine copulae and application to financial returns.
+        Computational Statistics & Data Analysis, 59, 52-69.
+
+    Attributes:
+        dimension: Number of uniform margins.
+        structure: "c", "d" or "r".
+        pair_copulas: Immutable rows of pair copulas in tree order.
+        trees: Immutable rows of ordered edges in tree order.
+        truncation_level: Number of supplied trees; omitted trees are independent.
+    """
+
+    def __init__(
+        self,
+        pair_copulas: t.Sequence[t.Sequence[PairCopula | VineEdge]],
+        *,
+        structure: t.Literal["c", "d", "r"] = "c",
+    ) -> None:
+        """Construct a vine from successive rows of edges or pair copulas.
+
+        Args:
+            pair_copulas: Rows of lengths d-1, d-2, and so on. For structure
+                "r", provide VineEdge objects; for "c" or "d", provide PairCopula
+                objects. The number of margins is inferred from the first row.
+            structure: Canonical ("c"), drawable ("d") or regular ("r") vine.
+
+        Raises:
+            ValueError: If the structure, row lengths or vine constraints are invalid.
+            TypeError: If a compact C- or D-vine contains an invalid pair copula.
+        """
+        if structure not in ("c", "d", "r"):
+            raise ValueError("Vine structure must be 'c', 'd' or 'r'")
+        rows = tuple(tuple(row) for row in pair_copulas)
+        if not rows or not rows[0] or len(rows) > len(rows[0]):
+            raise ValueError("Vine requires nonempty rows of lengths d-1, d-2, ..., 1")
+        if any(len(row) != len(rows[0]) - k for k, row in enumerate(rows)):
+            raise ValueError("Vine requires rows of lengths d-1, d-2, ..., 1")
+        self.dimension = len(rows[0]) + 1
+        self.structure = structure
+        if structure == "r":
+            if any(not isinstance(edge, VineEdge) for row in rows for edge in row):
+                raise ValueError("R-vine structure requires VineEdge objects")
+            trees = t.cast(tuple[tuple[VineEdge, ...], ...], rows)
+        else:
+            if any(not isinstance(pair, PairCopula) for row in rows for pair in row):
+                raise TypeError("Every vine edge must be a PairCopula")
+            pairs = t.cast(tuple[tuple[PairCopula, ...], ...], rows)
+            if structure == "c":
+                trees = tuple(
+                    tuple(VineEdge(k, k + i + 1, pair, tuple(range(k))) for i, pair in enumerate(row))
+                    for k, row in enumerate(pairs)
+                )
+            else:
+                trees = tuple(
+                    tuple(VineEdge(i, i + k + 1, pair, tuple(range(i + 1, i + k + 1))) for i, pair in enumerate(row))
+                    for k, row in enumerate(pairs)
+                )
+        _validate_vine_trees(trees, self.dimension)
+        self.trees = trees
+        self.pair_copulas = tuple(tuple(edge.pair for edge in tree) for tree in trees)
+        self.truncation_level = len(trees)
+        self._stages, self._uses = _compile_vine(trees, self.dimension)
+
+    @classmethod
+    def from_edges(cls, trees: t.Sequence[t.Sequence[VineEdge]]) -> VineCopula:
+        """Construct a regular vine from its edges.
+
+        Args:
+            trees: Successive trees of ordered edges, with zero-based variable
+                indices. Higher trees may be omitted to truncate the vine.
+
+        Returns:
+            Regular vine with the given edges.
+
+        Raises:
+            ValueError: If the trees are not connected and acyclic, violate the
+                proximity condition or do not define a valid simulation order.
+            TypeError: If an edge does not contain a PairCopula.
+        """
+        return cls(trees, structure="r")
+
+    def generate(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> ProteusVariable[StochasticScalar]:
+        """Generate coupled uniform margins using the inverse Rosenblatt transform.
+
+        Args:
+            n_sims: Number of simulations; defaults to config.n_sims.
+            rng: Random generator; defaults to config.rng.
+        """
+        return self._generate_base(n_sims, rng)
+
+    def _generate_unnormalised(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
+        """Draw one independent coordinate per margin and invert the vine.
+
+        Args:
+            n_sims: Number of simulations.
+            rng: Random generator supplying scenario-aligned coordinates.
+        """
+        if n_sims <= 0:
+            raise ValueError("Number of simulations must be positive")
+        draws = _open_unit(
+            np.asarray(
+                _draw_scenarios(rng, "uniform", size=(self.dimension, n_sims), scenario_axis=1),
+                dtype=float,
+            )
+        )
+        result = np.empty_like(draws)
+        values: dict[_VineKey, _VineArray] = {}
+        uses = self._uses.copy()
+
+        def release(key: _VineKey) -> None:
+            """Free a conditional probability once its last consumer finishes.
+
+            Args:
+                key: Variable and conditioning set.
+            """
+            uses[key] -= 1
+            if not uses[key]:
+                del values[key]
+
+        for draw_key, steps in self._stages:
+            variable = draw_key[0]
+            values[draw_key] = draws[variable]
+            for pair, first, inverse, source, given, output in steps:
+                transform = pair._inverse if inverse else pair._conditional
+                values[output] = transform(values[source], values[given], first=first)
+                release(source)
+                release(given)
+            key = (variable, frozenset())
+            result[variable] = values[key]
+            release(key)
+        return result
+
+    def apply(self, variables: ProteusVariable[StochasticScalar] | list[StochasticScalar]) -> None:
+        """Apply the vine to independent marginal simulations in variable order.
+
+        Args:
+            variables: Marginal variables to reorder in place. Their number must
+                equal the fixed vine dimension and their simulation counts must match.
+        """
+        if len(variables) != self.dimension:
+            raise ValueError("Number of variables and copula samples do not match.")
+        apply_copula(variables, self.generate(n_sims=list(variables)[0].n_sims))
