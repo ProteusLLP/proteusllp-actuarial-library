@@ -16,6 +16,7 @@ from dataclasses import dataclass
 # Third-party imports
 import numpy.typing as npt
 import scipy.stats
+from numpy import errstate
 from scipy.special import gamma
 
 from . import ProteusVariable, StochasticScalar
@@ -2545,7 +2546,7 @@ class PairCopula:
             return residual / (exp_s / expm1_s - k * logistic)
 
         near_one = -np.exp(np.minimum(log_p + k * np.logaddexp(0, log_c), 0))
-        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        with errstate(divide="ignore", invalid="ignore", over="ignore"):
             refined = near_one - newton_step(near_one, log_p, log_c)
         flat = np.minimum(np.log1p(-probability.ravel()), _log_expm1(-log_p / k) - log_c)
         flat = np.where(np.isfinite(refined) & (refined < 0), np.minimum(flat, refined), flat)
