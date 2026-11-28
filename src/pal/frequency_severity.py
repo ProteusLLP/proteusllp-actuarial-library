@@ -212,13 +212,11 @@ class FrequencySeverityModel:
     ) -> FreqSevSims:
         """Generate simulations from the Frequency-Severity model.
 
-        Parameters:
-        - n_sims (int): Number of simulations to generate. If None, uses the
-            default value from the config.
-        - rng (RandomGenerator, optional): Random number generator. Uses
-            config.rng if None.
-            n_sims: Number of simulations on the scenario axis.
-            rng: Random number generator supplying the draws.
+        Args:
+            n_sims: Number of simulations on the scenario axis. Uses
+                config.n_sims if None.
+            rng: Random number generator supplying the draws. Uses config.rng
+                if None.
 
         Returns:
             Object containing the generated simulations.
