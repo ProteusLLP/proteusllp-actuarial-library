@@ -109,7 +109,7 @@ for item in reversed(items):
 - **Required**: All library classes, functions and methods, including private helpers and special methods. Every argument must have a meaningful description; locally declared public attributes and enum members must be documented in `Attributes:`. Type-only overload declarations are exempt.
 - **Tests**: Use a test docstring when it adds useful intent; test-function docstrings are not required by lint
 - **No Types**: Do not include type information in docstrings (use type hints instead)
-- **Enforcement**: `make docstrings` checks argument and attribute coverage using the Python AST. The check has no grandfathered exceptions or baseline: every missing description fails lint.
+- **Enforcement**: `make docstrings` checks argument and attribute coverage using the Python AST. It also rejects documented arguments missing from the signature, duplicate entries, entries not written as `name: description` (such as NumPy-style `name : type` or bulleted lists), and section bodies not indented beneath their heading. The check has no grandfathered exceptions or baseline: every defect fails lint.
 
 ### Function/Method Docstrings
 

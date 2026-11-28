@@ -1,7 +1,10 @@
-"""Check complete Google-style argument and attribute documentation in PAL.
+"""Check complete and well-formed Google-style docstrings in PAL.
 
-This uses the syntax tree rather than importing modules, so it also runs
-without optional dependencies, on GPU-independent developer environments.
+Every callable must document each of its arguments, and nothing else, and
+every class must document its locally declared public attributes. Entries
+must use the Google form ``name: description``. NumPy-style ``name : type``
+entries, bulleted lists and unindented section bodies are reported because
+Sphinx Napoleon renders them incorrectly.
 """
 
 from __future__ import annotations
@@ -10,47 +13,120 @@ import argparse
 import ast
 import json
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = "src/pal"
 SECTION = re.compile(r"^([A-Za-z][A-Za-z ]*):\s*$")
-ENTRY = re.compile(r"^\s+(\*{0,2}[A-Za-z_]\w*)(?:\s*\([^)]*\))?\s*:\s*(.*)$")
+# The optional parenthesis is the Google form "name (type): description".
+ENTRY = re.compile(r"^(\*{0,2}[A-Za-z_]\w*)(?: \([^)]*\))?:(?:\s+(.*))?$")
+ARGUMENT_SECTIONS = {"Args", "Arguments", "Parameters"}
+ATTRIBUTE_SECTIONS = {"Attributes"}
+# Napoleon sections whose bodies must be indented beneath the heading.
+GOOGLE_SECTIONS = {
+    *ARGUMENT_SECTIONS,
+    *ATTRIBUTE_SECTIONS,
+    "Example",
+    "Examples",
+    "Keyword Args",
+    "Keyword Arguments",
+    "Methods",
+    "Note",
+    "Notes",
+    "Other Parameters",
+    "Raises",
+    "References",
+    "Return",
+    "Returns",
+    "See Also",
+    "Todo",
+    "Warning",
+    "Warnings",
+    "Warns",
+    "Yield",
+    "Yields",
+}
 
 
-def documented(doc: str, sections: set[str]) -> set[str]:
-    """Collect nonempty entries in the requested Google-style sections.
+@dataclass
+class Entries:
+    """Names and formatting defects found in docstring sections.
+
+    Attributes:
+        described: Names with a nonempty description, with variadic stars stripped.
+        names: Every entry name in order of appearance, including repeats.
+        malformed: Descriptions of formatting defects.
+    """
+
+    described: set[str] = field(default_factory=set)
+    names: list[str] = field(default_factory=list)
+    malformed: list[str] = field(default_factory=list)
+
+
+def section_entries(doc: str, sections: set[str]) -> Entries:
+    """Parse the entries of the requested Google-style sections.
+
+    Within a section, each line at the indentation of its first entry must be
+    a ``name: description`` entry; deeper lines continue the current entry.
+    Any known section whose first line is not indented is also reported.
 
     Args:
         doc: Cleaned docstring.
         sections: Section headings to inspect, without trailing colons.
-
-    Returns:
-        Documented names, with variadic stars stripped.
     """
-    result = set()
+    result = Entries()
     active = False
+    heading = None
+    awaiting_body = False
     current = None
     indent = None
     for line in doc.splitlines():
-        heading = SECTION.fullmatch(line)
-        if heading:
-            active = heading.group(1) in sections
+        match = SECTION.fullmatch(line)
+        if match:
+            heading = match.group(1)
+            active = heading in sections
+            awaiting_body = heading in GOOGLE_SECTIONS
             current = None
             indent = None
             continue
-        if not active or not line.strip():
+        if not line.strip():
             continue
-        match = ENTRY.match(line)
         depth = len(line) - len(line.lstrip())
-        if match and (indent is None or depth == indent):
-            current = match.group(1).lstrip("*")
+        if awaiting_body and depth == 0:
+            result.malformed.append(f"unindented {heading} section")
+        awaiting_body = False
+        if not active:
+            continue
+        if depth == 0:
+            # Unindented text after an entry section ends that section.
+            active = False
+            continue
+        if indent is None:
             indent = depth
-            if match.group(2).strip():
-                result.add(current)
-        elif current and indent is not None and depth > indent:
-            result.add(current)
+        if depth > indent:
+            if current:
+                result.described.add(current)
+            continue
+        entry = ENTRY.match(line.strip())
+        if depth < indent or not entry:
+            result.malformed.append(f"malformed {heading} entry {line.strip()!r}")
+            current = None
+            continue
+        current = entry.group(1).lstrip("*")
+        result.names.append(current)
+        if entry.group(2):
+            result.described.add(current)
     return result
+
+
+def duplicates(names: list[str]) -> list[str]:
+    """Return names that occur more than once, in sorted order.
+
+    Args:
+        names: Entry names in order of appearance.
+    """
+    return sorted({name for name in names if names.count(name) > 1})
 
 
 def decorator_name(node: ast.expr) -> str:
@@ -158,9 +234,13 @@ class Audit(ast.NodeVisitor):
         doc = ast.get_docstring(node) or ""
         if not doc:
             self.report("missing docstring")
-        attrs = documented(doc, {"Attributes"})
-        for name in sorted(public_attributes(node) - attrs):
+        entries = section_entries(doc, ATTRIBUTE_SECTIONS)
+        for name in sorted(public_attributes(node) - entries.described):
             self.report(f"missing attribute {name}")
+        for name in duplicates(entries.names):
+            self.report(f"duplicate attribute {name}")
+        for message in entries.malformed:
+            self.report(message)
         self.generic_visit(node)
         self.scope.pop()
 
@@ -182,9 +262,15 @@ class Audit(ast.NodeVisitor):
             if not doc:
                 self.report("missing docstring")
             expected = argument_names(node, is_method=is_method)
-            present = documented(doc, {"Args", "Arguments", "Parameters"})
-            for name in sorted(expected - present):
+            entries = section_entries(doc, ARGUMENT_SECTIONS)
+            for name in sorted(expected - entries.described):
                 self.report(f"missing argument {name}")
+            for name in sorted(set(entries.names) - expected):
+                self.report(f"unknown argument {name}")
+            for name in duplicates(entries.names):
+                self.report(f"duplicate argument {name}")
+            for message in entries.malformed:
+                self.report(message)
         self.generic_visit(node)
         self.scope.pop()
 

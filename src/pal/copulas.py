@@ -975,8 +975,8 @@ class MM1Copula(Copula):
         detailed in Joe (2015, Chapter 6).
 
         References:
-        Joe, H. (1997). Multivariate Models and Dependence Concepts. Chapman and Hall.
-        Joe, H. (2015). Dependence Modeling with Copulas. Chapman and Hall.
+            Joe, H. (1997). Multivariate Models and Dependence Concepts. Chapman and Hall.
+            Joe, H. (2015). Dependence Modeling with Copulas. Chapman and Hall.
 
         Args:
             n_sims: Number of simulations to generate. Uses config.n_sims if None.
@@ -1057,18 +1057,16 @@ class GalambosCopula(Copula):
         representation in Mai (2018).
 
         References:
-        Mai, Jan-Frederik. "Exact Simulation of Reciprocal Archimedean Copulas."
-        Statistical Probability Letters (2018). arXiv preprint arXiv:1802.09996
-
+            Mai, Jan-Frederik. "Exact Simulation of Reciprocal Archimedean Copulas."
+            Statistical Probability Letters (2018). arXiv preprint arXiv:1802.09996
 
         Args:
             n_sims: Number of samples.
-            rng : RandomGenerator, optional
-            Random generator.
+            rng: Random generator.
 
         Returns:
-        u : ndarray, shape (d, n)
-            Samples on (0, 1)^d with Galambos copula.
+            Samples on (0, 1)^d from the Galambos copula, with one row per
+            dimension and one column per simulation.
         """
         d = self.dimension
         # Independence shortcut if needed
@@ -1196,12 +1194,11 @@ class PlackettCopula(Copula):
 
         Args:
             n_sims: Number of samples.
-            rng : RandomGenerator, optional
-            Random generator.
+            rng: Random generator.
 
         Returns:
-        u : ndarray, shape (2, n)
-            Samples on (0, 1)^2 with Plackett copula.
+            Samples on (0, 1)^2 from the Plackett copula, with one row per
+            dimension and one column per simulation.
         """
         u = rng.uniform(0, 1, size=(n_sims))
         w = rng.uniform(0, 1, size=(n_sims))
@@ -1226,7 +1223,7 @@ class PlackettCopula(Copula):
         (1987).
 
         References:
-        Johnson ME (1987) Multivariate Statistical Simulation. J. Wiley & Sons, New York
+            Johnson ME (1987) Multivariate Statistical Simulation. J. Wiley & Sons, New York
 
         Args:
             n_sims: Number of simulations to generate. Uses config.n_sims if None.
@@ -1417,17 +1414,16 @@ class HuslerReissCopula(Copula):
         L1-sphere; numbered Algorithm 1 in arXiv:1506.04430v1).
 
         References:
-        Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
-        processes. Biometrika 103, no. 2 (2016): 303-17.
+            Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
+            processes. Biometrika 103, no. 2 (2016): 303-17.
 
         Args:
-            n_sims : int
-                Number of samples to generate.
-            rng : RandomGenerator.
+            n_sims: Number of samples to generate.
+            rng: Random generator.
 
         Returns:
-            u : (d,n) ndarray
-                Samples from the Hüsler–Reiss copula.
+            Samples from the Hüsler-Reiss copula, with one row per dimension and
+            one column per simulation.
         """
         d = self.dimension
 
@@ -1591,8 +1587,8 @@ class HuslerReissCopula(Copula):
         The simulation uses the exact algorithm from Dombry-Engelke-Oesting (2016)
 
         References:
-        Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
-        processes. Biometrika 103, no. 2 (2016): 303-17.
+            Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
+            processes. Biometrika 103, no. 2 (2016): 303-17.
 
         Args:
             n_sims: Number of simulations to generate. Uses config.n_sims if None.
@@ -1697,8 +1693,8 @@ class ExtremalTCopula(Copula):
         See Dombry-Engle-Oesting (2016).
 
         References:
-        Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
-        processes. Biometrika 103, no. 2 (2016): 303-17.
+            Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
+            processes. Biometrika 103, no. 2 (2016): 303-17.
 
         Args:
             n_sims: Number of simulations on the scenario axis.
@@ -1863,10 +1859,10 @@ class ExtremalTCopula(Copula):
         The simulation uses the exact algorithm from Dombry et al. (2016).
 
         References:
-        Nikoloulopoulos, A. K., Joe, H., & Li, H. (2009). Extreme value properties of
-        multivariate t copulas. Extremes, 12(2), 129-148.
-        Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
-        processes. Biometrika 103, no. 2 (2016): 303-17.
+            Nikoloulopoulos, A. K., Joe, H., & Li, H. (2009). Extreme value properties of
+            multivariate t copulas. Extremes, 12(2), 129-148.
+            Dombry, C., Engelke, S., & Oesting, M. (2016). Exact simulation of max-stable
+            processes. Biometrika 103, no. 2 (2016): 303-17.
 
 
         Args:
