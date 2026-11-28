@@ -13,6 +13,7 @@ import pytest
 from scipy import integrate, stats
 
 from pal import copulas, set_random_seed
+from pal._maths import asnumpy, xp
 from pal.copulas import _logseries_from_log_complement, _sibuya_gen
 from pal.distributions import Gamma
 from tests._assertions import host_values
@@ -48,24 +49,27 @@ def test_joe_samples_at_strong_dependence(theta):
 
 
 class _HugeRateGenerator:
-    """Random source whose Sibuya Poisson rate is beyond NumPy's sampler limit of about 9.2e18."""
+    """Random source whose Sibuya Poisson rate is beyond NumPy's sampler limit of about 9.2e18.
+
+    Arrays are returned on the active backend, as PAL's random generators do.
+    """
 
     def __init__(self) -> None:
         self._generator = np.random.default_rng(1)
 
     def gamma(self, shape, scale=1.0, size=None):
         # The first gamma is Gamma(alpha) for a small alpha, here tiny.
-        return np.full(size, 1e-30 if shape < 0.5 else 1.0)
+        return xp.asarray(np.full(size, 1e-30 if shape < 0.5 else 1.0))
 
     def exponential(self, scale=1.0, size=None):
-        return np.ones(size)
+        return xp.asarray(np.ones(size))
 
     def poisson(self, lam, size=None):
-        return self._generator.poisson(lam, size)
+        return xp.asarray(self._generator.poisson(asnumpy(lam), size))
 
 
 def test_sibuya_rates_beyond_the_poisson_limit_are_used_directly():
-    counts = _sibuya_gen(0.2, 4, _HugeRateGenerator())
+    counts = asnumpy(_sibuya_gen(0.2, 4, _HugeRateGenerator()))
     assert counts == pytest.approx(1 + 1e30, rel=1e-12)
 
 
@@ -74,11 +78,12 @@ def test_joe_inverse_generator_keeps_precision_near_one():
     copula = copulas.JoeCopula(3.0, 2)
     t = np.array([1e-30, 1e-12, 1.0, 50.0])
     expected = 1 - (-np.expm1(-t)) ** (1 / 3.0)
-    assert np.all(np.asarray(copula.generator_inv(t)) <= 1)
-    assert np.asarray(copula.generator_inv(t)) == pytest.approx(expected, rel=1e-12, abs=1e-15)
+    inverse = asnumpy(copula.generator_inv(xp.asarray(t)))
+    assert np.all(inverse <= 1)
+    assert inverse == pytest.approx(expected, rel=1e-12, abs=1e-15)
     # The sampled uniforms stay strictly inside the unit interval even then.
-    uniform = copula._transform_to_uniform(-t)
-    assert np.all((np.asarray(uniform) > 0) & (np.asarray(uniform) < 1))
+    uniform = asnumpy(copula._transform_to_uniform(xp.asarray(-t)))
+    assert np.all((uniform > 0) & (uniform < 1))
 
 
 # ── Frank ────────────────────────────────────────────────────────────────
@@ -150,11 +155,21 @@ def test_frank_negative_theta_can_be_applied_to_two_variables():
     assert stats.kendalltau(host_values(first), host_values(second))[0] < -0.5
 
 
+class _BackendUniforms:
+    """Uniform source returning arrays on the active backend."""
+
+    def __init__(self, seed: int) -> None:
+        self._generator = np.random.default_rng(seed)
+
+    def uniform(self, size=None):
+        return xp.asarray(self._generator.uniform(size=size))
+
+
 @pytest.mark.parametrize("theta", [3.0, 20.0])
 def test_log_series_sampler_matches_the_distribution(theta):
     """The rearranged Kemp sampler agrees with the exact distribution where NumPy's also works."""
     n = 1_000_000
-    draws = _logseries_from_log_complement(theta, n, np.random.default_rng(11))
+    draws = asnumpy(_logseries_from_log_complement(theta, n, _BackendUniforms(11)))
     reference = stats.logser(1 - np.exp(-theta))
     assert draws.min() >= 1
     for level in (1, 2, 3, 10, 1000):
@@ -224,7 +239,7 @@ def test_student_t_quantile_from_beta_is_exact_near_the_median(dof):
     It is backend independent, so it is checked here against SciPy's CDF.
     """
     grid = _student_t_grid()
-    quantile = copulas._student_t_ppf_from_beta(grid, dof)
+    quantile = asnumpy(copulas._student_t_ppf_from_beta(xp.asarray(grid), dof))
     assert np.all(np.isfinite(quantile))
     returned = stats.t.cdf(quantile, dof)
     centre = np.abs(grid - 0.5) < 0.01
@@ -239,7 +254,7 @@ def test_student_t_quantile_is_accurate_in_the_far_tails(dof):
     """SciPy's stdtrit saturates at 1e100 and is wrong by large factors below about 1e-155."""
     grid = np.concatenate([10.0 ** -np.arange(100, 300, 7), 10.0 ** -np.arange(150, 300, 7)])
     for probabilities in (grid, 1 - np.array([1e-12, 1e-15])):
-        quantile = copulas._student_t_ppf(probabilities, dof)
+        quantile = asnumpy(copulas._student_t_ppf(xp.asarray(probabilities), dof))
         returned = stats.t.cdf(quantile, dof)
         tail = np.minimum(probabilities, 1 - probabilities)
         # SciPy's own relative accuracy at 1000 degrees of freedom, between 1e-100 and
