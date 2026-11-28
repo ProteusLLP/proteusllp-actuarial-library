@@ -14,6 +14,7 @@ import numpy as np
 from scipy import optimize, special, stats
 
 from ._fitting_initial import (
+    _MINIMUM_EXTREME_VALUE_SHAPE,
     _gpd_initial,
     _gpd_shape_coordinate,
     _initial_coordinates,
@@ -280,11 +281,16 @@ def _boundary_warnings(parameters: dict[str, float], observations: np.ndarray, t
     """
     scale = max(float(np.median(np.abs(observations))), abs(threshold), np.finfo(float).tiny)
     messages = []
-    positive_shapes = {"alpha", "beta", "shape", "power", "p", "q", "a", "nu"}
+    positive_shapes = {"alpha", "beta", "shape", "power", "p", "q", "a", "nu", "sigma"}
     scales = {"scale", "theta", "b", "lambda_"}
     for name, value in parameters.items():
         if not np.isfinite(value):
             messages.append(f"Non-finite parameter: {name}")
+        elif name == "shape" and value <= _MINIMUM_EXTREME_VALUE_SHAPE + 1e-9:
+            messages.append(
+                "shape is at its lower limit of -1, below which the likelihood is unbounded; the data may be "
+                "capped at a limit without being flagged as censored"
+            )
         elif name in scales and value > 0 and abs(np.log(value) - np.log(scale)) > 30:
             messages.append(f"{name} is extreme relative to the observation scale; likelihood may be on a ridge")
         elif name in positive_shapes and value > 0 and abs(np.log(value)) > 30:
@@ -456,10 +462,12 @@ def _log_likelihood(
 
     if family is _distributions.Pareto:
         shape, scale = parameters["shape"], parameters["scale"]
-        if shape <= 0 or scale <= 0 or np.any(x < scale):
+        # An observation censored below the scale carries no information: the
+        # survival function is one there. Only uncensored values must exceed it.
+        if shape <= 0 or scale <= 0 or np.any((x < scale) & ~c):
             return -np.inf
         log_pdf = np.log(shape) + shape * np.log(scale) - (shape + 1) * np.log(x)
-        log_sf = shape * (np.log(scale) - np.log(x))
+        log_sf = np.minimum(0.0, shape * (np.log(scale) - np.log(x)))
         log_sf_threshold = min(0.0, shape * (np.log(scale) - np.log(threshold))) if threshold > 0 else 0.0
     elif family is _distributions.LogNormal:
         mu, sigma = parameters["mu"], parameters["sigma"]
@@ -518,7 +526,9 @@ def fit_distribution(
             For GPD this also fixes the location parameter.
         censored: Indicators for right-censored observations.
         weights: Non-negative observation weights. Integer weights represent
-            repeated observations for information criteria.
+            repeated observations for information criteria. The log-likelihood
+            scales with the weights but the parameter penalty does not, so AIC
+            is meaningful, and AICc is defined, only for integer frequency weights.
         free_location: Fit the three-parameter GPD when True. Only supported
             for GPD; the location defaults to the reporting threshold.
         optimizer: Numerical method for non-analytical fits.
@@ -576,6 +586,8 @@ def fit_distribution(
     x, c, w = _prepare(observations, threshold, censored, weights, allow_any_real=family is _distributions.GEV)
     if initial_parameters is not None and family in (_distributions.Pareto, _distributions.Exponential):
         raise ValueError(f"{family.__name__} uses an analytical fit and does not require initial_parameters")
+    if family is not _distributions.Exponential and np.ptp(x) == 0:
+        raise ValueError(f"All observations are equal, so the {family.__name__} parameters are not identifiable")
     if free_location:
         return _fit_gpd_free_location(
             distribution, x, c, w, threshold, optimizer, optimizer_options, initial_parameters
@@ -592,8 +604,11 @@ def fit_distribution(
     optimizer_used: str | None = None
     optimizer_fallback = False
     if family is _distributions.Pareto:
-        scale = threshold if threshold > 0 else float(x.min())
-        denominator = float(np.sum(w * np.log(x / scale)))
+        # The likelihood increases with the scale up to the smallest observation
+        # that is not censored: censoring levels below the scale have survival
+        # probability one and do not constrain it.
+        scale = threshold if threshold > 0 else float(x[~c].min())
+        denominator = float(np.sum(w * np.log(np.maximum(x, scale) / scale)))
         if denominator <= 0 or not np.isfinite(denominator):
             raise ValueError("Pareto shape is not identifiable for these observations")
         parameters = {"shape": float(np.sum(w[~c])) / denominator, "scale": scale}

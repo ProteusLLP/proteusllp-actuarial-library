@@ -59,7 +59,11 @@ class AsymptoticParameterUncertainty(t.Generic[_T]):
         covariance: Estimated covariance of the fitted natural parameters.
         fit: Original maximum-likelihood fit.
         parameter_names: Ordered names of the jointly estimated parameters.
-        transformed_covariance: Estimated covariance in unconstrained parameter coordinates.
+        transformed_covariance: Estimated covariance in unconstrained parameter coordinates. Positive
+            parameters use their logarithm, probabilities their logit, and parameters that are not
+            logarithmically transformed, such as locations, are measured from their estimate in
+            units of the fitted scale (or sigma), so these coordinates are dimensionless. Use
+            covariance for the natural parameters.
     """
 
     fit: FitResult[_T]
@@ -288,7 +292,7 @@ def asymptotic_parameter_uncertainty(
     """
     from . import distributions as d
     from .fitting import _other_families, _supported_families
-    from .fitting_remaining import _input
+    from .fitting_remaining import _discrete_families, _input
     from .fitting_uncertainty_likelihood import _loglik, _parameter_names, _transform_types
 
     if not fit.converged:
@@ -313,6 +317,10 @@ def asymptotic_parameter_uncertainty(
             if indicators.shape != source_weights.shape:
                 raise ValueError("censored must match observations")
             c = indicators[source_weights > 0]
+        if np.any(c) and (family in _discrete_families() or family is d.MBBEFD):
+            # The fit rejects censoring for these families, and their likelihood
+            # has no censored term, so the information would silently ignore it.
+            raise ValueError(f"{family.__name__} uncertainty does not support censored observations")
 
     if not np.all(np.isfinite(x)):
         raise ValueError("observations must be finite")

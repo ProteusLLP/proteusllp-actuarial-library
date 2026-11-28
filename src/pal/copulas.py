@@ -17,7 +17,6 @@ from dataclasses import dataclass
 import numpy.typing as npt
 import scipy.stats
 from numpy import errstate
-from scipy.special import gamma
 
 from . import ProteusVariable, StochasticScalar
 
@@ -29,6 +28,8 @@ from .config import config
 from .couplings import couple_stochastic_results
 from .qmc import RandomizedQMCGenerator, _draw_active_scenarios, _draw_scenarios
 from .types import RandomGenerator
+
+_FloatArray = t.TypeVar("_FloatArray", bound=npt.NDArray[np.floating])
 
 
 def _host_rng_arg(value: t.Any) -> t.Any:
@@ -564,10 +565,15 @@ class ArchimedeanCopula(Copula, ABC):
     def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """Transform using inverse generator function.
 
+        The result is kept inside the open unit interval. A very large or very
+        small latent variable can push a margin to exactly 0 or 1 in double
+        precision, and quantile functions of unbounded marginals are infinite
+        there.
+
         Args:
             unnormalised_samples: Latent copula samples before transformation to uniform margins.
         """
-        return self.generator_inv(-unnormalised_samples)
+        return _open_unit(self.generator_inv(-unnormalised_samples))
 
     def generate(
         self, n_sims: int | None = None, rng: RandomGenerator | None = None
@@ -595,9 +601,9 @@ class ArchimedeanCopula(Copula, ABC):
             rng = config.rng
         if rng is None:
             raise RuntimeError("No random number generator is configured")
-        if self.dimension is None:
+        n_vars = getattr(self, "dimension", None)
+        if n_vars is None:
             raise RuntimeError("Subclasses of ArchimedeanCopula must set self.dimension to the number of variables")
-        n_vars = self.dimension
         # Generate samples from a uniform distribution
         u = _draw_scenarios(rng, "uniform", size=(n_vars, n_sims), scenario_axis=1)
         # Generate samples from the latent distribution
@@ -804,6 +810,10 @@ class FrankCopula(ArchimedeanCopula):
 
     where :math:`\theta \in \mathbb{R} \setminus \{0\}` is the dependence parameter.
     The Frank copula is symmetric and does not exhibit tail dependence.
+    The limit :math:`\theta = 0` is the independence copula and is accepted.
+    A negative :math:`\theta` gives negative dependence and is defined for two
+    variables only, because a Frank copula with more variables requires
+    :math:`\theta > 0`.
 
     The generator function is:
 
@@ -820,9 +830,18 @@ class FrankCopula(ArchimedeanCopula):
         """Initialize a Frank copula.
 
         Args:
-            theta: Copula parameter.
+            theta: Copula parameter, with absolute value at most 700. Zero is
+                independence. Negative values are valid for two variables only.
             dimension: Number of variables. (Optional)
+
+        Raises:
+            ValueError: If theta is not finite, exceeds 700 in absolute value, or
+                is negative with a dimension other than two.
         """
+        if not math.isfinite(theta) or abs(theta) > _FRANK_MAX_THETA:
+            raise ValueError(f"Theta must be finite with absolute value at most {_FRANK_MAX_THETA:g}")
+        if theta < 0 and dimension is not None and dimension != 2:
+            raise ValueError("Frank copula with negative theta is only defined for two variables")
         self.theta = theta
         if dimension is not None:
             self.dimension = dimension
@@ -833,7 +852,16 @@ class FrankCopula(ArchimedeanCopula):
         Args:
             t: Argument of the inverse Archimedean generator.
         """
-        return -np.log1p(np.exp(-t) * (np.expm1(-self.theta))) / self.theta
+        theta = self.theta
+        with errstate(divide="ignore", invalid="ignore", over="ignore"):
+            # u = -log(1 - e^-t (1 - e^-theta)) / theta. For small t the
+            # difference 1 - e^-t (1 - e^-theta) cancels, and 1 - u is then of
+            # order t e^theta / theta, which is large for strong dependence. The
+            # equivalent sum of positive terms retains it. For large t the first
+            # form retains the precision of a small u.
+            small_t = -np.log(-np.expm1(-t) + np.exp(-t - theta)) / theta
+            large_t = -np.log1p(np.exp(-t) * np.expm1(-theta)) / theta
+        return np.where(t < 1, small_t, large_t)
 
     def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution.
@@ -842,7 +870,56 @@ class FrankCopula(ArchimedeanCopula):
             n_sims: Number of simulations on the scenario axis.
             rng: Random number generator supplying the draws.
         """
-        return rng.logseries(1 - np.exp(-self.theta), size=n_sims).astype(np.float64)
+        if self.theta <= _LOGSERIES_NUMPY_MAX_THETA:
+            return rng.logseries(1 - np.exp(-self.theta), size=n_sims).astype(np.float64)
+        return _logseries_from_log_complement(self.theta, n_sims, rng)
+
+    def _generate_unnormalised(
+        self, n_sims: int | None = None, rng: RandomGenerator | None = None
+    ) -> npt.NDArray[np.floating]:
+        """Generate latent samples, or uniform samples when theta is not positive.
+
+        Independence and, for two variables, negative dependence have no
+        Marshall-Olkin representation. Their samples are generated directly
+        and are already uniform. Negative dependence uses the conditional
+        distribution method with the inverse of the Frank conditional CDF.
+
+        Args:
+            n_sims: Number of simulations on the scenario axis.
+            rng: Random number generator supplying the draws.
+        """
+        if self.theta > 0:
+            return super()._generate_unnormalised(n_sims, rng)
+        if n_sims is None:
+            n_sims = config.n_sims
+        if rng is None:
+            rng = config.rng
+        dimension = getattr(self, "dimension", None)
+        if dimension is None:
+            raise RuntimeError("Subclasses of ArchimedeanCopula must set self.dimension to the number of variables")
+        if self.theta == 0:
+            return _draw_scenarios(rng, "uniform", size=(dimension, n_sims), scenario_axis=1)
+        if dimension != 2:
+            raise ValueError("Frank copula with negative theta is only defined for two variables")
+        u, w = _draw_scenarios(rng, "uniform", size=(2, n_sims), scenario_axis=1)
+        # Solving dC/du (v | u) = w for v with phi = -theta > 0 gives
+        # v = log((e^{phi u}(1 - w) + w e^phi) / (e^{phi u}(1 - w) + w)) / phi,
+        # evaluated in logarithms so that no exponential overflows.
+        phi = -self.theta
+        with errstate(divide="ignore"):
+            base = phi * u + np.log1p(-w)
+            v = (np.logaddexp(base, phi + np.log(w)) - np.logaddexp(base, np.log(w))) / phi
+        return np.vstack((u, v))
+
+    def _transform_to_uniform(self, unnormalised_samples: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
+        """Transform latent samples to uniform margins; uniform samples are kept.
+
+        Args:
+            unnormalised_samples: Latent samples when theta is positive, otherwise uniform samples.
+        """
+        if self.theta > 0:
+            return super()._transform_to_uniform(unnormalised_samples)
+        return _open_unit(unnormalised_samples)
 
 
 class JoeCopula(ArchimedeanCopula):
@@ -894,7 +971,10 @@ class JoeCopula(ArchimedeanCopula):
         Args:
             t: Argument of the inverse Archimedean generator.
         """
-        return 1 - (1 - np.exp(-t)) ** (1 / self.theta)
+        # 1 - (1 - e^-t)^(1/theta) evaluated through logarithms keeps the
+        # relative precision of a small result and of 1 - u near one.
+        with errstate(divide="ignore"):
+            return -np.expm1(np.log(-np.expm1(-t)) / self.theta)
 
     def generate_latent_distribution(self, n_sims: int, rng: RandomGenerator) -> npt.NDArray[np.floating]:
         """Generate samples from the latent distribution.
@@ -1008,9 +1088,15 @@ class MM1Copula(Copula):
         theta = self.theta
         delta_matrix = self.delta_matrix
         max_u = np.zeros((n, n_sims))
-        mixing_variable = levy_stable(alpha=1 / theta, beta=1.0, size=n_sims, rng=rng) * (
-            np.cos(np.pi / (2 * theta)) ** theta
-        )
+        if theta == 1:
+            # The positive stable law with index one is degenerate at one.
+            # Chambers-Mallows-Stuck switches to a different branch at index
+            # one and, rescaled by cos(pi/2), returns meaningless values.
+            mixing_variable = np.ones(n_sims)
+        else:
+            mixing_variable = levy_stable(alpha=1 / theta, beta=1.0, size=n_sims, rng=rng) * (
+                np.cos(np.pi / (2 * theta)) ** theta
+            )
         # generate the pairwise Gumbel copulas
         for j in range(n):
             for i in range(j + 1, n):
@@ -1132,11 +1218,13 @@ class GalambosCopula(Copula):
         # Independence shortcut if needed
         if self.theta < 1e-4:
             return _draw_scenarios(rng, "uniform", 0, 1, size=(d, n_sims), scenario_axis=1)
-        num = gamma(d) * gamma(1.0 / self.theta)
-        den = gamma(d + 1.0 / self.theta) * self.theta
-        # Compute c_theta for the Galambos copula in dimension d.
-        # S^{-1}(t) = c_theta * t^{-theta}.
-        c_theta = (num / den) ** (-self.theta)
+        # Compute c_theta for the Galambos copula in dimension d,
+        # S^{-1}(t) = c_theta * t^{-theta}, with c_theta = (num / den)^(-theta). The gamma
+        # functions overflow for small theta, so work with logarithms.
+        log_num_den = (
+            math.lgamma(d) + math.lgamma(1.0 / self.theta) - math.lgamma(d + 1.0 / self.theta) - math.log(self.theta)
+        )
+        c_theta = math.exp(-self.theta * log_num_den)
 
         inv_theta = 1.0 / self.theta
         c_th = c_theta
@@ -1296,6 +1384,49 @@ class PlackettCopula(Copula):
         return self._generate_base(n_sims, rng)
 
 
+_POISSON_RATE_LIMIT = 1e15
+# NumPy's logarithmic series sampler needs p = 1 - exp(-theta) below one in
+# double precision, which fails at about theta = 36.7. Beyond this theta a
+# sampler working from log(1 - p) = -theta directly is used.
+_LOGSERIES_NUMPY_MAX_THETA = 30.0
+_FRANK_MAX_THETA = 700.0
+
+
+def _logseries_from_log_complement(
+    theta: float, size: int | tuple[int, ...], rng: RandomGenerator
+) -> npt.NDArray[np.floating]:
+    """Draw logarithmic series variables with p = 1 - exp(-theta) for any theta > 0.
+
+    This is Kemp's (1981) LK algorithm, as implemented in NumPy, rearranged to
+    use theta = -log(1 - p) rather than p. For large theta, p rounds to one in
+    double precision, but 1 - p = exp(-theta) is still represented exactly. The
+    variables are of order exp(theta) / theta.
+
+    References:
+        Kemp, A. W. (1981). Efficient generation of logarithmically distributed
+        pseudo-random variables. Journal of the Royal Statistical Society,
+        Series C, 30(3), 249-253.
+
+    Args:
+        theta: Positive value of -log(1 - p).
+        size: Output shape.
+        rng: Random number generator.
+    """
+    w = rng.uniform(size=size)
+    s = rng.uniform(size=size)
+    v = 1 - w
+    decay = -theta * s
+    q = -np.expm1(decay)
+    with errstate(divide="ignore", invalid="ignore", over="ignore"):
+        # log(q) = log(1 - e^-theta s) is tiny and negative for large theta s,
+        # where q itself rounds to one.
+        log_q = np.log1p(-np.exp(decay))
+        large = np.floor(1 + np.log(v) / log_q)
+    # In the notation of LK, V = 1 - w: V >= p is w <= exp(-theta).
+    result = np.where(v <= q * q, large, np.where(v >= q, 1.0, 2.0))
+    return np.where(w <= np.exp(-theta), 1.0, result).astype(np.float64)
+
+
 def _sibuya_gen(alpha: float, size: int | tuple[int, ...], rng: RandomGenerator) -> npt.NDArray[np.floating]:
     """Generate samples from a Sibuya distribution.
 
@@ -1312,7 +1443,16 @@ def _sibuya_gen(alpha: float, size: int | tuple[int, ...], rng: RandomGenerator)
     r = g2 / g1
     e = rng.exponential(1, size=size)
     u = r * e
-    return (1 + rng.poisson(u, size=size)).astype(np.float64)
+    # The Sibuya tail is heavy, P(N > k) ~ k^-alpha, so the Poisson rate is
+    # often huge when alpha is small: 0.014% of rates exceed 9.2e18 for
+    # alpha = 0.2 and 1.2% for alpha = 0.1. NumPy's Poisson sampler fails above
+    # that limit, so any large simulation with theta >= 4 failed. A Poisson
+    # variable with a rate this large is its rate to within a relative
+    # fluctuation of order 1/sqrt(rate), below 3e-8 above the limit, so the
+    # rate is used directly there. The rate is capped for the draw itself so
+    # that the random stream is unchanged for all other rates.
+    counts = rng.poisson(np.minimum(u, _POISSON_RATE_LIMIT), size=size)
+    return 1 + np.where(u > _POISSON_RATE_LIMIT, u, counts).astype(np.float64)
 
 
 class HuslerReissCopula(Copula):
@@ -1436,7 +1576,8 @@ class HuslerReissCopula(Copula):
             lambda_matrix: Symmetric matrix :math:`\lambda_{ij}` determining the
                 pairwise dependency between variables.
         """
-        lambda_matrix = t.cast(npt.NDArray[np.floating], np.asarray(lambda_matrix))
+        # Copy, because the values are clipped in place below.
+        lambda_matrix = t.cast(npt.NDArray[np.floating], np.array(lambda_matrix, dtype=float))
         if lambda_matrix.ndim != 2 or lambda_matrix.shape[0] != lambda_matrix.shape[1]:  # type: ignore[union-attr]
             raise ValueError("Parameter matrix must be square")
         if lambda_matrix.min() < 0.0:  # type: ignore[union-attr]
@@ -2076,13 +2217,13 @@ _LOGIT_LOWER = math.log(np.finfo(float).tiny)
 _LOGIT_UPPER = -math.log(np.finfo(float).eps / 2)
 
 
-def _open_unit(value: _VineArray) -> _VineArray:
+def _open_unit(value: _FloatArray) -> _FloatArray:
     """Keep probabilities inside the unit interval for conditional transforms.
 
     Args:
         value: Uniform probabilities.
     """
-    return np.clip(value, np.finfo(float).tiny, 1.0 - np.finfo(float).eps / 2)
+    return t.cast(_FloatArray, np.clip(value, np.finfo(float).tiny, 1.0 - np.finfo(float).eps / 2))
 
 
 def _log_expm1(value: _VineArray) -> _VineArray:
@@ -2111,6 +2252,37 @@ _PairFamily = t.Literal[
 _PairRotation = t.Literal[0, 90, 180, 270]
 
 
+def _student_t_ppf_from_beta(probability: _VineArray, dof: float) -> _VineArray:
+    """Evaluate Student's t quantiles from the inverse incomplete beta function.
+
+    This is the formulation used on backends without a Student's t quantile
+    function. In the tails, P(|T| > x) = I_z(dof/2, 1/2) with z = dof / (dof +
+    x^2), which is accurate for tiny probabilities. Near the median z rounds
+    to one and 1 - z cancels, so there P(|T| < x) = I_w(1/2, dof/2) with w = x^2 /
+    (dof + x^2) is used instead, which retains full precision down to a
+    probability of 1/2.
+
+    Args:
+        probability: Probabilities in the open unit interval.
+        dof: Positive degrees of freedom.
+    """
+    tail = 2 * np.minimum(probability, 1 - probability)
+    central = tail > 0.5
+    root = special.betaincinv(
+        np.where(central, 0.5, dof / 2),
+        np.where(central, dof / 2, 0.5),
+        np.where(central, np.abs(2 * probability - 1), tail),
+    )
+    with errstate(divide="ignore", invalid="ignore"):
+        squared_over_dof = np.where(central, root / (1 - root), (1 - root) / root)
+    return np.sign(probability - 0.5) * np.sqrt(dof * squared_over_dof)
+
+
+# SciPy's stdtrit is accurate except in the far tails: it saturates at 1e100 and
+# is wrong by large factors for probabilities below about 1e-155.
+_STUDENT_T_PPF_FAR_TAIL = 1e-150
+
+
 def _student_t_ppf(probability: _VineArray, dof: float) -> _VineArray:
     """Evaluate Student's t quantiles on the active array backend.
 
@@ -2118,11 +2290,16 @@ def _student_t_ppf(probability: _VineArray, dof: float) -> _VineArray:
         probability: Probabilities in the open unit interval.
         dof: Positive degrees of freedom.
     """
-    if np.__name__ == "numpy":
-        return t.cast(_VineArray, special.stdtrit(dof, probability))
-    tail = 2 * np.minimum(probability, 1 - probability)
-    z = special.betaincinv(dof / 2, 0.5, tail)
-    return np.sign(probability - 0.5) * np.sqrt(dof * ((1 - z) / z))
+    if np.__name__ != "numpy":
+        return _student_t_ppf_from_beta(probability, dof)
+    quantile = np.asarray(special.stdtrit(dof, probability))
+    far_tail = np.minimum(probability, 1 - probability) < _STUDENT_T_PPF_FAR_TAIL
+    if np.any(far_tail):
+        # For dof of about one or less the quantile itself can exceed the range
+        # of a double, which the beta formulation then reports as infinite.
+        from_beta = _student_t_ppf_from_beta(probability, dof)
+        quantile = np.where(far_tail & np.isfinite(from_beta), from_beta, quantile)
+    return t.cast(_VineArray, quantile)
 
 
 @dataclass(frozen=True)

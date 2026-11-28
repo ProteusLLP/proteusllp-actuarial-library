@@ -84,6 +84,9 @@ def _gpd_initial(x: np.ndarray, censored: np.ndarray, weights: np.ndarray) -> tu
     return 0.0, scale
 
 
+_MINIMUM_EXTREME_VALUE_SHAPE = -1.0
+
+
 def _support_shape(raw: float, scale: float, left: float, right: float) -> float:
     """Map an unconstrained shape to one satisfying finite observed-data support.
 
@@ -94,12 +97,14 @@ def _support_shape(raw: float, scale: float, left: float, right: float) -> float
         right: Distance from the location to the largest observation.
 
     Returns:
-        Shape satisfying 1 + shape * (x - loc) / scale > 0 on the sample.
+        Shape satisfying 1 + shape * (x - loc) / scale > 0 on the sample and
+        at least -1. Below -1 the density is unbounded at the upper endpoint,
+        so the likelihood has no maximum there and a fit would run along a
+        ridge towards a spurious optimum.
     """
     distance = max(0.0, left if raw >= 0 else right)
-    if distance == 0:
-        return raw
-    return raw / (1 + abs(raw) * (distance / scale))
+    shape = raw if distance == 0 else raw / (1 + abs(raw) * (distance / scale))
+    return max(shape, _MINIMUM_EXTREME_VALUE_SHAPE)
 
 
 def _gpd_shape_coordinate(shape: float, scale: float, largest: float) -> float:
@@ -158,6 +163,8 @@ def _shape_coordinate(shape: float, scale: float, left: float, right: float) -> 
     """
     if scale <= 0:
         raise ValueError("initial scale must be positive")
+    if shape < _MINIMUM_EXTREME_VALUE_SHAPE:
+        raise ValueError("initial shape does not support a finite likelihood: it must be at least -1")
     distance = max(0.0, left if shape >= 0 else right)
     denominator = 1 - abs(shape) * distance / scale
     if denominator <= 0:

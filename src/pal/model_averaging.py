@@ -118,7 +118,9 @@ class WeightedDistribution(DistributionBase):
 
         Shared fitting options include weights, censored and threshold when
         supported by each candidate. per_family_options supplies any differing
-        family-specific fitting options, such as a Binomial trial count.
+        family-specific fitting options, such as a Binomial trial count. A
+        candidate that fails to fit, or whose estimator is nonregular, stops the
+        averaging with its error rather than being dropped silently.
 
         Args:
             families: Candidate distribution classes to fit.
@@ -133,7 +135,7 @@ class WeightedDistribution(DistributionBase):
             raise ValueError("families must be nonempty and contain no duplicates")
         if any(not isinstance(f, type) or not issubclass(f, DistributionBase) for f in candidates):
             raise TypeError("families must contain PAL distribution classes")
-        from .distributions import MBBEFD, Categorical, HyperGeometric, Uniform
+        from .distributions import GPD, MBBEFD, Categorical, HyperGeometric, Pareto, Uniform
 
         if any(f in (Categorical, HyperGeometric, MBBEFD, Uniform) for f in candidates):
             raise ValueError("AICc model averaging does not support nonregular or mixed-measure families")
@@ -152,6 +154,13 @@ class WeightedDistribution(DistributionBase):
             fit = t.cast(t.Any, family).fit(observations, uncertainty_method=uncertainty_method, **kwargs)
             if not fit.converged:
                 raise RuntimeError(f"{family.__name__} fit did not converge")
+            # AICc penalises each parameter by 2 because a regular maximum-likelihood
+            # estimate adds about one chi-squared degree of freedom. An estimated
+            # support endpoint has no such penalty, which is why Uniform is excluded.
+            if family is Pareto and fit.threshold <= 0:
+                raise ValueError("Pareto without a threshold estimates its lower endpoint, which AICc does not support")
+            if family is GPD and not np.isclose(fit.parameters["loc"], fit.threshold, rtol=0, atol=1e-12):
+                raise ValueError("A GPD with free location estimates a support endpoint, which AICc does not support")
             fitted.append(fit)
 
         scores = np.array([f.aicc for f in fitted], dtype=float)
