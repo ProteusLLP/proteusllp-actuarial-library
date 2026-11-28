@@ -78,8 +78,34 @@ def test_apply_mismatched_variables():
         distributions.Gamma(2, 50).generate(1000),
     ]
 
-    with pytest.raises(ValueError, match="Number of variables and copula samples"):
+    with pytest.raises(ValueError, match="has dimension 2 but was applied to 3 variables"):
         gaussian_copula.apply(variables)
+
+
+@pytest.mark.parametrize(
+    "copula",
+    [
+        lambda: copulas.MM1Copula(np.array([[1, 0, 0], [2, 1, 0], [2, 2, 1]]), 1.5),
+        lambda: copulas.GalambosCopula(1.5, 3),
+        lambda: copulas.ClaytonCopula(2.0, 3),
+    ],
+)
+def test_apply_does_not_change_a_fixed_dimension(copula):
+    """A 3-d copula applied to two variables must fail, not silently become a different 2-d model."""
+    model = copula()
+    variables = [distributions.Gamma(2, 50).generate(100) for _ in range(2)]
+    with pytest.raises(ValueError, match="has dimension 3 but was applied to 2 variables"):
+        model.apply(variables)
+    assert model.dimension == 3
+    assert len(model.generate(10)) == 3
+
+
+def test_apply_infers_an_unspecified_dimension():
+    """Copulas built without a dimension still take it from the variables."""
+    model = copulas.GumbelCopula(1.5)
+    variables = [distributions.Gamma(2, 50).generate(100) for _ in range(3)]
+    model.apply(variables)
+    assert model.dimension == 3
 
 
 # =============================================================================

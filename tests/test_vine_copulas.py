@@ -408,6 +408,26 @@ def test_newton_inversion_converges_well_within_iteration_limit(pair, monkeypatc
     assert evaluations < _INVERSION_MAX_ITERATIONS / 2
 
 
+@pytest.mark.parametrize("rho,nu", [(0.99, 0.5), (0.99, 1), (0.99, 4), (0.95, 1), (0.9, 0.5), (0.3, 0.5)])
+def test_extremal_t_inverse_does_not_oscillate(rho, nu):
+    """Every conditional quantile brackets its target, including where Newton steps oscillate.
+
+    logit(h) has an inflection for extremal-t pairs, where unsafeguarded Newton
+    steps alternate across the root. These pairs once returned about 0.2% of
+    quantiles wrongly, by up to 0.44 in probability, with no warning.
+    """
+    pair = PairCopula.ExtremalT(rho, nu)
+    rng = np.random.default_rng(0)
+    p, v = rng.uniform(size=200_000), rng.uniform(size=200_000)
+    u = asnumpy(pair._inverse(xp.asarray(p), xp.asarray(v), first=True))
+    lower = np.nextafter(np.nextafter(u, 0), 0)
+    upper = np.nextafter(np.nextafter(u, 1), 1)
+    h_lower = asnumpy(pair._conditional(xp.asarray(lower), xp.asarray(v), first=True))
+    h_upper = asnumpy(pair._conditional(xp.asarray(upper), xp.asarray(v), first=True))
+    assert np.all(h_lower <= p * (1 + 1e-12))
+    assert np.all(h_upper >= p * (1 - 1e-12))
+
+
 def _regular_trees():
     """A six-margin vine whose first tree is neither a star nor a chain."""
     return [

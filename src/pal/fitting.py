@@ -482,7 +482,12 @@ def _log_likelihood(
             return -np.inf
         log_pdf = stats.genpareto.logpdf(x, c=shape, loc=loc, scale=scale)
         log_sf = stats.genpareto.logsf(x, c=shape, loc=loc, scale=scale)
-        log_sf_threshold = float(stats.genpareto.logsf(threshold, c=shape, loc=loc, scale=scale))
+        # As for the other families, no threshold means an unconditional fit.
+        # Conditioning a free-location GPD on X > 0 would make the location
+        # unidentifiable: near shape zero, loc can then drift without limit.
+        log_sf_threshold = (
+            float(stats.genpareto.logsf(threshold, c=shape, loc=loc, scale=scale)) if threshold > 0 else 0.0
+        )
     else:
         raise ValueError(f"Unsupported fitting family: {family.__name__}")
     terms = np.where(c, log_sf, log_pdf) - log_sf_threshold
@@ -1131,7 +1136,7 @@ def _fit_gpd_free_location(
             raw: Trial parameters in unconstrained optimisation coordinates.
         """
         # Keeping the location below the smallest observation avoids invalid
-        # density evaluations. The truncation correction is retained.
+        # density evaluations.
         scale = float(np.exp(raw[1]))
         loc = float(max_loc - np.exp(raw[2]))
         shape = _support_shape(float(raw[0]), scale, 0.0, float(np.max(x)) - loc) if scale > 0 else np.nan
@@ -1147,11 +1152,25 @@ def _fit_gpd_free_location(
             ll = _log_likelihood(distribution, transform(raw), x, c, w, threshold)
         return -ll if np.isfinite(ll) else 1e100
 
-    distance = max(max_loc - base_loc, delta)
-    xi0, sigma0 = _gpd_initial(x - base_loc, c, w)
-    largest = float(np.max(x)) - base_loc
-    initial = np.array([_gpd_shape_coordinate(xi0, sigma0, largest), np.log(sigma0), np.log(distance)])
-    alternative = np.array([0.0, np.log(start_scale), np.log(distance)])
+    def location_start(loc0: float) -> np.ndarray:
+        """Encode a starting point with shape and scale estimated above a trial location.
+
+        Args:
+            loc0: Trial location below the smallest observation.
+        """
+        xi0, sigma0 = _gpd_initial(x - loc0, c, w)
+        largest = float(np.max(x)) - loc0
+        return np.array(
+            [_gpd_shape_coordinate(xi0, sigma0, largest), np.log(sigma0), np.log(max(max_loc - loc0, delta))]
+        )
+
+    initial = location_start(base_loc)
+    alternative = np.array([0.0, np.log(start_scale), np.log(max(max_loc - base_loc, delta))])
+    # The likelihood is often multimodal in the location, and a start at zero
+    # can be far from a location near the smallest loss. Also start just below
+    # the smallest observation, at distances relative to the spread of the data.
+    spread = max(float(np.median(x)) - smallest, delta)
+    extra_starts = [location_start(smallest - fraction * spread) for fraction in (0.01, 0.1, 1.0)]
 
     def encode(params: dict[str, float]) -> np.ndarray:
         """Encode free-location GPD estimates.
@@ -1169,6 +1188,11 @@ def _fit_gpd_free_location(
         initial, alternative, initial_parameters, transform, encode, ("shape", "scale", "loc"), objective
     )
     best = _minimize(objective, start, optimizer, optimizer_options, 5000, alternative=alternative)
+    if initial_parameters is None:
+        for extra in extra_starts:
+            candidate = _minimize(objective, extra, optimizer, optimizer_options, 5000)
+            if candidate.fun < best.fun:
+                best = candidate
     if best.fun >= 1e100 or not np.isfinite(best.fun):
         raise RuntimeError("Unable to obtain a finite three-parameter GPD fit")
     params = transform(best.x)
@@ -1190,6 +1214,7 @@ def _fit_gpd_free_location(
         n_censored=int(np.sum(c)),
         threshold=threshold,
         threshold_specified=threshold > 0,
+        warnings=_boundary_warnings(params, x, threshold),
     )
 
 

@@ -356,6 +356,27 @@ def test_extremalt_copula_parameter_errors():
         )
 
 
+def test_extremalt_copula_uses_only_the_lower_triangle():
+    """A lower-triangular matrix, as documented, gives the same copula as the full matrix.
+
+    The upper triangle was once read as well, so a lower-triangular input gave
+    a margin with mean 0.6 rather than 0.5.
+    """
+    full = [[1.0, 0.8, 0.3], [0.8, 1.0, -0.2], [0.3, -0.2, 1.0]]
+    lower = np.tril(full)
+    inconsistent = np.array(full)
+    inconsistent[0, 2] = -0.9
+    samples = []
+    for matrix in (full, lower, inconsistent):
+        copula = copulas.ExtremalTCopula(matrix, 4)
+        assert allclose(copula.correlation_matrix, np.array(full))
+        config.rng = np.random.default_rng(2024)
+        samples.append(np.stack([host_values(margin) for margin in copula.generate(20000)]))
+    assert np.array_equal(samples[0], samples[1])
+    assert np.array_equal(samples[0], samples[2])
+    assert np.all(np.abs(samples[1].mean(axis=1) - 0.5) < 0.01)
+
+
 def test_extremalt_copula_methods():
     """Test the Extremal-t copula from_tail_dependence method."""
     # test that we can recover rho from a given tail dependence matrix
